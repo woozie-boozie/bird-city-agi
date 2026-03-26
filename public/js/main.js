@@ -218,6 +218,8 @@
       minimapCanvas.style.display = 'block';
       if (soundToggle) soundToggle.style.display = 'flex';
       if (chaosBar) chaosBar.style.display = 'block';
+      const todHud = document.getElementById('timeOfDayHud');
+      if (todHud) todHud.style.display = 'block';
 
       if (!isTouchDevice) {
         poopCooldown.style.display = 'block';
@@ -680,6 +682,23 @@
       if (ev.birdId === myId) {
         SoundEngine.stunned();
         showAnnouncement('REVENGE NPC GOT YOU!', '#ff0000', 2000);
+      }
+    }
+
+    // === DAY/NIGHT PHASE CHANGE ===
+    if (ev.type === 'phase_change') {
+      const phaseColors = {
+        dusk:  '#ff9944',
+        night: '#8888ff',
+        dawn:  '#ffcc44',
+        day:   '#ffff88',
+      };
+      const color = phaseColors[ev.phase] || '#ffffff';
+      showAnnouncement(ev.message || ev.phase.toUpperCase(), color, 5000);
+      addEventMessage(ev.message || ('Phase: ' + ev.phase), color);
+      // Subtle screen tint flash
+      if (ev.phase === 'night') {
+        effects.push({ type: 'screen_shake', time: performance.now(), duration: 300, intensity: 2 });
       }
     }
   }
@@ -1145,6 +1164,25 @@
 
     // Stats bar
     statsBar.textContent = '\uD83D\uDC26 ' + serverStats.playersOnline + ' online | \uD83D\uDCA9 ' + serverStats.totalPoops + ' poops';
+
+    // Time of day HUD
+    const todHud = document.getElementById('timeOfDayHud');
+    if (todHud && gameState.dayTime !== undefined) {
+      const t = gameState.dayTime;
+      // Map dayTime to a 24-hour clock (0.0 = 6:00 AM, full cycle ends at 6:00 AM next day)
+      const hourOffset = 6; // start at 6 AM
+      const hour24 = (hourOffset + Math.floor(t * 24)) % 24;
+      const minute = Math.floor((t * 24 * 60) % 60);
+      const ampm = hour24 < 12 ? 'AM' : 'PM';
+      const hour12 = hour24 % 12 || 12;
+      const timeStr = hour12 + ':' + String(minute).padStart(2, '0') + ' ' + ampm;
+      const phaseEmoji = { day: '☀️', dusk: '🌆', night: '🌙', dawn: '🌅' };
+      const emoji = phaseEmoji[gameState.dayPhase] || '☀️';
+      const phaseColors = { day: '#ffff99', dusk: '#ffaa55', night: '#aaaaff', dawn: '#ffcc66' };
+      todHud.style.color = phaseColors[gameState.dayPhase] || '#ffffff';
+      todHud.style.borderColor = (phaseColors[gameState.dayPhase] || '#ffffff') + '44';
+      todHud.textContent = emoji + ' ' + timeStr;
+    }
 
     // Skill cooldown display (desktop) - show first equipped skill
     if (abilityCooldownEl && !isTouchDevice) {
@@ -1831,6 +1869,11 @@
 
     // Restore zoom (HUD drawn at screen scale, not zoomed)
     ctx.restore();
+
+    // Day/Night overlay (screen-space, after zoom restore)
+    if (gameState.dayTime !== undefined && worldData) {
+      Renderer.drawDayNight(ctx, camera, z, gameState.dayTime, worldData.streetLamps);
+    }
 
     // Announcements (screen-space)
     drawAnnouncements(ctx, now);

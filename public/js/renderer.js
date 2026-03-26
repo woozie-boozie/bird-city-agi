@@ -300,4 +300,120 @@ window.Renderer = {
     minimapCtx.lineWidth = 1;
     minimapCtx.strokeRect(0, 0, mw, mh);
   },
+
+  // Draw day/night overlay with street lamp glow holes
+  // Called in screen-space (after ctx.restore() removes world zoom)
+  drawDayNight(ctx, camera, zoom, dayTime, streetLamps) {
+    if (dayTime === undefined || dayTime === null) return;
+
+    // Compute darkness level (0 = full daylight, ~0.65 = full night)
+    let darkness = 0;
+    let tr = 0, tg = 0, tb = 0; // tint RGB
+
+    if (dayTime < 0.30) {
+      // Day — no overlay
+      darkness = 0;
+    } else if (dayTime < 0.45) {
+      // Dusk — fade in with warm purple/red
+      const t = (dayTime - 0.30) / 0.15;
+      darkness = t * 0.60;
+      tr = 60; tg = 10; tb = 40;
+    } else if (dayTime < 0.55) {
+      // Nightfall — deepen quickly to full night
+      const t = (dayTime - 0.45) / 0.10;
+      darkness = 0.60 + t * 0.10;
+      tr = 5; tg = 5; tb = 35;
+    } else if (dayTime < 0.65) {
+      // Full night — steady
+      darkness = 0.70;
+      tr = 5; tg = 5; tb = 35;
+    } else if (dayTime < 0.75) {
+      // Pre-dawn — slightly lightening
+      const t = (dayTime - 0.65) / 0.10;
+      darkness = 0.70 - t * 0.15;
+      tr = 5; tg = 5; tb = 35;
+    } else if (dayTime < 0.90) {
+      // Dawn — warm orange fade out
+      const t = (dayTime - 0.75) / 0.15;
+      darkness = 0.55 - t * 0.55;
+      tr = 70; tg = 25; tb = 5;
+    } else {
+      // Day — clear
+      darkness = 0;
+    }
+
+    if (darkness <= 0.01) return;
+
+    const sw = camera.screenW;
+    const sh = camera.screenH;
+
+    // Create/reuse offscreen canvas for the night layer
+    if (!this._nightCanvas || this._nightCanvas.width !== sw || this._nightCanvas.height !== sh) {
+      this._nightCanvas = document.createElement('canvas');
+      this._nightCanvas.width = sw;
+      this._nightCanvas.height = sh;
+      this._nightCtx = this._nightCanvas.getContext('2d');
+    }
+
+    const nc = this._nightCtx;
+    nc.clearRect(0, 0, sw, sh);
+
+    // Fill darkness base
+    nc.fillStyle = `rgba(${tr},${tg},${tb},${darkness})`;
+    nc.fillRect(0, 0, sw, sh);
+
+    // Punch lamp-shaped holes in the darkness using destination-out
+    if (darkness > 0.08 && streetLamps && streetLamps.length) {
+      nc.globalCompositeOperation = 'destination-out';
+      const lampRadius = 85 + darkness * 90;
+
+      for (const lamp of streetLamps) {
+        // Convert world position to screen position (accounting for zoom)
+        const sx = sw / 2 + (lamp.x - camera.x) * zoom;
+        const sy = sh / 2 + (lamp.y - camera.y) * zoom;
+
+        if (sx < -lampRadius || sx > sw + lampRadius || sy < -lampRadius || sy > sh + lampRadius) continue;
+
+        const grad = nc.createRadialGradient(sx, sy, 0, sx, sy, lampRadius);
+        grad.addColorStop(0, `rgba(0,0,0,${darkness})`);
+        grad.addColorStop(0.45, `rgba(0,0,0,${darkness * 0.55})`);
+        grad.addColorStop(0.75, `rgba(0,0,0,${darkness * 0.15})`);
+        grad.addColorStop(1, 'rgba(0,0,0,0)');
+        nc.fillStyle = grad;
+        nc.beginPath();
+        nc.arc(sx, sy, lampRadius, 0, Math.PI * 2);
+        nc.fill();
+      }
+      nc.globalCompositeOperation = 'source-over';
+    }
+
+    // Stamp the night layer onto the game canvas
+    ctx.drawImage(this._nightCanvas, 0, 0);
+
+    // Draw warm lamp glow dots on top of the darkness
+    if (darkness > 0.08 && streetLamps && streetLamps.length) {
+      const glowAlpha = Math.min(0.85, darkness * 1.1);
+      for (const lamp of streetLamps) {
+        const sx = sw / 2 + (lamp.x - camera.x) * zoom;
+        const sy = sh / 2 + (lamp.y - camera.y) * zoom;
+        if (sx < -20 || sx > sw + 20 || sy < -20 || sy > sh + 20) continue;
+
+        // Soft outer glow
+        const glow = ctx.createRadialGradient(sx, sy, 0, sx, sy, 22 * zoom);
+        glow.addColorStop(0, `rgba(255,215,80,${glowAlpha})`);
+        glow.addColorStop(0.5, `rgba(255,170,40,${glowAlpha * 0.4})`);
+        glow.addColorStop(1, 'rgba(255,120,0,0)');
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.arc(sx, sy, 22 * zoom, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Bright center dot
+        ctx.fillStyle = `rgba(255,240,160,${glowAlpha})`;
+        ctx.beginPath();
+        ctx.arc(sx, sy, 3 * zoom, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  },
 };

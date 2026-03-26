@@ -246,11 +246,35 @@ const EVENT_LOCATIONS = {
 // Power-up types
 const POWERUP_TYPES = ['hot_sauce', 'speed_feather', 'ghost_feather', 'mega_poop'];
 
+// Street lamps — appear along roads and park perimeter, glow at night
+const STREET_LAMPS = [];
+// Along horizontal roads (placed at top edge of each road)
+[840, 1540, 2280].forEach(ry => {
+  for (let x = 150; x < WORLD_WIDTH - 100; x += 280) {
+    STREET_LAMPS.push({ x, y: ry - 8 });
+  }
+});
+// Along vertical roads (placed at left edge of each road)
+[740, 1640, 2540].forEach(rx => {
+  for (let y = 150; y < WORLD_HEIGHT - 100; y += 280) {
+    STREET_LAMPS.push({ x: rx - 8, y });
+  }
+});
+// Park perimeter lamps
+for (let px = 850; px <= 1480; px += 220) {
+  STREET_LAMPS.push({ x: px, y: 898 });   // top edge
+  STREET_LAMPS.push({ x: px, y: 1552 });  // bottom edge
+}
+for (let py = 950; py <= 1500; py += 220) {
+  STREET_LAMPS.push({ x: 798, y: py });   // left edge
+  STREET_LAMPS.push({ x: 1502, y: py }); // right edge
+}
+
 module.exports = {
   WORLD_WIDTH, WORLD_HEIGHT,
   BUILDINGS, TREES, PARK, CAFE_TABLES, ROADS, CARS, LAUNDRY,
   MOVING_CARS, EVENT_LOCATIONS, POWERUP_TYPES,
   NPC_TYPES, BIRD_TYPES, DATE_CENTER,
-  SKILL_CATALOG, BIRD_COLORS,
+  SKILL_CATALOG, BIRD_COLORS, STREET_LAMPS,
   getXPForLevel, getLevelFromXP, getBirdTypeForLevel,
 };

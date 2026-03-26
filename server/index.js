@@ -30,6 +30,7 @@ app.get('/api/world', (req, res) => {
     birdTypes: world.BIRD_TYPES,
     skillCatalog: world.SKILL_CATALOG,
     birdColors: world.BIRD_COLORS,
+    streetLamps: world.STREET_LAMPS,
   });
 });
 

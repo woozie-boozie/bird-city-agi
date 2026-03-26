@@ -37,7 +37,22 @@ GTA1 + World of Warcraft, but for BIRDS. A chaotic multiplayer sandbox where bir
 Track what you've done and what's next here. Update this section each session.
 
 ### Session History
-_(Agent will append entries here)_
+
+**Session 1 — 2026-03-26: Day/Night Cycle**
+Built a full 20-minute real-time day/night cycle that transforms Bird City into a living world:
+- Server tracks `dayTime` (0.0→1.0) advancing every tick. Full cycle = 20 min.
+- Four phases: Day (0-6 min) → Dusk (6-9 min) → Night (9-15 min) → Dawn (15-20 min)
+- Phase transitions broadcast as `phase_change` events with cinematic announcements
+- At nightfall: active cats get 40% speed boost (darkness makes predators bolder)
+- At dawn: all food respawns (morning feast as reward for surviving the night)
+- **Visual spectacle**: offscreen canvas compositing creates a darkness overlay with lamp "holes"
+  - 70% darkness at peak night (deep blue tint)
+  - Dusk: warm purple fade-in; Dawn: orange fade-out
+  - Street lamps (100+ positions along all roads and park perimeter) punch through the dark using `destination-out` compositing
+  - Each lamp renders a warm yellow-orange radial glow with bright dot center
+- **HUD clock**: centered pill at top shows 12h clock + phase emoji (☀️🌆🌙🌅)
+- Clock maps game time to a 6 AM start (so first night falls at ~12 PM game time)
+- Creative intent: the city now BREATHES. Players must adapt strategy to day vs night. Night is dangerous and atmospheric; dawn is a relief. Retention hook: "survive the night" creates natural play sessions.
 
 ### Next Ideas Queue
 - Territory control system (flocks claim zones, defend them)
@@ -45,8 +60,7 @@ _(Agent will append entries here)_
 - Underground sewer system (secret map layer)
 - Wanted level escalation (police birds, SWAT hawks)
 - Raid bosses (giant cat, dog pack, eagle overlord)
-- Black market NPC (rare skills, forbidden items)
-- Day/night cycle with different NPC behaviors
+- Black market NPC (rare skills, forbidden items) — maybe NIGHT ONLY for extra flavor
 - Graffiti system (birds tag buildings for territory)
 - Food truck heists (multiplayer coordinated robbery)
 - Pigeon mafia questline
@@ -55,3 +69,6 @@ _(Agent will append entries here)_
 - Egg protection mini-game
 - Bird gangs with custom colors/tags
 - Radio tower control (broadcast messages server-wide)
+- Night-exclusive NPCs: Owl bouncer, raccoon thieves, drunk pigeons
+- Stars/moon visual in night sky (canvas background layer)
+- Bioluminescent park pond at night (glowing water effect)

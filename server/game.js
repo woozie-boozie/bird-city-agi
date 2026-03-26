@@ -73,6 +73,12 @@ class GameEngine {
     this.janitorRageQuitUntil = 0;
     this.janitorBaseSpeedBonus = 0;   // cumulative speed bonus from rage quits
 
+    // === DAY/NIGHT CYCLE ===
+    // 0.0 = early day, 0.3 = dusk, 0.45 = night, 0.75 = dawn, 1.0 = day again
+    // Full cycle = 20 real-time minutes
+    this.dayTime = 0.0;
+    this.dayPhase = 'day'; // 'day' | 'dusk' | 'night' | 'dawn'
+
     this.tickRate = 20;           // ticks per second
     this.tickInterval = 1000 / this.tickRate;
     this.lastTick = Date.now();
@@ -455,6 +461,9 @@ class GameEngine {
 
     // === The Janitor ===
     this._updateJanitor(dt, now);
+
+    // === Day/Night Cycle ===
+    this._updateDayNight(dt, now);
   }
 
   // ============================================================
@@ -1866,6 +1875,47 @@ class GameEngine {
     npc.y = Math.max(20, Math.min(world.WORLD_HEIGHT - 20, npc.y));
   }
 
+  // ============================================================
+  // DAY/NIGHT CYCLE
+  // ============================================================
+  _updateDayNight(dt, now) {
+    const CYCLE_SECONDS = 20 * 60; // 20-minute real-time cycle
+    this.dayTime = (this.dayTime + dt / CYCLE_SECONDS) % 1.0;
+
+    let newPhase;
+    if (this.dayTime < 0.30) newPhase = 'day';
+    else if (this.dayTime < 0.45) newPhase = 'dusk';
+    else if (this.dayTime < 0.75) newPhase = 'night';
+    else newPhase = 'dawn';
+
+    if (newPhase !== this.dayPhase) {
+      this.dayPhase = newPhase;
+      const phaseMessages = {
+        dusk:  '🌆 The sun sets over Bird City... danger approaches.',
+        night: '🌙 NIGHTFALL! The streets grow dark. Cats are more aggressive.',
+        dawn:  '🌅 Dawn breaks over Bird City. Survivors collect their spoils.',
+        day:   '☀️ A new day begins in Bird City. Go cause some chaos!',
+      };
+      this.events.push({
+        type: 'phase_change',
+        phase: newPhase,
+        message: phaseMessages[newPhase],
+      });
+
+      // At night: cats get faster and spawn sooner
+      if (newPhase === 'night' && this.cat) {
+        this.cat.speed *= 1.4;
+      }
+      // At dawn: respawn all street foods to celebrate the new day
+      if (newPhase === 'dawn') {
+        for (const food of this.foods.values()) {
+          food.active = true;
+          food.respawnAt = null;
+        }
+      }
+    }
+  }
+
   getStateForBird(birdId) {
     const bird = this.birds.get(birdId);
     if (!bird) return null;
@@ -2188,6 +2238,8 @@ class GameEngine {
       boss: bossState,
       wantedBirdId: this.wantedBirdId,
       foodTruck: foodTruckState,
+      dayTime: this.dayTime,
+      dayPhase: this.dayPhase,
       self: {
         id: bird.id,
         name: bird.name,
