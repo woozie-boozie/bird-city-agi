@@ -1,0 +1,5 @@
+node_modules/
+birdcity.db
+.DS_Store
+birdcity.db-shm
+birdcity.db-wal

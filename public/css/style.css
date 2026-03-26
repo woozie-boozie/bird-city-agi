@@ -1,0 +1,1410 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  background: #000;
+  overflow: hidden;
+  font-family: 'Courier New', monospace;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  position: fixed;
+}
+
+#gameCanvas {
+  display: block;
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* ============================================
+   ROTATE DEVICE OVERLAY (portrait blocker)
+   ============================================ */
+#rotateOverlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: #0a0a1a;
+  z-index: 9999;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-family: 'Courier New', monospace;
+}
+
+#rotateOverlay .rotate-icon {
+  font-size: 64px;
+  margin-bottom: 20px;
+  animation: rotateWiggle 2s infinite;
+}
+
+#rotateOverlay .rotate-text {
+  font-size: 18px;
+  color: #ffc832;
+  text-align: center;
+  line-height: 1.6;
+}
+
+@keyframes rotateWiggle {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-20deg); }
+  75% { transform: rotate(20deg); }
+}
+
+/* Show rotate overlay in portrait on mobile */
+@media (orientation: portrait) and (max-width: 1024px) and (hover: none) {
+  #rotateOverlay { display: flex !important; }
+  #joinScreen, #gameCanvas, #hud, #xpBar, #xpBarText, #poopCooldown,
+  #statsBar, #leaderboard, #eventFeed, #minimap, #mobileControls { display: none !important; }
+}
+
+/* ============================================
+   JOIN SCREEN
+   ============================================ */
+#joinScreen {
+  position: fixed;
+  inset: 0;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  color: #fff;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+#joinScreen h1 {
+  font-size: 3em;
+  margin-bottom: 0.15em;
+  text-shadow: 0 0 20px rgba(255, 200, 50, 0.5);
+  letter-spacing: 3px;
+}
+
+#joinScreen .subtitle {
+  font-size: 1.1em;
+  color: #aaa;
+  margin-bottom: 1.5em;
+}
+
+#joinScreen input {
+  background: rgba(255, 255, 255, 0.1);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  color: #fff;
+  padding: 12px 20px;
+  font-size: 1.2em;
+  font-family: 'Courier New', monospace;
+  border-radius: 8px;
+  text-align: center;
+  width: 280px;
+  outline: none;
+  margin-bottom: 1em;
+}
+
+#joinScreen input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+#joinScreen input:focus {
+  border-color: #ffc832;
+  box-shadow: 0 0 15px rgba(255, 200, 50, 0.3);
+}
+
+#joinScreen button {
+  background: #ffc832;
+  color: #1a1a2e;
+  border: none;
+  padding: 14px 48px;
+  font-size: 1.3em;
+  font-family: 'Courier New', monospace;
+  font-weight: bold;
+  border-radius: 8px;
+  cursor: pointer;
+  letter-spacing: 2px;
+  transition: all 0.2s;
+}
+
+#joinScreen button:hover {
+  background: #ffda5c;
+  transform: scale(1.05);
+}
+
+#joinScreen .controls-hint {
+  margin-top: 1.5em;
+  color: #666;
+  font-size: 0.85em;
+  text-align: center;
+  line-height: 1.8;
+}
+
+#joinScreen .controls-hint span {
+  color: #ffc832;
+  font-weight: bold;
+}
+
+#joinScreen .controls-hint-mobile {
+  display: none;
+  margin-top: 1.5em;
+  color: #666;
+  font-size: 0.85em;
+  text-align: center;
+  line-height: 1.8;
+}
+
+#joinScreen .online-count {
+  margin-top: 1em;
+  color: #4ade80;
+  font-size: 0.9em;
+}
+
+/* ============================================
+   HUD (top-left stats)
+   ============================================ */
+#hud {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  color: #fff;
+  font-size: 13px;
+  pointer-events: none;
+  z-index: 10;
+  text-shadow: 1px 1px 3px rgba(0,0,0,0.9);
+  line-height: 1.5;
+  padding-left: env(safe-area-inset-left);
+  padding-top: env(safe-area-inset-top);
+}
+
+#hud .stat-label { color: #aaa; }
+#hud .stat-value { color: #ffc832; font-weight: bold; }
+#hud .bird-type { font-size: 15px; color: #4ade80; font-weight: bold; }
+
+.logout-btn {
+  margin-top: 4px;
+  color: #888;
+  font-size: 10px;
+  cursor: pointer;
+  pointer-events: auto;
+  letter-spacing: 1px;
+}
+.logout-btn:hover, .logout-btn:active {
+  color: #ff6b6b;
+}
+
+/* Sound toggle */
+#soundToggle {
+  position: fixed;
+  bottom: 8px;
+  left: 56px;
+  width: 36px;
+  height: 36px;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  color: #fff;
+  font-size: 18px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* ============================================
+   XP BAR (top center)
+   ============================================ */
+#xpBar {
+  position: fixed;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 220px;
+  height: 16px;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  overflow: hidden;
+  z-index: 10;
+  pointer-events: none;
+}
+
+#xpBarFill {
+  height: 100%;
+  background: linear-gradient(90deg, #4ade80, #ffc832);
+  transition: width 0.3s;
+  border-radius: 8px;
+}
+
+#xpBarText {
+  position: fixed;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: #fff;
+  font-size: 10px;
+  z-index: 11;
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.9);
+  pointer-events: none;
+}
+
+/* ============================================
+   POOP COOLDOWN (hidden on mobile, shown on action btn)
+   ============================================ */
+#poopCooldown {
+  position: fixed;
+  bottom: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: #fff;
+  font-size: 14px;
+  z-index: 10;
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+  pointer-events: none;
+}
+
+/* ============================================
+   STATS BAR (top center, below xp bar)
+   ============================================ */
+#statsBar {
+  position: fixed;
+  top: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: #aaa;
+  font-size: 11px;
+  z-index: 10;
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* ============================================
+   LEADERBOARD
+   ============================================ */
+#leaderboard {
+  position: fixed;
+  top: 8px;
+  right: 8px;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 11px;
+  z-index: 10;
+  min-width: 180px;
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding-right: calc(8px + env(safe-area-inset-right));
+}
+
+#leaderboard h3 {
+  color: #ffc832;
+  margin-bottom: 6px;
+  font-size: 12px;
+  letter-spacing: 1px;
+}
+
+#leaderboard .lb-entry {
+  display: flex;
+  justify-content: space-between;
+  padding: 1px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+#leaderboard .lb-name { color: #ccc; }
+#leaderboard .lb-name.online { color: #4ade80; }
+#leaderboard .lb-xp { color: #ffc832; }
+#leaderboard .lb-rank { color: #666; margin-right: 4px; }
+
+/* ============================================
+   EVENT FEED
+   ============================================ */
+#eventFeed {
+  position: fixed;
+  bottom: 50px;
+  left: 10px;
+  color: #fff;
+  font-size: 11px;
+  z-index: 10;
+  pointer-events: none;
+  max-width: 280px;
+  padding-left: env(safe-area-inset-left);
+}
+
+.event-msg {
+  padding: 1px 0;
+  opacity: 1;
+  transition: opacity 0.5s;
+  text-shadow: 1px 1px 3px rgba(0,0,0,0.9);
+}
+.event-msg.fading { opacity: 0; }
+
+/* ============================================
+   MINIMAP
+   ============================================ */
+#minimap {
+  position: fixed;
+  top: 50px;
+  right: 8px;
+  width: 120px;
+  height: 120px;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  z-index: 10;
+}
+
+/* ============================================
+   MOBILE CONTROLS — PUBG STYLE
+   ============================================ */
+#mobileControls {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 15;
+  pointer-events: none;
+}
+
+/* Joystick zone — bottom-left, thumb reachable area */
+#joystickZone {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 45%;
+  height: 60%;
+  pointer-events: auto;
+}
+
+/* Joystick base — always visible, fixed bottom-left */
+#joystickBase {
+  position: absolute;
+  left: calc(30px + env(safe-area-inset-left));
+  bottom: calc(30px + env(safe-area-inset-bottom));
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  pointer-events: none;
+}
+
+/* Joystick thumb — always visible, snaps to center when idle */
+#joystickThumb {
+  position: absolute;
+  left: calc(62px + env(safe-area-inset-left));
+  bottom: calc(62px + env(safe-area-inset-bottom));
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.35) 0%, rgba(255, 255, 255, 0.12) 100%);
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  transition: left 0.1s, bottom 0.1s;
+}
+
+#joystickThumb.active {
+  transition: none;
+}
+
+/* Action buttons — bottom-right, thumb reachable */
+#actionButtons {
+  position: absolute;
+  right: calc(16px + env(safe-area-inset-right));
+  bottom: calc(20px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  gap: 12px;
+  pointer-events: auto;
+}
+
+.action-btn {
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  color: #fff;
+  font-family: 'Courier New', monospace;
+  font-weight: bold;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: transform 0.1s, background 0.1s;
+  text-shadow: 1px 1px 3px rgba(0,0,0,0.8);
+  position: relative;
+}
+
+.action-btn:active, .action-btn.pressed {
+  transform: scale(0.9);
+}
+
+/* POOP button — biggest, right-most (right thumb) */
+#btnPoop {
+  width: 76px;
+  height: 76px;
+  background: rgba(139, 90, 43, 0.5);
+  border-color: rgba(200, 150, 80, 0.6);
+  font-size: 26px;
+}
+#btnPoop.ready {
+  background: rgba(139, 90, 43, 0.7);
+  border-color: #ffc832;
+  box-shadow: 0 0 15px rgba(255, 200, 50, 0.3);
+}
+#btnPoop .btn-label {
+  font-size: 8px;
+  margin-top: 2px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* STEAL button — medium, next to poop */
+#btnSteal {
+  width: 58px;
+  height: 58px;
+  background: rgba(74, 222, 128, 0.3);
+  border-color: rgba(74, 222, 128, 0.5);
+  font-size: 20px;
+  margin-bottom: 8px;
+}
+#btnSteal .btn-label {
+  font-size: 7px;
+  margin-top: 1px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* CAW button — small, above steal */
+#btnCaw {
+  width: 46px;
+  height: 46px;
+  background: rgba(100, 150, 255, 0.3);
+  border-color: rgba(100, 150, 255, 0.5);
+  font-size: 15px;
+  margin-bottom: 12px;
+}
+#btnCaw .btn-label {
+  font-size: 7px;
+  margin-top: 1px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* Leaderboard toggle button (mobile) */
+#btnLeaderboard {
+  position: absolute;
+  top: 8px;
+  right: 140px;
+  width: 36px;
+  height: 36px;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 6px;
+  color: #ffc832;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+}
+
+/* ============================================
+   DESKTOP OVERRIDES
+   ============================================ */
+@media (hover: hover) and (pointer: fine) {
+  /* Desktop — hide mobile controls, show keyboard hints */
+  #mobileControls { display: none !important; }
+  #gameCanvas { cursor: crosshair; }
+}
+
+/* ============================================
+   MOBILE OVERRIDES (touch devices, landscape)
+   ============================================ */
+@media (hover: none) and (pointer: coarse) {
+  #mobileControls { display: block !important; }
+
+  /* Hide desktop-only UI */
+  #poopCooldown { display: none !important; }
+  .controls-hint { display: none !important; }
+  .controls-hint-mobile { display: block !important; }
+
+  /* Adjust HUD for mobile */
+  #hud {
+    font-size: 11px;
+    top: 4px;
+    left: 4px;
+    line-height: 1.3;
+  }
+  #hud .bird-type { font-size: 13px; }
+
+  /* Leaderboard — hidden by default on mobile */
+  #leaderboard {
+    display: none;
+    top: 4px;
+    right: 4px;
+    font-size: 10px;
+    min-width: 150px;
+    max-height: 200px;
+    padding: 6px 8px;
+  }
+
+  /* XP bar smaller on mobile */
+  #xpBar {
+    width: 160px;
+    height: 14px;
+    top: 4px;
+  }
+  #xpBarText { font-size: 9px; top: 5px; }
+  #statsBar { font-size: 10px; top: 22px; }
+
+  /* Minimap smaller on mobile */
+  #minimap {
+    width: 90px;
+    height: 90px;
+    top: 42px;
+    right: 4px;
+  }
+
+  /* Fullscreen button repositioned on mobile */
+  #fullscreenBtn {
+    bottom: auto;
+    top: 4px;
+    left: auto;
+    right: 180px;
+    width: 36px;
+    height: 36px;
+    font-size: 18px;
+  }
+
+  /* Event feed above joystick */
+  #eventFeed {
+    bottom: auto;
+    top: 50%;
+    left: 4px;
+    transform: translateY(-50%);
+    font-size: 10px;
+    max-width: 200px;
+  }
+
+  /* Join screen mobile adjustments */
+  #joinScreen h1 { font-size: 2em; }
+  #joinScreen .subtitle { font-size: 0.9em; margin-bottom: 1em; }
+  #joinScreen input { width: 220px; font-size: 1em; padding: 10px 16px; }
+  #joinScreen button { padding: 12px 36px; font-size: 1.1em; }
+}
+
+/* ============================================
+   FULLSCREEN BUTTON
+   ============================================ */
+#fullscreenBtn {
+  position: fixed;
+  bottom: 8px;
+  left: 8px;
+  width: 40px;
+  height: 40px;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  color: #fff;
+  font-size: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+#fullscreenBtn:active {
+  background: rgba(255, 200, 50, 0.4);
+}
+
+/* ============================================
+   iOS "ADD TO HOME SCREEN" PROMPT
+   ============================================ */
+#iosPrompt {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 200;
+  animation: iosSlideUp 0.4s ease-out;
+}
+
+@keyframes iosSlideUp {
+  from { opacity: 0; transform: translateX(-50%) translateY(20px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+.ios-prompt-content {
+  background: rgba(20, 20, 40, 0.95);
+  color: #fff;
+  padding: 12px 20px;
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  text-align: center;
+  border: 1px solid rgba(255, 200, 50, 0.3);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  position: relative;
+  max-width: 320px;
+}
+
+.ios-prompt-close {
+  position: absolute;
+  top: 4px;
+  right: 10px;
+  font-size: 18px;
+  color: #888;
+  cursor: pointer;
+}
+
+/* Hide fullscreen btn when already fullscreen or standalone */
+@media (display-mode: standalone), (display-mode: fullscreen) {
+  #fullscreenBtn { display: none !important; }
+  #iosPrompt { display: none !important; }
+}
+
+/* Extra small landscape (phone) */
+@media (max-height: 400px) and (hover: none) {
+  #hud { font-size: 10px; line-height: 1.2; }
+  #hud .bird-type { font-size: 11px; }
+  #xpBar { width: 140px; height: 12px; }
+  #xpBarText { font-size: 8px; }
+  #statsBar { font-size: 9px; }
+  #minimap { width: 70px; height: 70px; top: 36px; }
+  #eventFeed { font-size: 9px; max-width: 160px; }
+
+  #btnPoop { width: 62px; height: 62px; font-size: 22px; }
+  #btnSteal { width: 48px; height: 48px; font-size: 16px; }
+  #btnCaw { width: 38px; height: 38px; font-size: 13px; }
+  #actionButtons { right: calc(10px + env(safe-area-inset-right)); bottom: calc(12px + env(safe-area-inset-bottom)); gap: 8px; }
+  #joystickBase { width: 100px; height: 100px; left: calc(22px + env(safe-area-inset-left)); bottom: calc(22px + env(safe-area-inset-bottom)); }
+  #joystickThumb { left: calc(52px + env(safe-area-inset-left)); bottom: calc(52px + env(safe-area-inset-bottom)); width: 42px; height: 42px; }
+  #btnAbility { width: 38px; height: 38px; font-size: 13px; }
+}
+
+/* ============================================
+   ABILITY BUTTON (mobile)
+   ============================================ */
+#btnAbility {
+  width: 52px;
+  height: 52px;
+  background: rgba(128, 50, 200, 0.4);
+  border-color: rgba(160, 100, 255, 0.6);
+  font-size: 18px;
+  margin-bottom: 10px;
+}
+#btnAbility.ready {
+  background: rgba(128, 50, 200, 0.7);
+  border-color: #a064ff;
+  box-shadow: 0 0 12px rgba(160, 100, 255, 0.4);
+}
+#btnAbility .btn-label {
+  font-size: 7px;
+  margin-top: 1px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* ============================================
+   ABILITY COOLDOWN (desktop)
+   ============================================ */
+#abilityCooldown {
+  position: fixed;
+  bottom: 58px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: #fff;
+  font-size: 12px;
+  z-index: 10;
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+  pointer-events: none;
+}
+
+/* ============================================
+   ACTIVE MISSION HUD
+   ============================================ */
+#activeMissionHud {
+  position: fixed;
+  top: 44px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.7);
+  border: 1px solid rgba(255, 200, 50, 0.3);
+  border-radius: 6px;
+  padding: 4px 12px;
+  z-index: 12;
+  pointer-events: none;
+  text-align: center;
+  min-width: 160px;
+}
+#missionTitle {
+  color: #ffc832;
+  font-size: 11px;
+  font-weight: bold;
+  margin-bottom: 2px;
+}
+#missionProgressBar {
+  width: 100%;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+}
+#missionProgressFill {
+  height: 100%;
+  background: linear-gradient(90deg, #4ade80, #ffc832);
+  border-radius: 4px;
+  transition: width 0.3s;
+}
+#missionTimeLeft {
+  color: #aaa;
+  font-size: 9px;
+  margin-top: 2px;
+}
+
+/* ============================================
+   MISSION BOARD OVERLAY
+   ============================================ */
+#missionBoardOverlay {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(15, 15, 35, 0.95);
+  border: 2px solid rgba(200, 150, 255, 0.4);
+  border-radius: 12px;
+  padding: 16px;
+  z-index: 200;
+  color: #fff;
+  min-width: 280px;
+  max-width: 350px;
+  font-family: 'Courier New', monospace;
+}
+.mission-board-header {
+  color: #cc88dd;
+  font-size: 16px;
+  font-weight: bold;
+  text-align: center;
+  margin-bottom: 12px;
+  letter-spacing: 2px;
+}
+.mission-card {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+}
+.mission-card-title {
+  color: #ffc832;
+  font-size: 12px;
+  font-weight: bold;
+}
+.mission-card-desc {
+  color: #aaa;
+  font-size: 10px;
+  margin: 2px 0;
+}
+.mission-card-meta {
+  color: #888;
+  font-size: 9px;
+}
+.mission-card-meta .group-tag {
+  color: #cc88dd;
+  font-weight: bold;
+}
+.mission-accept-btn {
+  background: rgba(74, 222, 128, 0.3);
+  border: 1px solid rgba(74, 222, 128, 0.5);
+  color: #4ade80;
+  font-size: 10px;
+  font-weight: bold;
+  padding: 3px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  float: right;
+  margin-top: -18px;
+}
+.mission-accept-btn:hover {
+  background: rgba(74, 222, 128, 0.5);
+}
+.mission-board-close {
+  text-align: center;
+  color: #888;
+  font-size: 10px;
+  cursor: pointer;
+  margin-top: 8px;
+  pointer-events: auto;
+}
+.mission-board-close:hover {
+  color: #fff;
+}
+
+/* ============================================
+   FLOCK INVITE POPUP
+   ============================================ */
+#flockInvitePopup {
+  position: fixed;
+  top: 30%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(15, 15, 35, 0.95);
+  border: 2px solid rgba(74, 222, 128, 0.4);
+  border-radius: 10px;
+  padding: 14px 20px;
+  z-index: 200;
+  color: #fff;
+  text-align: center;
+  font-family: 'Courier New', monospace;
+}
+#flockInviteText {
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+.flock-invite-buttons {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+.flock-btn {
+  padding: 6px 16px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: bold;
+  cursor: pointer;
+  font-family: 'Courier New', monospace;
+}
+.flock-btn.accept {
+  background: rgba(74, 222, 128, 0.4);
+  border: 1px solid #4ade80;
+  color: #4ade80;
+}
+.flock-btn.decline {
+  background: rgba(255, 100, 100, 0.3);
+  border: 1px solid #ff6b6b;
+  color: #ff6b6b;
+}
+
+/* ============================================
+   BIRD HOME OVERLAY
+   ============================================ */
+/* ============================================
+   BIRD HOME — Bunker/Showcase Layout
+   ============================================ */
+#birdHome {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 8, 24, 0.95);
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Courier New', monospace;
+  color: #fff;
+}
+
+.bh-layout {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  width: 100%;
+  height: 100%;
+  max-width: 900px;
+  max-height: 100vh;
+  padding: 8px;
+  padding-left: calc(8px + env(safe-area-inset-left));
+  padding-right: calc(8px + env(safe-area-inset-right));
+}
+
+/* LEFT: Stats Panel */
+.bh-stats-panel {
+  flex: 0 0 140px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.bh-name {
+  color: #ffc832;
+  font-size: 15px;
+  font-weight: bold;
+  letter-spacing: 1px;
+  margin-bottom: 2px;
+}
+.bh-type {
+  color: #4ade80;
+  font-size: 11px;
+  margin-bottom: 6px;
+}
+.bh-xp-bar {
+  width: 100%;
+  height: 6px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 2px;
+}
+.bh-xp-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #4ade80, #ffc832);
+  border-radius: 3px;
+}
+.bh-xp-text {
+  color: #888;
+  font-size: 9px;
+  margin-bottom: 8px;
+}
+.bh-stat-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: #aaa;
+  padding: 1px 0;
+}
+.bh-stat-row span:last-child {
+  color: #ffc832;
+  font-weight: bold;
+}
+.bh-coins { color: #ffd700 !important; }
+
+/* CENTER: Bird Showcase */
+.bh-showcase {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+#birdPreviewCanvas {
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(30,30,60,1) 0%, rgba(8,8,24,1) 70%);
+  border: 2px solid rgba(255,200,50,0.15);
+  cursor: grab;
+}
+#birdPreviewCanvas:active { cursor: grabbing; }
+.bh-showcase-hint {
+  color: #555;
+  font-size: 9px;
+  margin-top: 4px;
+}
+.bh-action-buttons {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+.bh-action-btn {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 8px;
+  padding: 8px 18px;
+  color: #fff;
+  font-size: 12px;
+  font-family: 'Courier New', monospace;
+  font-weight: bold;
+  cursor: pointer;
+  letter-spacing: 1px;
+  transition: background 0.15s, border-color 0.15s;
+}
+.bh-action-btn:hover, .bh-action-btn:active {
+  background: rgba(255,200,50,0.12);
+  border-color: rgba(255,200,50,0.4);
+}
+
+/* RIGHT: Equipped Skills Panel */
+.bh-equip-panel {
+  flex: 0 0 140px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.bh-equip-title {
+  color: #cc88dd;
+  font-size: 11px;
+  font-weight: bold;
+  letter-spacing: 2px;
+  margin-bottom: 4px;
+}
+.bh-equip-slot {
+  width: 100%;
+  padding: 6px 8px;
+  background: rgba(160,100,255,0.08);
+  border: 1px solid rgba(160,100,255,0.3);
+  border-radius: 6px;
+  font-size: 11px;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  justify-content: center;
+}
+.bh-equip-slot.locked {
+  background: rgba(80,80,80,0.15);
+  border-color: rgba(100,100,100,0.2);
+  color: #555;
+}
+.bh-equip-slot.empty {
+  color: #666;
+  border-style: dashed;
+}
+.bh-close-btn {
+  margin-top: 10px;
+  color: #666;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 4px 12px;
+}
+.bh-close-btn:hover, .bh-close-btn:active { color: #ff6b6b; }
+
+/* Sub-modals (colors, skills) */
+.bh-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.7);
+  z-index: 310;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.bh-modal-content {
+  background: rgba(15,15,35,0.97);
+  border: 2px solid rgba(200,150,255,0.3);
+  border-radius: 12px;
+  padding: 14px 18px;
+  max-width: 300px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+.bh-modal-wide {
+  max-width: 380px;
+}
+.bh-modal-title {
+  text-align: center;
+  color: #ffc832;
+  font-size: 14px;
+  font-weight: bold;
+  letter-spacing: 2px;
+  margin-bottom: 8px;
+}
+.bh-modal-subtitle {
+  text-align: center;
+  color: #888;
+  font-size: 10px;
+  margin-bottom: 8px;
+}
+.bh-modal-close {
+  text-align: center;
+  color: #888;
+  font-size: 11px;
+  cursor: pointer;
+  margin-top: 10px;
+  padding: 6px;
+}
+.bh-modal-close:hover { color: #fff; }
+
+/* Mobile small screen adjustments */
+@media (max-height: 450px) {
+  .bh-stats-panel { flex: 0 0 110px; padding: 6px; }
+  .bh-equip-panel { flex: 0 0 110px; padding: 6px; }
+  .bh-name { font-size: 12px; }
+  .bh-stat-row { font-size: 9px; }
+  #birdPreviewCanvas { width: 130px; height: 130px; }
+  .bh-action-btn { padding: 6px 12px; font-size: 10px; }
+  .bh-equip-slot { font-size: 9px; padding: 4px; }
+}
+.skill-slots {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.skill-slot {
+  width: 100%;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(160, 100, 255, 0.4);
+  border-radius: 6px;
+  font-size: 11px;
+  text-align: center;
+  cursor: pointer;
+  color: #fff;
+}
+.skill-slot.locked {
+  background: rgba(80, 80, 80, 0.3);
+  border-color: rgba(100, 100, 100, 0.3);
+  color: #666;
+  cursor: default;
+}
+.skill-slot.active {
+  border-color: #a064ff;
+  background: rgba(160, 100, 255, 0.15);
+}
+.color-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.color-circle {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: border-color 0.2s, transform 0.1s;
+}
+.color-circle:hover {
+  transform: scale(1.15);
+}
+.color-circle.selected {
+  border-color: #fff;
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.4);
+}
+.skill-shop {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 8px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.skill-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: 11px;
+}
+.skill-card:last-child { border-bottom: none; }
+.skill-card-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+.skill-card-icon { font-size: 16px; }
+.skill-card-name { color: #fff; font-weight: bold; }
+.skill-card-desc { color: #888; font-size: 10px; }
+.skill-card .buy-btn {
+  background: rgba(255, 200, 50, 0.3);
+  border: 1px solid rgba(255, 200, 50, 0.5);
+  color: #ffc832;
+  font-size: 10px;
+  font-weight: bold;
+  padding: 3px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: 'Courier New', monospace;
+  white-space: nowrap;
+}
+.skill-card .buy-btn:hover {
+  background: rgba(255, 200, 50, 0.5);
+}
+.skill-card .owned-tag {
+  color: #4ade80;
+  font-size: 10px;
+  font-weight: bold;
+  cursor: pointer;
+  padding: 3px 8px;
+}
+.skill-card .equipped-tag {
+  color: #a064ff;
+  font-size: 10px;
+  font-weight: bold;
+  padding: 3px 8px;
+}
+.bird-home-close {
+  text-align: center;
+  margin-top: 12px;
+  color: #888;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 6px;
+  pointer-events: auto;
+}
+.bird-home-close:hover {
+  color: #fff;
+}
+
+/* ============================================
+   CHAOS METER BAR (top of screen)
+   ============================================ */
+#chaosBar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 8px;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 13;
+  pointer-events: none;
+}
+#chaosFill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #ff4444, #ff8800, #ff0000);
+  transition: width 0.3s;
+  box-shadow: 0 0 6px rgba(255, 50, 0, 0.6);
+}
+#chaosLabel {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 7px;
+  font-family: 'Courier New', monospace;
+  line-height: 8px;
+  pointer-events: none;
+}
+
+/* ============================================
+   FLOCK LOBBY OVERLAY
+   ============================================ */
+#flockLobby {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(15, 15, 35, 0.95);
+  border: 2px solid rgba(200, 150, 255, 0.4);
+  border-radius: 12px;
+  padding: 16px;
+  z-index: 200;
+  color: #fff;
+  min-width: 300px;
+  max-width: 400px;
+  max-height: 70vh;
+  overflow-y: auto;
+  font-family: 'Courier New', monospace;
+}
+.lobby-header {
+  color: #cc88dd;
+  font-size: 14px;
+  font-weight: bold;
+  text-align: center;
+  margin-bottom: 10px;
+  letter-spacing: 2px;
+}
+.lobby-bird-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 11px;
+}
+.lobby-bird-row:last-child {
+  border-bottom: none;
+}
+.lobby-bird-name {
+  color: #ffc832;
+  font-weight: bold;
+}
+.lobby-bird-level {
+  color: #aaa;
+  margin-left: 6px;
+}
+.lobby-bird-type {
+  color: #4ade80;
+  font-size: 9px;
+  margin-left: 6px;
+  text-transform: uppercase;
+}
+.lobby-bird-flock {
+  color: #cc88dd;
+  font-size: 9px;
+  margin-left: 6px;
+}
+.lobby-invite-btn {
+  background: rgba(74, 222, 128, 0.3);
+  border: 1px solid rgba(74, 222, 128, 0.5);
+  color: #4ade80;
+  font-size: 9px;
+  font-weight: bold;
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: 'Courier New', monospace;
+}
+.lobby-invite-btn:hover {
+  background: rgba(74, 222, 128, 0.5);
+}
+.lobby-self-tag {
+  color: #888;
+  font-size: 9px;
+}
+.lobby-close-btn {
+  text-align: center;
+  color: #888;
+  font-size: 10px;
+  cursor: pointer;
+  margin-top: 8px;
+  pointer-events: auto;
+}
+.lobby-close-btn:hover {
+  color: #fff;
+}
+
+/* Coin display in HUD */
+.coin-display {
+  color: #ffd700;
+  font-weight: bold;
+}
+
+/* Home button (mobile) */
+#btnHome {
+  position: absolute;
+  top: 8px;
+  right: 180px;
+  width: 36px;
+  height: 36px;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 6px;
+  color: #ffc832;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+}
+#btnNest {
+  position: absolute;
+  top: 8px;
+  right: 220px;
+  width: 36px;
+  height: 36px;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 6px;
+  color: #8bc34a;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+}

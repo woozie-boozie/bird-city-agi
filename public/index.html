@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="screen-orientation" content="landscape">
+  <meta name="theme-color" content="#000000">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icon.svg">
+  <title>BIRD CITY: Chaos Central</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <!-- Rotate Device Overlay (portrait blocker) -->
+  <div id="rotateOverlay">
+    <div class="rotate-icon">📱</div>
+    <div class="rotate-text">
+      Rotate your device to<br>
+      <strong>LANDSCAPE</strong><br>
+      to play Bird City
+    </div>
+  </div>
+
+  <!-- Join Screen -->
+  <div id="joinScreen">
+    <h1>BIRD CITY</h1>
+    <div class="subtitle">~ absolute chaos central ~</div>
+    <input type="text" id="nameInput" placeholder="Enter bird name..." maxlength="20" autocomplete="off">
+    <button id="joinBtn">FLY IN</button>
+    <div class="controls-hint">
+      <span>WASD</span> move &nbsp;|&nbsp; <span>SPACE</span> poop &nbsp;|&nbsp; <span>E</span> steal food<br>
+      <span>Q</span> bird sound &nbsp;|&nbsp; <span>R/1/2/3</span> skills &nbsp;|&nbsp; <span>H</span> home &nbsp;|&nbsp; <span>TAB</span> leaderboard
+    </div>
+    <div class="controls-hint-mobile">
+      Left joystick to move<br>
+      Buttons on right to poop, steal &amp; caw!
+    </div>
+    <div class="online-count" id="onlineCount"></div>
+  </div>
+
+  <!-- Game Canvas -->
+  <canvas id="gameCanvas"></canvas>
+
+  <!-- HUD -->
+  <div id="hud" style="display:none">
+    <div class="bird-type" id="hudBirdType">PIGEON</div>
+    <div><span class="stat-label">Lv:</span> <span class="stat-value" id="hudLevel">0</span> <span class="stat-label">Poops:</span> <span class="stat-value" id="hudPoops">0</span></div>
+    <div><span class="stat-label">Steals:</span> <span class="stat-value" id="hudSteals">0</span> <span class="stat-label">Hits:</span> <span class="stat-value" id="hudHits">0</span></div>
+    <div><span class="stat-label">Cry:</span> <span class="stat-value" id="hudCried">0</span> <span class="stat-label">Food:</span> <span class="stat-value" id="hudFood">0</span></div>
+    <div id="logoutBtn" class="logout-btn">LOGOUT</div>
+  </div>
+
+  <!-- XP Bar -->
+  <div id="xpBar" style="display:none"><div id="xpBarFill" style="width:0%"></div></div>
+  <div id="xpBarText" style="display:none"></div>
+
+  <!-- Poop Cooldown (desktop only) -->
+  <div id="poopCooldown" style="display:none"></div>
+
+  <!-- Stats Bar -->
+  <div id="statsBar" style="display:none"></div>
+
+  <!-- Leaderboard -->
+  <div id="leaderboard" style="display:none">
+    <h3>LEADERBOARD</h3>
+    <div id="leaderboardEntries"></div>
+  </div>
+
+  <!-- Event Feed -->
+  <div id="eventFeed"></div>
+
+  <!-- Minimap -->
+  <canvas id="minimap" width="120" height="120" style="display:none"></canvas>
+
+  <!-- Fullscreen Button -->
+  <div id="fullscreenBtn" style="display:none">⛶</div>
+
+  <!-- iOS "Add to Home Screen" prompt -->
+  <div id="iosPrompt" style="display:none">
+    <div class="ios-prompt-content">
+      <span class="ios-prompt-close" id="iosPromptClose">&times;</span>
+      <strong>Go Fullscreen!</strong><br>
+      Tap <span style="color:#ffc832">Share</span> ↗ then <span style="color:#ffc832">Add to Home Screen</span><br>
+      to play without the browser bar
+    </div>
+  </div>
+
+  <!-- MOBILE CONTROLS (PUBG-style) -->
+  <div id="mobileControls">
+    <!-- Virtual Joystick Zone (left half) -->
+    <div id="joystickZone">
+      <div id="joystickBase"></div>
+      <div id="joystickThumb"></div>
+    </div>
+
+    <!-- Action Buttons (right side) -->
+    <div id="actionButtons">
+      <div id="btnCaw" class="action-btn">
+        <span>📢</span>
+        <span class="btn-label">CAW</span>
+      </div>
+      <div id="btnAbility" class="action-btn">
+        <span>⚡</span>
+        <span class="btn-label">SKILL</span>
+      </div>
+      <div id="btnSteal" class="action-btn">
+        <span>🍗</span>
+        <span class="btn-label">STEAL</span>
+      </div>
+      <div id="btnPoop" class="action-btn ready">
+        <span>💩</span>
+        <span class="btn-label">POOP</span>
+      </div>
+    </div>
+
+    <!-- Leaderboard toggle (mobile) -->
+    <div id="btnLeaderboard">🏆</div>
+    <!-- Nest button (mobile) -->
+    <div id="btnNest">🪹</div>
+    <!-- Home button (mobile) -->
+    <div id="btnHome">🏠</div>
+  </div>
+
+  <!-- Active Mission HUD -->
+  <div id="activeMissionHud" style="display:none">
+    <div id="missionTitle"></div>
+    <div id="missionProgressBar"><div id="missionProgressFill"></div></div>
+    <div id="missionTimeLeft"></div>
+  </div>
+
+  <!-- Ability Cooldown (desktop) -->
+  <div id="abilityCooldown" style="display:none"></div>
+
+  <!-- Mission Board Overlay -->
+  <div id="missionBoardOverlay" style="display:none">
+    <div class="mission-board-header">MISSION BOARD</div>
+    <div id="missionBoardList"></div>
+    <div class="mission-board-close" id="missionBoardClose">CLOSE</div>
+  </div>
+
+  <!-- Bird Home Overlay -->
+  <div id="birdHome" style="display:none"></div>
+
+  <!-- Flock Invite Popup -->
+  <div id="flockInvitePopup" style="display:none">
+    <div id="flockInviteText"></div>
+    <div class="flock-invite-buttons">
+      <div id="flockAcceptBtn" class="flock-btn accept">JOIN</div>
+      <div id="flockDeclineBtn" class="flock-btn decline">DECLINE</div>
+    </div>
+  </div>
+
+  <!-- Chaos Meter Bar -->
+  <div id="chaosBar" style="display:none"><div id="chaosFill"></div><span id="chaosLabel"></span></div>
+
+  <!-- Flock Lobby Overlay -->
+  <div id="flockLobby" style="display:none"></div>
+
+  <!-- Sound toggle -->
+  <div id="soundToggle">🔊</div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/sounds.js"></script>
+  <script src="/js/sprites.js"></script>
+  <script src="/js/renderer.js"></script>
+  <script src="/js/main.js"></script>
+</body>
+</html>
