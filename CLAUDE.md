@@ -177,9 +177,22 @@ Went full GTA. The wanted system is now a proper 5-star escalation with pursuing
 
 **Creative intent**: The city now enforces consequences. Every poop on a human escalates your heat. At low heat, ignore it. At 3+ stars, it's a genuine car chase — dodge down alleys, stun pursuing cops, survive as long as possible for escalating XP. At level 5 MOST WANTED, the whole city knows your name and hunts you. This is pure CARNAGE pillar energy.
 
+**Session 6 — 2026-03-27: The Black Market — Night-Only Contraband Shop**
+A hooded raccoon fence sets up in a dark alley behind the Cafe District at dusk, vanishes at dawn. Fly within 110px at night and press B to shop. Five contraband items:
+- 💉 **Speed Serum** (50c): +60% speed for 30 seconds
+- 💣 **Mega Poop** (75c): next 3 poops are AOE blasts — the black market variant of the power-up
+- 🎭 **Disguise Kit** (100c): instantly wipes all wanted heat + despawns every cop pursuing you
+- 💨 **Smoke Bomb** (80c): cops lose your scent for 15 seconds (wander confused instead of chasing)
+- 🍀 **Lucky Charm** (150c): 2× XP multiplier on all poop hits for 5 full minutes
+
+**Server**: All effects server-authoritative. Speed stored as `bmSpeedUntil` timestamp, mega poop as `bmMegaPoops` count, smoke bomb as `bmSmokeBombUntil`, double XP as `bmDoubleXpUntil`. Smoke bomb modifies the cop pursuit loop — cops enter confused-wander mode instead. Disguise Kit has instant effect, wiping the heat map and clearing cop spawns.
+
+**Visual**: Animated hooded raccoon sprite with glowing purple eyes, a coin bag, and a flickering "BLACK MKT" neon sign with a purple radial glow. Purple dot on minimap when open. Active items shown as buff pills in bottom-right HUD with live countdown timers. Shop popup has dark neon-purple theme.
+
+**Creative intent**: Night was already *dangerous*. Now it's also *profitable*. The Disguise Kit is the game-changer — a Level 5 Most Wanted bird spending 100c to vanish into the shadows is a cinematic moment. The Lucky Charm turns poop sprints into XP explosions. Pure DISCOVERY + PROGRESSION energy. The city now has a shadow economy.
+
 ### Next Ideas Queue
 - Underground sewer system (secret map layer)
-- Black market NPC (rare skills, forbidden items) — NIGHT ONLY for maximum flavor
 - Raid bosses (giant cat, dog pack, eagle overlord)
 - Graffiti system (birds tag buildings for territory)
 - Food truck heists (multiplayer coordinated robbery)
