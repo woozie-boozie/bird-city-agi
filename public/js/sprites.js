@@ -1449,4 +1449,125 @@ window.Sprites = {
 
     ctx.restore();
   },
+
+  // === RACCOON THIEF (top-down, night creature) ===
+  drawRaccoon(ctx, x, y, rotation, state, carriedFoodType) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rotation);
+
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath();
+    ctx.ellipse(2, 4, 11, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Bushy striped tail (drawn behind body)
+    const tailWag = Math.sin(Date.now() * 0.006) * 0.25;
+    ctx.save();
+    ctx.translate(-10, 0);
+    ctx.rotate(Math.PI + tailWag);
+    // Tail segments with rings
+    for (let i = 0; i < 3; i++) {
+      const ri = i / 3;
+      ctx.fillStyle = i % 2 === 0 ? '#888' : '#333';
+      ctx.beginPath();
+      ctx.ellipse(i * 5, 0, 5 - i * 0.5, 3 - i * 0.3, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+
+    // Body — dark gray
+    ctx.fillStyle = '#6a6a6a';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 10, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Black "bandit" mask stripe across middle (distinctive raccoon feature)
+    ctx.fillStyle = '#1a1a1a';
+    ctx.beginPath();
+    ctx.ellipse(5, -2, 5, 3, -0.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(5, 2, 5, 3, 0.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Lighter belly/chest
+    ctx.fillStyle = '#aaa';
+    ctx.beginPath();
+    ctx.ellipse(-1, 0, 5, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Snout
+    ctx.fillStyle = '#555';
+    ctx.beginPath();
+    ctx.ellipse(9, 0, 4, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Nose (little black dot)
+    ctx.fillStyle = '#111';
+    ctx.beginPath();
+    ctx.arc(12, 0, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Ears (small triangles at top)
+    ctx.fillStyle = '#555';
+    ctx.beginPath();
+    ctx.moveTo(3, -7);
+    ctx.lineTo(6, -11);
+    ctx.lineTo(8, -7);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(3, 7);
+    ctx.lineTo(6, 11);
+    ctx.lineTo(8, 7);
+    ctx.fill();
+
+    // Eyes — beady glowing yellow (raccoon night eyes)
+    ctx.fillStyle = '#ffee00';
+    ctx.beginPath();
+    ctx.arc(7, -3, 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(7, 3, 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.arc(7.5, -3, 1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(7.5, 3, 1, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+
+    // "THIEF!" label when carrying food
+    if (state === 'carrying' && carriedFoodType) {
+      const now = Date.now();
+      const pulse = Math.sin(now * 0.008) * 0.15 + 0.85;
+      ctx.save();
+      ctx.globalAlpha = pulse;
+      ctx.font = 'bold 9px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#ff4400';
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 2;
+      ctx.strokeText('THIEF!', x, y - 20);
+      ctx.fillText('THIEF!', x, y - 20);
+      ctx.restore();
+    }
+
+    // "CAUGHT!" flash when fleeing
+    if (state === 'fleeing') {
+      ctx.save();
+      ctx.font = 'bold 9px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#4ade80';
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 2;
+      ctx.strokeText('BUSTED!', x, y - 20);
+      ctx.fillText('BUSTED!', x, y - 20);
+      ctx.restore();
+    }
+  },
 };

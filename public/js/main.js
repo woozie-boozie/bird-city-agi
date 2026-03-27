@@ -701,6 +701,27 @@
         effects.push({ type: 'screen_shake', time: performance.now(), duration: 300, intensity: 2 });
       }
     }
+
+    // === RACCOON EVENTS ===
+    if (ev.type === 'raccoon_spawn') {
+      showAnnouncement('🦝 RACCOON THIEVES ARE OUT TONIGHT!', '#bb88ff', 4000);
+      addEventMessage('Raccoon thieves are stealing food! Poop on them to stop them!', '#bb88ff');
+    }
+    if (ev.type === 'raccoon_steal') {
+      addEventMessage('🦝 A raccoon snatched food!', '#ff8844');
+      effects.push({ type: 'text', x: ev.x, y: ev.y, text: 'SNATCHED!', color: '#ff8844', size: 11, time: performance.now(), duration: 1500 });
+    }
+    if (ev.type === 'raccoon_flee') {
+      const isMe = ev.birdId === myId;
+      if (isMe) {
+        showAnnouncement('RACCOON BUSTED! +10 COINS!', '#4ade80', 2000);
+      }
+      addEventMessage((ev.birdName || 'A bird') + ' busted a raccoon thief! +10 coins!', '#4ade80');
+      effects.push({ type: 'text', x: ev.x, y: ev.y, text: 'BUSTED! +35 XP', color: '#4ade80', size: 11, time: performance.now(), duration: 1800 });
+    }
+    if (ev.type === 'raccoons_gone') {
+      addEventMessage('The raccoon thieves fled at dawn.', '#aaaaaa');
+    }
   }
 
   function showAnnouncement(text, color, duration) {
@@ -1620,7 +1641,15 @@
     }
 
     // Clear (full canvas, before zoom)
-    ctx.fillStyle = '#2a3a2a';
+    // Background color shifts darker during night
+    let bgColor = '#2a3a2a';
+    if (gameState.dayTime !== undefined) {
+      const dt = gameState.dayTime;
+      if (dt >= 0.45 && dt < 0.75) bgColor = '#0a0f1a'; // deep night
+      else if (dt >= 0.30 && dt < 0.45) bgColor = '#151a2a'; // dusk
+      else if (dt >= 0.75 && dt < 0.90) bgColor = '#151a2a'; // dawn
+    }
+    ctx.fillStyle = bgColor;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     // Apply zoom — scale from center of screen
@@ -1772,6 +1801,17 @@
       const sy = truck.y - camera.y + camera.screenH / 2;
       if (sx > -margin - 40 && sx < camera.screenW + margin + 40 && sy > -margin - 40 && sy < camera.screenH + margin + 40) {
         Sprites.drawFoodTruck(ctx, sx, sy, truck.angle, truck.foodLeft);
+      }
+    }
+
+    // Raccoon Thieves (night-only)
+    if (gameState.raccoons) {
+      for (const raccoon of gameState.raccoons) {
+        const sx = raccoon.x - camera.x + camera.screenW / 2;
+        const sy = raccoon.y - camera.y + camera.screenH / 2;
+        if (sx > -margin - 20 && sx < camera.screenW + margin + 20 && sy > -margin - 20 && sy < camera.screenH + margin + 20) {
+          Sprites.drawRaccoon(ctx, sx, sy, raccoon.rotation, raccoon.state, raccoon.carriedFoodType);
+        }
       }
     }
 

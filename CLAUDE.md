@@ -54,13 +54,36 @@ Built a full 20-minute real-time day/night cycle that transforms Bird City into 
 - Clock maps game time to a 6 AM start (so first night falls at ~12 PM game time)
 - Creative intent: the city now BREATHES. Players must adapt strategy to day vs night. Night is dangerous and atmospheric; dawn is a relief. Retention hook: "survive the night" creates natural play sessions.
 
+**Session 2 — 2026-03-27: Raccoon Thieves + Stars & Moon**
+Leaned hard into the night phase from Session 1. Night is now *dangerous* in a new way — raccoon thieves come out to steal your food. Plus visual polish: stars and a crescent moon appear in the darkness overlay.
+
+**Raccoon Thieves (server + client):**
+- Up to 3 raccoons spawn during dusk/night, one every 25–40s (requires at least 1 player online)
+- Each raccoon enters `hunting` state: finds nearest active food item on the map, moves toward it at 75px/s
+- On reaching food: marks it inactive (30s respawn), enters `carrying` state, heads for the nearest map edge
+- Carrying raccoon has "THIEF!" label pulsing above them — visible to all players
+- If a bird poops on a raccoon: raccoon drops the food at its current position (bonus loot for the bird!), flees at 220px/s, rewards 35 XP + 10 coins to the shooter
+- All raccoons despawn at dawn/day with a feed message
+- Raccoon poop hit detection wired into existing `_checkPoopHit()` system
+- Raccoons immune to poop while already fleeing (no double-stun)
+
+**Stars & Moon (renderer):**
+- 200 procedurally seeded stars drawn in screen-space on top of the darkness overlay
+- Stars twinkle independently (each has a unique twinkle phase offset)
+- Stars have very slight parallax drift (4%) so the sky feels 3D as you fly
+- Crescent moon in upper-right quadrant with: glow halo, clipped crescent shadow, subtle craters
+- All visuals tied to `darkness` intensity — stars/moon fade in at dusk, brighten at full night, fade out at dawn
+- Background canvas color shifts to deep navy at night (visible in world border area)
+
+**Creative intent**: Night is no longer just "darker and more dangerous from cats" — now there's active *competition* for food. Birds must choose: stay safe and watch raccoons drain the food supply, or dive-bomb them for big rewards. Natural emergent decision-making. The star/moon visual makes the night phase feel beautiful and worth experiencing, not just feared.
+
 ### Next Ideas Queue
 - Territory control system (flocks claim zones, defend them)
 - Weather system affecting gameplay (rain = slippery, wind = flight boost)
 - Underground sewer system (secret map layer)
 - Wanted level escalation (police birds, SWAT hawks)
 - Raid bosses (giant cat, dog pack, eagle overlord)
-- Black market NPC (rare skills, forbidden items) — maybe NIGHT ONLY for extra flavor
+- Black market NPC (rare skills, forbidden items) — NIGHT ONLY for maximum flavor
 - Graffiti system (birds tag buildings for territory)
 - Food truck heists (multiplayer coordinated robbery)
 - Pigeon mafia questline
@@ -69,6 +92,7 @@ Built a full 20-minute real-time day/night cycle that transforms Bird City into 
 - Egg protection mini-game
 - Bird gangs with custom colors/tags
 - Radio tower control (broadcast messages server-wide)
-- Night-exclusive NPCs: Owl bouncer, raccoon thieves, drunk pigeons
-- Stars/moon visual in night sky (canvas background layer)
+- Drunk pigeons at night (wander erratically, bump into players)
+- Owl enforcer in park at night (creates no-poop zone, alerts NPCs)
 - Bioluminescent park pond at night (glowing water effect)
+- Raccoon boss: "The Godfather Raccoon" — giant alpha raccoon that steals from players directly

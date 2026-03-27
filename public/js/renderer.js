@@ -301,6 +301,113 @@ window.Renderer = {
     minimapCtx.strokeRect(0, 0, mw, mh);
   },
 
+  // Draw stars and moon into the world background (called before ground layer, in world-space)
+  // Only visible during dusk/night/dawn phases
+  drawNightSky(ctx, camera, dayTime) {
+    if (dayTime === undefined || dayTime === null) return;
+
+    // Compute how visible the stars/moon are (0 = invisible, 1 = full)
+    let starAlpha = 0;
+    if (dayTime >= 0.30 && dayTime < 0.45) {
+      starAlpha = (dayTime - 0.30) / 0.15; // fade in during dusk
+    } else if (dayTime >= 0.45 && dayTime < 0.75) {
+      starAlpha = 1.0; // full night
+    } else if (dayTime >= 0.75 && dayTime < 0.90) {
+      starAlpha = 1.0 - (dayTime - 0.75) / 0.15; // fade out during dawn
+    }
+    if (starAlpha <= 0.02) return;
+
+    const sw = camera.screenW;
+    const sh = camera.screenH;
+
+    // Reuse a seeded star field so stars don't jitter each frame
+    if (!this._stars) {
+      this._stars = [];
+      const rng = (seed) => {
+        let s = seed;
+        return () => { s = (s * 1664525 + 1013904223) & 0xffffffff; return (s >>> 0) / 0xffffffff; };
+      };
+      const r = rng(42);
+      for (let i = 0; i < 180; i++) {
+        this._stars.push({
+          // Store as normalized 0-1 coordinates in a 2x2 world tile — parallax offset
+          nx: r(),
+          ny: r(),
+          size: r() * 1.4 + 0.4,
+          brightness: r() * 0.6 + 0.4,
+          twinkleOffset: r() * Math.PI * 2,
+        });
+      }
+    }
+
+    ctx.save();
+
+    // Draw stars in screen-space with slight parallax (stars move slower than world)
+    const parallax = 0.05; // stars drift only 5% as fast as the camera
+    const now = Date.now();
+
+    for (const star of this._stars) {
+      // Map star onto a large virtual sky canvas; loop with modulo for tiling
+      const rawX = (star.nx * sw * 3 - camera.x * parallax) % (sw * 1.5);
+      const rawY = (star.ny * sh * 3 - camera.y * parallax) % (sh * 1.5);
+      // Keep in screen range with wrapping
+      const sx = ((rawX % sw) + sw) % sw;
+      const sy = ((rawY % sh) + sh) % sh;
+
+      const twinkle = Math.sin(now * 0.002 + star.twinkleOffset) * 0.3 + 0.7;
+      ctx.globalAlpha = starAlpha * star.brightness * twinkle;
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(sx, sy, star.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Moon — fixed screen position (top-right area), subtle parallax
+    const moonX = sw * 0.78 + Math.sin(camera.x * 0.0003) * 20;
+    const moonY = sh * 0.12 + Math.sin(camera.y * 0.0003) * 10;
+    const moonR = 22;
+
+    // Moon glow halo
+    const moonGlow = ctx.createRadialGradient(moonX, moonY, moonR * 0.5, moonX, moonY, moonR * 2.5);
+    moonGlow.addColorStop(0, `rgba(220, 230, 255, ${starAlpha * 0.18})`);
+    moonGlow.addColorStop(1, 'rgba(180, 200, 255, 0)');
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = moonGlow;
+    ctx.beginPath();
+    ctx.arc(moonX, moonY, moonR * 2.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Moon disc + crescent shadow — done in a save/clip block to stay contained
+    ctx.save();
+    ctx.globalAlpha = starAlpha;
+
+    // Disc
+    ctx.fillStyle = '#dde8ff';
+    ctx.beginPath();
+    ctx.arc(moonX, moonY, moonR, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Crescent shadow: clip to moon disc, then paint offset circle
+    ctx.beginPath();
+    ctx.arc(moonX, moonY, moonR, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.fillStyle = 'rgba(20, 30, 70, 0.60)';
+    ctx.beginPath();
+    ctx.arc(moonX + moonR * 0.38, moonY, moonR * 0.88, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Moon craters (subtle texture inside clip)
+    ctx.fillStyle = 'rgba(180, 195, 230, 0.35)';
+    ctx.beginPath(); ctx.arc(moonX - 5, moonY - 6, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(moonX + 4, moonY + 7, 3.5, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(moonX - 8, moonY + 5, 3, 0, Math.PI * 2); ctx.fill();
+
+    ctx.restore();
+
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  },
+
   // Draw day/night overlay with street lamp glow holes
   // Called in screen-space (after ctx.restore() removes world zoom)
   drawDayNight(ctx, camera, zoom, dayTime, streetLamps) {
@@ -390,6 +497,9 @@ window.Renderer = {
     // Stamp the night layer onto the game canvas
     ctx.drawImage(this._nightCanvas, 0, 0);
 
+    // Draw stars + moon on top of the darkness overlay (they peek through the night)
+    this._drawStarsAndMoon(ctx, camera, darkness, sw, sh);
+
     // Draw warm lamp glow dots on top of the darkness
     if (darkness > 0.08 && streetLamps && streetLamps.length) {
       const glowAlpha = Math.min(0.85, darkness * 1.1);
@@ -415,5 +525,83 @@ window.Renderer = {
         ctx.fill();
       }
     }
+  },
+
+  // Internal helper: draw stars + moon on top of the darkness overlay
+  _drawStarsAndMoon(ctx, camera, darkness, sw, sh) {
+    if (darkness < 0.05) return;
+
+    // Lazily generate a stable star field
+    if (!this._stars) {
+      this._stars = [];
+      // Simple deterministic LCG for reproducible star positions
+      let s = 999983;
+      const rnd = () => { s = (s * 1664525 + 1013904223) & 0x7fffffff; return s / 0x7fffffff; };
+      for (let i = 0; i < 200; i++) {
+        this._stars.push({
+          nx: rnd(),      // normalized 0-1 screen X anchor
+          ny: rnd(),      // normalized 0-1 screen Y anchor
+          size: rnd() * 1.2 + 0.3,
+          brightness: rnd() * 0.5 + 0.5,
+          twinkleOffset: rnd() * Math.PI * 2,
+        });
+      }
+    }
+
+    const now = Date.now();
+    const parallax = 0.04; // stars parallax with camera at 4%
+
+    // Stars
+    ctx.save();
+    for (const star of this._stars) {
+      // Anchor in screen-space with very slow parallax drift
+      const sx = ((star.nx * sw * 2 - camera.x * parallax) % sw + sw) % sw;
+      const sy = ((star.ny * sh * 2 - camera.y * parallax) % sh + sh) % sh;
+
+      const twinkle = Math.sin(now * 0.0018 + star.twinkleOffset) * 0.25 + 0.75;
+      ctx.globalAlpha = darkness * star.brightness * twinkle * 0.85;
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(sx, sy, star.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Moon — upper-right quadrant of screen, gentle sway
+    const moonX = sw * 0.80 + Math.sin(camera.x * 0.00025) * 18;
+    const moonY = sh * 0.11 + Math.sin(camera.y * 0.00025) * 10;
+    const moonR = Math.min(20, sw * 0.028); // scale with screen
+
+    // Glow halo
+    ctx.globalAlpha = darkness * 0.25;
+    const halo = ctx.createRadialGradient(moonX, moonY, moonR * 0.6, moonX, moonY, moonR * 3);
+    halo.addColorStop(0, 'rgba(200, 215, 255, 1)');
+    halo.addColorStop(1, 'rgba(150, 180, 255, 0)');
+    ctx.fillStyle = halo;
+    ctx.beginPath();
+    ctx.arc(moonX, moonY, moonR * 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Moon disc + crescent in a clipped sub-context
+    ctx.globalAlpha = darkness * 0.90;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(moonX, moonY, moonR, 0, Math.PI * 2);
+    ctx.fillStyle = '#d8e8ff';
+    ctx.fill();
+    // Crescent: clip to moon, paint shadow offset
+    ctx.clip();
+    ctx.fillStyle = 'rgba(18, 28, 65, 0.65)';
+    ctx.beginPath();
+    ctx.arc(moonX + moonR * 0.40, moonY, moonR * 0.85, 0, Math.PI * 2);
+    ctx.fill();
+    // Craters
+    ctx.fillStyle = 'rgba(160, 180, 220, 0.35)';
+    ctx.beginPath(); ctx.arc(moonX - 5, moonY - 5, 4, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(moonX + 3, moonY + 6, 3, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(moonX - 7, moonY + 4, 2.5, 0, Math.PI * 2); ctx.fill();
+    ctx.restore(); // removes clip
+
+    ctx.globalAlpha = 1;
+    ctx.restore();
   },
 };

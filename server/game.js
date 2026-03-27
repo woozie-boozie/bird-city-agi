@@ -73,6 +73,10 @@ class GameEngine {
     this.janitorRageQuitUntil = 0;
     this.janitorBaseSpeedBonus = 0;   // cumulative speed bonus from rage quits
 
+    // === RACCOON THIEVES (night-only) ===
+    this.raccoons = new Map();        // id -> raccoon state
+    this.raccoonSpawnTimer = 0;       // when to try next spawn
+
     // === DAY/NIGHT CYCLE ===
     // 0.0 = early day, 0.3 = dusk, 0.45 = night, 0.75 = dawn, 1.0 = day again
     // Full cycle = 20 real-time minutes
@@ -461,6 +465,9 @@ class GameEngine {
 
     // === The Janitor ===
     this._updateJanitor(dt, now);
+
+    // === Raccoon Thieves ===
+    this._updateRaccoons(dt, now);
 
     // === Day/Night Cycle ===
     this._updateDayNight(dt, now);
@@ -1518,6 +1525,34 @@ class GameEngine {
             this.janitor = null;
           }
         }
+      } else if (hit.target === 'raccoon' && hit.raccoon) {
+        xpGain = 35; // Nice reward for stopping a thief
+        const r = hit.raccoon;
+        // Drop carried food at raccoon's current position
+        if (r.state === 'carrying' && r.carriedFoodType) {
+          const droppedId = 'food_raccoon_drop_' + uid();
+          const droppedFood = {
+            id: droppedId,
+            x: r.x + (Math.random() - 0.5) * 20,
+            y: r.y + (Math.random() - 0.5) * 20,
+            type: r.carriedFoodType,
+            value: 15 + Math.floor(Math.random() * 10), // bonus loot!
+            respawnAt: null,
+            active: true,
+          };
+          this.foods.set(droppedId, droppedFood);
+          // Clean up after 20 seconds
+          setTimeout(() => { this.foods.delete(droppedId); }, 20000);
+        }
+        // Raccoon flees fast
+        r.state = 'fleeing';
+        r.fleeSpeed = 220;
+        // Pick flee direction (toward nearest map edge)
+        const fleeToEdge = this._raccoonEdgeTarget(r.x, r.y);
+        r.targetX = fleeToEdge.x;
+        r.targetY = fleeToEdge.y;
+        this.events.push({ type: 'raccoon_flee', raccoonId: r.id, x: r.x, y: r.y, birdId: bird.id, birdName: bird.name });
+        bird.coins += 10; // bonus coins for stopping a thief
       }
 
       // Mega poop hits multiple targets
@@ -1821,6 +1856,17 @@ class GameEngine {
       }
     }
 
+    // Check raccoons
+    for (const raccoon of this.raccoons.values()) {
+      if (raccoon.state === 'fleeing') continue; // already fleeing, immune
+      const dx = poop.x - raccoon.x;
+      const dy = poop.y - raccoon.y;
+      if (Math.sqrt(dx * dx + dy * dy) < hitRadius + 4) {
+        if (!isMegaPoop) return { target: 'raccoon', raccoon };
+        allHits.push({ target: 'raccoon', raccoon });
+      }
+    }
+
     if (isMegaPoop && allHits.length > 0) {
       return { target: allHits[0].target, npc: allHits[0].npc, allHits };
     }
@@ -1873,6 +1919,154 @@ class GameEngine {
     // Keep in bounds
     npc.x = Math.max(20, Math.min(world.WORLD_WIDTH - 20, npc.x));
     npc.y = Math.max(20, Math.min(world.WORLD_HEIGHT - 20, npc.y));
+  }
+
+  // ============================================================
+  // RACCOON THIEVES
+  // ============================================================
+  _raccoonEdgeTarget(x, y) {
+    // Return the nearest map edge point as a flee target
+    const distLeft   = x;
+    const distRight  = world.WORLD_WIDTH - x;
+    const distTop    = y;
+    const distBottom = world.WORLD_HEIGHT - y;
+    const minDist = Math.min(distLeft, distRight, distTop, distBottom);
+    if (minDist === distLeft)   return { x: -50, y };
+    if (minDist === distRight)  return { x: world.WORLD_WIDTH + 50, y };
+    if (minDist === distTop)    return { x, y: -50 };
+    return { x, y: world.WORLD_HEIGHT + 50 };
+  }
+
+  _spawnRaccoon(now) {
+    // Spawn on road, away from players
+    const roads = world.ROADS;
+    const road = roads[Math.floor(Math.random() * roads.length)];
+    const x = road.x + Math.random() * road.w;
+    const y = road.y + Math.random() * road.h;
+    const id = 'raccoon_' + uid();
+    const raccoon = {
+      id, x, y,
+      rotation: Math.random() * Math.PI * 2,
+      speed: 75,
+      fleeSpeed: 220,
+      state: 'hunting',   // 'hunting' | 'carrying' | 'fleeing'
+      targetX: x, targetY: y,
+      targetFoodId: null,
+      carriedFoodType: null,
+      spawnedAt: now,
+    };
+    this.raccoons.set(id, raccoon);
+    console.log(`[GameEngine] Raccoon spawned at ${Math.round(x)}, ${Math.round(y)}`);
+  }
+
+  _updateRaccoons(dt, now) {
+    const isNight = this.dayPhase === 'night' || this.dayPhase === 'dusk';
+
+    // Despawn all raccoons at dawn/day
+    if (!isNight) {
+      if (this.raccoons.size > 0) {
+        this.raccoons.clear();
+        this.raccoonSpawnTimer = 0;
+        this.events.push({ type: 'raccoons_gone' });
+      }
+      return;
+    }
+
+    // Spawn new raccoons during night (up to 3, every 25–40s)
+    if (this.raccoons.size < 3 && now >= this.raccoonSpawnTimer && this.birds.size > 0) {
+      this._spawnRaccoon(now);
+      this.raccoonSpawnTimer = now + this._randomRange(25000, 40000);
+      if (this.raccoons.size === 1) {
+        // First raccoon of the night — announce it
+        this.events.push({ type: 'raccoon_spawn' });
+      }
+    }
+
+    // Update each raccoon
+    for (const [raccoonId, r] of this.raccoons) {
+      // Check if escaped off-map
+      if (r.x < -60 || r.x > world.WORLD_WIDTH + 60 ||
+          r.y < -60 || r.y > world.WORLD_HEIGHT + 60) {
+        this.raccoons.delete(raccoonId);
+        continue;
+      }
+
+      const speed = (r.state === 'fleeing') ? r.fleeSpeed : r.speed;
+
+      if (r.state === 'hunting') {
+        // Find nearest active food
+        let nearestFood = null;
+        let nearestDist = Infinity;
+        for (const food of this.foods.values()) {
+          if (!food.active) continue;
+          // Skip food that was just dropped by a raccoon (has 'raccoon_drop' in id)
+          if (food.id.startsWith('food_raccoon_drop_')) continue;
+          const fdx = food.x - r.x;
+          const fdy = food.y - r.y;
+          const dist = Math.sqrt(fdx * fdx + fdy * fdy);
+          if (dist < nearestDist) {
+            nearestDist = dist;
+            nearestFood = food;
+          }
+        }
+        if (nearestFood) {
+          r.targetFoodId = nearestFood.id;
+          r.targetX = nearestFood.x;
+          r.targetY = nearestFood.y;
+          // Move toward food
+          const dx = r.targetX - r.x;
+          const dy = r.targetY - r.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist > 1) {
+            r.x += (dx / dist) * speed * dt;
+            r.y += (dy / dist) * speed * dt;
+            r.rotation = Math.atan2(dy, dx);
+          }
+          // Reached food: steal it!
+          if (dist < 12) {
+            const food = this.foods.get(r.targetFoodId);
+            if (food && food.active) {
+              r.carriedFoodType = food.type;
+              food.active = false;
+              food.respawnAt = now + 30000; // long respawn — the raccoon took it
+              r.state = 'carrying';
+              r.targetFoodId = null;
+              // Head for nearest map edge
+              const edge = this._raccoonEdgeTarget(r.x, r.y);
+              r.targetX = edge.x;
+              r.targetY = edge.y;
+              this.events.push({ type: 'raccoon_steal', x: r.x, y: r.y, foodType: r.carriedFoodType });
+            } else {
+              // Food already gone — pick a new target next tick
+              r.targetFoodId = null;
+            }
+          }
+        } else {
+          // No food on map — wander toward park (food-rich area)
+          r.targetX = 900 + Math.random() * 600;
+          r.targetY = 900 + Math.random() * 600;
+          const dx = r.targetX - r.x;
+          const dy = r.targetY - r.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist > 1) {
+            r.x += (dx / dist) * speed * dt;
+            r.y += (dy / dist) * speed * dt;
+            r.rotation = Math.atan2(dy, dx);
+          }
+        }
+
+      } else if (r.state === 'carrying' || r.state === 'fleeing') {
+        // Move toward escape target (map edge)
+        const dx = r.targetX - r.x;
+        const dy = r.targetY - r.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > 1) {
+          r.x += (dx / dist) * speed * dt;
+          r.y += (dy / dist) * speed * dt;
+          r.rotation = Math.atan2(dy, dx);
+        }
+      }
+    }
   }
 
   // ============================================================
@@ -2219,6 +2413,18 @@ class GameEngine {
       };
     }
 
+    // Raccoons (all visible — they're on roads, large range)
+    const nearbyRaccoons = [];
+    for (const r of this.raccoons.values()) {
+      if (Math.abs(r.x - bird.x) < viewRange && Math.abs(r.y - bird.y) < viewRange) {
+        nearbyRaccoons.push({
+          id: r.id, x: r.x, y: r.y, rotation: r.rotation,
+          state: r.state,
+          carriedFoodType: r.carriedFoodType || null,
+        });
+      }
+    }
+
     return {
       birds: nearbyBirds,
       poops: nearbyPoops,
@@ -2238,6 +2444,7 @@ class GameEngine {
       boss: bossState,
       wantedBirdId: this.wantedBirdId,
       foodTruck: foodTruckState,
+      raccoons: nearbyRaccoons,
       dayTime: this.dayTime,
       dayPhase: this.dayPhase,
       self: {
