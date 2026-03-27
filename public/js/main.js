@@ -124,6 +124,10 @@
   const soundBubbles = [];
   const eventMessages = [];
 
+  // Weather state (mirrored from server events for visual rendering)
+  let weatherState = null;   // { type, windAngle, windSpeed, intensity }
+  let lightningFlash = null; // { time, x, y, duration } — brief screen-flash on strike
+
   // === Tier 1: Announcement system ===
   const announcements = []; // { text, color, time, duration }
 
@@ -700,6 +704,44 @@
       if (ev.phase === 'night') {
         effects.push({ type: 'screen_shake', time: performance.now(), duration: 300, intensity: 2 });
       }
+    }
+
+    // === WEATHER EVENTS ===
+    if (ev.type === 'weather_start') {
+      const msgs = {
+        rain:  ['🌧️ IT\'S RAINING! Worms are surfacing — free food!', '#66aaff'],
+        wind:  ['💨 STRONG WINDS! The city is being swept!', '#aaddff'],
+        storm: ['⛈️ THUNDERSTORM! Take cover — lightning incoming!', '#ffdd44'],
+      };
+      const [msg, color] = msgs[ev.weatherType] || ['Weather changed!', '#fff'];
+      showAnnouncement(msg, color, 4000);
+      addEventMessage(msg, color);
+      weatherState = { type: ev.weatherType, windAngle: ev.windAngle, windSpeed: ev.windSpeed, intensity: ev.intensity };
+    }
+    if (ev.type === 'weather_end') {
+      const endMsgs = {
+        rain: 'The rain has stopped. Worms retreating underground.',
+        wind: 'The wind has died down.',
+        storm: 'The storm has passed.',
+      };
+      addEventMessage(endMsgs[ev.weatherType] || 'Weather cleared.', '#aaaaaa');
+      weatherState = null;
+    }
+    if (ev.type === 'worms_appeared') {
+      addEventMessage('🪱 Worms are wriggling out of the wet ground! Grab them!', '#d46a8a');
+    }
+    if (ev.type === 'lightning') {
+      // Screen flash + shake
+      lightningFlash = { time: performance.now(), x: ev.x, y: ev.y, duration: 300 };
+      effects.push({ type: 'screen_shake', intensity: 12, duration: 600, time: performance.now() });
+    }
+    if (ev.type === 'lightning_hit') {
+      const isMe = ev.birdId === myId;
+      if (isMe) {
+        showAnnouncement('⚡ YOU WERE STRUCK BY LIGHTNING!', '#ffff00', 2500);
+      }
+      addEventMessage(`⚡ ${ev.birdName || 'A bird'} was struck by lightning!`, '#ffdd44');
+      effects.push({ type: 'text', x: ev.x, y: ev.y, text: '⚡ ZAP!', color: '#ffff44', size: 14, time: performance.now(), duration: 1500 });
     }
 
     // === RACCOON EVENTS ===
@@ -1559,6 +1601,153 @@
   }
 
   // ============================================================
+  // WEATHER RENDERING
+  // ============================================================
+  // Lazily generated rain drop pool
+  let _rainDrops = null;
+  function _ensureRainDrops(sw, sh) {
+    if (_rainDrops && _rainDrops.sw === sw && _rainDrops.sh === sh) return;
+    _rainDrops = { sw, sh, drops: [] };
+    for (let i = 0; i < 300; i++) {
+      _rainDrops.drops.push({
+        x: Math.random() * sw,
+        y: Math.random() * sh,
+        len: 8 + Math.random() * 10,
+        speed: 280 + Math.random() * 180,
+        opacity: 0.3 + Math.random() * 0.5,
+      });
+    }
+  }
+
+  function drawWeather(ctx, camera, now, weather) {
+    if (!weather) return;
+    const sw = camera.screenW;
+    const sh = camera.screenH;
+    const dt = 0.05; // approximate frame dt for animation
+
+    const isRainy = weather.type === 'rain' || weather.type === 'storm';
+    const isWindy = weather.windSpeed > 0;
+
+    // === RAIN DROPS ===
+    if (isRainy) {
+      _ensureRainDrops(sw, sh);
+      const intensity = weather.intensity;
+      const windTilt = isWindy ? (Math.cos(weather.windAngle) * 0.4) : -0.2; // slight diagonal
+
+      ctx.save();
+      ctx.strokeStyle = 'rgba(170, 210, 255, 0.55)';
+      ctx.lineWidth = 1;
+      for (const drop of _rainDrops.drops) {
+        // Animate drop position
+        drop.y += drop.speed * dt;
+        drop.x += windTilt * drop.speed * dt;
+        if (drop.y > sh + 20) { drop.y = -20; drop.x = Math.random() * sw; }
+        if (drop.x > sw + 20) drop.x -= sw + 40;
+        if (drop.x < -20) drop.x += sw + 40;
+
+        ctx.globalAlpha = drop.opacity * intensity;
+        ctx.beginPath();
+        ctx.moveTo(drop.x, drop.y);
+        ctx.lineTo(drop.x + windTilt * drop.len, drop.y + drop.len);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+
+    // === WIND STREAKS (visible during wind/storm) ===
+    if (isWindy) {
+      const t = now * 0.001;
+      const wx = Math.cos(weather.windAngle);
+      const wy = Math.sin(weather.windAngle);
+      const count = Math.floor(weather.intensity * 18);
+      ctx.save();
+      ctx.strokeStyle = 'rgba(200, 230, 255, 0.25)';
+      ctx.lineWidth = 1.5;
+      for (let i = 0; i < count; i++) {
+        // Each streak has a fixed seed so it loops smoothly
+        const seed = (i * 2.39996) % 1; // golden ratio spacing
+        const baseX = (seed * sw * 2.5 + t * weather.windSpeed * 0.4 * wx) % (sw * 1.5) - sw * 0.25;
+        const baseY = ((i / count) * sh * 1.5 + t * weather.windSpeed * 0.4 * wy) % (sh * 1.5) - sh * 0.25;
+        const len = 25 + seed * 50;
+        ctx.globalAlpha = 0.15 + seed * 0.2;
+        ctx.beginPath();
+        ctx.moveTo(baseX, baseY);
+        ctx.lineTo(baseX + wx * len, baseY + wy * len);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+      ctx.restore();
+
+      // === WIND DIRECTION INDICATOR (bottom-left corner) ===
+      const indicatorX = 20;
+      const indicatorY = sh - 55;
+      ctx.save();
+      ctx.globalAlpha = 0.7;
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+      ctx.beginPath();
+      ctx.roundRect(indicatorX, indicatorY, 80, 36, 6);
+      ctx.fill();
+      ctx.fillStyle = '#aaddff';
+      ctx.font = 'bold 9px Courier New';
+      ctx.textAlign = 'left';
+      ctx.fillText('WIND', indicatorX + 6, indicatorY + 13);
+      // Arrow showing wind direction
+      const arrowCx = indicatorX + 60;
+      const arrowCy = indicatorY + 18;
+      const arrowLen = 12;
+      const aPulse = Math.sin(now * 0.005) * 0.15 + 0.85;
+      ctx.globalAlpha = aPulse * 0.9;
+      ctx.strokeStyle = '#aaddff';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(arrowCx - wx * arrowLen * 0.5, arrowCy - wy * arrowLen * 0.5);
+      ctx.lineTo(arrowCx + wx * arrowLen, arrowCy + wy * arrowLen);
+      ctx.stroke();
+      // Arrowhead
+      const headAngle = Math.atan2(wy, wx);
+      ctx.fillStyle = '#aaddff';
+      ctx.beginPath();
+      ctx.moveTo(arrowCx + wx * arrowLen, arrowCy + wy * arrowLen);
+      ctx.lineTo(
+        arrowCx + wx * arrowLen - Math.cos(headAngle - 0.5) * 6,
+        arrowCy + wy * arrowLen - Math.sin(headAngle - 0.5) * 6
+      );
+      ctx.lineTo(
+        arrowCx + wx * arrowLen - Math.cos(headAngle + 0.5) * 6,
+        arrowCy + wy * arrowLen - Math.sin(headAngle + 0.5) * 6
+      );
+      ctx.closePath();
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+
+    // === WEATHER BADGE (top-center, alongside clock) ===
+    const badges = { rain: '🌧️ RAIN', wind: '💨 WIND', storm: '⛈️ STORM' };
+    const badge = badges[weather.type];
+    if (badge) {
+      const timeRemaining = Math.max(0, Math.ceil((weather.endsAt - Date.now()) / 1000));
+      const mins = Math.floor(timeRemaining / 60);
+      const secs = timeRemaining % 60;
+      const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+      const pulse = weather.type === 'storm' ? (Math.sin(now * 0.006) * 0.15 + 0.85) : 1;
+      ctx.save();
+      ctx.globalAlpha = pulse * 0.88;
+      ctx.fillStyle = weather.type === 'storm' ? 'rgba(60, 40, 0, 0.75)' : 'rgba(20, 40, 80, 0.65)';
+      ctx.beginPath();
+      ctx.roundRect(sw / 2 + 75, 6, 105, 24, 5);
+      ctx.fill();
+      ctx.fillStyle = weather.type === 'storm' ? '#ffdd44' : '#88ccff';
+      ctx.font = 'bold 10px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText(badge + ' ' + timeStr, sw / 2 + 127, 22);
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+  }
+
+  // ============================================================
   // ANNOUNCEMENTS (big center-screen text)
   // ============================================================
   function drawAnnouncements(ctx, now) {
@@ -1913,6 +2102,22 @@
     // Day/Night overlay (screen-space, after zoom restore)
     if (gameState.dayTime !== undefined && worldData) {
       Renderer.drawDayNight(ctx, camera, z, gameState.dayTime, worldData.streetLamps);
+    }
+
+    // Weather effects (screen-space, drawn over day/night overlay)
+    // Use gameState.weather as authoritative source (server-synced each tick)
+    drawWeather(ctx, camera, now, gameState.weather || weatherState);
+
+    // Lightning flash (brief bright overlay)
+    if (lightningFlash) {
+      const age = now - lightningFlash.time;
+      if (age < lightningFlash.duration) {
+        const alpha = Math.max(0, 0.75 * (1 - age / lightningFlash.duration));
+        ctx.fillStyle = 'rgba(230, 240, 255, ' + alpha + ')';
+        ctx.fillRect(0, 0, camera.screenW, camera.screenH);
+      } else {
+        lightningFlash = null;
+      }
     }
 
     // Announcements (screen-space)

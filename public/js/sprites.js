@@ -289,6 +289,22 @@ window.Sprites = {
         ctx.arc(Math.sin(i * 2) * 3, Math.cos(i * 3) * 3, 1.5, 0, Math.PI * 2);
         ctx.fill();
       }
+    } else if (type === 'worm') {
+      // Squiggly pink worm — drawn as a winding bezier curve
+      const wPulse = Math.sin(Date.now() * 0.004) * 1.5;
+      ctx.strokeStyle = '#d46a8a';
+      ctx.lineWidth = 2.5;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(-6, -2 + wPulse);
+      ctx.bezierCurveTo(-3, -5 - wPulse, 0, 3 + wPulse, 3, -3 - wPulse);
+      ctx.bezierCurveTo(5, -6, 6, 1 + wPulse, 7, 0);
+      ctx.stroke();
+      // Worm head (small circle)
+      ctx.fillStyle = '#c45a7a';
+      ctx.beginPath();
+      ctx.arc(7, 0, 2, 0, Math.PI * 2);
+      ctx.fill();
     } else if (type === 'cake') {
       // Wedding cake - larger, tiered
       ctx.fillStyle = '#fff';

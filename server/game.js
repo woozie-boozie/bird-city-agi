@@ -77,6 +77,11 @@ class GameEngine {
     this.raccoons = new Map();        // id -> raccoon state
     this.raccoonSpawnTimer = 0;       // when to try next spawn
 
+    // === WEATHER SYSTEM ===
+    this.weather = null;              // { type, intensity, windAngle, windSpeed, endsAt, wormSpawnTimer, lightningTimer }
+    this.weatherTimer = Date.now() + this._randomRange(60000, 120000); // 1-2 min to first weather
+    this.rainWorms = new Map();       // id -> true (worm food ids spawned during rain)
+
     // === DAY/NIGHT CYCLE ===
     // 0.0 = early day, 0.3 = dusk, 0.45 = night, 0.75 = dawn, 1.0 = day again
     // Full cycle = 20 real-time minutes
@@ -468,6 +473,9 @@ class GameEngine {
 
     // === Raccoon Thieves ===
     this._updateRaccoons(dt, now);
+
+    // === Weather ===
+    this._updateWeather(dt, now);
 
     // === Day/Night Cycle ===
     this._updateDayNight(dt, now);
@@ -1432,6 +1440,12 @@ class GameEngine {
       bird.vy = (bird.vy / speed) * maxSpeed;
     }
 
+    // Wind pushes birds — applied after player-speed clamp so it's additive drift
+    if (this.weather && this.weather.windSpeed > 0) {
+      bird.vx += Math.cos(this.weather.windAngle) * this.weather.windSpeed * dt;
+      bird.vy += Math.sin(this.weather.windAngle) * this.weather.windSpeed * dt;
+    }
+
     // Update position
     bird.x += bird.vx * dt;
     bird.y += bird.vy * dt;
@@ -1919,6 +1933,127 @@ class GameEngine {
     // Keep in bounds
     npc.x = Math.max(20, Math.min(world.WORLD_WIDTH - 20, npc.x));
     npc.y = Math.max(20, Math.min(world.WORLD_HEIGHT - 20, npc.y));
+  }
+
+  // ============================================================
+  // WEATHER SYSTEM
+  // ============================================================
+  _updateWeather(dt, now) {
+    // Expire current weather
+    if (this.weather && now >= this.weather.endsAt) {
+      const wasRainy = this.weather.type === 'rain' || this.weather.type === 'storm';
+      const oldType = this.weather.type;
+      this.weather = null;
+      // Remove rain worms
+      if (wasRainy) {
+        for (const wormId of this.rainWorms.keys()) {
+          this.foods.delete(wormId);
+        }
+        this.rainWorms.clear();
+      }
+      this.events.push({ type: 'weather_end', weatherType: oldType });
+      this.weatherTimer = now + this._randomRange(90000, 180000); // 1.5–3 min gap
+      return;
+    }
+
+    // Spawn new weather when timer fires
+    if (!this.weather && now >= this.weatherTimer) {
+      // Rain is most common, storm is rarest
+      const roll = Math.random();
+      let type;
+      if (roll < 0.40) type = 'rain';
+      else if (roll < 0.75) type = 'wind';
+      else type = 'storm';
+
+      const windAngle = Math.random() * Math.PI * 2;
+      let duration, windSpeed, intensity;
+      if (type === 'rain') {
+        duration = this._randomRange(150000, 270000); // 2.5–4.5 min
+        windSpeed = 0;
+        intensity = 0.55 + Math.random() * 0.45;
+      } else if (type === 'wind') {
+        duration = this._randomRange(90000, 180000); // 1.5–3 min
+        windSpeed = 55 + Math.random() * 85;
+        intensity = 0.5 + Math.random() * 0.5;
+      } else { // storm
+        duration = this._randomRange(90000, 150000); // 1.5–2.5 min
+        windSpeed = 80 + Math.random() * 100;
+        intensity = 1.0;
+      }
+
+      this.weather = {
+        type,
+        intensity,
+        windAngle,
+        windSpeed,
+        endsAt: now + duration,
+        wormSpawnTimer: now + 5000,
+        lightningTimer: now + this._randomRange(6000, 18000),
+      };
+
+      this.events.push({ type: 'weather_start', weatherType: type, windAngle, windSpeed, intensity });
+      console.log(`[GameEngine] Weather started: ${type} (wind=${Math.round(windSpeed)}, angle=${windAngle.toFixed(2)})`);
+      return;
+    }
+
+    if (!this.weather) return;
+
+    // Rain/storm: spawn worms on grassy areas
+    const isRainy = this.weather.type === 'rain' || this.weather.type === 'storm';
+    if (isRainy && now >= this.weather.wormSpawnTimer && this.rainWorms.size < 7) {
+      this._spawnRainWorm();
+      this.weather.wormSpawnTimer = now + this._randomRange(7000, 14000);
+      if (this.rainWorms.size === 1) {
+        // First worm — hint to players
+        this.events.push({ type: 'worms_appeared' });
+      }
+    }
+
+    // Storm: random lightning strikes
+    if (this.weather.type === 'storm' && now >= this.weather.lightningTimer) {
+      // Strike a random position in the world (biased toward populated areas)
+      const lx = 300 + Math.random() * (world.WORLD_WIDTH - 600);
+      const ly = 300 + Math.random() * (world.WORLD_HEIGHT - 600);
+      this.events.push({ type: 'lightning', x: lx, y: ly });
+
+      // Stun any birds caught in the blast radius
+      for (const b of this.birds.values()) {
+        if (b.stunnedUntil > now) continue; // already stunned
+        const dx = b.x - lx;
+        const dy = b.y - ly;
+        if (Math.sqrt(dx * dx + dy * dy) < 90) {
+          b.stunnedUntil = now + 1800;
+          this.events.push({ type: 'lightning_hit', birdId: b.id, birdName: b.name, x: b.x, y: b.y });
+        }
+      }
+
+      this.weather.lightningTimer = now + this._randomRange(8000, 28000);
+    }
+  }
+
+  _spawnRainWorm() {
+    // Grassy spawn zones (park + open areas, off roads)
+    const grassZones = [
+      { x: 820, y: 920, w: 660, h: 610 },  // park interior
+      { x: 50,  y: 50,  w: 700, h: 150 },  // top-left grass strip
+      { x: 50,  y: 700, w: 700, h: 150 },  // mid-left grass strip
+      { x: 50,  y: 1600, w: 700, h: 150 }, // lower-left grass strip
+      { x: 1700, y: 50, w: 1200, h: 150 }, // top-right grass strip
+      { x: 50,  y: 2500, w: 2900, h: 400 },// bottom open grass
+    ];
+    const zone = grassZones[Math.floor(Math.random() * grassZones.length)];
+    const id = 'food_worm_' + uid();
+    const food = {
+      id,
+      type: 'worm',
+      x: zone.x + Math.random() * zone.w,
+      y: zone.y + Math.random() * zone.h,
+      value: 28,      // worms are nutritious!
+      active: true,
+      respawnAt: 0,
+    };
+    this.foods.set(id, food);
+    this.rainWorms.set(id, true);
   }
 
   // ============================================================
@@ -2445,6 +2580,13 @@ class GameEngine {
       wantedBirdId: this.wantedBirdId,
       foodTruck: foodTruckState,
       raccoons: nearbyRaccoons,
+      weather: this.weather ? {
+        type: this.weather.type,
+        intensity: this.weather.intensity,
+        windAngle: this.weather.windAngle,
+        windSpeed: this.weather.windSpeed,
+        endsAt: this.weather.endsAt,
+      } : null,
       dayTime: this.dayTime,
       dayPhase: this.dayPhase,
       self: {

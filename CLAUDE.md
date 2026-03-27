@@ -77,9 +77,39 @@ Leaned hard into the night phase from Session 1. Night is now *dangerous* in a n
 
 **Creative intent**: Night is no longer just "darker and more dangerous from cats" — now there's active *competition* for food. Birds must choose: stay safe and watch raccoons drain the food supply, or dive-bomb them for big rewards. Natural emergent decision-making. The star/moon visual makes the night phase feel beautiful and worth experiencing, not just feared.
 
+**Session 3 — 2026-03-27: Weather System — Rain, Wind & Storms**
+Built a full dynamic weather system that transforms the city across three wild weather events:
+
+**Three weather types (spawn every 1.5–3 min, randomly):**
+- `rain` (40% chance, 2.5–4.5 min): No wind, just relentless rain. Worms surface from the wet ground — bonus food spawns in grassy/park zones for sharp players to discover.
+- `wind` (35% chance, 1.5–3 min): Directional gust pushes all birds. Tailwind = free speed; headwind = struggle. Forces real navigation decisions.
+- `storm` (25% chance, 1.5–2.5 min): Both rain AND strong wind, PLUS lightning strikes every 8–28s. Lightning stuns any bird within 90px of the strike for 1.8 seconds.
+
+**Server mechanics (`server/game.js`):**
+- `this.weather` object: type, intensity, windAngle, windSpeed, endsAt, wormSpawnTimer, lightningTimer
+- Wind applied to bird velocity after player-speed clamp — creates steady drift, not instant teleport
+- Worms (`type: 'worm'`) spawn in 6 grassy zones (park, residential strips, south fields) up to 7 at once
+- Worms deleted from foods map when rain ends — weather has a clean lifecycle
+- Lightning fires `lightning` event (world position) + `lightning_hit` events (stunned birds nearby)
+- State snapshot includes `weather` object for all clients
+
+**Visual effects (`public/js/main.js`):**
+- Animated rain drops: 300 screen-space particles, diagonal tilt based on wind, constant scroll
+- Wind streaks: translucent wisps flowing in wind direction, density scales with intensity
+- Wind HUD indicator: bottom-left corner pill showing "WIND" + direction arrow (pulses)
+- Weather badge: top-center next to clock, shows type + countdown timer
+- Lightning flash: brief bright-white full-screen overlay when lightning fires
+- Screen shake on each lightning strike (intensity 12, 600ms)
+- Event feed announcements for all weather transitions and "worms appeared!"
+
+**Worm sprite (`public/js/sprites.js`):**
+- Squiggly pink worm drawn as animated bezier curve that pulses in place
+- Distinct visual — players learn to hunt for worms during rainstorms
+
+**Creative intent**: Sessions 1 & 2 made night interesting and dangerous. Session 3 makes DAY chaotic too. Weather creates emergent strategy: fight the headwind or use it as cover, race raccoons to worms, hide from lightning or dare the storm for big rewards. The city is now fully alive across all hours.
+
 ### Next Ideas Queue
 - Territory control system (flocks claim zones, defend them)
-- Weather system affecting gameplay (rain = slippery, wind = flight boost)
 - Underground sewer system (secret map layer)
 - Wanted level escalation (police birds, SWAT hawks)
 - Raid bosses (giant cat, dog pack, eagle overlord)
@@ -96,3 +126,5 @@ Leaned hard into the night phase from Session 1. Night is now *dangerous* in a n
 - Owl enforcer in park at night (creates no-poop zone, alerts NPCs)
 - Bioluminescent park pond at night (glowing water effect)
 - Raccoon boss: "The Godfather Raccoon" — giant alpha raccoon that steals from players directly
+- Weather combos: fog (low visibility), hailstorm (poop projectiles deflected), hot day (food spoils faster)
+- Birds can shelter under awnings/trees during storms (mechanic: reduced lightning hit radius if near cover)
