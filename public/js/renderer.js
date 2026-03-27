@@ -199,7 +199,7 @@ window.Renderer = {
   },
 
   // Draw minimap
-  drawMinimap(minimapCtx, worldData, birds, selfBird, activeEvent, cat, janitor) {
+  drawMinimap(minimapCtx, worldData, birds, selfBird, activeEvent, cat, janitor, territories) {
     if (!worldData) return;
 
     const mw = minimapCtx.canvas.width;
@@ -221,6 +221,25 @@ window.Renderer = {
     minimapCtx.fillStyle = '#3a6a3a';
     const p = worldData.park;
     minimapCtx.fillRect(p.x * sx, p.y * sy, p.w * sx, p.h * sy);
+
+    // Territory zones on minimap
+    if (territories) {
+      for (const zone of territories) {
+        const owned = zone.ownerTeamId !== null;
+        const capturing = zone.captureProgress > 0;
+        if (!owned && !capturing) continue;
+        minimapCtx.globalAlpha = owned ? 0.45 : 0.22;
+        minimapCtx.fillStyle = owned ? (zone.ownerColor || zone.baseColor) : zone.baseColor;
+        minimapCtx.fillRect(zone.x * sx, zone.y * sy, zone.w * sx, zone.h * sy);
+        if (owned) {
+          minimapCtx.globalAlpha = 0.8;
+          minimapCtx.strokeStyle = zone.ownerColor || zone.baseColor;
+          minimapCtx.lineWidth = 1;
+          minimapCtx.strokeRect(zone.x * sx, zone.y * sy, zone.w * sx, zone.h * sy);
+        }
+        minimapCtx.globalAlpha = 1;
+      }
+    }
 
     // Buildings
     minimapCtx.fillStyle = '#666';
@@ -603,5 +622,138 @@ window.Renderer = {
 
     ctx.globalAlpha = 1;
     ctx.restore();
+  },
+
+  // ============================================================
+  // TERRITORY ZONES — colored overlays with ownership UI
+  // ============================================================
+  drawTerritories(ctx, camera, territories, myTeamId) {
+    if (!territories || territories.length === 0) return;
+
+    const now = performance.now();
+
+    for (const zone of territories) {
+      const sx = zone.x - camera.x + camera.screenW / 2;
+      const sy = zone.y - camera.y + camera.screenH / 2;
+
+      // Cull zones entirely off screen
+      if (sx + zone.w < -100 || sx > camera.screenW + 100 ||
+          sy + zone.h < -100 || sy > camera.screenH + 100) continue;
+
+      ctx.save();
+
+      // Determine display color
+      let displayColor = zone.baseColor;
+      const isContested = zone.ownerTeamId !== null && zone.capturingTeamId !== null && zone.capturingTeamId !== zone.ownerTeamId;
+
+      if (zone.ownerTeamId !== null && zone.ownerColor) {
+        displayColor = zone.ownerColor;
+      } else if (zone.capturingTeamId !== null) {
+        displayColor = zone.baseColor;
+      }
+
+      // Pulsing contested animation
+      const pulse = isContested ? (0.55 + 0.15 * Math.sin(now * 0.006)) : 0;
+
+      // Fill zone with owner/capture color
+      const owned = zone.ownerTeamId !== null;
+      const capturing = zone.captureProgress > 0 && zone.captureProgress < 1;
+      let fillAlpha = owned ? 0.18 : (capturing ? 0.10 : 0.05);
+      if (isContested) fillAlpha = 0.22 + pulse * 0.1;
+
+      // Is this MY zone?
+      const isMine = myTeamId && zone.ownerTeamId === myTeamId;
+      if (isMine) fillAlpha = Math.min(0.28, fillAlpha + 0.08);
+
+      ctx.globalAlpha = fillAlpha;
+      ctx.fillStyle = displayColor;
+      ctx.fillRect(sx, sy, zone.w, zone.h);
+
+      // Border
+      ctx.globalAlpha = owned ? (isMine ? 0.8 : 0.5) : (capturing ? 0.35 : 0.15);
+      ctx.strokeStyle = displayColor;
+      ctx.lineWidth = isMine ? 3 : 2;
+      if (isContested) {
+        ctx.setLineDash([8, 5]);
+        ctx.globalAlpha = 0.7;
+      }
+      ctx.strokeRect(sx + 1, sy + 1, zone.w - 2, zone.h - 2);
+      ctx.setLineDash([]);
+
+      ctx.globalAlpha = 1;
+
+      // === Zone label (center) ===
+      const cx = sx + zone.w / 2;
+      const cy = sy + zone.h / 2;
+
+      // Zone name
+      ctx.font = 'bold 13px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillText(zone.name, cx + 1, cy - 10 + 1);
+      ctx.fillStyle = '#ffffff';
+      ctx.globalAlpha = owned ? 1.0 : 0.65;
+      ctx.fillText(zone.name, cx, cy - 10);
+
+      // Owner / capturing label
+      ctx.globalAlpha = 1;
+      if (zone.ownerName) {
+        ctx.font = '11px monospace';
+        const ownerLabel = (isMine ? '★ ' : '') + zone.ownerName;
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.fillText(ownerLabel, cx + 1, cy + 7 + 1);
+        ctx.fillStyle = isMine ? '#ffe066' : (zone.ownerColor || '#fff');
+        ctx.fillText(ownerLabel, cx, cy + 7);
+      } else if (zone.capturingName && zone.captureProgress > 0) {
+        ctx.font = '10px monospace';
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.fillText('capturing...', cx + 1, cy + 7 + 1);
+        ctx.fillStyle = '#aaddff';
+        ctx.fillText('capturing...', cx, cy + 7);
+      }
+
+      // === Capture progress bar ===
+      if (zone.captureProgress > 0 && zone.captureProgress < 1) {
+        const barW = Math.min(zone.w - 20, 140);
+        const barH = 6;
+        const barX = cx - barW / 2;
+        const barY = sy + zone.h - 22;
+
+        // Background
+        ctx.globalAlpha = 0.7;
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
+
+        // Fill
+        ctx.fillStyle = displayColor;
+        ctx.fillRect(barX, barY, barW * zone.captureProgress, barH);
+
+        // Contested indicator: show drain from right
+        if (isContested) {
+          ctx.fillStyle = 'rgba(255,60,60,0.7)';
+          const drainW = barW * (1 - zone.captureProgress);
+          ctx.fillRect(barX + barW * zone.captureProgress, barY, drainW, barH);
+        }
+
+        ctx.globalAlpha = 1;
+      }
+
+      // Owned: full green bar at bottom
+      if (zone.ownerTeamId !== null && zone.captureProgress >= 1) {
+        const barW = Math.min(zone.w - 20, 140);
+        const barH = 4;
+        const barX = cx - barW / 2;
+        const barY = sy + zone.h - 20;
+        ctx.globalAlpha = 0.6;
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
+        ctx.fillStyle = isMine ? '#ffe066' : (zone.ownerColor || displayColor);
+        ctx.fillRect(barX, barY, barW, barH);
+        ctx.globalAlpha = 1;
+      }
+
+      ctx.restore();
+    }
   },
 };

@@ -270,11 +270,24 @@ for (let py = 950; py <= 1500; py += 220) {
   STREET_LAMPS.push({ x: 1502, y: py }); // right edge
 }
 
+// ============================================================
+// TERRITORY ZONES — capturable areas for flocks & solo birds
+// Each zone: { id, name, x, y, w, h, baseColor }
+// ============================================================
+const TERRITORY_ZONES = [
+  { id: 'park',        name: 'The Park',       x: 820,  y: 920,  w: 660, h: 610, baseColor: '#22cc55' },
+  { id: 'downtown',    name: 'Downtown',        x: 1720, y: 1720, w: 730, h: 700, baseColor: '#4488ff' },
+  { id: 'cafe',        name: 'Cafe District',   x: 200,  y: 1800, w: 510, h: 260, baseColor: '#ff8844' },
+  { id: 'residential', name: 'Residential',     x: 140,  y: 140,  w: 560, h: 620, baseColor: '#cc44ff' },
+  { id: 'mall',        name: 'The Mall',        x: 1790, y: 190,  w: 760, h: 410, baseColor: '#ffcc00' },
+];
+
 module.exports = {
   WORLD_WIDTH, WORLD_HEIGHT,
   BUILDINGS, TREES, PARK, CAFE_TABLES, ROADS, CARS, LAUNDRY,
   MOVING_CARS, EVENT_LOCATIONS, POWERUP_TYPES,
   NPC_TYPES, BIRD_TYPES, DATE_CENTER,
   SKILL_CATALOG, BIRD_COLORS, STREET_LAMPS,
+  TERRITORY_ZONES,
   getXPForLevel, getLevelFromXP, getBirdTypeForLevel,
 };

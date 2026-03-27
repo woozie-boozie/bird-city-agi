@@ -764,6 +764,25 @@
     if (ev.type === 'raccoons_gone') {
       addEventMessage('The raccoon thieves fled at dawn.', '#aaaaaa');
     }
+
+    // === TERRITORY EVENTS ===
+    if (ev.type === 'territory_captured') {
+      addEventMessage(`🏴 ${ev.teamName} seized ${ev.zoneName}!`, '#ffe066');
+      showAnnouncement(`${ev.teamName} captured ${ev.zoneName}!`, '#ffe066', 4000);
+    }
+    if (ev.type === 'territory_contested') {
+      addEventMessage(`⚔️ ${ev.zoneName} is under attack! (${ev.attackerName} vs ${ev.ownerName})`, '#ff8844');
+    }
+    if (ev.type === 'territory_lost') {
+      addEventMessage(`💀 ${ev.ownerName} lost ${ev.zoneName}!`, '#ff4444');
+      showAnnouncement(`${ev.zoneName} flipped to neutral!`, '#ff6666', 3500);
+    }
+    if (ev.type === 'territory_reward') {
+      // Subtle — just a small event feed note (only shown occasionally to avoid spam)
+      if (Math.random() < 0.3) {
+        addEventMessage(`💰 ${ev.teamName} collecting tribute from ${ev.zoneName}`, '#aaddff');
+      }
+    }
   }
 
   function showAnnouncement(text, color, duration) {
@@ -1855,6 +1874,14 @@
     Renderer.drawGround(ctx, camera);
     Renderer.drawRoads(ctx, camera);
     Renderer.drawPark(ctx, camera);
+
+    // Territory zones (drawn on top of ground, below buildings/entities)
+    if (gameState.territories && gameState.self) {
+      const selfBird = gameState.self;
+      const myTeamId = selfBird.flockId || ('solo_' + selfBird.id);
+      Renderer.drawTerritories(ctx, camera, gameState.territories, myTeamId);
+    }
+
     Renderer.drawTables(ctx, camera);
     Renderer.drawLaundry(ctx, camera);
     Renderer.drawCars(ctx, camera);
@@ -2133,7 +2160,7 @@
     updateEventFeed();
 
     // Minimap (now includes activeEvent and cat)
-    Renderer.drawMinimap(minimapCtx, worldData, gameState.birds, selfBird, gameState.activeEvent, gameState.cat, gameState.janitor);
+    Renderer.drawMinimap(minimapCtx, worldData, gameState.birds, selfBird, gameState.activeEvent, gameState.cat, gameState.janitor, gameState.territories);
 
     // Draw beacons on minimap
     if (gameState.beacons && worldData) {

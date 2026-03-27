@@ -82,6 +82,10 @@ class GameEngine {
     this.weatherTimer = Date.now() + this._randomRange(60000, 120000); // 1-2 min to first weather
     this.rainWorms = new Map();       // id -> true (worm food ids spawned during rain)
 
+    // === TERRITORY CONTROL ===
+    this.territories = new Map();  // zoneId -> zone state
+    this._initTerritories();
+
     // === DAY/NIGHT CYCLE ===
     // 0.0 = early day, 0.3 = dusk, 0.45 = night, 0.75 = dawn, 1.0 = day again
     // Full cycle = 20 real-time minutes
@@ -476,6 +480,9 @@ class GameEngine {
 
     // === Weather ===
     this._updateWeather(dt, now);
+
+    // === Territory Control ===
+    this._updateTerritories(dt, now);
 
     // === Day/Night Cycle ===
     this._updateDayNight(dt, now);
@@ -2205,6 +2212,159 @@ class GameEngine {
   }
 
   // ============================================================
+  // ============================================================
+  // TERRITORY CONTROL SYSTEM
+  // ============================================================
+  _initTerritories() {
+    const now = Date.now();
+    for (const zoneDef of world.TERRITORY_ZONES) {
+      this.territories.set(zoneDef.id, {
+        id: zoneDef.id,
+        name: zoneDef.name,
+        x: zoneDef.x, y: zoneDef.y,
+        w: zoneDef.w, h: zoneDef.h,
+        baseColor: zoneDef.baseColor,
+        ownerTeamId: null,     // flockId or 'solo_BIRDID' or null
+        ownerName: null,       // display name of owner
+        ownerColor: null,      // hex color for rendering
+        captureProgress: 0,    // 0.0 → 1.0
+        capturingTeamId: null, // team currently filling the bar
+        capturingName: null,
+        lastRewardAt: now,
+        lastContestAlert: 0,
+      });
+    }
+  }
+
+  _teamColor(teamId) {
+    const COLORS = ['#ff4444', '#4499ff', '#ff8800', '#44dd66', '#cc44ff', '#ffcc00', '#ff44aa', '#00ccff'];
+    let hash = 0;
+    for (let i = 0; i < teamId.length; i++) hash = (hash * 31 + teamId.charCodeAt(i)) & 0xffff;
+    return COLORS[hash % COLORS.length];
+  }
+
+  _updateTerritories(dt, now) {
+    const CAPTURE_RATE = 0.006;    // progress per bird per second (solo: ~167s to cap; 3-bird flock: ~37s)
+    const FLOCK_MULTIPLIER = 2.0;  // flock birds count double
+    const REWARD_INTERVAL = 20000; // ms between passive rewards
+    const REWARD_XP = 20;
+    const REWARD_COINS = 8;
+    const REWARD_FOOD = 5;
+
+    for (const zone of this.territories.values()) {
+      // --- Count birds inside this zone by team ---
+      const teamCounts = new Map(); // teamId -> { count, name, isFlock }
+      for (const bird of this.birds.values()) {
+        if (bird.x >= zone.x && bird.x <= zone.x + zone.w &&
+            bird.y >= zone.y && bird.y <= zone.y + zone.h) {
+          const teamId = bird.flockId || ('solo_' + bird.id);
+          const teamName = bird.flockName || bird.name;
+          const isFlock = !!bird.flockId;
+          if (!teamCounts.has(teamId)) {
+            teamCounts.set(teamId, { count: 0, name: teamName, isFlock });
+          }
+          teamCounts.get(teamId).count++;
+        }
+      }
+
+      // --- Find dominant team (most effective birds) ---
+      let dominantTeamId = null, dominantPower = 0, dominantName = null;
+      for (const [teamId, info] of teamCounts) {
+        const power = info.count * (info.isFlock ? FLOCK_MULTIPLIER : 1);
+        if (power > dominantPower) {
+          dominantPower = power;
+          dominantTeamId = teamId;
+          dominantName = info.name;
+        }
+      }
+
+      // --- Update capture state ---
+      if (zone.ownerTeamId === null) {
+        // NEUTRAL: first dominant team starts capturing
+        if (dominantTeamId !== null) {
+          zone.capturingTeamId = dominantTeamId;
+          zone.capturingName = dominantName;
+          zone.captureProgress = Math.min(1, zone.captureProgress + CAPTURE_RATE * dominantPower * dt);
+          if (zone.captureProgress >= 1) {
+            zone.captureProgress = 1;
+            zone.ownerTeamId = dominantTeamId;
+            zone.ownerName = dominantName;
+            zone.ownerColor = this._teamColor(dominantTeamId);
+            zone.lastRewardAt = now;
+            zone.lastContestAlert = 0;
+            this.events.push({
+              type: 'territory_captured',
+              zoneId: zone.id, zoneName: zone.name,
+              teamName: dominantName,
+            });
+          }
+        }
+      } else {
+        // OWNED: check for contest or reinforcement
+        if (dominantTeamId === null) {
+          // Empty zone — hold steady (no change)
+        } else if (dominantTeamId === zone.ownerTeamId) {
+          // Owners reinforcing
+          zone.captureProgress = Math.min(1, zone.captureProgress + CAPTURE_RATE * 0.3 * dominantPower * dt);
+        } else {
+          // CONTESTED — rival team eroding the owner's hold
+          zone.captureProgress = Math.max(0, zone.captureProgress - CAPTURE_RATE * dominantPower * dt);
+
+          // Alert: zone under attack (throttled)
+          if (now - zone.lastContestAlert > 25000) {
+            zone.lastContestAlert = now;
+            this.events.push({
+              type: 'territory_contested',
+              zoneId: zone.id, zoneName: zone.name,
+              ownerName: zone.ownerName, attackerName: dominantName,
+            });
+          }
+
+          if (zone.captureProgress <= 0) {
+            // Zone flipped to neutral — attacker now starts capturing it
+            const lostOwner = zone.ownerName;
+            zone.ownerTeamId = null;
+            zone.ownerName = null;
+            zone.ownerColor = null;
+            zone.capturingTeamId = dominantTeamId;
+            zone.capturingName = dominantName;
+            zone.captureProgress = 0;
+            this.events.push({
+              type: 'territory_lost',
+              zoneId: zone.id, zoneName: zone.name,
+              ownerName: lostOwner, attackerName: dominantName,
+            });
+          }
+        }
+
+        // --- Passive rewards for owner team members inside the zone ---
+        if (zone.ownerTeamId && now - zone.lastRewardAt >= REWARD_INTERVAL) {
+          zone.lastRewardAt = now;
+          let rewarded = 0;
+          for (const bird of this.birds.values()) {
+            const teamId = bird.flockId || ('solo_' + bird.id);
+            if (teamId === zone.ownerTeamId &&
+                bird.x >= zone.x && bird.x <= zone.x + zone.w &&
+                bird.y >= zone.y && bird.y <= zone.y + zone.h) {
+              bird.xp += REWARD_XP;
+              bird.coins += REWARD_COINS;
+              bird.food += REWARD_FOOD;
+              rewarded++;
+            }
+          }
+          if (rewarded > 0) {
+            this.events.push({
+              type: 'territory_reward',
+              zoneId: zone.id, zoneName: zone.name,
+              teamName: zone.ownerName, count: rewarded,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // ============================================================
   // DAY/NIGHT CYCLE
   // ============================================================
   _updateDayNight(dt, now) {
@@ -2587,6 +2747,18 @@ class GameEngine {
         windSpeed: this.weather.windSpeed,
         endsAt: this.weather.endsAt,
       } : null,
+      territories: Array.from(this.territories.values()).map(z => ({
+        id: z.id,
+        name: z.name,
+        x: z.x, y: z.y, w: z.w, h: z.h,
+        baseColor: z.baseColor,
+        ownerTeamId: z.ownerTeamId,
+        ownerName: z.ownerName,
+        ownerColor: z.ownerColor,
+        captureProgress: z.captureProgress,
+        capturingTeamId: z.capturingTeamId,
+        capturingName: z.capturingName,
+      })),
       dayTime: this.dayTime,
       dayPhase: this.dayPhase,
       self: {

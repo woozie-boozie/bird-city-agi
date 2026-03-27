@@ -108,8 +108,43 @@ Built a full dynamic weather system that transforms the city across three wild w
 
 **Creative intent**: Sessions 1 & 2 made night interesting and dangerous. Session 3 makes DAY chaotic too. Weather creates emergent strategy: fight the headwind or use it as cover, race raccoons to worms, hide from lightning or dare the storm for big rewards. The city is now fully alive across all hours.
 
+**Session 4 — 2026-03-27: Territory Control System**
+Activated the SOCIAL pillar with a full flock territory war system. The city is now divided into 5 named zones that flocks (and solo birds) can capture, defend, and profit from.
+
+**Five territory zones:**
+- The Park (green), Downtown (blue), Cafe District (orange), Residential (purple), The Mall (gold)
+- Each zone is a clearly bounded area of the city with its own character
+
+**Capture mechanics (`server/game.js`):**
+- Birds inside a zone push a capture progress bar (0→1.0) for their team (flockId or solo ID)
+- Flock birds count double (2x power) — strong incentive for flock formation
+- Capture rate: ~167s for one solo bird, ~42s for a 3-bird flock
+- Rival team inside owned zone: drains the progress bar at the same rate
+- If progress drains to 0: zone goes neutral, then attacker starts filling it up
+- No one inside: zone holds steady (won't flip passively — requires active play)
+
+**Passive rewards (every 20s while owning and inside the zone):**
+- +20 XP, +8 coins, +5 food per bird of the owning team inside their zone
+- Owning territory = wealth — gives flocks a clear ongoing incentive
+
+**Visual system (`public/js/renderer.js`):**
+- Semi-transparent colored overlay on each zone (owner's unique color or neutral tint)
+- Animated dashed border when contested (pulsing)
+- Zone name + owner name always visible in zone center
+- Gold star ★ prefix when you're looking at YOUR flock's zone
+- Capture progress bar at zone bottom (green = filling up; red = draining)
+- Minimap shows territory ownership in matching colors
+- Each team gets a consistent procedurally hashed color (8 vivid options)
+
+**Events & announcements:**
+- `territory_captured`: big screen announcement + event feed
+- `territory_contested`: event feed with attacker vs defender name
+- `territory_lost`: red announcement + event feed
+- `territory_reward`: occasional low-key event feed message
+
+**Creative intent**: This creates persistent stakes. Two flocks both want The Park? Now there's a turf war with real consequences. Owning territory becomes the #1 reason to form a flock and stay in it. Solo birds can still capture zones but are at a steep disadvantage vs organized flocks. The city is no longer just a chaos sandbox — it has political geography now.
+
 ### Next Ideas Queue
-- Territory control system (flocks claim zones, defend them)
 - Underground sewer system (secret map layer)
 - Wanted level escalation (police birds, SWAT hawks)
 - Raid bosses (giant cat, dog pack, eagle overlord)
