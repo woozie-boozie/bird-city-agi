@@ -1,0 +1,35 @@
+steps:
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - 'gcloud secrets versions access latest --secret=firebase-key --project=$PROJECT_ID > firebase-key.json'
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'europe-west1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/bird-city-agi:$COMMIT_SHA', '.']
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'europe-west1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/bird-city-agi:$COMMIT_SHA']
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'bird-city-agi'
+      - '--image=europe-west1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/bird-city-agi:$COMMIT_SHA'
+      - '--region=europe-west1'
+      - '--allow-unauthenticated'
+      - '--session-affinity'
+      - '--max-instances=1'
+      - '--min-instances=0'
+      - '--no-cpu-throttling'
+      - '--memory=512Mi'
+      - '--port=8080'
+      - '--quiet'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+images:
+  - 'europe-west1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/bird-city-agi:$COMMIT_SHA'

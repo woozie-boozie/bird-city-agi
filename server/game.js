@@ -1,5 +1,5 @@
 const { v4: uuidv4 } = require('crypto');
-const { stmts } = require('./db');
+const { db: firestoreDb } = require('./db');
 const world = require('./world');
 
 function uid() {
@@ -90,6 +90,11 @@ class GameEngine {
     // === TERRITORY CONTROL ===
     this.territories = new Map();  // zoneId -> zone state
     this._initTerritories();
+
+    // === LEADERBOARD CACHE (async Firestore) ===
+    this._cachedLeaderboard = [];
+    this._refreshLeaderboard();
+    this._leaderboardInterval = setInterval(() => this._refreshLeaderboard(), 10000);
 
     // === DAY/NIGHT CYCLE ===
     // 0.0 = early day, 0.3 = dusk, 0.45 = night, 0.75 = dawn, 1.0 = day again
@@ -243,26 +248,28 @@ class GameEngine {
   }
 
   _loadPersistedPoops() {
-    try {
-      const rows = stmts.getPoopsInArea.all(0, world.WORLD_WIDTH, 0, world.WORLD_HEIGHT);
+    firestoreDb.getPoops().then(rows => {
       for (const row of rows) {
-        this.poops.set(row.id, {
-          id: row.id,
-          birdId: row.bird_id,
-          x: row.x,
-          y: row.y,
-          hitTarget: row.hit_target,
-          time: row.created_at * 1000,
-        });
+        if (row.x >= 0 && row.x <= world.WORLD_WIDTH && row.y >= 0 && row.y <= world.WORLD_HEIGHT) {
+          this.poops.set(row.id, {
+            id: row.id,
+            birdId: row.bird_id,
+            x: row.x,
+            y: row.y,
+            hitTarget: row.hit_target,
+            time: row.created_at * 1000,
+          });
+        }
       }
-    } catch (e) {
-      console.log('[GameEngine] No persisted poops to load');
-    }
+      console.log(`[GameEngine] Loaded ${this.poops.size} persisted poops from Firestore`);
+    }).catch(e => {
+      console.log('[GameEngine] No persisted poops to load:', e.message);
+    });
   }
 
-  addBird(id, name) {
+  async addBird(id, name) {
     // Check if returning bird
-    const saved = stmts.getBird.get(id);
+    const saved = await firestoreDb.getBird(id);
 
     const bird = {
       id,
@@ -733,7 +740,7 @@ class GameEngine {
           // Remove the target poop
           if (j.targetPoopId && this.poops.has(j.targetPoopId)) {
             this.poops.delete(j.targetPoopId);
-            try { stmts.deletePoop.run(j.targetPoopId); } catch (e) { /* ignore */ }
+            firestoreDb.deletePoop(j.targetPoopId).catch(e => { /* ignore */ });
             j.poopsCleaned++;
           }
           // Super: AOE clean within 30px
@@ -748,7 +755,7 @@ class GameEngine {
             }
             for (const pid of toDelete) {
               this.poops.delete(pid);
-              try { stmts.deletePoop.run(pid); } catch (e) { /* ignore */ }
+              firestoreDb.deletePoop(pid).catch(e => { /* ignore */ });
               j.poopsCleaned++;
             }
           }
@@ -1684,9 +1691,7 @@ class GameEngine {
       });
 
       // Persist
-      try {
-        stmts.savePoop.run(poopId, bird.id, poop.x, poop.y, hit.target, Math.floor(now / 1000));
-      } catch (e) { /* ignore */ }
+      firestoreDb.savePoop(poopId, bird.id, poop.x, poop.y, hit.target, Math.floor(now / 1000)).catch(e => { /* ignore */ });
     }
 
     // === STEAL FOOD (includes event foods) ===
@@ -2854,7 +2859,11 @@ class GameEngine {
   }
 
   getLeaderboard() {
-    // Live birds + saved birds
+    return this._cachedLeaderboard;
+  }
+
+  _refreshLeaderboard() {
+    // Live birds
     const live = [];
     for (const b of this.birds.values()) {
       live.push({
@@ -2865,9 +2874,7 @@ class GameEngine {
       });
     }
 
-    try {
-      const saved = stmts.getLeaderboard.all();
-      // Merge (prefer live data)
+    firestoreDb.getLeaderboard().then(saved => {
       const liveIds = new Set([...this.birds.values()].map(b => b.name));
       const merged = [...live];
       for (const s of saved) {
@@ -2876,10 +2883,11 @@ class GameEngine {
         }
       }
       merged.sort((a, b) => b.xp - a.xp);
-      return merged.slice(0, 20);
-    } catch (e) {
-      return live.sort((a, b) => b.xp - a.xp).slice(0, 20);
-    }
+      this._cachedLeaderboard = merged.slice(0, 20);
+    }).catch(e => {
+      // Fallback to live data only
+      this._cachedLeaderboard = live.sort((a, b) => b.xp - a.xp).slice(0, 20);
+    });
   }
 
   getStats() {
@@ -2891,28 +2899,26 @@ class GameEngine {
   }
 
   _saveBird(bird) {
-    try {
-      stmts.upsertBird.run({
-        id: bird.id,
-        name: bird.name,
-        type: bird.type,
-        xp: bird.xp,
-        food: bird.food,
-        shiny_things: bird.shinyThings || 0,
-        total_poops: bird.totalPoops,
-        total_steals: bird.totalSteals,
-        total_hits: bird.totalHits,
-        humans_cried: bird.humansCried,
-        last_x: bird.x,
-        last_y: bird.y,
-        coins: bird.coins || 0,
-        owned_skills: JSON.stringify(bird.ownedSkills || ['poop_barrage']),
-        equipped_skills: JSON.stringify(bird.equippedSkills || ['poop_barrage']),
-        bird_color: bird.birdColor || null,
-      });
-    } catch (e) {
+    firestoreDb.upsertBird({
+      id: bird.id,
+      name: bird.name,
+      type: bird.type,
+      xp: bird.xp,
+      food: bird.food,
+      shiny_things: bird.shinyThings || 0,
+      total_poops: bird.totalPoops,
+      total_steals: bird.totalSteals,
+      total_hits: bird.totalHits,
+      humans_cried: bird.humansCried,
+      last_x: bird.x,
+      last_y: bird.y,
+      coins: bird.coins || 0,
+      owned_skills: JSON.stringify(bird.ownedSkills || ['poop_barrage']),
+      equipped_skills: JSON.stringify(bird.equippedSkills || ['poop_barrage']),
+      bird_color: bird.birdColor || null,
+    }).catch(e => {
       console.error('[GameEngine] Failed to save bird:', e.message);
-    }
+    });
   }
 
   saveAll() {
@@ -2920,15 +2926,14 @@ class GameEngine {
       this._saveBird(bird);
     }
     // Clean old poops
-    try {
-      stmts.cleanOldPoops.run();
-    } catch (e) { /* ignore */ }
+    firestoreDb.cleanOldPoops().catch(e => { /* ignore */ });
   }
 
   destroy() {
     clearInterval(this.loop);
     clearInterval(this.saveLoop);
     clearInterval(this.foodRespawn);
+    clearInterval(this._leaderboardInterval);
     this.saveAll();
   }
 
@@ -3056,9 +3061,7 @@ class GameEngine {
         isMegaPoop: false,
       });
 
-      try {
-        stmts.savePoop.run(poopId, bird.id, poop.x, poop.y, hit.target, Math.floor(now / 1000));
-      } catch (e) { /* ignore */ }
+      firestoreDb.savePoop(poopId, bird.id, poop.x, poop.y, hit.target, Math.floor(now / 1000)).catch(e => { /* ignore */ });
     }
 
     // Level check after barrage

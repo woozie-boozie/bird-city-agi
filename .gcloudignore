@@ -1,7 +1,7 @@
 node_modules/
 birdcity.db
-.DS_Store
 birdcity.db-shm
 birdcity.db-wal
-firebase-key.json
+.DS_Store
+.git
 firestore secret key/

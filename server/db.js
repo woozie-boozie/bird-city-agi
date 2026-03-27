@@ -1,67 +1,137 @@
-const Database = require('better-sqlite3');
+const admin = require('firebase-admin');
 const path = require('path');
+const fs = require('fs');
 
-const db = new Database(path.join(__dirname, '..', 'birdcity.db'));
+// Initialize Firebase Admin SDK
+// Priority: FIREBASE_CONFIG env var > ./firebase-key.json > GOOGLE_APPLICATION_CREDENTIALS (ADC)
+let app;
+if (process.env.FIREBASE_CONFIG) {
+  const serviceAccount = JSON.parse(process.env.FIREBASE_CONFIG);
+  app = admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+  });
+} else {
+  const keyPath = path.join(__dirname, '..', 'firebase-key.json');
+  if (fs.existsSync(keyPath)) {
+    const serviceAccount = require(keyPath);
+    app = admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+    });
+  } else {
+    // Fall back to GOOGLE_APPLICATION_CREDENTIALS / ADC
+    app = admin.initializeApp();
+  }
+}
 
-// Enable WAL mode for better concurrent performance
-db.pragma('journal_mode = WAL');
+const firestore = admin.firestore();
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS birds (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    type TEXT DEFAULT 'pigeon',
-    xp INTEGER DEFAULT 0,
-    food INTEGER DEFAULT 0,
-    shiny_things INTEGER DEFAULT 0,
-    total_poops INTEGER DEFAULT 0,
-    total_steals INTEGER DEFAULT 0,
-    total_hits INTEGER DEFAULT 0,
-    humans_cried INTEGER DEFAULT 0,
-    nest_x REAL,
-    nest_y REAL,
-    last_x REAL DEFAULT 1500,
-    last_y REAL DEFAULT 1500,
-    created_at INTEGER DEFAULT (unixepoch()),
-    last_seen INTEGER DEFAULT (unixepoch())
-  );
+const birdsCol = firestore.collection('birds');
+const poopsCol = firestore.collection('poops');
 
-  CREATE TABLE IF NOT EXISTS poops (
-    id TEXT PRIMARY KEY,
-    bird_id TEXT,
-    x REAL NOT NULL,
-    y REAL NOT NULL,
-    hit_target TEXT,
-    created_at INTEGER DEFAULT (unixepoch())
-  );
+const db = {
+  /**
+   * Get a bird document by id. Returns object with SQLite-compatible field names, or null.
+   */
+  async getBird(id) {
+    const doc = await birdsCol.doc(id).get();
+    if (!doc.exists) return null;
+    return doc.data();
+  },
 
-  CREATE INDEX IF NOT EXISTS idx_poops_pos ON poops(x, y);
-`);
+  /**
+   * Upsert (set with merge) a bird document.
+   * Data should include { id, name, type, xp, food, shiny_things, ... }
+   */
+  async upsertBird(data) {
+    const id = data.id;
+    const docData = {
+      name: data.name,
+      type: data.type,
+      xp: data.xp,
+      food: data.food,
+      shiny_things: data.shiny_things,
+      total_poops: data.total_poops,
+      total_steals: data.total_steals,
+      total_hits: data.total_hits,
+      humans_cried: data.humans_cried,
+      last_x: data.last_x,
+      last_y: data.last_y,
+      coins: data.coins,
+      owned_skills: data.owned_skills,
+      equipped_skills: data.equipped_skills,
+      bird_color: data.bird_color,
+      last_seen: Math.floor(Date.now() / 1000),
+    };
+    await birdsCol.doc(id).set(docData, { merge: true });
+  },
 
-// Add new columns for skill system
-try { db.exec('ALTER TABLE birds ADD COLUMN coins INTEGER DEFAULT 0'); } catch(e) {}
-try { db.exec('ALTER TABLE birds ADD COLUMN owned_skills TEXT DEFAULT \'["poop_barrage"]\''); } catch(e) {}
-try { db.exec('ALTER TABLE birds ADD COLUMN equipped_skills TEXT DEFAULT \'["poop_barrage"]\''); } catch(e) {}
-try { db.exec('ALTER TABLE birds ADD COLUMN bird_color TEXT DEFAULT NULL'); } catch(e) {}
+  /**
+   * Save a poop document.
+   */
+  async savePoop(id, birdId, x, y, hitTarget, createdAt) {
+    await poopsCol.doc(id).set({
+      bird_id: birdId,
+      x: x,
+      y: y,
+      hit_target: hitTarget || null,
+      created_at: createdAt,
+    });
+  },
 
-const stmts = {
-  getBird: db.prepare('SELECT * FROM birds WHERE id = ?'),
-  upsertBird: db.prepare(`
-    INSERT INTO birds (id, name, type, xp, food, shiny_things, total_poops, total_steals, total_hits, humans_cried, last_x, last_y, coins, owned_skills, equipped_skills, bird_color, last_seen)
-    VALUES (@id, @name, @type, @xp, @food, @shiny_things, @total_poops, @total_steals, @total_hits, @humans_cried, @last_x, @last_y, @coins, @owned_skills, @equipped_skills, @bird_color, unixepoch())
-    ON CONFLICT(id) DO UPDATE SET
-      name=@name, type=@type, xp=@xp, food=@food, shiny_things=@shiny_things,
-      total_poops=@total_poops, total_steals=@total_steals, total_hits=@total_hits,
-      humans_cried=@humans_cried, last_x=@last_x, last_y=@last_y,
-      coins=@coins, owned_skills=@owned_skills, equipped_skills=@equipped_skills, bird_color=@bird_color,
-      last_seen=unixepoch()
-  `),
-  savePoop: db.prepare('INSERT OR IGNORE INTO poops (id, bird_id, x, y, hit_target, created_at) VALUES (?, ?, ?, ?, ?, ?)'),
-  getPoopsInArea: db.prepare('SELECT * FROM poops WHERE x BETWEEN ? AND ? AND y BETWEEN ? AND ?'),
-  getLeaderboard: db.prepare('SELECT name, type, total_poops, total_steals, total_hits, humans_cried, xp FROM birds ORDER BY xp DESC LIMIT 20'),
-  getPoopCount: db.prepare('SELECT COUNT(*) as count FROM poops'),
-  cleanOldPoops: db.prepare('DELETE FROM poops WHERE created_at < unixepoch() - 86400'), // clean poops older than 24h
-  deletePoop: db.prepare('DELETE FROM poops WHERE id = ?'),
+  /**
+   * Get all poops.
+   */
+  async getPoops() {
+    const snapshot = await poopsCol.get();
+    const poops = [];
+    snapshot.forEach(doc => {
+      poops.push({ id: doc.id, ...doc.data() });
+    });
+    return poops;
+  },
+
+  /**
+   * Delete a poop by id.
+   */
+  async deletePoop(id) {
+    await poopsCol.doc(id).delete();
+  },
+
+  /**
+   * Get top 20 birds by XP (leaderboard).
+   */
+  async getLeaderboard() {
+    const snapshot = await birdsCol.orderBy('xp', 'desc').limit(20).get();
+    const results = [];
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      results.push({
+        name: data.name,
+        type: data.type,
+        total_poops: data.total_poops || 0,
+        total_steals: data.total_steals || 0,
+        total_hits: data.total_hits || 0,
+        humans_cried: data.humans_cried || 0,
+        xp: data.xp || 0,
+      });
+    });
+    return results;
+  },
+
+  /**
+   * Delete poops older than 24 hours.
+   */
+  async cleanOldPoops() {
+    const cutoff = Math.floor(Date.now() / 1000) - 86400;
+    const snapshot = await poopsCol.where('created_at', '<', cutoff).get();
+    const batch = firestore.batch();
+    snapshot.forEach(doc => {
+      batch.delete(doc.ref);
+    });
+    if (!snapshot.empty) {
+      await batch.commit();
+    }
+  },
 };
 
-module.exports = { db, stmts };
+module.exports = { db };

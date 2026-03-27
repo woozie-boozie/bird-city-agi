@@ -44,7 +44,7 @@ const socketToBird = new Map();
 io.on('connection', (socket) => {
   console.log(`[Socket] Connected: ${socket.id}`);
 
-  socket.on('join', (data) => {
+  socket.on('join', async (data) => {
     // Use persistent ID from client, or generate one
     const persistentId = (data.id && typeof data.id === 'string' && data.id.length >= 8 && data.id.length <= 40)
       ? data.id
@@ -60,7 +60,7 @@ io.on('connection', (socket) => {
     }
 
     socketToBird.set(socket.id, persistentId);
-    const bird = game.addBird(persistentId, name);
+    const bird = await game.addBird(persistentId, name);
 
     socket.emit('welcome', {
       id: persistentId,
