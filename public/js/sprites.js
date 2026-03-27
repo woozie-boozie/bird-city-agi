@@ -1586,4 +1586,169 @@ window.Sprites = {
       ctx.restore();
     }
   },
+
+  // ================================================================
+  // COP BIRD — Blue uniform pigeon with badge and siren light
+  // ================================================================
+  drawCopBird(ctx, x, y, rotation, type, state, now) {
+    const isSWAT = type === 'swat';
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rotation);
+
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    ctx.beginPath();
+    ctx.ellipse(2, 5, isSWAT ? 13 : 11, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Wings (spread slightly — cop birds fly purposefully)
+    const wingFlap = Math.sin(now * 0.015) * 0.3;
+    ctx.fillStyle = isSWAT ? '#1a1a2e' : '#1a3a6e';
+    // Left wing
+    ctx.save();
+    ctx.translate(-4, 0);
+    ctx.rotate(-0.4 + wingFlap);
+    ctx.beginPath();
+    ctx.ellipse(-6, 0, isSWAT ? 10 : 8, 4, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    // Right wing
+    ctx.save();
+    ctx.translate(-4, 0);
+    ctx.rotate(0.4 - wingFlap);
+    ctx.beginPath();
+    ctx.ellipse(-6, 0, isSWAT ? 10 : 8, 4, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Body — police blue (SWAT: black tactical)
+    ctx.fillStyle = isSWAT ? '#0d0d1a' : '#1e4080';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, isSWAT ? 11 : 9, isSWAT ? 8 : 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Chest badge (gold star shape)
+    ctx.fillStyle = '#ffd700';
+    ctx.beginPath();
+    // Simple star: 5 points
+    for (let i = 0; i < 5; i++) {
+      const a = (i * 4 * Math.PI / 5) - Math.PI / 2;
+      const ai = (i * 4 * Math.PI / 5 + 2 * Math.PI / 5) - Math.PI / 2;
+      if (i === 0) ctx.moveTo(Math.cos(a) * 4, Math.sin(a) * 4);
+      else ctx.lineTo(Math.cos(a) * 4, Math.sin(a) * 4);
+      ctx.lineTo(Math.cos(ai) * 2, Math.sin(ai) * 2);
+    }
+    ctx.closePath();
+    ctx.fill();
+
+    // Head
+    ctx.fillStyle = isSWAT ? '#222' : '#2a5298';
+    ctx.beginPath();
+    ctx.arc(7, 0, isSWAT ? 6 : 5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Police cap / SWAT helmet
+    if (isSWAT) {
+      // Tactical helmet — dark with visor
+      ctx.fillStyle = '#111';
+      ctx.beginPath();
+      ctx.arc(7, -1, 6, Math.PI, 0);
+      ctx.fill();
+      ctx.fillStyle = '#2a4a6a';
+      ctx.beginPath();
+      ctx.arc(7, 1, 4, Math.PI, 0);
+      ctx.fill();
+    } else {
+      // Classic police cap
+      ctx.fillStyle = '#0a2060';
+      ctx.beginPath();
+      ctx.arc(7, -1, 5, Math.PI, 0);
+      ctx.fill();
+      // Cap brim
+      ctx.fillStyle = '#08174a';
+      ctx.beginPath();
+      ctx.rect(3, -1, 8, 2);
+      ctx.fill();
+      // Cap badge dot
+      ctx.fillStyle = '#ffd700';
+      ctx.beginPath();
+      ctx.arc(7, -2, 1.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Eye (beady, determined)
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(10, -1, 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.arc(10.5, -1, 1, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Beak (sharp)
+    ctx.fillStyle = '#e8a000';
+    ctx.beginPath();
+    ctx.moveTo(12, -1);
+    ctx.lineTo(16, 0);
+    ctx.lineTo(12, 1);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.restore();
+
+    // === Siren light on top (flashing red/blue) ===
+    if (state !== 'stunned') {
+      const sirenT = (now * 0.008) % (Math.PI * 2);
+      const sirenOn = Math.sin(sirenT) > 0;
+      const sirenColor = sirenOn ? 'rgba(255,50,50,0.85)' : 'rgba(50,100,255,0.85)';
+
+      // Siren glow
+      const sirenGlow = ctx.createRadialGradient(x, y - 14, 0, x, y - 14, 12);
+      sirenGlow.addColorStop(0, sirenColor);
+      sirenGlow.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.save();
+      ctx.globalAlpha = 0.7;
+      ctx.fillStyle = sirenGlow;
+      ctx.beginPath();
+      ctx.arc(x, y - 14, 12, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      // Siren dot
+      ctx.save();
+      ctx.fillStyle = sirenColor;
+      ctx.beginPath();
+      ctx.arc(x, y - 14, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Stunned: ZZZ effect
+    if (state === 'stunned') {
+      ctx.save();
+      ctx.font = 'bold 10px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#ffff00';
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 2;
+      const stunBob = Math.sin(now * 0.005) * 3;
+      ctx.strokeText('💫', x, y - 22 + stunBob);
+      ctx.fillText('💫', x, y - 22 + stunBob);
+      ctx.restore();
+    }
+
+    // Label
+    ctx.save();
+    ctx.font = 'bold 9px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = isSWAT ? '#ff3333' : '#4488ff';
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 2;
+    const label = isSWAT ? 'S.W.A.T.' : 'COP';
+    ctx.strokeText(label, x, y - 24);
+    ctx.fillText(label, x, y - 24);
+    ctx.restore();
+  },
 };

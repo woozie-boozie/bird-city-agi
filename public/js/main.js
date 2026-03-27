@@ -58,6 +58,7 @@
   const iosPrompt = document.getElementById('iosPrompt');
   const iosPromptClose = document.getElementById('iosPromptClose');
   const soundToggle = document.getElementById('soundToggle');
+  const wantedHud = document.getElementById('wantedHud');
 
   // === Persistent Identity (localStorage) ===
   function getSavedAccount() {
@@ -224,6 +225,7 @@
       if (chaosBar) chaosBar.style.display = 'block';
       const todHud = document.getElementById('timeOfDayHud');
       if (todHud) todHud.style.display = 'block';
+      if (wantedHud) wantedHud.style.display = 'none'; // only shown when wanted level > 0
 
       if (!isTouchDevice) {
         poopCooldown.style.display = 'block';
@@ -656,16 +658,65 @@
 
     // === WANTED EVENTS ===
     if (ev.type === 'wanted_new') {
+      const stars = '⭐'.repeat(ev.level || 1);
       if (ev.birdId === myId) {
-        showAnnouncement('YOU ARE NOW WANTED! +50% XP!', '#ff0000', 3000);
+        showAnnouncement('YOU ARE WANTED! ' + stars, '#ff0000', 3000);
       } else {
-        showAnnouncement(ev.birdName + ' IS NOW WANTED!', '#ff6600', 3000);
+        showAnnouncement(ev.birdName + ' IS WANTED! ' + stars, '#ff6600', 3000);
       }
-      addEventMessage(ev.birdName + ' is WANTED!', '#ff6600');
+      addEventMessage(ev.birdName + ' is WANTED ' + stars, '#ff6600');
+    }
+    if (ev.type === 'wanted_level_up') {
+      const stars = '⭐'.repeat(ev.level);
+      if (ev.birdId === myId) {
+        showAnnouncement('HEAT RISING! ' + stars + ' COPS INCOMING!', '#ff0000', 3000);
+      } else {
+        addEventMessage(ev.birdName + ' heat rising ' + stars, '#ff6600');
+      }
+    }
+    if (ev.type === 'wanted_level5') {
+      if (ev.birdId === myId) {
+        showAnnouncement('⭐⭐⭐⭐⭐ MOST WANTED! SWAT IS COMING!', '#ff0000', 4000);
+      } else {
+        showAnnouncement(ev.birdName + ' IS MOST WANTED! ⭐⭐⭐⭐⭐', '#ff4400', 3000);
+        addEventMessage('🚨 ' + ev.birdName + ' is MOST WANTED! SWAT deployed!', '#ff4400');
+      }
+    }
+    if (ev.type === 'wanted_escaped') {
+      if (ev.birdId === myId) {
+        showAnnouncement('YOU ESCAPED THE LAW! 🎉', '#4ade80', 3000);
+      } else {
+        addEventMessage(ev.birdName + ' escaped the cops!', '#4ade80');
+      }
+    }
+    if (ev.type === 'wanted_survival') {
+      if (ev.birdId === myId) {
+        addEventMessage('Surviving the heat! ⭐' + ev.level + ' bonus XP!', '#ffd700');
+      }
     }
     if (ev.type === 'wanted_tagged') {
-      showAnnouncement(ev.taggerName + ' TAGGED ' + ev.wantedName + '!', '#4ade80', 2000);
-      addEventMessage(ev.taggerName + ' tagged ' + ev.wantedName + ' for 15 coins!', '#4ade80');
+      const bountyText = ev.bounty ? ' (' + ev.bounty + ' coins!)' : '';
+      showAnnouncement(ev.taggerName + ' TAGGED ' + ev.wantedName + '!' + bountyText, '#4ade80', 2500);
+      addEventMessage(ev.taggerName + ' tagged ' + ev.wantedName + ' for ' + (ev.bounty || 15) + ' coins!', '#4ade80');
+    }
+    if (ev.type === 'cop_spawn') {
+      if (gameState && gameState.self && gameState.self.isWanted) {
+        addEventMessage((ev.copType === 'swat' ? '🦅 SWAT crow deployed!' : '🐦 Cop pigeon on duty!'), '#4488ff');
+      }
+    }
+    if (ev.type === 'cop_arrest') {
+      if (ev.birdId === myId) {
+        showAnnouncement('BUSTED! -' + ev.coinsStolen + ' COINS!', '#ff0000', 3000);
+      } else {
+        addEventMessage(ev.birdName + ' got busted! -' + ev.coinsStolen + ' coins', '#ff4444');
+      }
+    }
+    if (ev.type === 'cop_pooped') {
+      if (ev.birdId === myId) {
+        showAnnouncement('COP STUNNED! RUN!', '#4ade80', 2000);
+      } else {
+        addEventMessage(ev.birdName + ' stunned a ' + (ev.copType === 'swat' ? 'SWAT crow' : 'cop') + '!', '#4ade80');
+      }
     }
 
     // === FOOD TRUCK EVENTS ===
@@ -1264,6 +1315,25 @@
       todHud.style.color = phaseColors[gameState.dayPhase] || '#ffffff';
       todHud.style.borderColor = (phaseColors[gameState.dayPhase] || '#ffffff') + '44';
       todHud.textContent = emoji + ' ' + timeStr;
+    }
+
+    // Wanted Level HUD (star meter for this player)
+    if (wantedHud && gameState.self) {
+      const wLevel = gameState.self.wantedLevel || 0;
+      if (wLevel === 0) {
+        wantedHud.style.display = 'none';
+      } else {
+        wantedHud.style.display = 'block';
+        const stars = '⭐'.repeat(wLevel) + '☆'.repeat(5 - wLevel);
+        const labels = ['', 'WATCHED', 'PURSUIT', 'WANTED', 'DANGEROUS', 'MOST WANTED'];
+        const colors = ['', '#ffff88', '#ffaa44', '#ff6644', '#ff3322', '#ff0000'];
+        wantedHud.style.color = colors[wLevel];
+        wantedHud.style.borderColor = colors[wLevel] + '99';
+        wantedHud.className = wLevel >= 5 ? 'level5' : '';
+        const copCount = gameState.cops ? gameState.cops.length : 0;
+        const copText = copCount > 0 ? ' 🚔' + copCount : '';
+        wantedHud.textContent = '🚨 ' + stars + ' ' + labels[wLevel] + copText;
+      }
     }
 
     // Skill cooldown display (desktop) - show first equipped skill
@@ -2031,6 +2101,17 @@
       }
     }
 
+    // Cop Birds (wanted system enforcement)
+    if (gameState.cops) {
+      for (const cop of gameState.cops) {
+        const sx = cop.x - camera.x + camera.screenW / 2;
+        const sy = cop.y - camera.y + camera.screenH / 2;
+        if (sx > -margin - 30 && sx < camera.screenW + margin + 30 && sy > -margin - 30 && sy < camera.screenH + margin + 30) {
+          Sprites.drawCopBird(ctx, sx, sy, cop.rotation, cop.type, cop.state, now);
+        }
+      }
+    }
+
     // Buildings & trees on top
     Renderer.drawBuildings(ctx, camera);
     Renderer.drawTrees(ctx, camera);
@@ -2212,6 +2293,21 @@
         minimapCtx.textAlign = 'center';
         minimapCtx.fillStyle = '#ff0000';
         minimapCtx.fillText('W', wanted.x * msx, wanted.y * msy - 5);
+      }
+    }
+
+    // Draw cop birds on minimap (blue/red flashing dots)
+    if (gameState.cops && gameState.cops.length > 0 && worldData) {
+      const mw = minimapCtx.canvas.width;
+      const mh = minimapCtx.canvas.height;
+      const msx = mw / worldData.width;
+      const msy = mh / worldData.height;
+      const copFlash = Math.sin(performance.now() * 0.01) > 0;
+      for (const cop of gameState.cops) {
+        minimapCtx.fillStyle = cop.type === 'swat' ? (copFlash ? '#ff3333' : '#ff9900') : (copFlash ? '#4488ff' : '#ff3333');
+        minimapCtx.beginPath();
+        minimapCtx.arc(cop.x * msx, cop.y * msy, cop.type === 'swat' ? 3.5 : 2.5, 0, Math.PI * 2);
+        minimapCtx.fill();
       }
     }
 

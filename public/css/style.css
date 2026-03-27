@@ -1429,3 +1429,30 @@ html, body {
   white-space: nowrap;
   text-shadow: 0 1px 3px rgba(0,0,0,0.8);
 }
+
+#wantedHud {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  background: rgba(0, 0, 0, 0.7);
+  border: 2px solid rgba(255, 50, 50, 0.6);
+  border-radius: 10px;
+  padding: 4px 10px;
+  color: #fff;
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
+  font-weight: bold;
+  pointer-events: none;
+  z-index: 50;
+  white-space: nowrap;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+  transition: border-color 0.3s;
+}
+#wantedHud.level5 {
+  border-color: rgba(255, 50, 50, 1);
+  animation: wantedPulse 0.5s ease-in-out infinite alternate;
+}
+@keyframes wantedPulse {
+  from { box-shadow: 0 0 6px rgba(255, 0, 0, 0.5); }
+  to   { box-shadow: 0 0 18px rgba(255, 0, 0, 0.9); }
+}

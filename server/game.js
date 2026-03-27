@@ -54,10 +54,15 @@ class GameEngine {
     this.bossSpawnTimer = Date.now() + this._randomRange(300000, 480000); // 5-8 min
 
     // === WANTED SYSTEM ===
-    this.heatScores = new Map();      // birdId -> heat number
-    this.wantedBirdId = null;
+    this.heatScores = new Map();      // birdId -> heat number (0-250+)
+    this.wantedBirdId = null;         // bird with highest heat (>= level 1)
     this.lastWantedCheck = Date.now();
     this.lastHeatDecay = Date.now();
+    this.lastSurvivalXp = Date.now(); // timer for high-heat survival XP
+    this.copBirds = new Map();        // id -> cop bird NPC state
+    // Heat thresholds: level 1-5
+    // 10 = ⭐, 25 = ⭐⭐ (1 cop), 50 = ⭐⭐⭐ (2 cops), 100 = ⭐⭐⭐⭐ (3 cops + SWAT), 200 = ⭐⭐⭐⭐⭐ (SWAT hawk + bounty)
+    this.WANTED_THRESHOLDS = [10, 25, 50, 100, 200];
 
     // === FOOD TRUCK ===
     this.foodTruck = null;
@@ -465,6 +470,7 @@ class GameEngine {
 
     // === Wanted System ===
     this._updateWanted(dt, now);
+    this._updateCopBirds(dt, now);
 
     // === Food Truck ===
     this._updateFoodTruck(dt, now);
@@ -1574,6 +1580,15 @@ class GameEngine {
         r.targetY = fleeToEdge.y;
         this.events.push({ type: 'raccoon_flee', raccoonId: r.id, x: r.x, y: r.y, birdId: bird.id, birdName: bird.name });
         bird.coins += 10; // bonus coins for stopping a thief
+      } else if (hit.target === 'cop' && hit.cop) {
+        // Poop hit a cop bird! Stun it — daring escape move
+        const cop = hit.cop;
+        const stunDuration = cop.type === 'swat' ? 3000 : 5000; // SWAT shrug it off faster
+        cop.state = 'stunned';
+        cop.stunnedUntil = now + stunDuration;
+        xpGain = cop.type === 'swat' ? 80 : 50;
+        bird.coins += cop.type === 'swat' ? 25 : 15;
+        this.events.push({ type: 'cop_pooped', birdId: bird.id, birdName: bird.name, copType: cop.type, x: cop.x, y: cop.y });
       }
 
       // Mega poop hits multiple targets
@@ -1885,6 +1900,17 @@ class GameEngine {
       if (Math.sqrt(dx * dx + dy * dy) < hitRadius + 4) {
         if (!isMegaPoop) return { target: 'raccoon', raccoon };
         allHits.push({ target: 'raccoon', raccoon });
+      }
+    }
+
+    // Check cop birds (can be stunned by poop — daring escape mechanic!)
+    for (const cop of this.copBirds.values()) {
+      if (cop.state === 'stunned') continue; // already stunned
+      const dx = poop.x - cop.x;
+      const dy = poop.y - cop.y;
+      if (Math.sqrt(dx * dx + dy * dy) < hitRadius + 5) {
+        if (!isMegaPoop) return { target: 'cop', cop };
+        allHits.push({ target: 'cop', cop });
       }
     }
 
@@ -2720,6 +2746,21 @@ class GameEngine {
       }
     }
 
+    // Cop birds — all visible city-wide (sirens make them visible from afar)
+    const nearbyCops = [];
+    for (const cop of this.copBirds.values()) {
+      nearbyCops.push({
+        id: cop.id, x: cop.x, y: cop.y, rotation: cop.rotation,
+        type: cop.type,
+        state: cop.state,
+        sirensPhase: cop.sirensPhase,
+      });
+    }
+
+    // Wanted level for this specific bird
+    const myHeat = this.heatScores.get(bird.id) || 0;
+    const myWantedLevel = this._getWantedLevel(myHeat);
+
     return {
       birds: nearbyBirds,
       poops: nearbyPoops,
@@ -2740,6 +2781,7 @@ class GameEngine {
       wantedBirdId: this.wantedBirdId,
       foodTruck: foodTruckState,
       raccoons: nearbyRaccoons,
+      cops: nearbyCops,
       weather: this.weather ? {
         type: this.weather.type,
         intensity: this.weather.intensity,
@@ -2792,6 +2834,7 @@ class GameEngine {
         activeMission: activeMissionState,
         // Wanted/heat
         heat: this.heatScores.get(bird.id) || 0,
+        wantedLevel: myWantedLevel,
         isWanted: this.wantedBirdId === bird.id,
         // Skill system
         coins: bird.coins,
@@ -3584,12 +3627,44 @@ class GameEngine {
     this.heatScores.set(birdId, current + amount);
   }
 
+  // Returns 0-5 star wanted level for a given heat value
+  _getWantedLevel(heat) {
+    if (heat >= this.WANTED_THRESHOLDS[4]) return 5;
+    if (heat >= this.WANTED_THRESHOLDS[3]) return 4;
+    if (heat >= this.WANTED_THRESHOLDS[2]) return 3;
+    if (heat >= this.WANTED_THRESHOLDS[1]) return 2;
+    if (heat >= this.WANTED_THRESHOLDS[0]) return 1;
+    return 0;
+  }
+
+  // How many cop birds should be active for a given star level
+  _targetCopCount(level) {
+    if (level >= 5) return 4; // 3 cops + 1 SWAT
+    if (level >= 4) return 3; // 2 cops + 1 SWAT
+    if (level >= 3) return 2;
+    if (level >= 2) return 1;
+    return 0;
+  }
+
   _updateWanted(dt, now) {
-    // Decay heat: -1 per 5 seconds
+    // Decay heat: -2 per 5 seconds (faster when no cops nearby — escaping reduces heat)
     if (now - this.lastHeatDecay > 5000) {
       this.lastHeatDecay = now;
       for (const [birdId, heat] of this.heatScores) {
-        const newHeat = heat - 1;
+        // Faster decay when wanted bird has escaped (no cop within 300px)
+        let decayAmount = 2;
+        const bird = this.birds.get(birdId);
+        if (bird) {
+          let nearestCop = Infinity;
+          for (const cop of this.copBirds.values()) {
+            if (cop.targetBirdId !== birdId) continue;
+            const cdx = cop.x - bird.x;
+            const cdy = cop.y - bird.y;
+            nearestCop = Math.min(nearestCop, Math.sqrt(cdx * cdx + cdy * cdy));
+          }
+          if (nearestCop > 300) decayAmount = 4; // bonus decay when evaded
+        }
+        const newHeat = heat - decayAmount;
         if (newHeat <= 0) {
           this.heatScores.delete(birdId);
         } else {
@@ -3598,8 +3673,8 @@ class GameEngine {
       }
     }
 
-    // Check wanted status every 5 seconds
-    if (now - this.lastWantedCheck > 5000) {
+    // Check wanted status every 2 seconds (more responsive level changes)
+    if (now - this.lastWantedCheck > 2000) {
       this.lastWantedCheck = now;
       let maxHeat = 0;
       let maxBirdId = null;
@@ -3609,12 +3684,37 @@ class GameEngine {
           maxBirdId = birdId;
         }
       }
-      const newWanted = (maxHeat >= 20) ? maxBirdId : null;
+      const newWanted = (maxHeat >= this.WANTED_THRESHOLDS[0]) ? maxBirdId : null;
+
+      // Level-up announcements
+      if (newWanted && newWanted === this.wantedBirdId) {
+        const bird = this.birds.get(newWanted);
+        const newLevel = this._getWantedLevel(maxHeat);
+        const oldLevel = this._getWantedLevel(maxHeat - 2); // approximate prev
+        if (newLevel > oldLevel && newLevel >= 2) {
+          this.events.push({ type: 'wanted_level_up', birdId: newWanted, birdName: bird ? bird.name : '???', level: newLevel });
+        }
+      }
+
       if (newWanted !== this.wantedBirdId) {
+        const prevWanted = this.wantedBirdId;
         this.wantedBirdId = newWanted;
         if (newWanted) {
           const bird = this.birds.get(newWanted);
-          this.events.push({ type: 'wanted_new', birdId: newWanted, birdName: bird ? bird.name : '???' });
+          const level = this._getWantedLevel(maxHeat);
+          this.events.push({ type: 'wanted_new', birdId: newWanted, birdName: bird ? bird.name : '???', level });
+          if (level >= 5) {
+            // Level 5: announce bounty to all players
+            this.events.push({ type: 'wanted_level5', birdId: newWanted, birdName: bird ? bird.name : '???' });
+          }
+        } else if (prevWanted) {
+          // Wanted cleared — announce escape
+          const bird = this.birds.get(prevWanted);
+          if (bird) {
+            this.events.push({ type: 'wanted_escaped', birdId: prevWanted, birdName: bird.name });
+          }
+          // Despawn all cop birds
+          this.copBirds.clear();
         }
       }
     }
@@ -3624,20 +3724,165 @@ class GameEngine {
       const wanted = this.birds.get(this.wantedBirdId);
       if (!wanted) {
         this.wantedBirdId = null;
+        this.copBirds.clear();
         return;
       }
+      const wantedHeat = this.heatScores.get(this.wantedBirdId) || 0;
+      const wantedLevel = this._getWantedLevel(wantedHeat);
+      // Bounty scales with level: 15 + 25*level coins
+      const bounty = 15 + 25 * wantedLevel;
       for (const bird of this.birds.values()) {
         if (bird.id === this.wantedBirdId) continue;
         if (!bird.input.e) continue;
         const dx = bird.x - wanted.x;
         const dy = bird.y - wanted.y;
         if (Math.sqrt(dx * dx + dy * dy) < 30) {
-          bird.coins += 15;
-          this.events.push({ type: 'wanted_tagged', taggerId: bird.id, wantedId: this.wantedBirdId, taggerName: bird.name, wantedName: wanted.name });
+          bird.coins += bounty;
+          bird.xp += 50 + wantedLevel * 20;
+          this.events.push({ type: 'wanted_tagged', taggerId: bird.id, wantedId: this.wantedBirdId, taggerName: bird.name, wantedName: wanted.name, bounty });
           this.heatScores.delete(this.wantedBirdId);
           this.wantedBirdId = null;
+          this.copBirds.clear();
           break;
         }
+      }
+
+      // Survival XP: reward the wanted bird for staying alive at high heat
+      if (this.wantedBirdId && wantedLevel >= 3 && now - this.lastSurvivalXp > 10000) {
+        this.lastSurvivalXp = now;
+        wanted.xp += wantedLevel * 15;
+        wanted.coins += wantedLevel * 5;
+        this.events.push({ type: 'wanted_survival', birdId: wanted.id, level: wantedLevel });
+      }
+    }
+  }
+
+  // ============================================================
+  // COP BIRDS (spawned by wanted system)
+  // ============================================================
+  _spawnCopBird(targetBirdId, type) {
+    // Spawn from a random map edge
+    const target = this.birds.get(targetBirdId);
+    if (!target) return;
+    // Pick a spawn point 400-600px away from target, on a road
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 450 + Math.random() * 150;
+    const x = Math.max(50, Math.min(world.WORLD_WIDTH - 50, target.x + Math.cos(angle) * dist));
+    const y = Math.max(50, Math.min(world.WORLD_HEIGHT - 50, target.y + Math.sin(angle) * dist));
+    const id = 'cop_' + uid();
+    const isSWAT = type === 'swat';
+    const cop = {
+      id, x, y,
+      type,          // 'cop' | 'swat'
+      rotation: Math.atan2(target.y - y, target.x - x),
+      speed: isSWAT ? 145 : 110,
+      state: 'pursuing',   // 'pursuing' | 'stunned'
+      stunnedUntil: 0,
+      targetBirdId,
+      spawnedAt: Date.now(),
+      sirensPhase: Math.random() * Math.PI * 2, // for flashing light animation
+    };
+    this.copBirds.set(id, cop);
+    this.events.push({ type: 'cop_spawn', copType: type, x, y });
+  }
+
+  _updateCopBirds(dt, now) {
+    if (!this.wantedBirdId) {
+      // No wanted bird — clear all cops
+      if (this.copBirds.size > 0) this.copBirds.clear();
+      return;
+    }
+
+    const wantedHeat = this.heatScores.get(this.wantedBirdId) || 0;
+    const wantedLevel = this._getWantedLevel(wantedHeat);
+    const targetCount = this._targetCopCount(wantedLevel);
+
+    // Count current cops (excluding stunned-for-good ones)
+    const activeCops = Array.from(this.copBirds.values()).filter(c => c.targetBirdId === this.wantedBirdId);
+
+    // Spawn more cops if needed (one every 5s max to avoid flooding)
+    if (activeCops.length < targetCount) {
+      const lastSpawn = this._lastCopSpawn || 0;
+      if (now - lastSpawn > 5000) {
+        this._lastCopSpawn = now;
+        // Decide type: SWAT crow for level 4+
+        const needSWAT = wantedLevel >= 4 && !activeCops.some(c => c.type === 'swat');
+        this._spawnCopBird(this.wantedBirdId, needSWAT ? 'swat' : 'cop');
+      }
+    }
+
+    // Remove excess cops if wanted level dropped
+    const copList = Array.from(this.copBirds.entries());
+    if (activeCops.length > targetCount) {
+      // Despawn slowest cops first
+      let toRemove = activeCops.length - targetCount;
+      for (const [id] of copList) {
+        if (toRemove <= 0) break;
+        this.copBirds.delete(id);
+        toRemove--;
+      }
+    }
+
+    // Update each cop
+    const wanted = this.birds.get(this.wantedBirdId);
+    if (!wanted) {
+      this.copBirds.clear();
+      return;
+    }
+    for (const [copId, cop] of this.copBirds) {
+
+      // Stunned state
+      if (cop.state === 'stunned') {
+        if (now >= cop.stunnedUntil) {
+          cop.state = 'pursuing';
+        } else {
+          continue;
+        }
+      }
+
+      // Pursue wanted bird
+      const dx = wanted.x - cop.x;
+      const dy = wanted.y - cop.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      if (dist > 1) {
+        cop.x += (dx / dist) * cop.speed * dt;
+        cop.y += (dy / dist) * cop.speed * dt;
+        cop.rotation = Math.atan2(dy, dx);
+      }
+
+      cop.x = Math.max(10, Math.min(world.WORLD_WIDTH - 10, cop.x));
+      cop.y = Math.max(10, Math.min(world.WORLD_HEIGHT - 10, cop.y));
+
+      // Arrest: cop catches wanted bird (within 18px, bird not already stunned)
+      if (dist < 18 && wanted.stunnedUntil <= now) {
+        const arrestDuration = cop.type === 'swat' ? 4000 : 2500;
+        wanted.stunnedUntil = now + arrestDuration;
+
+        // Steal coins (25% of coins, min 5)
+        const stolen = Math.max(5, Math.floor(wanted.coins * 0.25));
+        wanted.coins = Math.max(0, wanted.coins - stolen);
+
+        // Remove a big chunk of heat
+        const currentHeat = this.heatScores.get(wanted.id) || 0;
+        const newHeat = Math.max(0, currentHeat - 40);
+        if (newHeat <= 0) {
+          this.heatScores.delete(wanted.id);
+        } else {
+          this.heatScores.set(wanted.id, newHeat);
+        }
+
+        this.events.push({
+          type: 'cop_arrest',
+          birdId: wanted.id, birdName: wanted.name,
+          copType: cop.type,
+          coinsStolen: stolen,
+          x: cop.x, y: cop.y,
+        });
+
+        // After arrest cop goes off-duty for 8s
+        cop.state = 'stunned';
+        cop.stunnedUntil = now + 8000;
       }
     }
   }
