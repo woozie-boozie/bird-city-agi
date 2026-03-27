@@ -137,6 +137,17 @@
   let lastNearDateCenter = false;
   let flockLobbyVisible = false;
 
+  // Black Market state
+  let bmShopOpen = false;
+  let lastNearBlackMarket = false;
+  const BM_CATALOG = [
+    { id: 'speed_serum',  name: 'Speed Serum',   desc: '+60% speed for 30s',           cost: 50,  emoji: '💉' },
+    { id: 'mega_poop',    name: 'Mega Poop',      desc: 'Next 3 poops are AOE blasts',  cost: 75,  emoji: '💣' },
+    { id: 'disguise_kit', name: 'Disguise Kit',   desc: 'Clears ALL heat instantly',    cost: 100, emoji: '🎭' },
+    { id: 'smoke_bomb',   name: 'Smoke Bomb',     desc: 'Cops lose you for 15 seconds', cost: 80,  emoji: '💨' },
+    { id: 'lucky_charm',  name: 'Lucky Charm',    desc: '2x XP for 5 full minutes',     cost: 150, emoji: '🍀' },
+  ];
+
   // Bird Home UI state
   let birdHomeVisible = false;
   let activeEquipSlot = 0;
@@ -740,6 +751,26 @@
       }
     }
 
+    // === BLACK MARKET EVENTS ===
+    if (ev.type === 'blackmarket_open') {
+      addEventMessage('🐀 The Black Market is OPEN! Dark alley near Cafe District. Press B nearby.', '#cc44ff');
+    }
+    if (ev.type === 'blackmarket_close') {
+      addEventMessage('🌅 The Black Market packed up at dawn.', '#888');
+      closeBmShop();
+    }
+    if (ev.type === 'blackmarket_purchased') {
+      if (ev.birdId === myId) {
+        showAnnouncement(ev.emoji + ' Bought: ' + ev.itemName + ' (-' + ev.cost + 'c)', '#cc44ff', 2500);
+        addEventMessage('You bought ' + ev.itemName + ' from the Black Market!', '#cc44ff');
+      }
+    }
+    if (ev.type === 'blackmarket_fail') {
+      if (ev.birdId === myId) {
+        addEventMessage('❌ ' + ev.reason, '#ff4444');
+      }
+    }
+
     // === DAY/NIGHT PHASE CHANGE ===
     if (ev.type === 'phase_change') {
       const phaseColors = {
@@ -904,6 +935,12 @@
       } else {
         socket.emit('action', { type: 'send_to_nest' });
         SoundEngine.nestSound();
+      }
+    }
+    // Black Market toggle
+    if (e.key.toLowerCase() === 'b') {
+      if (gameState && gameState.blackMarket && lastNearBlackMarket) {
+        toggleBlackMarketShop();
       }
     }
     syncInput();
@@ -1232,6 +1269,13 @@
     missionBoardClose.addEventListener('touchstart', (e) => { e.preventDefault(); hideMissionBoard(); }, { passive: false });
   }
 
+  // Black Market close button
+  const bmShopCloseEl = document.getElementById('bmShopClose');
+  if (bmShopCloseEl) {
+    bmShopCloseEl.addEventListener('click', closeBmShop);
+    bmShopCloseEl.addEventListener('touchstart', (e) => { e.preventDefault(); closeBmShop(); }, { passive: false });
+  }
+
   // Sound toggle
   if (soundToggle) {
     function toggleSound() {
@@ -1470,6 +1514,30 @@
     } else {
       activeMissionHud.style.display = 'none';
     }
+
+    // Black Market proximity check
+    const bmPrompt = document.getElementById('bmProximityPrompt');
+    if (gameState.blackMarket) {
+      const bmdx = s.x - gameState.blackMarket.x;
+      const bmdy = s.y - gameState.blackMarket.y;
+      const bmDist = Math.sqrt(bmdx * bmdx + bmdy * bmdy);
+      const isNear = bmDist < 110;
+      if (isNear !== lastNearBlackMarket) {
+        lastNearBlackMarket = isNear;
+        if (!isNear && bmShopOpen) closeBmShop();
+      }
+      if (bmPrompt) bmPrompt.style.display = isNear && !bmShopOpen ? 'block' : 'none';
+    } else {
+      lastNearBlackMarket = false;
+      if (bmShopOpen) closeBmShop();
+      if (bmPrompt) bmPrompt.style.display = 'none';
+    }
+
+    // Refresh open shop coins
+    if (bmShopOpen) renderBmShop();
+
+    // Active buffs HUD
+    updateActiveBuffsHud();
   }
 
   // ============================================================
@@ -2101,6 +2169,16 @@
       }
     }
 
+    // Black Market NPC (night-only shady alley shop)
+    if (gameState.blackMarket) {
+      const bm = gameState.blackMarket;
+      const bmsx = bm.x - camera.x + camera.screenW / 2;
+      const bmsy = bm.y - camera.y + camera.screenH / 2;
+      if (bmsx > -margin - 40 && bmsx < camera.screenW + margin + 40 && bmsy > -margin - 40 && bmsy < camera.screenH + margin + 40) {
+        Sprites.drawBlackMarket(ctx, bmsx, bmsy, now);
+      }
+    }
+
     // Cop Birds (wanted system enforcement)
     if (gameState.cops) {
       for (const cop of gameState.cops) {
@@ -2323,6 +2401,18 @@
       minimapCtx.fill();
     }
 
+    // Draw black market on minimap (purple dot when open)
+    if (gameState.blackMarket && worldData) {
+      const mw = minimapCtx.canvas.width;
+      const mh = minimapCtx.canvas.height;
+      const msx = mw / worldData.width;
+      const msy = mh / worldData.height;
+      minimapCtx.fillStyle = '#cc44ff';
+      minimapCtx.beginPath();
+      minimapCtx.arc(gameState.blackMarket.x * msx, gameState.blackMarket.y * msy, 3, 0, Math.PI * 2);
+      minimapCtx.fill();
+    }
+
     // Draw hawk on minimap if present
     if (gameState.hawk && worldData) {
       const mw = minimapCtx.canvas.width;
@@ -2450,6 +2540,95 @@
   // ============================================================
   // BIRD HOME OVERLAY
   // ============================================================
+  // ============================================================
+  // BLACK MARKET SHOP UI
+  // ============================================================
+  function toggleBlackMarketShop() {
+    if (bmShopOpen) {
+      closeBmShop();
+    } else {
+      openBmShop();
+    }
+  }
+
+  function openBmShop() {
+    if (!gameState || !gameState.blackMarket || !lastNearBlackMarket) return;
+    bmShopOpen = true;
+    const el = document.getElementById('blackMarketShop');
+    el.style.display = 'block';
+    renderBmShop();
+    // Stop bird movement while shopping
+    for (const k in keys) keys[k] = false;
+    syncInput();
+  }
+
+  function closeBmShop() {
+    bmShopOpen = false;
+    const el = document.getElementById('blackMarketShop');
+    if (el) el.style.display = 'none';
+  }
+
+  function renderBmShop() {
+    if (!gameState || !gameState.self) return;
+    const coins = gameState.self.coins || 0;
+    document.getElementById('bmCoinsVal').textContent = coins;
+
+    const itemsEl = document.getElementById('bmShopItems');
+    let html = '';
+    for (const item of BM_CATALOG) {
+      const canAfford = coins >= item.cost;
+      html += '<div class="bm-item">';
+      html += '<div class="bm-item-emoji">' + item.emoji + '</div>';
+      html += '<div class="bm-item-info">';
+      html += '<div class="bm-item-name">' + item.name + '</div>';
+      html += '<div class="bm-item-desc">' + item.desc + '</div>';
+      html += '</div>';
+      html += '<button class="bm-buy-btn' + (canAfford ? '' : ' disabled') + '" data-item="' + item.id + '">' + item.cost + 'c</button>';
+      html += '</div>';
+    }
+    itemsEl.innerHTML = html;
+
+    // Wire up buy buttons
+    itemsEl.querySelectorAll('.bm-buy-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const itemId = btn.dataset.item;
+        if (btn.classList.contains('disabled')) return;
+        if (socket && joined) {
+          socket.emit('action', { type: 'blackmarket_buy', itemId });
+        }
+      });
+    });
+  }
+
+  function updateActiveBuffsHud() {
+    const el = document.getElementById('activeBuffsHud');
+    if (!el || !gameState || !gameState.self) {
+      if (el) el.innerHTML = '';
+      return;
+    }
+    const s = gameState.self;
+    const now = Date.now();
+    let html = '';
+
+    if (s.bmSpeedUntil && s.bmSpeedUntil > now) {
+      const secs = Math.ceil((s.bmSpeedUntil - now) / 1000);
+      html += '<div class="bm-buff-pill">💉 Speed ×1.6 — ' + secs + 's</div>';
+    }
+    if (s.bmMegaPoops && s.bmMegaPoops > 0) {
+      html += '<div class="bm-buff-pill">💣 Mega Poop ×' + s.bmMegaPoops + '</div>';
+    }
+    if (s.bmSmokeBombUntil && s.bmSmokeBombUntil > now) {
+      const secs = Math.ceil((s.bmSmokeBombUntil - now) / 1000);
+      html += '<div class="bm-buff-pill">💨 Smoke — ' + secs + 's</div>';
+    }
+    if (s.bmDoubleXpUntil && s.bmDoubleXpUntil > now) {
+      const secs = Math.ceil((s.bmDoubleXpUntil - now) / 1000);
+      html += '<div class="bm-buff-pill">🍀 2× XP — ' + Math.floor(secs / 60) + 'm' + (secs % 60) + 's</div>';
+    }
+
+    el.innerHTML = html;
+  }
+
   function toggleBirdHome() {
     if (birdHomeVisible) {
       closeBirdHome();

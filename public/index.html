@@ -168,6 +168,21 @@
   <!-- Wanted Level HUD -->
   <div id="wantedHud" style="display:none"></div>
 
+  <!-- Black Market Shop Overlay -->
+  <div id="blackMarketShop" style="display:none">
+    <div class="bm-header">🐀 BLACK MARKET</div>
+    <div class="bm-tagline">Night only. No receipts. No refunds.</div>
+    <div id="bmCoinsDisplay" class="bm-coins">💰 <span id="bmCoinsVal">0</span>c</div>
+    <div id="bmShopItems"></div>
+    <div id="bmShopClose" class="bm-close">CLOSE  [B]</div>
+  </div>
+
+  <!-- Active Buffs HUD (bottom-right corner) -->
+  <div id="activeBuffsHud"></div>
+
+  <!-- Black Market proximity prompt -->
+  <div id="bmProximityPrompt" style="display:none">🐀 Press <kbd>B</kbd> for Black Market</div>
+
   <script src="/socket.io/socket.io.js"></script>
   <script src="/js/sounds.js"></script>
   <script src="/js/sprites.js"></script>

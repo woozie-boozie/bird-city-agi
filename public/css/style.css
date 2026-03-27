@@ -1456,3 +1456,160 @@ html, body {
   from { box-shadow: 0 0 6px rgba(255, 0, 0, 0.5); }
   to   { box-shadow: 0 0 18px rgba(255, 0, 0, 0.9); }
 }
+
+/* ============================================================
+   BLACK MARKET SHOP
+   ============================================================ */
+#blackMarketShop {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(8, 4, 18, 0.97);
+  border: 2px solid #7700cc;
+  border-radius: 12px;
+  padding: 18px 22px 14px;
+  color: #ddd;
+  font-family: 'Courier New', monospace;
+  z-index: 200;
+  min-width: 320px;
+  max-width: 90vw;
+  box-shadow: 0 0 30px rgba(120, 0, 220, 0.6), 0 0 60px rgba(120, 0, 220, 0.2);
+}
+.bm-header {
+  font-size: 20px;
+  font-weight: bold;
+  color: #cc44ff;
+  text-align: center;
+  letter-spacing: 3px;
+  margin-bottom: 2px;
+  text-shadow: 0 0 12px rgba(180, 60, 255, 0.8);
+}
+.bm-tagline {
+  font-size: 11px;
+  color: #888;
+  text-align: center;
+  margin-bottom: 10px;
+  font-style: italic;
+}
+.bm-coins {
+  font-size: 14px;
+  color: #ffd700;
+  text-align: right;
+  margin-bottom: 8px;
+}
+.bm-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid rgba(120, 0, 200, 0.4);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 7px;
+  background: rgba(40, 0, 70, 0.5);
+  transition: background 0.15s;
+}
+.bm-item:hover {
+  background: rgba(80, 0, 120, 0.6);
+}
+.bm-item-emoji {
+  font-size: 22px;
+  flex-shrink: 0;
+}
+.bm-item-info {
+  flex: 1;
+}
+.bm-item-name {
+  font-size: 13px;
+  font-weight: bold;
+  color: #cc88ff;
+}
+.bm-item-desc {
+  font-size: 11px;
+  color: #aaa;
+  margin-top: 2px;
+}
+.bm-buy-btn {
+  background: linear-gradient(135deg, #6600aa, #9900cc);
+  color: #fff;
+  border: 1px solid #aa44dd;
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  font-weight: bold;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: opacity 0.15s;
+}
+.bm-buy-btn:hover {
+  background: linear-gradient(135deg, #8800cc, #bb00ee);
+}
+.bm-buy-btn.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background: #333;
+  border-color: #555;
+}
+.bm-close {
+  text-align: center;
+  margin-top: 10px;
+  font-size: 12px;
+  color: #666;
+  cursor: pointer;
+  padding: 4px;
+}
+.bm-close:hover { color: #cc44ff; }
+
+/* Active Buffs HUD (bottom-right corner) */
+#activeBuffsHud {
+  position: fixed;
+  bottom: 80px;
+  right: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  z-index: 60;
+  pointer-events: none;
+}
+.bm-buff-pill {
+  background: rgba(50, 0, 90, 0.85);
+  border: 1px solid #9922cc;
+  border-radius: 20px;
+  padding: 3px 10px 3px 7px;
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  color: #dd88ff;
+  white-space: nowrap;
+  text-shadow: 0 0 6px rgba(180, 60, 255, 0.7);
+}
+
+/* Black Market proximity prompt */
+#bmProximityPrompt {
+  position: fixed;
+  bottom: 130px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(40, 0, 70, 0.9);
+  border: 1px solid #8800cc;
+  border-radius: 20px;
+  padding: 6px 18px;
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  color: #cc44ff;
+  z-index: 60;
+  pointer-events: none;
+  animation: bmPromptPulse 1.4s ease-in-out infinite alternate;
+}
+#bmProximityPrompt kbd {
+  background: #6600aa;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 12px;
+}
+@keyframes bmPromptPulse {
+  from { box-shadow: 0 0 6px rgba(120, 0, 200, 0.4); }
+  to   { box-shadow: 0 0 16px rgba(180, 0, 255, 0.8); }
+}

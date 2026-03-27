@@ -1751,4 +1751,77 @@ window.Sprites = {
     ctx.fillText(label, x, y - 24);
     ctx.restore();
   },
+
+  // Draw the Black Market NPC — a hooded raccoon fence in a dark alley
+  drawBlackMarket(ctx, x, y, now) {
+    ctx.save();
+
+    // Flickering neon sign glow (purple aura)
+    const flicker = 0.7 + 0.3 * Math.sin(now * 0.005 + 1.2) * Math.sin(now * 0.0031);
+    const glowSize = 28 + 6 * Math.sin(now * 0.004);
+    const grd = ctx.createRadialGradient(x, y, 2, x, y, glowSize);
+    grd.addColorStop(0, 'rgba(160, 0, 255, ' + (0.35 * flicker) + ')');
+    grd.addColorStop(1, 'rgba(80, 0, 140, 0)');
+    ctx.fillStyle = grd;
+    ctx.beginPath();
+    ctx.arc(x, y, glowSize, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Shadow on ground
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath();
+    ctx.ellipse(x + 2, y + 14, 10, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Body (dark hooded cloak)
+    ctx.fillStyle = '#1a0028';
+    ctx.strokeStyle = '#6600aa';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(x - 9, y + 13);
+    ctx.lineTo(x - 11, y - 2);
+    ctx.quadraticCurveTo(x - 8, y - 14, x, y - 16);
+    ctx.quadraticCurveTo(x + 8, y - 14, x + 11, y - 2);
+    ctx.lineTo(x + 9, y + 13);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Hood shadow face (dark oval)
+    ctx.fillStyle = '#0d0018';
+    ctx.beginPath();
+    ctx.ellipse(x, y - 8, 5.5, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Raccoon eyes (two glowing dots in the darkness)
+    const eyeGlow = 0.6 + 0.4 * Math.abs(Math.sin(now * 0.002));
+    ctx.fillStyle = 'rgba(200, 80, 255, ' + eyeGlow + ')';
+    ctx.beginPath(); ctx.arc(x - 2.5, y - 8, 1.4, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(x + 2.5, y - 8, 1.4, 0, Math.PI * 2); ctx.fill();
+
+    // Tiny coin bag held in cloak
+    ctx.fillStyle = '#b8860b';
+    ctx.strokeStyle = '#ffd700';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(x + 7, y + 3, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#ffd700';
+    ctx.font = 'bold 5px serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('$', x + 7, y + 5);
+
+    // Floating "BM" neon sign
+    const signBob = Math.sin(now * 0.0025) * 2;
+    ctx.font = 'bold 7px Courier New';
+    ctx.textAlign = 'center';
+    ctx.strokeStyle = '#220033';
+    ctx.lineWidth = 3;
+    ctx.strokeText('BLACK MKT', x, y - 22 + signBob);
+    ctx.fillStyle = 'rgba(200, 100, 255, ' + (0.7 + 0.3 * flicker) + ')';
+    ctx.fillText('BLACK MKT', x, y - 22 + signBob);
+
+    ctx.restore();
+  },
 };

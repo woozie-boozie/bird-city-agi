@@ -87,6 +87,17 @@ class GameEngine {
     this.weatherTimer = Date.now() + this._randomRange(60000, 120000); // 1-2 min to first weather
     this.rainWorms = new Map();       // id -> true (worm food ids spawned during rain)
 
+    // === BLACK MARKET (night-only contraband shop) ===
+    this.blackMarket = null;  // null when closed, { x, y } when open at night
+    this.BLACK_MARKET_POS = { x: 700, y: 2200 }; // dark alley behind Cafe District
+    this.BLACK_MARKET_CATALOG = [
+      { id: 'speed_serum',  name: 'Speed Serum',   desc: '+60% speed for 30s',            cost: 50,  emoji: '💉' },
+      { id: 'mega_poop',    name: 'Mega Poop',      desc: 'Next 3 poops are AOE blasts',   cost: 75,  emoji: '💣' },
+      { id: 'disguise_kit', name: 'Disguise Kit',   desc: 'Clears ALL heat instantly',     cost: 100, emoji: '🎭' },
+      { id: 'smoke_bomb',   name: 'Smoke Bomb',     desc: 'Cops lose you for 15 seconds',  cost: 80,  emoji: '💨' },
+      { id: 'lucky_charm',  name: 'Lucky Charm',    desc: '2x XP for 5 full minutes',      cost: 150, emoji: '🍀' },
+    ];
+
     // === TERRITORY CONTROL ===
     this.territories = new Map();  // zoneId -> zone state
     this._initTerritories();
@@ -315,6 +326,11 @@ class GameEngine {
       activeMission: null, // { missionId, progress, startedAt }
       // Nest (safe AFK)
       inNest: false,
+      // Black Market active items
+      bmSpeedUntil: 0,
+      bmMegaPoops: 0,
+      bmSmokeBombUntil: 0,
+      bmDoubleXpUntil: 0,
     };
 
     // Determine bird type from XP
@@ -433,6 +449,11 @@ class GameEngine {
     if (action.type === 'accept_mission') {
       this._handleAcceptMission(bird, action.missionId, now);
     }
+
+    // === Black Market ===
+    if (action.type === 'blackmarket_buy') {
+      this._handleBlackMarketBuy(bird, action.itemId, now);
+    }
   }
 
   tick() {
@@ -496,6 +517,9 @@ class GameEngine {
 
     // === Territory Control ===
     this._updateTerritories(dt, now);
+
+    // === Black Market ===
+    this._updateBlackMarket(dt, now);
 
     // === Day/Night Cycle ===
     this._updateDayNight(dt, now);
@@ -1399,6 +1423,11 @@ class GameEngine {
       maxSpeed *= 2;
     }
 
+    // Black Market: Speed Serum
+    if (bird.bmSpeedUntil > now) {
+      maxSpeed *= 1.6;
+    }
+
     // V Formation speed buff: 3+ flock mates within 200px with similar velocity
     if (bird.flockId) {
       let flockMatesNearby = 0;
@@ -1496,11 +1525,13 @@ class GameEngine {
         isNew: true,
       };
 
-      // Check if mega poop
-      const isMegaPoop = bird.megaPoopReady;
-      if (isMegaPoop) {
+      // Check if mega poop (power-up OR black market mega poop)
+      const isMegaPoop = bird.megaPoopReady || bird.bmMegaPoops > 0;
+      if (bird.megaPoopReady) {
         bird.megaPoopReady = false;
         bird.powerUp = null; // Consumed
+      } else if (bird.bmMegaPoops > 0) {
+        bird.bmMegaPoops--;
       }
 
       // Check what it hit
@@ -1654,6 +1685,8 @@ class GameEngine {
       if (hit.npc && hit.npc.poopedOn >= 3) coinGain += 5; // made cry bonus
       bird.coins += coinGain;
 
+      // Black Market: Lucky Charm doubles all XP
+      if (bird.bmDoubleXpUntil > now) xpGain *= 2;
       bird.xp += xpGain;
 
       // Mission progress: poop hits
@@ -2808,6 +2841,7 @@ class GameEngine {
       })),
       dayTime: this.dayTime,
       dayPhase: this.dayPhase,
+      blackMarket: this.blackMarket ? { x: this.blackMarket.x, y: this.blackMarket.y } : null,
       self: {
         id: bird.id,
         name: bird.name,
@@ -2848,6 +2882,11 @@ class GameEngine {
         birdColor: bird.birdColor,
         skillSlots,
         skillCooldowns: skillCooldownsState,
+        // Black Market active items
+        bmSpeedUntil: bird.bmSpeedUntil,
+        bmMegaPoops: bird.bmMegaPoops,
+        bmSmokeBombUntil: bird.bmSmokeBombUntil,
+        bmDoubleXpUntil: bird.bmDoubleXpUntil,
       },
     };
   }
@@ -3518,6 +3557,75 @@ class GameEngine {
   }
 
   // ============================================================
+  // BLACK MARKET
+  // ============================================================
+  _updateBlackMarket(dt, now) {
+    const isNight = this.dayPhase === 'night' || this.dayPhase === 'dusk';
+    const wasOpen = this.blackMarket !== null;
+
+    if (isNight && !wasOpen) {
+      this.blackMarket = { x: this.BLACK_MARKET_POS.x, y: this.BLACK_MARKET_POS.y };
+      this.events.push({ type: 'blackmarket_open', x: this.blackMarket.x, y: this.blackMarket.y });
+      console.log('[GameEngine] 🐀 Black Market OPENED');
+    } else if (!isNight && wasOpen) {
+      this.blackMarket = null;
+      this.events.push({ type: 'blackmarket_close' });
+      console.log('[GameEngine] 🐀 Black Market CLOSED');
+    }
+  }
+
+  _handleBlackMarketBuy(bird, itemId, now) {
+    if (!this.blackMarket) {
+      this.events.push({ type: 'blackmarket_fail', birdId: bird.id, reason: 'The market is closed. Come back at night.' });
+      return;
+    }
+    const dx = bird.x - this.blackMarket.x;
+    const dy = bird.y - this.blackMarket.y;
+    if (Math.sqrt(dx * dx + dy * dy) > 110) {
+      this.events.push({ type: 'blackmarket_fail', birdId: bird.id, reason: 'Fly closer to the market.' });
+      return;
+    }
+    const item = this.BLACK_MARKET_CATALOG.find(i => i.id === itemId);
+    if (!item) return;
+    if (bird.coins < item.cost) {
+      this.events.push({ type: 'blackmarket_fail', birdId: bird.id, reason: 'Not enough coins. Need ' + item.cost + 'c.' });
+      return;
+    }
+
+    bird.coins -= item.cost;
+
+    switch (itemId) {
+      case 'speed_serum':
+        bird.bmSpeedUntil = now + 30000;
+        break;
+      case 'mega_poop':
+        bird.bmMegaPoops = (bird.bmMegaPoops || 0) + 3;
+        break;
+      case 'disguise_kit':
+        // Instantly wipe all heat and despawn any cops targeting this bird
+        this.heatScores.delete(bird.id);
+        if (this.wantedBirdId === bird.id) {
+          this.wantedBirdId = null;
+          this.copBirds.clear();
+        } else {
+          for (const [cid, cop] of this.copBirds) {
+            if (cop.targetBirdId === bird.id) this.copBirds.delete(cid);
+          }
+        }
+        break;
+      case 'smoke_bomb':
+        bird.bmSmokeBombUntil = now + 15000;
+        break;
+      case 'lucky_charm':
+        bird.bmDoubleXpUntil = now + 300000; // 5 min
+        break;
+    }
+
+    this.events.push({ type: 'blackmarket_purchased', birdId: bird.id, itemId, itemName: item.name, cost: item.cost, emoji: item.emoji });
+    console.log(`[GameEngine] 🐀 ${bird.name} bought ${item.name} for ${item.cost}c`);
+  }
+
+  // ============================================================
   // BOSS BATTLES
   // ============================================================
   _updateBoss(dt, now) {
@@ -3832,6 +3940,10 @@ class GameEngine {
       this.copBirds.clear();
       return;
     }
+
+    // Black Market Smoke Bomb: wanted bird is invisible to cops
+    const smokeActive = wanted.bmSmokeBombUntil > now;
+
     for (const [copId, cop] of this.copBirds) {
 
       // Stunned state
@@ -3841,6 +3953,16 @@ class GameEngine {
         } else {
           continue;
         }
+      }
+
+      // Smoke bomb: cops wander in a confused circle instead of chasing
+      if (smokeActive) {
+        cop.smokeWanderAngle = (cop.smokeWanderAngle || Math.random() * Math.PI * 2) + dt * 0.8;
+        cop.x += Math.cos(cop.smokeWanderAngle) * cop.speed * 0.4 * dt;
+        cop.y += Math.sin(cop.smokeWanderAngle) * cop.speed * 0.4 * dt;
+        cop.x = Math.max(10, Math.min(world.WORLD_WIDTH - 10, cop.x));
+        cop.y = Math.max(10, Math.min(world.WORLD_HEIGHT - 10, cop.y));
+        continue;
       }
 
       // Pursue wanted bird
