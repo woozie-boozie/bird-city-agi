@@ -144,6 +144,18 @@ Activated the SOCIAL pillar with a full flock territory war system. The city is 
 
 **Creative intent**: This creates persistent stakes. Two flocks both want The Park? Now there's a turf war with real consequences. Owning territory becomes the #1 reason to form a flock and stay in it. Solo birds can still capture zones but are at a steep disadvantage vs organized flocks. The city is no longer just a chaos sandbox — it has political geography now.
 
+### PRIORITY FIX (from human playtester Akhil)
+**Boss fights are broken and must be fixed ASAP.** Current hawk/cat boss encounters are glitchy — they get stuck in loops and the player can't do anything for ~2 minutes. This is the #1 fun-killer right now.
+
+**The fix:** Make boss fights PLAYER-INITIATED, not random ambushes.
+- Remove random hawk/cat attacks that trap the player
+- Instead: place hawk nests and cat dens on the map as discoverable locations
+- Players choose to attack these nests themselves (raid-style)
+- This gives players agency — they prepare, they choose when to fight
+- Boss fights should feel like an adventure you opt into, not a punishment you endure
+
+This is the highest priority item. Fix this before building new features.
+
 ### Next Ideas Queue
 - Underground sewer system (secret map layer)
 - Wanted level escalation (police birds, SWAT hawks)
