@@ -321,6 +321,7 @@
         parade_pigeon: { text: 'PARADE HIT!', color: '#aaaaff', size: 14 },
         event_npc: { text: 'EVENT HIT!', color: '#ffaa00', size: 14 },
         janitor: { text: 'JANITOR HIT! +20 XP', color: '#3355aa', size: 16 },
+        eagle_overlord: { text: '🦅 EAGLE HIT! −8HP', color: '#ff8c00', size: 18 },
       };
       if (ev.hitTarget && hitTexts[ev.hitTarget]) {
         const ht = hitTexts[ev.hitTarget];
@@ -647,8 +648,14 @@
     // === BOSS EVENTS ===
     if (ev.type === 'boss_spawn') {
       SoundEngine.bossSpawn();
-      showAnnouncement('BOSS: ' + ev.bossType + ' HAS APPEARED!', '#ff0000', 4000);
-      addEventMessage('A ' + ev.bossType + ' boss has spawned!', '#ff0000');
+      if (ev.bossType === 'EAGLE_OVERLORD') {
+        showAnnouncement('🦅 EAGLE OVERLORD DESCENDS ON BIRD CITY!', '#ff8c00', 5000);
+        addEventMessage('🦅 Eagle Overlord has appeared! POOP IT DOWN — 90 seconds!', '#ff8c00');
+        effects.push({ type: 'screen_shake', intensity: 8, duration: 600, time: now });
+      } else {
+        showAnnouncement('BOSS: ' + ev.bossType + ' HAS APPEARED!', '#ff0000', 4000);
+        addEventMessage('A ' + ev.bossType + ' boss has spawned!', '#ff0000');
+      }
     }
     if (ev.type === 'boss_defeated') {
       SoundEngine.bossDefeated();
@@ -665,6 +672,58 @@
         time: now, duration: 2000,
         text: 'BOSS ATTACK!', color: '#ff0000', size: 18,
       });
+    }
+
+    // === EAGLE OVERLORD EVENTS ===
+    if (ev.type === 'eagle_snatch') {
+      if (ev.birdId === myId) {
+        SoundEngine.stunned();
+        showAnnouncement('🦅 YOU WERE SNATCHED! STRUGGLE FREE!', '#ff4400', 3000);
+        effects.push({ type: 'screen_shake', intensity: 14, duration: 800, time: now });
+      } else {
+        addEventMessage('🦅 Eagle snatched ' + ev.birdName + '! (−' + ev.stolenCoins + 'c)', '#ff8c00');
+      }
+      effects.push({ type: 'text', x: ev.x, y: ev.y - 30, time: now, duration: 2000, text: '🦅 SNATCHED!', color: '#ff4400', size: 20 });
+    }
+    if (ev.type === 'eagle_rescue') {
+      if (ev.birdId === myId) {
+        effects.push({ type: 'text', x: ev.x, y: ev.y - 30, time: now, duration: 1500, text: '🦸 RESCUE SHOT!', color: '#4ade80', size: 18 });
+      }
+      addEventMessage('🦸 Bird rescued from the Eagle\'s talons!', '#4ade80');
+    }
+    if (ev.type === 'eagle_released') {
+      if (ev.birdId === myId) {
+        effects.push({ type: 'text', x: ev.x, y: ev.y - 20, time: now, duration: 1500, text: 'ESCAPED!', color: '#aaffaa', size: 16 });
+      }
+    }
+    if (ev.type === 'eagle_hit') {
+      if (ev.birdId === myId) {
+        effects.push({ type: 'text', x: ev.x, y: ev.y - 25, time: now, duration: 1200, text: '−8 HP!', color: '#ff8c00', size: 14 });
+      }
+    }
+    if (ev.type === 'eagle_robbed') {
+      if (ev.birdId === myId) {
+        showAnnouncement('🦅 EAGLE STOLE ' + ev.stolen + ' COINS FROM YOU!', '#ff0000', 4000);
+        effects.push({ type: 'screen_shake', intensity: 10, duration: 500, time: now });
+      } else {
+        addEventMessage('🦅 Eagle robbed ' + ev.birdName + ' of ' + ev.stolen + 'c before fleeing!', '#ff8c00');
+      }
+    }
+    if (ev.type === 'eagle_escaped') {
+      SoundEngine.bossSpawn(); // dramatic sound
+      showAnnouncement('🦅 THE EAGLE OVERLORD ESCAPED!', '#ff8800', 4000);
+      addEventMessage('🦅 Eagle Overlord flew off into the sky...', '#ff8800');
+    }
+    if (ev.type === 'eagle_overlord_defeated') {
+      SoundEngine.bossDefeated();
+      effects.push({ type: 'screen_shake', intensity: 18, duration: 1200, time: now });
+      showAnnouncement('🦅 EAGLE OVERLORD DEFEATED! THE CITY IS SAFE!', '#ffd700', 5000);
+      let rewardMsg = '🦅 Eagle slain! Rewards: ';
+      if (ev.rewards && ev.rewards.length > 0) {
+        rewardMsg += ev.rewards.slice(0, 3).map(r => r.name + ' (+' + r.xp + 'xp +' + r.coins + 'c)').join(', ');
+        if (ev.rewards.length > 3) rewardMsg += '...';
+      }
+      addEventMessage(rewardMsg, '#ffd700');
     }
 
     // === WANTED EVENTS ===
@@ -2151,32 +2210,77 @@
       const boss = gameState.boss;
       const sx = boss.x - camera.x + camera.screenW / 2;
       const sy = boss.y - camera.y + camera.screenH / 2;
-      if (sx > -margin - 50 && sx < camera.screenW + margin + 50 && sy > -margin - 50 && sy < camera.screenH + margin + 50) {
-        // Red glow
-        ctx.save();
-        ctx.shadowColor = 'rgba(255, 0, 0, 0.6)';
-        ctx.shadowBlur = 20;
-        if (boss.type === 'MEGA_CAT') {
+      if (sx > -margin - 100 && sx < camera.screenW + margin + 100 && sy > -margin - 100 && sy < camera.screenH + margin + 100) {
+        if (boss.type === 'EAGLE_OVERLORD') {
+          // ── Eagle ground shadow (drawn before boss) ──
           ctx.save();
-          ctx.translate(sx, sy);
-          ctx.scale(2, 2);
-          Sprites.drawCat(ctx, 0, 0, boss.rotation);
+          ctx.globalAlpha = 0.25;
+          ctx.fillStyle = '#000';
+          ctx.beginPath();
+          ctx.ellipse(sx + 18, sy + 30, 85, 30, boss.rotation * 0.4, 0, Math.PI * 2);
+          ctx.fill();
           ctx.restore();
+          // ── Eagle Overlord sprite ──
+          ctx.save();
+          ctx.shadowColor = 'rgba(255, 140, 0, 0.7)';
+          ctx.shadowBlur = 30;
+          ctx.translate(sx, sy);
+          ctx.scale(3, 3);
+          Sprites.drawEagleOverlord(ctx, 0, 0, boss.rotation, !!boss.snatchedBirdId, performance.now());
+          ctx.restore();
+          // HP bar (wider for the raid boss)
+          const hpRatio = Math.max(0, boss.hp / boss.maxHp);
+          const barW = 120, barH = 10;
+          ctx.fillStyle = 'rgba(0,0,0,0.75)';
+          ctx.fillRect(sx - barW / 2 - 1, sy - 80 - barH / 2 - 1, barW + 2, barH + 2);
+          ctx.fillStyle = '#440000';
+          ctx.fillRect(sx - barW / 2, sy - 80 - barH / 2, barW, barH);
+          const col = hpRatio > 0.5 ? '#ff8c00' : hpRatio > 0.25 ? '#ffcc00' : '#ff2200';
+          ctx.fillStyle = col;
+          ctx.fillRect(sx - barW / 2, sy - 80 - barH / 2, barW * hpRatio, barH);
+          ctx.strokeStyle = '#fff8';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(sx - barW / 2, sy - 80 - barH / 2, barW, barH);
+          // Name + HP numbers
+          ctx.font = 'bold 13px Courier New';
+          ctx.textAlign = 'center';
+          ctx.fillStyle = '#ff8c00';
+          ctx.fillText('🦅 EAGLE OVERLORD', sx, sy - 96);
+          ctx.font = '10px Courier New';
+          ctx.fillStyle = '#fff';
+          ctx.fillText(Math.ceil(boss.hp) + '/' + boss.maxHp, sx, sy - 80 + 3);
+          // Escape countdown
+          if (boss.escapeTime) {
+            const secsLeft = Math.max(0, Math.ceil((boss.escapeTime - Date.now()) / 1000));
+            ctx.font = 'bold 10px Courier New';
+            ctx.fillStyle = secsLeft < 20 ? '#ff4444' : '#ffcc44';
+            ctx.fillText('ESCAPES IN ' + secsLeft + 's', sx, sy - 108);
+          }
         } else {
+          // MEGA_CAT / MEGA_HAWK (existing rendering)
           ctx.save();
-          ctx.translate(sx, sy);
-          ctx.scale(2, 2);
-          Sprites.drawHawk(ctx, 0, 0, boss.rotation);
+          ctx.shadowColor = 'rgba(255, 0, 0, 0.6)';
+          ctx.shadowBlur = 20;
+          if (boss.type === 'MEGA_CAT') {
+            ctx.save();
+            ctx.translate(sx, sy);
+            ctx.scale(2, 2);
+            Sprites.drawCat(ctx, 0, 0, boss.rotation);
+            ctx.restore();
+          } else {
+            ctx.save();
+            ctx.translate(sx, sy);
+            ctx.scale(2, 2);
+            Sprites.drawHawk(ctx, 0, 0, boss.rotation);
+            ctx.restore();
+          }
           ctx.restore();
+          Sprites.drawBossHP(ctx, sx, sy - 40, boss.hp, boss.maxHp);
+          ctx.font = 'bold 12px Courier New';
+          ctx.textAlign = 'center';
+          ctx.fillStyle = '#ff0000';
+          ctx.fillText(boss.type, sx, sy - 52);
         }
-        ctx.restore();
-        // HP bar above boss
-        Sprites.drawBossHP(ctx, sx, sy - 40, boss.hp, boss.maxHp);
-        // Boss name
-        ctx.font = 'bold 12px Courier New';
-        ctx.textAlign = 'center';
-        ctx.fillStyle = '#ff0000';
-        ctx.fillText(boss.type, sx, sy - 52);
       }
     }
 
@@ -2384,17 +2488,28 @@
       }
     }
 
-    // Draw boss on minimap (big pulsing red dot)
+    // Draw boss on minimap (big pulsing dot — orange for Eagle Overlord, red for others)
     if (gameState.boss && worldData) {
       const mw = minimapCtx.canvas.width;
       const mh = minimapCtx.canvas.height;
       const msx = mw / worldData.width;
       const msy = mh / worldData.height;
       const bPulse = Math.sin(performance.now() * 0.006) * 0.3 + 0.7;
-      minimapCtx.fillStyle = 'rgba(255, 0, 0, ' + bPulse + ')';
-      minimapCtx.beginPath();
-      minimapCtx.arc(gameState.boss.x * msx, gameState.boss.y * msy, 5, 0, Math.PI * 2);
-      minimapCtx.fill();
+      if (gameState.boss.type === 'EAGLE_OVERLORD') {
+        minimapCtx.fillStyle = 'rgba(255, 140, 0, ' + bPulse + ')';
+        minimapCtx.beginPath();
+        minimapCtx.arc(gameState.boss.x * msx, gameState.boss.y * msy, 7, 0, Math.PI * 2);
+        minimapCtx.fill();
+        minimapCtx.font = 'bold 7px sans-serif';
+        minimapCtx.textAlign = 'center';
+        minimapCtx.fillStyle = '#fff';
+        minimapCtx.fillText('🦅', gameState.boss.x * msx, gameState.boss.y * msy + 3);
+      } else {
+        minimapCtx.fillStyle = 'rgba(255, 0, 0, ' + bPulse + ')';
+        minimapCtx.beginPath();
+        minimapCtx.arc(gameState.boss.x * msx, gameState.boss.y * msy, 5, 0, Math.PI * 2);
+        minimapCtx.fill();
+      }
     }
 
     // Draw wanted bird on minimap (flashing red skull)

@@ -1625,6 +1625,24 @@ class GameEngine {
         r.targetY = fleeToEdge.y;
         this.events.push({ type: 'raccoon_flee', raccoonId: r.id, x: r.x, y: r.y, birdId: bird.id, birdName: bird.name });
         bird.coins += 10; // bonus coins for stopping a thief
+      } else if (hit.target === 'eagle_overlord' && this.boss && this.boss.type === 'EAGLE_OVERLORD') {
+        // Poop hits the Eagle Overlord — deal damage, track contribution
+        const dmg = isMegaPoop ? 24 : 8;
+        this.boss.hp -= dmg;
+        xpGain = isMegaPoop ? 45 : 18;
+        bird.coins += 4;
+        const prevDmg = this.boss.damageByBird.get(bird.id) || 0;
+        this.boss.damageByBird.set(bird.id, prevDmg + dmg);
+        this.events.push({ type: 'eagle_hit', birdId: bird.id, x: this.boss.x, y: this.boss.y, hp: Math.ceil(this.boss.hp), maxHp: this.boss.maxHp });
+        // Hitting the eagle while it carries someone rescues the captive
+        if (this.boss.snatched && this.boss.snatched.birdId !== bird.id) {
+          const captive = this.birds.get(this.boss.snatched.birdId);
+          if (captive) {
+            captive.stunnedUntil = 0;
+            this.events.push({ type: 'eagle_rescue', birdId: bird.id, rescuedId: this.boss.snatched.birdId, x: this.boss.x, y: this.boss.y });
+          }
+          this.boss.snatched = null;
+        }
       } else if (hit.target === 'cop' && hit.cop) {
         // Poop hit a cop bird! Stun it — daring escape move
         const cop = hit.cop;
@@ -1956,6 +1974,16 @@ class GameEngine {
       if (Math.sqrt(dx * dx + dy * dy) < hitRadius + 5) {
         if (!isMegaPoop) return { target: 'cop', cop };
         allHits.push({ target: 'cop', cop });
+      }
+    }
+
+    // Check Eagle Overlord (large hit box — massive wingspan)
+    if (this.boss && this.boss.type === 'EAGLE_OVERLORD') {
+      const dx = poop.x - this.boss.x;
+      const dy = poop.y - this.boss.y;
+      if (Math.sqrt(dx * dx + dy * dy) < hitRadius + 28) {
+        if (!isMegaPoop) return { target: 'eagle_overlord' };
+        allHits.push({ target: 'eagle_overlord' });
       }
     }
 
@@ -2910,6 +2938,8 @@ class GameEngine {
         hp: Math.ceil(this.boss.hp),
         maxHp: this.boss.maxHp,
         rotation: this.boss.rotation,
+        snatchedBirdId: (this.boss.snatched ? this.boss.snatched.birdId : null),
+        escapeTime: this.boss.escapeTime || null,
       };
     }
 
@@ -3804,6 +3834,12 @@ class GameEngine {
 
     const boss = this.boss;
 
+    // Eagle Overlord has its own update logic
+    if (boss.type === 'EAGLE_OVERLORD') {
+      this._updateEagleOverlord(boss, dt, now);
+      return;
+    }
+
     // Boss movement: wander toward nearest bird
     let nearestBird = null;
     let nearestDist = Infinity;
@@ -3880,8 +3916,35 @@ class GameEngine {
   }
 
   _spawnBoss(now) {
-    const types = ['MEGA_CAT', 'MEGA_HAWK'];
-    const type = types[Math.floor(Math.random() * types.length)];
+    // Eagle Overlord: 25% chance; otherwise 50/50 between existing bosses
+    const roll = Math.random();
+    const type = roll < 0.25 ? 'EAGLE_OVERLORD' : (roll < 0.625 ? 'MEGA_CAT' : 'MEGA_HAWK');
+
+    if (type === 'EAGLE_OVERLORD') {
+      // Spawn from a random map edge and swoop inward
+      const edge = Math.floor(Math.random() * 4);
+      let ex, ey;
+      if (edge === 0)      { ex = 80; ey = 80 + Math.random() * (world.WORLD_HEIGHT - 160); }
+      else if (edge === 1) { ex = world.WORLD_WIDTH - 80; ey = 80 + Math.random() * (world.WORLD_HEIGHT - 160); }
+      else if (edge === 2) { ex = 80 + Math.random() * (world.WORLD_WIDTH - 160); ey = 80; }
+      else                 { ex = 80 + Math.random() * (world.WORLD_WIDTH - 160); ey = world.WORLD_HEIGHT - 80; }
+      this.boss = {
+        type: 'EAGLE_OVERLORD',
+        x: ex, y: ey,
+        hp: 300, maxHp: 300,
+        speed: 185,
+        rotation: 0, spawnedAt: now, lastAttack: 0,
+        swoopAngle: Math.atan2(world.WORLD_HEIGHT / 2 - ey, world.WORLD_WIDTH / 2 - ex),
+        swoopPhase: Math.random() * Math.PI * 2,
+        snatched: null,
+        escapeTime: now + 90000,
+        damageByBird: new Map(),
+      };
+      this.events.push({ type: 'boss_spawn', bossType: 'EAGLE_OVERLORD', x: ex, y: ey });
+      console.log(`[GameEngine] 🦅 EAGLE OVERLORD SPAWNED at edge ${edge}`);
+      return;
+    }
+
     const roads = world.ROADS;
     const road = roads[Math.floor(Math.random() * roads.length)];
     const x = road.x + Math.random() * road.w;
@@ -3894,6 +3957,158 @@ class GameEngine {
     }
     this.events.push({ type: 'boss_spawn', bossType: type, x, y });
     console.log(`[GameEngine] BOSS SPAWNED: ${type} at ${Math.round(x)}, ${Math.round(y)}`);
+  }
+
+  // ============================================================
+  // EAGLE OVERLORD (aerial raid boss)
+  // ============================================================
+  _updateEagleOverlord(boss, dt, now) {
+    // 1. Sweeping arc movement — steer toward nearest bird with sine wave oscillation
+    let targetX = world.WORLD_WIDTH / 2;
+    let targetY = world.WORLD_HEIGHT / 2;
+    let nearestDist = Infinity;
+    for (const bird of this.birds.values()) {
+      if (bird.stunnedUntil > now + 200) continue;
+      const dx = bird.x - boss.x;
+      const dy = bird.y - boss.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < nearestDist) { nearestDist = dist; targetX = bird.x; targetY = bird.y; }
+    }
+
+    const desiredAngle = Math.atan2(targetY - boss.y, targetX - boss.x);
+    let angleDiff = desiredAngle - boss.swoopAngle;
+    while (angleDiff > Math.PI)  angleDiff -= Math.PI * 2;
+    while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+    boss.swoopAngle += angleDiff * Math.min(1, dt * 0.75);
+
+    boss.swoopPhase += dt * 2.2;
+    const perpAngle = boss.swoopAngle + Math.PI / 2;
+    const oscAmp = 38;
+
+    boss.x += Math.cos(boss.swoopAngle) * boss.speed * dt
+             + Math.cos(perpAngle) * Math.sin(boss.swoopPhase) * oscAmp * dt;
+    boss.y += Math.sin(boss.swoopAngle) * boss.speed * dt
+             + Math.sin(perpAngle) * Math.sin(boss.swoopPhase) * oscAmp * dt;
+    boss.rotation = boss.swoopAngle;
+
+    // Bounce off world edges
+    if (boss.x < 60)                       { boss.swoopAngle = Math.PI - boss.swoopAngle; boss.x = 60; }
+    if (boss.x > world.WORLD_WIDTH  - 60)  { boss.swoopAngle = Math.PI - boss.swoopAngle; boss.x = world.WORLD_WIDTH - 60; }
+    if (boss.y < 60)                       { boss.swoopAngle = -boss.swoopAngle; boss.y = 60; }
+    if (boss.y > world.WORLD_HEIGHT - 60)  { boss.swoopAngle = -boss.swoopAngle; boss.y = world.WORLD_HEIGHT - 60; }
+
+    // 2. Move the snatched bird with the eagle
+    if (boss.snatched) {
+      const captive = this.birds.get(boss.snatched.birdId);
+      if (captive) {
+        captive.x = boss.x + 20;
+        captive.y = boss.y + 24;
+        captive.vx = 0; captive.vy = 0;
+        captive.stunnedUntil = now + 300;
+        // Auto-release after 5 s
+        if (now - boss.snatched.snatchedAt > 5000) {
+          captive.stunnedUntil = 0;
+          this.events.push({ type: 'eagle_released', birdId: captive.id, x: boss.x, y: boss.y });
+          boss.snatched = null;
+        }
+      } else {
+        boss.snatched = null;
+      }
+    }
+
+    // 3. Snatch nearest bird within 50 px
+    if (!boss.snatched && now - boss.lastAttack > 4000) {
+      for (const bird of this.birds.values()) {
+        if (bird.stunnedUntil > now + 300) continue;
+        const dx = bird.x - boss.x;
+        const dy = bird.y - boss.y;
+        if (Math.sqrt(dx * dx + dy * dy) < 50) {
+          boss.lastAttack = now;
+          boss.snatched = { birdId: bird.id, snatchedAt: now };
+          bird.stunnedUntil = now + 5500;
+          const stolen = Math.floor(bird.coins * 0.12);
+          bird.coins = Math.max(0, bird.coins - stolen);
+          this.events.push({ type: 'eagle_snatch', birdId: bird.id, birdName: bird.name, x: boss.x, y: boss.y, stolenCoins: stolen });
+          break;
+        }
+      }
+    }
+
+    // 4. Passive flanking damage from nearby birds (incentivises swarming)
+    for (const bird of this.birds.values()) {
+      const dx = bird.x - boss.x;
+      const dy = bird.y - boss.y;
+      if (Math.sqrt(dx * dx + dy * dy) < 60) {
+        const dmg = dt * 0.4;
+        boss.hp -= dmg;
+        const prev = boss.damageByBird.get(bird.id) || 0;
+        boss.damageByBird.set(bird.id, prev + dmg);
+      }
+    }
+
+    // 5. Escape if survival timer expires
+    if (now >= boss.escapeTime) {
+      this._eagleOverlordEscape(boss, now);
+      return;
+    }
+
+    // 6. Defeat check
+    if (boss.hp <= 0) {
+      this._eagleOverlordDefeated(boss, now);
+    }
+  }
+
+  _eagleOverlordEscape(boss, now) {
+    // Steal coins from richest bird and flee
+    let richest = null, mostCoins = 10;
+    for (const bird of this.birds.values()) {
+      if (bird.coins > mostCoins) { mostCoins = bird.coins; richest = bird; }
+    }
+    if (richest) {
+      const stolen = Math.floor(richest.coins * 0.30);
+      richest.coins -= stolen;
+      this.events.push({ type: 'eagle_robbed', birdId: richest.id, birdName: richest.name, stolen, x: boss.x, y: boss.y });
+    }
+    if (boss.snatched) {
+      const captive = this.birds.get(boss.snatched.birdId);
+      if (captive) captive.stunnedUntil = 0;
+    }
+    this.events.push({ type: 'eagle_escaped', x: boss.x, y: boss.y });
+    this.boss = null;
+    this.bossSpawnTimer = now + this._randomRange(420000, 600000);
+    console.log('[GameEngine] 🦅 Eagle Overlord escaped!');
+  }
+
+  _eagleOverlordDefeated(boss, now) {
+    let totalDmg = 0;
+    for (const d of boss.damageByBird.values()) totalDmg += d;
+
+    const rewards = [];
+    for (const [birdId, dmg] of boss.damageByBird.entries()) {
+      const bird = this.birds.get(birdId);
+      if (!bird) continue;
+      const share = totalDmg > 0 ? dmg / totalDmg : 1 / Math.max(1, this.birds.size);
+      const xpReward   = Math.round(60  + share * 240);
+      const coinReward = Math.round(25  + share * 175);
+      bird.xp    += xpReward;
+      bird.coins += coinReward;
+      const newLevel = world.getLevelFromXP(bird.xp);
+      const newType  = world.getBirdTypeForLevel(newLevel);
+      if (newType !== bird.type) {
+        bird.type = newType; bird.level = newLevel;
+        this.events.push({ type: 'evolve', birdId: bird.id, name: bird.name, birdType: newType });
+      }
+      bird.level = newLevel;
+      rewards.push({ name: bird.name, xp: xpReward, coins: coinReward });
+    }
+    if (boss.snatched) {
+      const captive = this.birds.get(boss.snatched.birdId);
+      if (captive) captive.stunnedUntil = 0;
+    }
+    this.events.push({ type: 'eagle_overlord_defeated', x: boss.x, y: boss.y, rewards });
+    this.boss = null;
+    this.bossSpawnTimer = now + this._randomRange(420000, 600000);
+    console.log('[GameEngine] 🦅 Eagle Overlord DEFEATED by the flock!');
   }
 
   // ============================================================

@@ -1947,4 +1947,166 @@ window.Sprites = {
       ctx.fillText('🍺 ' + coins + 'c', x, labelY);
     }
   },
+
+  // ============================================================
+  // EAGLE OVERLORD — massive aerial raid boss
+  // ============================================================
+  drawEagleOverlord(ctx, x, y, rotation, isCarrying, now) {
+    const t = now || Date.now();
+    const s = 30; // wingspan radius — drawn at this scale, then scaled 3× in main.js
+    const wingFlap = Math.sin(t * 0.005) * 0.25;
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rotation);
+
+    // ── Massive wingspan (two layers for feather depth) ──
+    // Outer wing layer
+    ctx.fillStyle = '#5a3010';
+    ctx.save();
+    ctx.rotate(-wingFlap);
+    ctx.beginPath();
+    ctx.ellipse(-4, -s * 1.1, s * 1.6, s * 0.28, -0.12, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    ctx.save();
+    ctx.rotate(wingFlap);
+    ctx.beginPath();
+    ctx.ellipse(-4,  s * 1.1, s * 1.6, s * 0.28, 0.12, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Inner wing layer (darker, golden edge)
+    ctx.fillStyle = '#7a4820';
+    ctx.save();
+    ctx.rotate(-wingFlap);
+    ctx.beginPath();
+    ctx.ellipse(-4, -s * 0.8, s * 1.1, s * 0.22, -0.08, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    ctx.save();
+    ctx.rotate(wingFlap);
+    ctx.beginPath();
+    ctx.ellipse(-4,  s * 0.8, s * 1.1, s * 0.22, 0.08, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Golden wing tip highlights
+    ctx.fillStyle = '#c8820a';
+    ctx.save();
+    ctx.rotate(-wingFlap);
+    ctx.beginPath();
+    ctx.ellipse(-10, -s * 1.35, s * 0.6, s * 0.10, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    ctx.save();
+    ctx.rotate(wingFlap);
+    ctx.beginPath();
+    ctx.ellipse(-10,  s * 1.35, s * 0.6, s * 0.10, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // ── Body ──
+    ctx.fillStyle = '#8B4513';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, s * 0.85, s * 0.42, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // White chest patch
+    ctx.fillStyle = '#e8dfc0';
+    ctx.beginPath();
+    ctx.ellipse(s * 0.2, 0, s * 0.35, s * 0.22, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Tail feathers
+    ctx.fillStyle = '#6a3510';
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.85, 0);
+    ctx.lineTo(-s * 1.4, -s * 0.35);
+    ctx.lineTo(-s * 1.1,  0);
+    ctx.lineTo(-s * 1.4,  s * 0.35);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#c8820a';
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.95, 0);
+    ctx.lineTo(-s * 1.3, -s * 0.18);
+    ctx.lineTo(-s * 1.15, 0);
+    ctx.lineTo(-s * 1.3,  s * 0.18);
+    ctx.closePath();
+    ctx.fill();
+
+    // ── Head ──
+    ctx.fillStyle = '#4a2208';
+    ctx.beginPath();
+    ctx.arc(s * 0.65, 0, s * 0.40, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Fierce hooked beak
+    ctx.fillStyle = '#daa520';
+    ctx.beginPath();
+    ctx.moveTo(s * 0.95, -s * 0.08);
+    ctx.lineTo(s * 1.35, -s * 0.14);
+    ctx.lineTo(s * 1.30,  s * 0.08);
+    ctx.lineTo(s * 0.95,  s * 0.10);
+    ctx.closePath();
+    ctx.fill();
+    // Beak hook tip
+    ctx.fillStyle = '#b8880a';
+    ctx.beginPath();
+    ctx.moveTo(s * 1.25, -s * 0.06);
+    ctx.lineTo(s * 1.35, -s * 0.14);
+    ctx.lineTo(s * 1.32,  s * 0.04);
+    ctx.closePath();
+    ctx.fill();
+
+    // Glowing orange eyes (menacing!)
+    const eyePulse = 0.85 + 0.15 * Math.sin(t * 0.006);
+    ctx.fillStyle = `rgba(255, 140, 0, ${eyePulse})`;
+    ctx.shadowColor = '#ff8800';
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.arc(s * 0.72, -s * 0.17, s * 0.11, 0, Math.PI * 2);
+    ctx.arc(s * 0.72,  s * 0.17, s * 0.11, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#1a0800';
+    ctx.beginPath();
+    ctx.arc(s * 0.72, -s * 0.17, s * 0.055, 0, Math.PI * 2);
+    ctx.arc(s * 0.72,  s * 0.17, s * 0.055, 0, Math.PI * 2);
+    ctx.fill();
+
+    // ── Talons (drawn below body) ──
+    ctx.strokeStyle = '#2a1800';
+    ctx.lineWidth = 2.5;
+    // Left talon
+    ctx.beginPath();
+    ctx.moveTo(s * 0.1, -s * 0.38);
+    ctx.lineTo(s * 0.1, -s * 0.55);
+    ctx.moveTo(s * 0.1, -s * 0.55);
+    ctx.lineTo(s * 0.0, -s * 0.68);
+    ctx.moveTo(s * 0.1, -s * 0.55);
+    ctx.lineTo(s * 0.18, -s * 0.67);
+    ctx.stroke();
+    // Right talon
+    ctx.beginPath();
+    ctx.moveTo(s * 0.1,  s * 0.38);
+    ctx.lineTo(s * 0.1,  s * 0.55);
+    ctx.moveTo(s * 0.1,  s * 0.55);
+    ctx.lineTo(s * 0.0,  s * 0.68);
+    ctx.moveTo(s * 0.1,  s * 0.55);
+    ctx.lineTo(s * 0.18, s * 0.67);
+    ctx.stroke();
+
+    // ── Snatched bird indicator ──
+    if (isCarrying) {
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('😱', s * 0.1, -s * 0.62);
+    }
+
+    ctx.restore();
+  },
 };

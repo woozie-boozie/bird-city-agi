@@ -221,9 +221,34 @@ Night is now even more chaotic. Up to 6 drunk pigeons stumble around the city af
 
 **Creative intent**: Night was already dangerous (cats, raccoons, cops, black market). Now it's also PROFITABLE in a new way. Drunk pigeons create a risk-reward economy: do you risk getting close during a storm for the coin shower windfall? Or play it safe and pickpocket slowly? Lightning is no longer just a hazard — it's an opportunity if you're near the right target. Pure DISCOVERY + CARNAGE energy. The emergent behavior of birds chasing drunk pigeons during storms while also dodging lightning is peak Bird City chaos.
 
+**Session 8 — 2026-03-28: Eagle Overlord Raid Boss**
+The apex predator of Bird City has arrived. The Eagle Overlord is a massive aerial raid boss that the entire playerbase must cooperate to bring down — or it steals your coins and flies away laughing.
+
+**Eagle Overlord mechanics (`server/game.js`):**
+- Spawns as one of three boss types (25% chance vs MEGA_CAT/MEGA_HAWK) from the map edge, initially swooping toward the city center
+- 300 HP (vs 100 for the cat) — requires real player cooperation to kill
+- **Swooping arc movement**: doesn't just chase birds. Steers toward the nearest bird while oscillating perpendicular to its heading (sine wave), creating dramatic dive-bomb flight patterns that bounce off world edges
+- **Snatch mechanic**: flies within 50px of a bird → grabs them and carries them for 5 seconds, stealing 12% of their coins. Snatched bird is locked in the eagle's talons, stunned — shown with a 😱 indicator on the eagle sprite
+- **Rescue mechanic**: another player hits the eagle with poop while it's carrying someone → immediate release! Creates cooperative counter-play
+- **Passive flanking damage**: birds within 60px deal 0.4 HP/s passive damage, incentivising brave proximity
+- **Poop hits**: deal 8 HP each (24 for Mega Poop) — damage tracked per bird for proportional rewards
+- **90-second escape timer**: if the eagle survives 90 seconds, it robs the richest bird of 30% of their coins and flies off. Failure has consequences
+- **Defeat rewards**: all contributors get XP and coins scaled by their damage share (60–300 XP, 25–200 coins). Top contributors get enormous payouts
+
+**Visual (`public/js/sprites.js`, `public/js/main.js`):**
+- Custom `drawEagleOverlord()` sprite at 3× scale: massive wingspan with layered feather depth, golden wing tips, hooked beak, glowing pulsing orange eyes with shadow blur
+- Ground shadow ellipse drawn beneath the eagle (suggesting high altitude)
+- Snatched bird shown as 😱 in the eagle's talons
+- Wide orange HP bar (120px vs 60px) labeled "🦅 EAGLE OVERLORD" with HP numbers
+- Escape countdown timer above the boss that turns red at <20 seconds ("ESCAPES IN Xs")
+- Orange pulsing dot on minimap (larger than normal boss dot) with 🦅 emoji
+- Event announcements for: spawn, snatch, rescue, release, eagle rob, eagle escape, defeat
+
+**Creative intent**: The Eagle Overlord hits every pillar at once. CARNAGE: it snatches players mid-flight. SOCIAL: requires coordinated poop bombardment to defeat — and rescuing a snatched teammate is a heroic moment. SPECTACLE: the 3× scale sprite swooping across the city with a 90-second countdown is thrilling. PROGRESSION: reward scaling means high-effort players get huge payouts. DISCOVERY: seeing it appear for the first time from the map edge is genuinely surprising. This is Bird City's first true RAID event.
+
 ### Next Ideas Queue
 - Underground sewer system (secret map layer)
-- Raid bosses (giant cat, dog pack, eagle overlord)
+- Eagle Overlord rare drop: "Eagle Feather" cosmetic badge
 - Graffiti system (birds tag buildings for territory)
 - Food truck heists (multiplayer coordinated robbery)
 - Pigeon mafia questline
