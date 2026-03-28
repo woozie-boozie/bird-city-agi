@@ -26,6 +26,7 @@ GTA1 + World of Warcraft, but for BIRDS. A chaotic multiplayer sandbox where bir
 - Commit with clear messages explaining the creative intent
 - Test by carefully reading code for logic errors before committing
 - Full creative freedom: UI, UX, mechanics, map, balance, visuals, sounds, everything
+- **BOSS/PREDATOR BEHAVIOR RULE (from human playtester — READ THIS):** Hawks, mega cats, eagle overlords, and ANY large predator must NEVER randomly attack players. Instead: (1) Give them their own TERRITORY on the map with clear warning signs like "⚠️ HAWK TERRITORY — BEWARE" (2) Only attack if the player ENTERS their territory AND stays after being warned (3) If attacked, the player either dies in 3 hits OR gets a 1-on-1 street-fighter style duel option. Currently these encounters are GLITCHY — the enemy doesn't die, the player doesn't die, it lasts 1+ minutes, and the game gets stuck. THIS IS THE #1 FUN-KILLER. Fix existing boss code to follow this territory model before adding anything new.
 
 ## Tech Stack
 - Backend: Node.js + Express + Socket.IO (20Hz tick rate)
@@ -300,6 +301,26 @@ A slow-moving crime lord stalks Bird City's wealthiest birds once per night, dem
 - Escaped: "THE GODFATHER ESCAPED — robbing [victims] on his way out"
 
 **Creative intent**: The Godfather fills a gap in the night economy. Until now, night had dangerous threats (cats, cops) and profitable opportunities (raccoon thieves, drunk pigeons, black market). The Godfather is BOTH: a dangerous passive threat that drains your coins just for being nearby, AND a lucrative cooperative target. Low-coin birds can try to free-ride on the fight. Rich birds must decide: flee and survive, or stand your ground and earn the big payout. "The richest bird gets targeted" creates instant social drama — the night's whale suddenly has a crime boss hunting them while everyone else decides whether to help or watch. Pure CARNAGE + SOCIAL energy.
+
+### URGENT PRIORITY FIX (from human playtester Akhil — 2026-03-28)
+**Boss/predator encounters are STILL broken and glitchy.** Hawks, mega cats, eagle overlord, Godfather Raccoon — they all have the same problem:
+1. They randomly attack players who are just trying to play
+2. The fight doesn't resolve — enemy doesn't die, player doesn't die, it just loops for 1+ minutes
+3. The game gets stuck during the encounter — player can't do anything
+
+**THE FIX — Territory-based predators (NOT random ambushes):**
+- Give each predator (hawk, mega cat, eagle) their OWN territory zone on the map
+- Mark it clearly: "⚠️ HAWK TERRITORY — ENTER AT YOUR OWN RISK" warning signs
+- When a player enters: show a warning popup/banner. If they stay, THEN the predator attacks
+- If attacked: player dies in 3 hits OR gets a 1-on-1 street-fighter style duel (player choice)
+- Duels should have a clear win/lose condition that resolves in 15-30 seconds MAX
+- If the player wins: big rewards. If they lose: they respawn with some penalty
+- **NO random spawning of predators anywhere on the map. They stay in their territory.**
+
+This applies to: hawk, mega cat, eagle overlord, AND the Godfather Raccoon.
+Regular small threats (cops, normal raccoons, normal cats) can still roam freely.
+
+**Do this BEFORE adding any new features. The game is currently unplayable when a boss spawns.**
 
 ### Next Ideas Queue
 - Underground sewer system (secret map layer)
