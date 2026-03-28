@@ -82,6 +82,10 @@ class GameEngine {
     this.raccoons = new Map();        // id -> raccoon state
     this.raccoonSpawnTimer = 0;       // when to try next spawn
 
+    // === THE GODFATHER RACCOON (night boss, once per night) ===
+    this.godfatherRaccoon = null;
+    this.godfatherSpawnedThisNight = false;
+
     // === DRUNK PIGEONS (night-only, pickpocketable) ===
     this.drunkPigeons = new Map();    // id -> drunk pigeon state
     this.drunkPigeonSpawnTimer = 0;   // when to try next spawn
@@ -526,6 +530,9 @@ class GameEngine {
 
     // === Drunk Pigeons ===
     this._updateDrunkPigeons(dt, now);
+
+    // === The Godfather Raccoon ===
+    this._updateGodfatherRaccoon(dt, now);
 
     // === Weather ===
     this._updateWeather(dt, now);
@@ -1636,6 +1643,15 @@ class GameEngine {
         r.targetY = fleeToEdge.y;
         this.events.push({ type: 'raccoon_flee', raccoonId: r.id, x: r.x, y: r.y, birdId: bird.id, birdName: bird.name });
         bird.coins += 10; // bonus coins for stopping a thief
+      } else if (hit.target === 'godfather' && this.godfatherRaccoon) {
+        const gf = this.godfatherRaccoon;
+        const dmg = isMegaPoop ? 36 : 12;
+        gf.hp -= dmg;
+        xpGain = isMegaPoop ? 55 : 22;
+        bird.coins += 4;
+        const prevDmg = gf.damageByBird.get(bird.id) || 0;
+        gf.damageByBird.set(bird.id, prevDmg + dmg);
+        this.events.push({ type: 'godfather_hit', birdId: bird.id, x: gf.x, y: gf.y, hp: Math.ceil(gf.hp), maxHp: gf.maxHp });
       } else if (hit.target === 'eagle_overlord' && this.boss && this.boss.type === 'EAGLE_OVERLORD') {
         // Poop hits the Eagle Overlord — deal damage, track contribution
         const dmg = isMegaPoop ? 24 : 8;
@@ -1995,6 +2011,17 @@ class GameEngine {
       if (Math.sqrt(dx * dx + dy * dy) < hitRadius + 4) {
         if (!isMegaPoop) return { target: 'raccoon', raccoon };
         allHits.push({ target: 'raccoon', raccoon });
+      }
+    }
+
+    // Check Godfather Raccoon (boss — takes damage from poop)
+    if (this.godfatherRaccoon && this.godfatherRaccoon.state !== 'escaping') {
+      const gf = this.godfatherRaccoon;
+      const gdx = poop.x - gf.x;
+      const gdy = poop.y - gf.y;
+      if (Math.sqrt(gdx * gdx + gdy * gdy) < hitRadius + 18) {
+        if (!isMegaPoop) return { target: 'godfather' };
+        allHits.push({ target: 'godfather' });
       }
     }
 
@@ -3050,6 +3077,16 @@ class GameEngine {
       raccoons: nearbyRaccoons,
       drunkPigeons: nearbyDrunkPigeons,
       cops: nearbyCops,
+      godfatherRaccoon: this.godfatherRaccoon ? {
+        id: this.godfatherRaccoon.id,
+        x: this.godfatherRaccoon.x,
+        y: this.godfatherRaccoon.y,
+        rotation: this.godfatherRaccoon.rotation,
+        hp: this.godfatherRaccoon.hp,
+        maxHp: this.godfatherRaccoon.maxHp,
+        state: this.godfatherRaccoon.state,
+        tributeCoins: this.godfatherRaccoon.tributeCoins,
+      } : null,
       weather: this.weather ? {
         type: this.weather.type,
         intensity: this.weather.intensity,
@@ -4697,6 +4734,181 @@ class GameEngine {
       }
     }
   }
+  // ============================================================
+  // THE GODFATHER RACCOON (night boss — stalks the rich, demands tribute)
+  // ============================================================
+  _spawnGodfatherRaccoon(now) {
+    // Spawn in dark corners of the city
+    const spawnPoints = [
+      { x: 250, y: 250 },
+      { x: 2850, y: 250 },
+      { x: 250, y: 2850 },
+      { x: 2850, y: 2850 },
+    ];
+    const sp = spawnPoints[Math.floor(Math.random() * spawnPoints.length)];
+    this.godfatherRaccoon = {
+      id: 'godfather_' + uid(),
+      x: sp.x, y: sp.y,
+      rotation: 0,
+      hp: 220, maxHp: 220,
+      speed: 50,
+      state: 'stalking',   // 'stalking' | 'escaping'
+      targetBirdId: null,
+      damageByBird: new Map(),
+      tributeCoins: 0,
+      tributeCooldowns: new Map(), // birdId -> last tribute timestamp
+      escapeTimer: now + 180000,   // 3 minutes to defeat or he escapes
+      spawnedAt: now,
+    };
+    this.godfatherSpawnedThisNight = true;
+    this.events.push({ type: 'godfather_spawn', x: sp.x, y: sp.y });
+    console.log(`[GameEngine] 🎩 GODFATHER RACCOON spawned at ${Math.round(sp.x)}, ${Math.round(sp.y)}`);
+  }
+
+  _updateGodfatherRaccoon(dt, now) {
+    const isNight = this.dayPhase === 'night';
+
+    // Reset spawn flag each day so next night gets a fresh Godfather
+    if (this.dayPhase === 'day') {
+      this.godfatherSpawnedThisNight = false;
+    }
+
+    // Despawn if present but night is over (dawn/day)
+    if (this.godfatherRaccoon && !isNight) {
+      if (this.godfatherRaccoon.state !== 'escaping') {
+        // Dawn comes — Godfather slips away. Rob top 2 richest birds as parting gift.
+        const richBirds = Array.from(this.birds.values())
+          .filter(b => b.coins > 15)
+          .sort((a, b) => b.coins - a.coins)
+          .slice(0, 2);
+        const victims = [];
+        for (const b of richBirds) {
+          const stolen = Math.min(Math.floor(b.coins * 0.15), 120);
+          if (stolen > 0) {
+            b.coins -= stolen;
+            victims.push({ id: b.id, name: b.name, stolen });
+          }
+        }
+        this.events.push({ type: 'godfather_escaped', victims });
+      }
+      this.godfatherRaccoon = null;
+      return;
+    }
+
+    // Spawn during night — random chance, once per night, requires players
+    if (!this.godfatherRaccoon && isNight && !this.godfatherSpawnedThisNight && this.birds.size > 0) {
+      if (Math.random() < 0.003) { // ~0.3% per tick at 20Hz = ~1 per 17s average during night
+        this._spawnGodfatherRaccoon(now);
+      }
+      return;
+    }
+
+    if (!this.godfatherRaccoon) return;
+    const gf = this.godfatherRaccoon;
+
+    // Defeat check (hp <= 0)
+    if (gf.hp <= 0) {
+      const totalDmg = Array.from(gf.damageByBird.values()).reduce((sum, d) => sum + d, 0) || 1;
+      const coinPool = 200 + gf.tributeCoins; // base reward + stolen tribute returned to the city
+      const rewards = [];
+      for (const [birdId, dmg] of gf.damageByBird) {
+        const bird = this.birds.get(birdId);
+        if (!bird) continue;
+        const coinShare = Math.round((dmg / totalDmg) * coinPool);
+        const xpShare = 80 + Math.round((dmg / totalDmg) * 350);
+        bird.coins += coinShare;
+        bird.xp += xpShare;
+        rewards.push({ name: bird.name, coins: coinShare, xp: xpShare });
+      }
+      this.events.push({ type: 'godfather_defeated', rewards, tributeCoins: gf.tributeCoins });
+      this.godfatherRaccoon = null;
+      return;
+    }
+
+    // Escape timer expired — rob and flee
+    if (now >= gf.escapeTimer && gf.state !== 'escaping') {
+      const richBirds = Array.from(this.birds.values())
+        .filter(b => b.coins > 20)
+        .sort((a, b) => b.coins - a.coins)
+        .slice(0, 2);
+      const victims = [];
+      for (const b of richBirds) {
+        const stolen = Math.min(Math.floor(b.coins * 0.25), 200);
+        if (stolen > 0) {
+          b.coins -= stolen;
+          victims.push({ id: b.id, name: b.name, stolen });
+        }
+      }
+      gf.state = 'escaping';
+      const edge = this._raccoonEdgeTarget(gf.x, gf.y);
+      gf.targetX = edge.x;
+      gf.targetY = edge.y;
+      gf.speed = 170;
+      this.events.push({ type: 'godfather_escaped', victims });
+    }
+
+    // Escaping: run for the edge
+    if (gf.state === 'escaping') {
+      const dx = gf.targetX - gf.x;
+      const dy = gf.targetY - gf.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > 1) {
+        gf.x += (dx / dist) * gf.speed * dt;
+        gf.y += (dy / dist) * gf.speed * dt;
+        gf.rotation = Math.atan2(dy, dx);
+      }
+      if (gf.x < -100 || gf.x > world.WORLD_WIDTH + 100 ||
+          gf.y < -100 || gf.y > world.WORLD_HEIGHT + 100) {
+        this.godfatherRaccoon = null;
+      }
+      return;
+    }
+
+    // Stalking: find richest bird and walk toward them
+    let richestBird = null;
+    let maxCoins = -1;
+    for (const bird of this.birds.values()) {
+      if (bird.stunnedUntil > now + 200) continue;
+      if (bird.coins > maxCoins) {
+        maxCoins = bird.coins;
+        richestBird = bird;
+      }
+    }
+
+    if (richestBird) {
+      gf.targetBirdId = richestBird.id;
+      const dx = richestBird.x - gf.x;
+      const dy = richestBird.y - gf.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > 45) {
+        gf.x += (dx / dist) * gf.speed * dt;
+        gf.y += (dy / dist) * gf.speed * dt;
+        gf.rotation = Math.atan2(dy, dx);
+      }
+    }
+
+    // Tribute collection: rob any bird within 75px (per-bird 15s cooldown)
+    for (const bird of this.birds.values()) {
+      const bdx = bird.x - gf.x;
+      const bdy = bird.y - gf.y;
+      const bDist = Math.sqrt(bdx * bdx + bdy * bdy);
+      const lastTribute = gf.tributeCooldowns.get(bird.id) || 0;
+      if (bDist < 75 && now - lastTribute > 15000 && bird.coins >= 6) {
+        const taken = Math.min(Math.floor(bird.coins * 0.18), 180);
+        if (taken > 0) {
+          bird.coins -= taken;
+          gf.tributeCoins += taken;
+          gf.tributeCooldowns.set(bird.id, now);
+          this.events.push({ type: 'godfather_tribute', birdId: bird.id, birdName: bird.name, taken, x: gf.x, y: gf.y });
+        }
+      }
+    }
+
+    // Keep inside world bounds
+    gf.x = Math.max(60, Math.min(world.WORLD_WIDTH - 60, gf.x));
+    gf.y = Math.max(60, Math.min(world.WORLD_HEIGHT - 60, gf.y));
+  }
+
 }
 
 module.exports = GameEngine;

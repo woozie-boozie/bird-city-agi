@@ -273,6 +273,34 @@ Every mechanic now rewards aggressive, uninterrupted play. Chain poop hits withi
 
 **Creative intent**: This makes EVERY existing mechanic more exciting. Instead of pooping casually, you're now chasing a streak, keeping it alive, and terrified of getting caught. The cat, cops, eagle, and lightning all now have a second layer of threat: they don't just hurt you — they ERASE your streak. High-combo play is visible to all players (city-wide broadcasts), creating a social spectacle. Lucky Charm + high combo creates explosive XP moments that feel genuinely earned. Pure PROGRESSION + CARNAGE energy.
 
+**Session 10 — 2026-03-28: The Godfather Raccoon — Night Crime Boss**
+A slow-moving crime lord stalks Bird City's wealthiest birds once per night, demanding tribute and rewarding the brave birds who take him down.
+
+**Godfather Raccoon mechanics (`server/game.js`):**
+- Spawns once per night phase, randomly (0.3% chance per tick ≈ ~1 per 17s average window), requiring ≥1 player online
+- 220 HP, moves at 50px/s — slower than regular raccoons, but relentlessly stalks the richest bird
+- **Tribute mechanic**: Any bird that flies within 75px gets shaken down for 18% of their coins (max 180c), with a 15s per-bird cooldown. Displays "💰 Xc collected" label showing total haul
+- **Poop damage**: 12 HP per hit (36 for Mega Poop). Rewards tracker ensures proportional payouts to all contributors
+- **3-minute escape timer**: If not defeated, he grabs 25% of the top 2 richest birds' coins and flees at 170px/s
+- **Dawn escape**: If night ends first, he slips away with a 15% tax on the 2 richest birds
+- **Defeat rewards**: All contributors split a pot of 200c + all tribute coins collected. Top contributors earn 80–430 XP and massive coin shares
+
+**Visual (`public/js/sprites.js`):**
+- Custom `drawGodfatherRaccoon()` at 2.2× scale: pinstripe suit body with subtle white stripes, white shirt front + dark red tie, fedora hat with cream band, gold glowing eyes with glow blur, cigar with animated smoke puff
+- Purple menace aura (pulsing glow ellipse behind body)
+- 80px HP bar labeled "🎩 GODFATHER" in gold
+- Live "💰 Xc collected" tribute counter below sprite
+- Pulsing gold/purple 🎩 dot on minimap
+
+**Events & announcements:**
+- Spawn: massive city-wide announcement + screen shake
+- Tribute: "The Godfather shook down [Bird] for Xc. 'Nice coins ya got there.'" + floating coin loss indicator
+- Hit: floating damage number (−12 HP) for the shooter
+- Defeated: screen shake + "THE GODFATHER IS DOWN! THE CITY IS FREE!" + reward callouts
+- Escaped: "THE GODFATHER ESCAPED — robbing [victims] on his way out"
+
+**Creative intent**: The Godfather fills a gap in the night economy. Until now, night had dangerous threats (cats, cops) and profitable opportunities (raccoon thieves, drunk pigeons, black market). The Godfather is BOTH: a dangerous passive threat that drains your coins just for being nearby, AND a lucrative cooperative target. Low-coin birds can try to free-ride on the fight. Rich birds must decide: flee and survive, or stand your ground and earn the big payout. "The richest bird gets targeted" creates instant social drama — the night's whale suddenly has a crime boss hunting them while everyone else decides whether to help or watch. Pure CARNAGE + SOCIAL energy.
+
 ### Next Ideas Queue
 - Underground sewer system (secret map layer)
 - Eagle Overlord rare drop: "Eagle Feather" cosmetic badge
@@ -286,7 +314,7 @@ Every mechanic now rewards aggressive, uninterrupted play. Chain poop hits withi
 - Radio tower control (broadcast messages server-wide)
 - Owl enforcer in park at night (creates no-poop zone, alerts NPCs)
 - Bioluminescent park pond at night (glowing water effect)
-- Raccoon boss: "The Godfather Raccoon" — giant alpha raccoon that steals from players directly
 - Weather combos: fog (low visibility), hailstorm (poop projectiles deflected), hot day (food spoils faster)
 - Birds can shelter under awnings/trees during storms (mechanic: reduced lightning hit radius if near cover)
 - ~~Combo multiplier: chain actions (poop→steal→pickpocket) for escalating XP bonuses~~ (DONE Session 9)
+- ~~Raccoon boss: "The Godfather Raccoon" — giant alpha raccoon that steals from players directly~~ (DONE Session 10)

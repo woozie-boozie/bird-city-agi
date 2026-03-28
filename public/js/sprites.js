@@ -2109,4 +2109,206 @@ window.Sprites = {
 
     ctx.restore();
   },
+
+  // ─────────────────────────────────────────────────────────────
+  // THE GODFATHER RACCOON — night crime boss (2× scale)
+  // ─────────────────────────────────────────────────────────────
+  drawGodfatherRaccoon(ctx, x, y, rotation, hp, maxHp, tributeCoins, now) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rotation);
+
+    const s = 2.2; // scale factor
+    ctx.scale(s, s);
+
+    // Ground shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath();
+    ctx.ellipse(2, 6, 17, 10, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Purple menace glow aura
+    const glow = Math.sin(now * 0.003) * 0.25 + 0.75;
+    ctx.save();
+    ctx.globalAlpha = 0.18 * glow;
+    ctx.fillStyle = '#aa44ff';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 24, 18, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Bushy striped tail (behind body)
+    const tailWag = Math.sin(now * 0.004) * 0.3;
+    ctx.save();
+    ctx.translate(-12, 0);
+    ctx.rotate(Math.PI + tailWag);
+    for (let i = 0; i < 4; i++) {
+      ctx.fillStyle = i % 2 === 0 ? '#777' : '#222';
+      ctx.beginPath();
+      ctx.ellipse(i * 5.5, 0, 5.5 - i * 0.4, 3.5 - i * 0.3, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+
+    // Pinstripe coat body (dark charcoal)
+    ctx.fillStyle = '#2a2a35';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 12, 8.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Pinstripes (white lines)
+    ctx.save();
+    ctx.globalAlpha = 0.25;
+    ctx.strokeStyle = '#eee';
+    ctx.lineWidth = 0.5;
+    for (let px = -10; px <= 10; px += 3.5) {
+      ctx.beginPath();
+      ctx.moveTo(px, -8.5);
+      ctx.lineTo(px, 8.5);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // White shirt front / chest
+    ctx.fillStyle = '#e8e8e8';
+    ctx.beginPath();
+    ctx.ellipse(-1, 0, 4.5, 5.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Dark red tie
+    ctx.fillStyle = '#880000';
+    ctx.beginPath();
+    ctx.moveTo(-1, -4);
+    ctx.lineTo(-2.5, 2);
+    ctx.lineTo(-1, 4.5);
+    ctx.lineTo(0.5, 2);
+    ctx.closePath();
+    ctx.fill();
+
+    // Bandit mask (classic raccoon marking)
+    ctx.fillStyle = '#111';
+    ctx.beginPath();
+    ctx.ellipse(5.5, -2.5, 5, 3, -0.15, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(5.5, 2.5, 5, 3, 0.15, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Snout
+    ctx.fillStyle = '#4a4a4a';
+    ctx.beginPath();
+    ctx.ellipse(10, 0, 4.5, 3.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Nose
+    ctx.fillStyle = '#111';
+    ctx.beginPath();
+    ctx.arc(13.5, 0, 1.8, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Ears
+    ctx.fillStyle = '#444';
+    ctx.beginPath();
+    ctx.moveTo(3, -8.5); ctx.lineTo(6.5, -13); ctx.lineTo(9, -8.5);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(3, 8.5); ctx.lineTo(6.5, 13); ctx.lineTo(9, 8.5);
+    ctx.fill();
+
+    // Menacing gold eyes with glow
+    ctx.shadowColor = '#ffcc00';
+    ctx.shadowBlur = 6;
+    ctx.fillStyle = '#ffcc00';
+    ctx.beginPath();
+    ctx.arc(7.5, -3, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(7.5, 3, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.arc(8.2, -3, 1.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(8.2, 3, 1.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Cigar (brown cylinder with ash glow)
+    ctx.fillStyle = '#7a4a20';
+    ctx.beginPath();
+    ctx.roundRect(11, -1, 10, 2, 1);
+    ctx.fill();
+    ctx.fillStyle = '#cc5500';
+    ctx.beginPath();
+    ctx.arc(21, 0, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+    // Smoke puff
+    const smokePhase = (now * 0.001) % 1;
+    ctx.globalAlpha = 0.3 * (1 - smokePhase);
+    ctx.fillStyle = '#aaa';
+    ctx.beginPath();
+    ctx.arc(21 + smokePhase * 6, -4 - smokePhase * 5, 1.5 + smokePhase * 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // Fedora hat (dark with cream band)
+    // Brim
+    ctx.fillStyle = '#1a1a2e';
+    ctx.beginPath();
+    ctx.ellipse(4, -11, 11, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Crown
+    ctx.beginPath();
+    ctx.roundRect(-2, -19, 13, 9, 2);
+    ctx.fill();
+    // Hat band (cream)
+    ctx.fillStyle = '#f0e080';
+    ctx.fillRect(-1, -12.5, 12, 2);
+    // Indent at crown top
+    ctx.fillStyle = '#111';
+    ctx.beginPath();
+    ctx.ellipse(4.5, -19, 4, 1.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore(); // undo scale
+
+    // ── HP bar (drawn outside scale) ──
+    const barW = 80;
+    const barH = 8;
+    const barX = x - barW / 2;
+    const barY = y - 60;
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.beginPath();
+    ctx.roundRect(barX - 2, barY - 2, barW + 4, barH + 4, 3);
+    ctx.fill();
+    const hpFrac = Math.max(0, hp / maxHp);
+    ctx.fillStyle = hpFrac > 0.5 ? '#22cc44' : hpFrac > 0.25 ? '#ffaa00' : '#ff2222';
+    ctx.beginPath();
+    ctx.roundRect(barX, barY, barW * hpFrac, barH, 2);
+    ctx.fill();
+    ctx.strokeStyle = '#888';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(barX, barY, barW, barH, 2);
+    ctx.stroke();
+
+    // Label above HP bar
+    ctx.font = 'bold 11px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ffcc00';
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 3;
+    ctx.strokeText('🎩 GODFATHER', x, barY - 4);
+    ctx.fillText('🎩 GODFATHER', x, barY - 4);
+
+    // Tribute coins label (below sprite)
+    const tributeLabel = '💰 ' + tributeCoins + 'c collected';
+    ctx.font = 'bold 9px Courier New';
+    ctx.fillStyle = '#ffcc00';
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 2;
+    ctx.strokeText(tributeLabel, x, y + 52);
+    ctx.fillText(tributeLabel, x, y + 52);
+  },
 };

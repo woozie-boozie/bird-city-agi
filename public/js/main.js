@@ -963,6 +963,47 @@
       addEventMessage('The drunk pigeons passed out and went home at dawn.', '#aaaaaa');
     }
 
+    // === GODFATHER RACCOON EVENTS ===
+    if (ev.type === 'godfather_spawn') {
+      SoundEngine.bossSpawn();
+      showAnnouncement('🎩 THE GODFATHER HAS ARRIVED — PAY YOUR TRIBUTE OR POOP HIM DOWN!', '#aa44ff', 6000);
+      addEventMessage('🎩 The Godfather Raccoon slithered out of the shadows. 220 HP. Poop him to death — or lose your coins!', '#aa44ff');
+      effects.push({ type: 'screen_shake', intensity: 7, duration: 600, time: now });
+    }
+    if (ev.type === 'godfather_tribute') {
+      const isMe = ev.birdId === myId;
+      if (isMe) {
+        showAnnouncement(`🎩 TRIBUTE TAKEN: −${ev.taken}c`, '#ff6600', 2500);
+        effects.push({ type: 'screen_shake', intensity: 5, duration: 350, time: now });
+      }
+      if (isMe || Math.random() < 0.3) {
+        addEventMessage(`🎩 The Godfather shook down ${ev.birdName} for ${ev.taken}c. "Nice coins ya got there."`, '#ff8c44');
+      }
+      effects.push({ type: 'text', x: ev.x, y: ev.y - 25, text: '🎩 −' + ev.taken + 'c', color: '#ff6600', size: 14, time: performance.now(), duration: 2000 });
+    }
+    if (ev.type === 'godfather_hit') {
+      if (ev.birdId === myId) {
+        effects.push({ type: 'text', x: ev.x, y: ev.y - 30, text: '−12 HP!', color: '#aa44ff', size: 13, time: performance.now(), duration: 1200 });
+      }
+    }
+    if (ev.type === 'godfather_defeated') {
+      SoundEngine.bossDefeated();
+      effects.push({ type: 'screen_shake', intensity: 16, duration: 1000, time: now });
+      showAnnouncement('🎩 THE GODFATHER IS DOWN! THE CITY IS FREE!', '#ffd700', 6000);
+      const rewardStr = (ev.rewards || []).slice(0, 4).map(r => `${r.name} (+${r.coins}c +${r.xp}xp)`).join(', ');
+      addEventMessage(`🎩 Godfather defeated! His tribute (${ev.tributeCoins}c) returned to the streets. Rewards: ${rewardStr || 'nobody nearby'}`, '#ffd700');
+    }
+    if (ev.type === 'godfather_escaped') {
+      SoundEngine.bossSpawn();
+      showAnnouncement('🎩 THE GODFATHER ESCAPED INTO THE NIGHT!', '#aa44ff', 5000);
+      const victimStr = (ev.victims || []).map(v => `${v.name} (−${v.stolen}c)`).join(', ');
+      if (victimStr) {
+        addEventMessage(`🎩 The Godfather slipped away — robbing ${victimStr} on his way out. Next time...`, '#aa44ff');
+      } else {
+        addEventMessage('🎩 The Godfather melted back into the shadows. "I\'ll be back."', '#aa44ff');
+      }
+    }
+
     // === TERRITORY EVENTS ===
     if (ev.type === 'territory_captured') {
       addEventMessage(`🏴 ${ev.teamName} seized ${ev.zoneName}!`, '#ffe066');
@@ -2362,6 +2403,16 @@
       }
     }
 
+    // The Godfather Raccoon (night crime boss)
+    if (gameState.godfatherRaccoon) {
+      const gf = gameState.godfatherRaccoon;
+      const gfsx = gf.x - camera.x + camera.screenW / 2;
+      const gfsy = gf.y - camera.y + camera.screenH / 2;
+      if (gfsx > -margin - 80 && gfsx < camera.screenW + margin + 80 && gfsy > -margin - 80 && gfsy < camera.screenH + margin + 80) {
+        Sprites.drawGodfatherRaccoon(ctx, gfsx, gfsy, gf.rotation, gf.hp, gf.maxHp, gf.tributeCoins, now);
+      }
+    }
+
     // Black Market NPC (night-only shady alley shop)
     if (gameState.blackMarket) {
       const bm = gameState.blackMarket;
@@ -2615,6 +2666,23 @@
       minimapCtx.beginPath();
       minimapCtx.arc(gameState.blackMarket.x * msx, gameState.blackMarket.y * msy, 3, 0, Math.PI * 2);
       minimapCtx.fill();
+    }
+
+    // Draw Godfather Raccoon on minimap (pulsing gold/purple dot)
+    if (gameState.godfatherRaccoon && worldData) {
+      const mw = minimapCtx.canvas.width;
+      const mh = minimapCtx.canvas.height;
+      const msx = mw / worldData.width;
+      const msy = mh / worldData.height;
+      const gfPulse = Math.sin(performance.now() * 0.005) * 0.35 + 0.65;
+      minimapCtx.fillStyle = `rgba(170, 68, 255, ${gfPulse})`;
+      minimapCtx.beginPath();
+      minimapCtx.arc(gameState.godfatherRaccoon.x * msx, gameState.godfatherRaccoon.y * msy, 6, 0, Math.PI * 2);
+      minimapCtx.fill();
+      minimapCtx.font = 'bold 7px sans-serif';
+      minimapCtx.textAlign = 'center';
+      minimapCtx.fillStyle = '#ffd700';
+      minimapCtx.fillText('🎩', gameState.godfatherRaccoon.x * msx, gameState.godfatherRaccoon.y * msy + 3);
     }
 
     // Draw hawk on minimap if present
