@@ -282,12 +282,23 @@ const TERRITORY_ZONES = [
   { id: 'mall',        name: 'The Mall',        x: 1790, y: 190,  w: 760, h: 410, baseColor: '#ffcc00' },
 ];
 
+// ============================================================
+// THE ARENA — PvP combat zone in the open grassland
+// Birds enter, pay an entry fee, and fight to the last wing
+// ============================================================
+const ARENA = {
+  x: 2750,      // center X
+  y: 1200,      // center Y
+  radius: 175,  // arena ring radius
+  entryFee: 30, // coins to enter
+};
+
 module.exports = {
   WORLD_WIDTH, WORLD_HEIGHT,
   BUILDINGS, TREES, PARK, CAFE_TABLES, ROADS, CARS, LAUNDRY,
   MOVING_CARS, EVENT_LOCATIONS, POWERUP_TYPES,
   NPC_TYPES, BIRD_TYPES, DATE_CENTER,
   SKILL_CATALOG, BIRD_COLORS, STREET_LAMPS,
-  TERRITORY_ZONES,
+  TERRITORY_ZONES, ARENA,
   getXPForLevel, getLevelFromXP, getBirdTypeForLevel,
 };

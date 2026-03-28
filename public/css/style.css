@@ -1645,3 +1645,62 @@ html, body {
   from { box-shadow: 0 0 6px rgba(120, 0, 200, 0.4); }
   to   { box-shadow: 0 0 16px rgba(180, 0, 255, 0.8); }
 }
+
+/* ============================================================
+   THE ARENA — PvP Combat Pit
+   ============================================================ */
+#arenaProximityPrompt {
+  position: fixed;
+  bottom: 160px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(60, 10, 10, 0.92);
+  border: 1px solid #cc2200;
+  border-radius: 20px;
+  padding: 6px 18px;
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  color: #ff6644;
+  z-index: 60;
+  pointer-events: none;
+  animation: arenaPromptPulse 1.2s ease-in-out infinite alternate;
+}
+#arenaProximityPrompt kbd {
+  background: #880000;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 12px;
+  color: #ffcc88;
+}
+@keyframes arenaPromptPulse {
+  from { box-shadow: 0 0 6px rgba(200, 40, 0, 0.5); }
+  to   { box-shadow: 0 0 18px rgba(255, 80, 0, 0.9); }
+}
+
+#arenaHud {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(10, 0, 0, 0.88);
+  border: 2px solid rgba(220, 40, 0, 0.8);
+  border-radius: 12px;
+  padding: 8px 18px;
+  color: #fff;
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
+  font-weight: bold;
+  pointer-events: none;
+  z-index: 55;
+  white-space: nowrap;
+  text-align: center;
+  min-width: 220px;
+}
+#arenaHud.fighting {
+  border-color: rgba(255, 60, 0, 1);
+  animation: arenaFightPulse 0.6s ease-in-out infinite alternate;
+}
+@keyframes arenaFightPulse {
+  from { box-shadow: 0 0 8px rgba(255, 60, 0, 0.5); }
+  to   { box-shadow: 0 0 22px rgba(255, 100, 0, 1.0); }
+}

@@ -345,13 +345,27 @@ Regular small threats (cops, normal raccoons, normal cats) can still roam freely
 
 **These are basic usability issues that make the game frustrating. Fix them.**
 
+**Session 11 — 2026-03-28: The Arena — PvP Colosseum**
+Bird City now has a dedicated PvP combat pit — the biggest missing feature. Located in the open grassland (x:2750, y:1200), the Arena is a permanent landmark for player-vs-player combat.
+
+**Arena zone:** Sandy colosseum floor, 8 animated fire torches (intensify red during fights), pulsing stone wall ring, visible on minimap with active indicator.
+
+**Entry:** Fly within ~255px of center, press E, costs 30 coins. Up to 4 fighters. Fight starts 20s after 2+ join (instantly at 4). 5-second countdown broadcast. Auto-refund on cancellation.
+
+**Combat:** 3 Arena HP per fighter shown as ♥ hearts. Poop hits between arena fighters deal 1 arena damage (server-authoritative, separate from normal game). Red ring pulses around fighters. 40 XP per hit, combo system still applies.
+
+**Win conditions:** Last bird standing OR most HP after 90-second timer (tie-break: damage dealt). Winner takes entire pot + 200 XP bonus.
+
+**UI:** Proximity prompt with pot/queue info. Arena Fight HUD (bottom-center): HP hearts + timer + opponent HP. Pulsing red fight mode animation.
+
+**Creative intent**: Fills the direct PvP gap. High-stakes 1v1 or FFA with real coin consequences. Two territory rivals can now settle it in the arena. Pure CARNAGE + SOCIAL energy.
+
 ### Next Ideas Queue
 - Underground sewer system (secret map layer)
 - Eagle Overlord rare drop: "Eagle Feather" cosmetic badge
 - Graffiti system (birds tag buildings for territory)
 - Food truck heists (multiplayer coordinated robbery)
 - Pigeon mafia questline
-- Arena/colosseum PvP zone
 - Nest building and decoration
 - Egg protection mini-game
 - Bird gangs with custom colors/tags
@@ -362,3 +376,4 @@ Regular small threats (cops, normal raccoons, normal cats) can still roam freely
 - Birds can shelter under awnings/trees during storms (mechanic: reduced lightning hit radius if near cover)
 - ~~Combo multiplier: chain actions (poop→steal→pickpocket) for escalating XP bonuses~~ (DONE Session 9)
 - ~~Raccoon boss: "The Godfather Raccoon" — giant alpha raccoon that steals from players directly~~ (DONE Session 10)
+- ~~Arena/colosseum PvP zone~~ (DONE Session 11)

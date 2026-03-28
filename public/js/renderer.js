@@ -625,6 +625,152 @@ window.Renderer = {
   },
 
   // ============================================================
+  // THE ARENA — PvP colosseum ring
+  // ============================================================
+  drawArena(ctx, camera, arenaZone, arenaState, now) {
+    if (!arenaZone) return;
+
+    const sx = arenaZone.x - camera.x + camera.screenW / 2;
+    const sy = arenaZone.y - camera.y + camera.screenH / 2;
+    const r = arenaZone.radius;
+
+    // Cull if way off screen
+    if (sx + r < -50 || sx - r > camera.screenW + 50 ||
+        sy + r < -50 || sy - r > camera.screenH + 50) return;
+
+    const isFighting = arenaState && arenaState.state === 'fighting';
+    const isCountdown = arenaState && arenaState.state === 'countdown';
+    const pulse = Math.sin(now * 0.004) * 0.4 + 0.6;
+
+    ctx.save();
+
+    // === Sandy arena floor ===
+    ctx.globalAlpha = 0.55;
+    ctx.fillStyle = '#c8a06a';
+    ctx.beginPath();
+    ctx.arc(sx, sy, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    // === Dirt ring tracks (concentric circles for arena texture) ===
+    ctx.globalAlpha = 0.18;
+    ctx.strokeStyle = '#a07040';
+    ctx.lineWidth = 3;
+    for (let ri = r * 0.35; ri < r - 8; ri += r * 0.2) {
+      ctx.beginPath();
+      ctx.arc(sx, sy, ri, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // === Outer stone wall ring ===
+    const wallAlpha = isFighting ? (0.7 + pulse * 0.3) : 0.75;
+    ctx.globalAlpha = wallAlpha;
+    ctx.strokeStyle = isFighting ? '#ff6622' : (isCountdown ? '#ffaa00' : '#886644');
+    ctx.lineWidth = isFighting ? 8 : 6;
+    ctx.beginPath();
+    ctx.arc(sx, sy, r, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Inner edge of wall
+    ctx.globalAlpha = 0.5;
+    ctx.strokeStyle = isFighting ? '#ff8844' : '#aa8855';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(sx, sy, r - 10, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // === Torch pillars at cardinal points ===
+    const torchCount = 8;
+    for (let i = 0; i < torchCount; i++) {
+      const angle = (i / torchCount) * Math.PI * 2;
+      const tx = sx + Math.cos(angle) * r;
+      const ty = sy + Math.sin(angle) * r;
+      ctx.globalAlpha = 1;
+      // Stone base
+      ctx.fillStyle = '#776655';
+      ctx.fillRect(tx - 4, ty - 8, 8, 10);
+      // Flame flicker
+      const flickerOff = Math.sin(now * 0.01 + i * 1.3) * 2;
+      const flameAlpha = isFighting ? 0.95 : 0.7;
+      ctx.globalAlpha = flameAlpha;
+      ctx.fillStyle = isFighting ? '#ff4400' : '#ff8800';
+      ctx.beginPath();
+      ctx.ellipse(tx + flickerOff * 0.4, ty - 12, 4, 7, flickerOff * 0.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffee44';
+      ctx.beginPath();
+      ctx.ellipse(tx + flickerOff * 0.2, ty - 13, 2, 4, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // === Center line (divided field) ===
+    ctx.globalAlpha = 0.2;
+    ctx.strokeStyle = '#aa8855';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8, 8]);
+    ctx.beginPath();
+    ctx.moveTo(sx - r + 10, sy);
+    ctx.lineTo(sx + r - 10, sy);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // === ARENA label ===
+    ctx.globalAlpha = isFighting ? 1.0 : 0.8;
+    ctx.font = 'bold 14px Courier New';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const labelColor = isFighting ? '#ff6622' : isCountdown ? '#ffcc00' : '#cc9944';
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillText('⚔️ ARENA', sx + 1, sy - r * 0.5 + 1);
+    ctx.fillStyle = labelColor;
+    ctx.fillText('⚔️ ARENA', sx, sy - r * 0.5);
+
+    // === Fight state overlay text ===
+    if (isCountdown && arenaState.countdownUntil) {
+      const secsLeft = Math.max(0, Math.ceil((arenaState.countdownUntil - Date.now()) / 1000));
+      ctx.globalAlpha = 0.9 + pulse * 0.1;
+      ctx.font = 'bold 28px Courier New';
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillText('FIGHT IN ' + secsLeft, sx + 2, sy + 2);
+      ctx.fillStyle = '#ffcc00';
+      ctx.fillText('FIGHT IN ' + secsLeft, sx, sy);
+    } else if (isFighting && arenaState.fightEndsAt) {
+      const secsLeft = Math.max(0, Math.ceil((arenaState.fightEndsAt - Date.now()) / 1000));
+      ctx.globalAlpha = secsLeft <= 15 ? (0.6 + pulse * 0.4) : 0.7;
+      ctx.font = 'bold 15px Courier New';
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillText('⏱ ' + secsLeft + 's', sx + 1, sy + 1);
+      ctx.fillStyle = secsLeft <= 15 ? '#ff4444' : '#ffcc44';
+      ctx.fillText('⏱ ' + secsLeft + 's', sx, sy);
+    } else if (arenaState && arenaState.state === 'waiting') {
+      ctx.globalAlpha = 0.8;
+      ctx.font = 'bold 11px Courier New';
+      ctx.fillStyle = '#aaddff';
+      ctx.fillText(arenaState.fighterCount + ' fighter(s) — waiting...', sx, sy);
+    } else if (arenaState && arenaState.state === 'idle') {
+      ctx.globalAlpha = 0.65;
+      ctx.font = '11px Courier New';
+      ctx.fillStyle = '#cc9944';
+      ctx.fillText('Entry: ' + arenaZone.entryFee + 'c', sx, sy + 8);
+    } else if (arenaState && arenaState.state === 'cooldown') {
+      ctx.globalAlpha = 0.6;
+      ctx.font = '11px Courier New';
+      ctx.fillStyle = '#aaaaaa';
+      ctx.fillText('COOLDOWN', sx, sy);
+    }
+
+    // Pot display
+    if (arenaState && arenaState.pot > 0) {
+      ctx.globalAlpha = 0.9;
+      ctx.font = 'bold 12px Courier New';
+      ctx.fillStyle = '#ffd700';
+      ctx.fillText('💰 ' + arenaState.pot + 'c pot', sx, sy + r * 0.55);
+    }
+
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  },
+
+  // ============================================================
   // TERRITORY ZONES — colored overlays with ownership UI
   // ============================================================
   drawTerritories(ctx, camera, territories, myTeamId) {

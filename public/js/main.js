@@ -153,6 +153,11 @@
   let birdHomeVisible = false;
   let activeEquipSlot = 0;
 
+  // Arena state
+  let lastNearArena = false;
+  const arenaHud = document.getElementById('arenaHud');
+  const arenaProximityPrompt = document.getElementById('arenaProximityPrompt');
+
   // Leaderboard data
   let leaderboardData = [];
   let serverStats = { playersOnline: 0, totalPoops: 0 };
@@ -855,6 +860,79 @@
       }
     }
 
+    // === THE ARENA — PvP EVENTS ===
+    if (ev.type === 'arena_enter') {
+      if (ev.birdId === myId) {
+        showAnnouncement('⚔️ YOU ENTERED THE ARENA! (-30c)', '#ff8844', 3000);
+        addEventMessage('⚔️ You entered the arena! Pot: ' + ev.pot + 'c (' + ev.fighterCount + ' fighters)', '#ff8844');
+      } else {
+        addEventMessage('⚔️ ' + ev.birdName + ' joined the arena! Pot: ' + ev.pot + 'c', '#ff8844');
+      }
+    }
+    if (ev.type === 'arena_enter_fail') {
+      if (ev.birdId === myId) {
+        addEventMessage('❌ Arena: ' + ev.reason, '#ff4444');
+      }
+    }
+    if (ev.type === 'arena_refund') {
+      if (ev.birdId === myId) {
+        addEventMessage('💸 Arena: Not enough fighters — 30c refunded', '#ffcc44');
+      }
+    }
+    if (ev.type === 'arena_countdown') {
+      showAnnouncement('⚔️ ARENA FIGHT IN ' + ev.countdown + 's! ' + ev.fighters.join(' vs '), '#ffcc00', 5000);
+      addEventMessage('⚔️ Arena fight starting! ' + ev.fighters.join(' vs ') + ' — Pot: ' + ev.pot + 'c', '#ffcc00');
+      effects.push({ type: 'screen_shake', time: now, duration: 400, intensity: 4 });
+    }
+    if (ev.type === 'arena_fight_start') {
+      showAnnouncement('⚔️ FIGHT! ⚔️', '#ff4400', 2000);
+      addEventMessage('⚔️ ARENA FIGHT STARTED! ' + ev.fighters.join(' vs ') + ' — Pot: ' + ev.pot + 'c', '#ff4400');
+      effects.push({ type: 'screen_shake', time: now, duration: 600, intensity: 8 });
+    }
+    if (ev.type === 'arena_damage') {
+      effects.push({ type: 'splat', x: ev.x, y: ev.y, time: now, duration: 600, radius: 20 });
+      if (ev.attackerId === myId) {
+        effects.push({
+          type: 'text', x: ev.x, y: ev.y - 25,
+          time: now, duration: 1400,
+          text: '⚔️ ARENA HIT! -1♥', color: '#ff4400', size: 16,
+        });
+      }
+      if (ev.targetId === myId) {
+        effects.push({
+          type: 'text', x: ev.x, y: ev.y - 25,
+          time: now, duration: 1400,
+          text: '💔 HIT! ♥'.repeat(ev.hp) || 'LAST HP!', color: '#ff0000', size: 14,
+        });
+        SoundEngine.stunned();
+      }
+    }
+    if (ev.type === 'arena_eliminated') {
+      if (ev.birdId === myId) {
+        showAnnouncement('💀 ELIMINATED!', '#ff0000', 4000);
+        effects.push({ type: 'screen_shake', time: now, duration: 800, intensity: 12 });
+      } else if (ev.killedById === myId) {
+        showAnnouncement('⚔️ YOU ELIMINATED ' + ev.birdName + '!', '#ff6600', 3000);
+        addEventMessage('⚔️ ' + ev.killedByName + ' eliminated ' + ev.birdName + '!', '#ff6600');
+      } else {
+        addEventMessage('💀 ' + ev.birdName + ' was eliminated' + (ev.killedByName ? ' by ' + ev.killedByName : '') + '!', '#ff4444');
+      }
+    }
+    if (ev.type === 'arena_victory') {
+      if (ev.winnerId === myId) {
+        showAnnouncement('🏆 YOU WIN! +' + ev.pot + 'c + 200 XP!', '#ffd700', 6000);
+        effects.push({ type: 'screen_shake', time: now, duration: 1000, intensity: 15 });
+      }
+      addEventMessage('🏆 ARENA WINNER: ' + ev.winnerName + ' takes the pot (' + ev.pot + 'c)!', '#ffd700');
+    }
+    if (ev.type === 'arena_draw') {
+      showAnnouncement('🤝 ARENA DRAW! Fees refunded.', '#aaaaff', 3000);
+      addEventMessage('🤝 Arena ended in a draw — entry fees refunded', '#aaaaff');
+    }
+    if (ev.type === 'arena_cancelled') {
+      addEventMessage('⚔️ Arena fight cancelled — not enough fighters', '#888');
+    }
+
     // === DAY/NIGHT PHASE CHANGE ===
     if (ev.type === 'phase_change') {
       const phaseColors = {
@@ -1098,6 +1176,14 @@
     if (e.key.toLowerCase() === 'b') {
       if (gameState && gameState.blackMarket && lastNearBlackMarket) {
         toggleBlackMarketShop();
+      }
+    }
+    // Arena enter
+    if (e.key.toLowerCase() === 'e') {
+      if (gameState && gameState.arena && lastNearArena &&
+          (gameState.arena.state === 'idle' || gameState.arena.state === 'waiting') &&
+          !gameState.arena.isFighter) {
+        socket.emit('action', { type: 'arena_enter' });
       }
     }
     syncInput();
@@ -1719,6 +1805,77 @@
   }
 
   // ============================================================
+  // ARENA UI — proximity prompt + fight HUD
+  // ============================================================
+  function updateArenaUI() {
+    if (!gameState || !gameState.self || !worldData || !worldData.arena) return;
+
+    const s = gameState.self;
+    const arenaZone = worldData.arena;
+    const arena = gameState.arena;
+
+    // Proximity check (server-side distance to arena center)
+    const adx = s.x - arenaZone.x;
+    const ady = s.y - arenaZone.y;
+    const aDist = Math.sqrt(adx * adx + ady * ady);
+    const isNear = aDist < arenaZone.radius + 80;
+    lastNearArena = isNear;
+
+    // Show proximity prompt when near and not already a fighter
+    if (arenaProximityPrompt) {
+      const canEnter = arena && (arena.state === 'idle' || arena.state === 'waiting') && !arena.isFighter;
+      if (isNear && canEnter) {
+        const potText = arena.pot > 0 ? ' (pot: ' + arena.pot + 'c)' : '';
+        const fightText = arena.fighterCount > 0 ? ' — ' + arena.fighterCount + ' waiting' : '';
+        arenaProximityPrompt.innerHTML = '⚔️ Press <kbd>E</kbd> to ENTER ARENA (-' + arenaZone.entryFee + 'c)' + fightText + potText;
+        arenaProximityPrompt.style.display = 'block';
+      } else {
+        arenaProximityPrompt.style.display = 'none';
+      }
+    }
+
+    // Arena fight HUD — shown when player is an active fighter
+    if (arenaHud) {
+      if (!arena || !arena.isFighter) {
+        arenaHud.style.display = 'none';
+        return;
+      }
+
+      arenaHud.style.display = 'block';
+
+      if (arena.state === 'waiting') {
+        const secsUntil = arena.waitUntil ? Math.max(0, Math.ceil((arena.waitUntil - Date.now()) / 1000)) : '?';
+        arenaHud.innerHTML = '⚔️ WAITING FOR FIGHTERS (' + arena.fighterCount + ' in queue) — starts in ~' + secsUntil + 's';
+        arenaHud.className = '';
+      } else if (arena.state === 'countdown') {
+        const secsLeft = arena.countdownUntil ? Math.max(0, Math.ceil((arena.countdownUntil - Date.now()) / 1000)) : '?';
+        arenaHud.innerHTML = '⚔️ FIGHT STARTS IN <span style="color:#ffcc00;font-size:18px">' + secsLeft + '</span>s!';
+        arenaHud.className = '';
+      } else if (arena.state === 'fighting') {
+        const myHp = arena.myArenaHp !== null ? arena.myArenaHp : 0;
+        const secsLeft = arena.fightEndsAt ? Math.max(0, Math.ceil((arena.fightEndsAt - Date.now()) / 1000)) : '?';
+        const timerColor = secsLeft <= 15 ? '#ff4444' : '#ffcc44';
+        const hearts = '♥'.repeat(Math.max(0, myHp)) + '♡'.repeat(Math.max(0, 3 - myHp));
+        let opponentHtml = '';
+        if (arena.fighters) {
+          for (const f of arena.fighters) {
+            if (f.id === s.id) continue;
+            const fHearts = '♥'.repeat(Math.max(0, f.arenaHp)) + '♡'.repeat(Math.max(0, f.maxArenaHp - f.arenaHp));
+            const eliminated = f.eliminated ? ' <span style="color:#888">(out)</span>' : '';
+            opponentHtml += ' | ' + f.name + ': <span style="color:#ff8888">' + fHearts + '</span>' + eliminated;
+          }
+        }
+        arenaHud.innerHTML = '⚔️ YOU: <span style="color:#ff4400">' + hearts + '</span>  ' +
+          '<span style="color:' + timerColor + '">⏱' + secsLeft + 's</span>' +
+          (opponentHtml || '');
+        arenaHud.className = 'fighting';
+      } else {
+        arenaHud.style.display = 'none';
+      }
+    }
+  }
+
+  // ============================================================
   // FLOCK LOBBY UI
   // ============================================================
   function renderFlockLobby(lobbyBirds, selfState) {
@@ -2198,6 +2355,11 @@
       Renderer.drawTerritories(ctx, camera, gameState.territories, myTeamId);
     }
 
+    // The Arena (drawn on ground level, below buildings)
+    if (worldData && worldData.arena) {
+      Renderer.drawArena(ctx, camera, worldData.arena, gameState.arena || null, now);
+    }
+
     Renderer.drawTables(ctx, camera);
     Renderer.drawLaundry(ctx, camera);
     Renderer.drawCars(ctx, camera);
@@ -2497,6 +2659,33 @@
             ctx.arc(sx, sy, 18, 0, Math.PI * 2);
             ctx.stroke();
           }
+
+          // Arena fighter HP hearts (shown above fighter during fight/countdown)
+          if (gameState.arena && gameState.arena.fighters && gameState.arena.state === 'fighting') {
+            const arenaFighter = gameState.arena.fighters.find(function(f) { return f.id === b.id; });
+            if (arenaFighter && !arenaFighter.eliminated) {
+              const heartSize = 8;
+              const totalW = arenaFighter.maxArenaHp * (heartSize + 2);
+              const heartY = sy - 42;
+              const heartX0 = sx - totalW / 2;
+              ctx.font = heartSize + 'px sans-serif';
+              ctx.textAlign = 'left';
+              ctx.textBaseline = 'middle';
+              for (let h = 0; h < arenaFighter.maxArenaHp; h++) {
+                ctx.globalAlpha = h < arenaFighter.arenaHp ? 1.0 : 0.25;
+                ctx.fillStyle = isPlayer ? '#ff4444' : '#ff8888';
+                ctx.fillText('♥', heartX0 + h * (heartSize + 2), heartY);
+              }
+              ctx.globalAlpha = 1;
+              // Red ring to highlight fighters
+              const ringPulse = Math.sin(now * 0.006) * 0.2 + 0.6;
+              ctx.strokeStyle = isPlayer ? 'rgba(255, 100, 0, ' + ringPulse + ')' : 'rgba(220, 50, 50, ' + ringPulse + ')';
+              ctx.lineWidth = 2;
+              ctx.beginPath();
+              ctx.arc(sx, sy, 22, 0, Math.PI * 2);
+              ctx.stroke();
+            }
+          }
         }
       }
     }
@@ -2561,6 +2750,7 @@
     // HUD
     updateHUD();
     updateEventFeed();
+    updateArenaUI();
 
     // Minimap (now includes activeEvent and cat)
     Renderer.drawMinimap(minimapCtx, worldData, gameState.birds, selfBird, gameState.activeEvent, gameState.cat, gameState.janitor, gameState.territories);
@@ -2683,6 +2873,32 @@
       minimapCtx.textAlign = 'center';
       minimapCtx.fillStyle = '#ffd700';
       minimapCtx.fillText('🎩', gameState.godfatherRaccoon.x * msx, gameState.godfatherRaccoon.y * msy + 3);
+    }
+
+    // Draw arena on minimap (static red ring + pulsing dot when active)
+    if (worldData && worldData.arena) {
+      const mw = minimapCtx.canvas.width;
+      const mh = minimapCtx.canvas.height;
+      const msx = mw / worldData.width;
+      const msy = mh / worldData.height;
+      const arenaX = worldData.arena.x * msx;
+      const arenaY = worldData.arena.y * msy;
+      const arenaR = worldData.arena.radius * msx;
+      const arenaActive = gameState.arena && (gameState.arena.state === 'fighting' || gameState.arena.state === 'countdown');
+      const arenaPulse = arenaActive ? (Math.sin(performance.now() * 0.008) * 0.4 + 0.6) : 1;
+      minimapCtx.strokeStyle = arenaActive ? 'rgba(255, 80, 0, ' + arenaPulse + ')' : 'rgba(180, 100, 40, 0.7)';
+      minimapCtx.lineWidth = arenaActive ? 1.5 : 1;
+      minimapCtx.beginPath();
+      minimapCtx.arc(arenaX, arenaY, Math.max(3, arenaR), 0, Math.PI * 2);
+      minimapCtx.stroke();
+      if (arenaActive) {
+        minimapCtx.fillStyle = 'rgba(255, 80, 0, 0.4)';
+        minimapCtx.fill();
+      }
+      minimapCtx.font = 'bold 6px sans-serif';
+      minimapCtx.textAlign = 'center';
+      minimapCtx.fillStyle = arenaActive ? '#ff8844' : '#cc8833';
+      minimapCtx.fillText('⚔', arenaX, arenaY + 2);
     }
 
     // Draw hawk on minimap if present

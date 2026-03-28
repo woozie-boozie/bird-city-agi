@@ -31,6 +31,7 @@ app.get('/api/world', (req, res) => {
     skillCatalog: world.SKILL_CATALOG,
     birdColors: world.BIRD_COLORS,
     streetLamps: world.STREET_LAMPS,
+    arena: world.ARENA,
   });
 });
 

@@ -95,6 +95,22 @@ class GameEngine {
     this.weatherTimer = Date.now() + this._randomRange(60000, 120000); // 1-2 min to first weather
     this.rainWorms = new Map();       // id -> true (worm food ids spawned during rain)
 
+    // === THE ARENA (PvP combat pit) ===
+    this.arena = {
+      state: 'idle', // 'idle' | 'waiting' | 'countdown' | 'fighting' | 'cooldown'
+      fighters: new Map(), // birdId -> { arenaHp, maxArenaHp, eliminated, damageDealt, name }
+      pot: 0,
+      waitingUntil: null,   // auto-countdown trigger when 2+ fighters
+      countdownUntil: null, // fight starts
+      fightEndsAt: null,    // 90s fight timer
+      cooldownUntil: null,  // rest period after fight
+    };
+    this.ARENA_ENTRY_FEE = 30;
+    this.ARENA_FIGHT_DURATION = 90000;  // 90 seconds
+    this.ARENA_COUNTDOWN_MS = 5000;     // 5-second countdown
+    this.ARENA_COOLDOWN_MS = 25000;     // 25-second rest after fight
+    this.ARENA_WAIT_MS = 20000;         // wait 20s for more fighters after 2nd joins
+
     // === BLACK MARKET (night-only contraband shop) ===
     this.blackMarket = null;  // null when closed, { x, y } when open at night
     this.BLACK_MARKET_POS = { x: 700, y: 2200 }; // dark alley behind Cafe District
@@ -378,6 +394,11 @@ class GameEngine {
       for (const [bId, b] of this.beacons) {
         if (b.birdId === id) this.beacons.delete(bId);
       }
+      // Clean up arena fighters (mark as eliminated on disconnect)
+      if (this.arena.fighters.has(id)) {
+        const f = this.arena.fighters.get(id);
+        f.eliminated = true;
+      }
       this.birds.delete(id);
     }
   }
@@ -465,6 +486,11 @@ class GameEngine {
     if (action.type === 'blackmarket_buy') {
       this._handleBlackMarketBuy(bird, action.itemId, now);
     }
+
+    // === The Arena ===
+    if (action.type === 'arena_enter') {
+      this._handleArenaEnter(bird, now);
+    }
   }
 
   tick() {
@@ -542,6 +568,9 @@ class GameEngine {
 
     // === Black Market ===
     this._updateBlackMarket(dt, now);
+
+    // === The Arena ===
+    this._updateArena(dt, now);
 
     // === Day/Night Cycle ===
     this._updateDayNight(dt, now);
@@ -1679,6 +1708,31 @@ class GameEngine {
         xpGain = cop.type === 'swat' ? 80 : 50;
         bird.coins += cop.type === 'swat' ? 25 : 15;
         this.events.push({ type: 'cop_pooped', birdId: bird.id, birdName: bird.name, copType: cop.type, x: cop.x, y: cop.y });
+      } else if (hit.target === 'arena_fighter' && hit.fighter) {
+        // Arena PvP damage! One hit = one arena HP lost
+        const fighter = hit.fighter;
+        fighter.arenaHp--;
+        const shooterFighter = this.arena.fighters.get(bird.id);
+        if (shooterFighter) shooterFighter.damageDealt++;
+        xpGain = 40;
+        this.events.push({
+          type: 'arena_damage',
+          attackerId: bird.id, attackerName: bird.name,
+          targetId: hit.fighterId, targetName: fighter.name,
+          hp: fighter.arenaHp, maxHp: fighter.maxArenaHp,
+          x: poop.x, y: poop.y,
+        });
+        if (fighter.arenaHp <= 0) {
+          fighter.eliminated = true;
+          // Break combo for the eliminated fighter
+          const eliminatedBird = this.birds.get(hit.fighterId);
+          if (eliminatedBird) eliminatedBird.comboCount = 0;
+          this.events.push({
+            type: 'arena_eliminated',
+            birdId: hit.fighterId, birdName: fighter.name,
+            killedById: bird.id, killedByName: bird.name,
+          });
+        }
       }
 
       // Mega poop hits multiple targets
@@ -2048,6 +2102,20 @@ class GameEngine {
 
     if (isMegaPoop && allHits.length > 0) {
       return { target: allHits[0].target, npc: allHits[0].npc, allHits };
+    }
+
+    // Check arena fighters (PvP — only single-poop hits, arena must be in 'fighting' state)
+    if (!isMegaPoop && this.arena && this.arena.state === 'fighting' && this.arena.fighters.has(poop.birdId)) {
+      for (const [fighterId, fighter] of this.arena.fighters) {
+        if (fighterId === poop.birdId || fighter.eliminated) continue;
+        const target = this.birds.get(fighterId);
+        if (!target) continue;
+        const dx = poop.x - target.x;
+        const dy = poop.y - target.y;
+        if (Math.sqrt(dx * dx + dy * dy) < hitRadius + 12) {
+          return { target: 'arena_fighter', fighterId, fighter };
+        }
+      }
     }
 
     return { target: null };
@@ -3109,6 +3177,22 @@ class GameEngine {
       dayTime: this.dayTime,
       dayPhase: this.dayPhase,
       blackMarket: this.blackMarket ? { x: this.blackMarket.x, y: this.blackMarket.y } : null,
+      arena: {
+        state: this.arena.state,
+        pot: this.arena.pot,
+        fighterCount: this.arena.fighters.size,
+        isFighter: this.arena.fighters.has(bird.id),
+        myArenaHp: this.arena.fighters.has(bird.id) ? this.arena.fighters.get(bird.id).arenaHp : null,
+        countdownUntil: this.arena.countdownUntil,
+        fightEndsAt: this.arena.fightEndsAt,
+        cooldownUntil: this.arena.cooldownUntil,
+        waitUntil: this.arena.waitingUntil,
+        fighters: (this.arena.state === 'fighting' || this.arena.state === 'countdown' || this.arena.state === 'waiting')
+          ? [...this.arena.fighters.entries()].map(([id, f]) => ({
+              id, name: f.name, arenaHp: f.arenaHp, maxArenaHp: f.maxArenaHp, eliminated: f.eliminated,
+            }))
+          : null,
+      },
       self: {
         id: bird.id,
         name: bird.name,
@@ -4907,6 +4991,233 @@ class GameEngine {
     // Keep inside world bounds
     gf.x = Math.max(60, Math.min(world.WORLD_WIDTH - 60, gf.x));
     gf.y = Math.max(60, Math.min(world.WORLD_HEIGHT - 60, gf.y));
+  }
+
+  // ============================================================
+  // THE ARENA — PvP colosseum
+  // ============================================================
+  _updateArena(dt, now) {
+    const arena = this.arena;
+
+    if (arena.state === 'waiting') {
+      // Drop disconnected fighters and refund them
+      for (const [fighterId, fighter] of arena.fighters) {
+        if (!this.birds.has(fighterId)) {
+          arena.fighters.delete(fighterId);
+          arena.pot = Math.max(0, arena.pot - this.ARENA_ENTRY_FEE);
+        }
+      }
+
+      if (arena.fighters.size === 0) {
+        arena.state = 'idle';
+        arena.pot = 0;
+        arena.waitingUntil = null;
+        return;
+      }
+      if (arena.fighters.size === 1) {
+        // Only one fighter — refund and reset
+        for (const [fighterId] of arena.fighters) {
+          const bird = this.birds.get(fighterId);
+          if (bird) {
+            bird.coins += this.ARENA_ENTRY_FEE;
+            this.events.push({ type: 'arena_refund', birdId: fighterId, birdName: bird.name });
+          }
+        }
+        arena.fighters.clear();
+        arena.state = 'idle';
+        arena.pot = 0;
+        arena.waitingUntil = null;
+        return;
+      }
+
+      // Start countdown when 2+ fighters AND wait time elapsed, or 4+ fighters immediately
+      if (arena.fighters.size >= 4 || (arena.fighters.size >= 2 && now >= arena.waitingUntil)) {
+        arena.state = 'countdown';
+        arena.countdownUntil = now + this.ARENA_COUNTDOWN_MS;
+        this.events.push({
+          type: 'arena_countdown',
+          countdown: this.ARENA_COUNTDOWN_MS / 1000,
+          fighterCount: arena.fighters.size,
+          pot: arena.pot,
+          fighters: [...arena.fighters.values()].map(f => f.name),
+        });
+      }
+    }
+
+    if (arena.state === 'countdown') {
+      // Drop disconnected fighters
+      for (const [fighterId] of arena.fighters) {
+        if (!this.birds.has(fighterId)) {
+          arena.fighters.delete(fighterId);
+          arena.pot = Math.max(0, arena.pot - this.ARENA_ENTRY_FEE);
+        }
+      }
+
+      if (arena.fighters.size < 2) {
+        // Not enough fighters — cancel and refund
+        for (const [fighterId] of arena.fighters) {
+          const bird = this.birds.get(fighterId);
+          if (bird) bird.coins += this.ARENA_ENTRY_FEE;
+        }
+        arena.fighters.clear();
+        arena.state = 'idle';
+        arena.pot = 0;
+        arena.countdownUntil = null;
+        this.events.push({ type: 'arena_cancelled', reason: 'not_enough_fighters' });
+        return;
+      }
+
+      if (now >= arena.countdownUntil) {
+        arena.state = 'fighting';
+        arena.fightEndsAt = now + this.ARENA_FIGHT_DURATION;
+        this.events.push({
+          type: 'arena_fight_start',
+          fighterCount: arena.fighters.size,
+          pot: arena.pot,
+          fightDuration: this.ARENA_FIGHT_DURATION,
+          fighters: [...arena.fighters.values()].map(f => f.name),
+        });
+      }
+    }
+
+    if (arena.state === 'fighting') {
+      // Mark disconnected fighters as eliminated
+      for (const [fighterId, fighter] of arena.fighters) {
+        if (!this.birds.has(fighterId) && !fighter.eliminated) {
+          fighter.eliminated = true;
+          this.events.push({
+            type: 'arena_eliminated',
+            birdId: fighterId, birdName: fighter.name,
+            killedById: null, killedByName: null, reason: 'disconnect',
+          });
+        }
+      }
+
+      const activeFighters = [...arena.fighters.entries()].filter(([, f]) => !f.eliminated);
+
+      if (activeFighters.length <= 1) {
+        // Fight over — last bird standing (or draw if all disconnected)
+        this._endArenaFight(now, activeFighters.length === 1 ? activeFighters[0][0] : null);
+        return;
+      }
+
+      // Time's up — most HP wins
+      if (now >= arena.fightEndsAt) {
+        activeFighters.sort(([, a], [, b]) => b.arenaHp - a.arenaHp);
+        // Tie-break: whoever dealt more damage
+        if (activeFighters[0][1].arenaHp === activeFighters[1][1].arenaHp) {
+          activeFighters.sort(([, a], [, b]) => b.damageDealt - a.damageDealt);
+        }
+        this._endArenaFight(now, activeFighters[0][0]);
+        return;
+      }
+    }
+
+    if (arena.state === 'cooldown') {
+      if (now >= arena.cooldownUntil) {
+        arena.state = 'idle';
+        arena.fighters.clear();
+        arena.pot = 0;
+        arena.countdownUntil = null;
+        arena.fightEndsAt = null;
+        arena.cooldownUntil = null;
+        arena.waitingUntil = null;
+      }
+    }
+  }
+
+  _endArenaFight(now, winnerId) {
+    const arena = this.arena;
+    const fighterNames = [...arena.fighters.values()].map(f => f.name);
+
+    if (winnerId) {
+      const winner = this.birds.get(winnerId);
+      if (winner) {
+        winner.coins += arena.pot;
+        winner.xp += 200;
+        console.log(`[Arena] 🏆 Winner: ${winner.name} — pot ${arena.pot}c`);
+      }
+      this.events.push({
+        type: 'arena_victory',
+        winnerId,
+        winnerName: winnerId && this.birds.get(winnerId) ? this.birds.get(winnerId).name : (arena.fighters.get(winnerId) || {}).name || '???',
+        pot: arena.pot,
+        fighters: fighterNames,
+      });
+    } else {
+      // Draw — refund all connected fighters
+      for (const [fighterId] of arena.fighters) {
+        const bird = this.birds.get(fighterId);
+        if (bird) bird.coins += this.ARENA_ENTRY_FEE;
+      }
+      this.events.push({ type: 'arena_draw', fighters: fighterNames });
+    }
+
+    arena.state = 'cooldown';
+    arena.cooldownUntil = now + this.ARENA_COOLDOWN_MS;
+    arena.fightEndsAt = null;
+    arena.countdownUntil = null;
+  }
+
+  _handleArenaEnter(bird, now) {
+    const arena = this.arena;
+    const ARENA = world.ARENA;
+
+    // Can only enter during idle or waiting
+    if (arena.state !== 'idle' && arena.state !== 'waiting') {
+      const reason = arena.state === 'fighting' ? 'Fight in progress!' :
+                     arena.state === 'countdown' ? 'Fight starting soon!' :
+                     'Arena cooling down...';
+      this.events.push({ type: 'arena_enter_fail', birdId: bird.id, reason });
+      return;
+    }
+
+    // Already registered as a fighter
+    if (arena.fighters.has(bird.id)) {
+      this.events.push({ type: 'arena_enter_fail', birdId: bird.id, reason: 'Already in the arena!' });
+      return;
+    }
+
+    // Proximity check (must be within radius + 80px of center)
+    const dx = bird.x - ARENA.x;
+    const dy = bird.y - ARENA.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist > ARENA.radius + 80) {
+      this.events.push({ type: 'arena_enter_fail', birdId: bird.id, reason: 'Fly closer to the Arena!' });
+      return;
+    }
+
+    // Coins check
+    if (bird.coins < this.ARENA_ENTRY_FEE) {
+      this.events.push({ type: 'arena_enter_fail', birdId: bird.id, reason: `Need ${this.ARENA_ENTRY_FEE}c to enter!` });
+      return;
+    }
+
+    // Charge entry fee and register fighter
+    bird.coins -= this.ARENA_ENTRY_FEE;
+    arena.pot += this.ARENA_ENTRY_FEE;
+
+    arena.fighters.set(bird.id, {
+      arenaHp: 3,
+      maxArenaHp: 3,
+      eliminated: false,
+      damageDealt: 0,
+      name: bird.name,
+    });
+
+    if (arena.state === 'idle') {
+      arena.state = 'waiting';
+      arena.waitingUntil = now + this.ARENA_WAIT_MS;
+    }
+
+    this.events.push({
+      type: 'arena_enter',
+      birdId: bird.id, birdName: bird.name,
+      fighterCount: arena.fighters.size,
+      pot: arena.pot,
+      waitUntil: arena.waitingUntil,
+    });
+    console.log(`[Arena] ⚔️ ${bird.name} entered the arena (pot: ${arena.pot}c, fighters: ${arena.fighters.size})`);
   }
 
 }
