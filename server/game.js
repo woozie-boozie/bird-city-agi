@@ -82,6 +82,10 @@ class GameEngine {
     this.raccoons = new Map();        // id -> raccoon state
     this.raccoonSpawnTimer = 0;       // when to try next spawn
 
+    // === DRUNK PIGEONS (night-only, pickpocketable) ===
+    this.drunkPigeons = new Map();    // id -> drunk pigeon state
+    this.drunkPigeonSpawnTimer = 0;   // when to try next spawn
+
     // === WEATHER SYSTEM ===
     this.weather = null;              // { type, intensity, windAngle, windSpeed, endsAt, wormSpawnTimer, lightningTimer }
     this.weatherTimer = Date.now() + this._randomRange(60000, 120000); // 1-2 min to first weather
@@ -511,6 +515,9 @@ class GameEngine {
 
     // === Raccoon Thieves ===
     this._updateRaccoons(dt, now);
+
+    // === Drunk Pigeons ===
+    this._updateDrunkPigeons(dt, now);
 
     // === Weather ===
     this._updateWeather(dt, now);
@@ -2098,6 +2105,15 @@ class GameEngine {
         }
       }
 
+      // Lightning zaps nearby drunk pigeons — coin shower for all birds in radius!
+      for (const [dpId, dp] of this.drunkPigeons) {
+        const dpDx = dp.x - lx;
+        const dpDy = dp.y - ly;
+        if (Math.sqrt(dpDx * dpDx + dpDy * dpDy) < 150) {
+          this._explodeDrunkPigeon(dpId, dp, now);
+        }
+      }
+
       this.weather.lightningTimer = now + this._randomRange(8000, 28000);
     }
   }
@@ -2273,6 +2289,142 @@ class GameEngine {
         }
       }
     }
+  }
+
+  // ============================================================
+  // DRUNK PIGEONS (night-only, pickpocketable loot carriers)
+  // ============================================================
+  _spawnDrunkPigeon(now) {
+    // Spawn near city hotspots (bars, cafe district, downtown)
+    const spawnPoints = [
+      { x: 680,  y: 1900 },  // Cafe District (the bar strip)
+      { x: 950,  y: 1600 },  // Park edge
+      { x: 1250, y: 850  },  // Downtown
+      { x: 1850, y: 1500 },  // Residential neighborhood
+      { x: 2100, y: 2100 },  // Near the Mall
+      { x: 520,  y: 1100 },  // West side
+      { x: 1600, y: 600  },  // North strip
+    ];
+    const spawn = spawnPoints[Math.floor(Math.random() * spawnPoints.length)];
+    const id = 'drunk_' + uid();
+    const pigeon = {
+      id,
+      x: spawn.x + (Math.random() - 0.5) * 120,
+      y: spawn.y + (Math.random() - 0.5) * 120,
+      rotation: Math.random() * Math.PI * 2,
+      coins: 18 + Math.floor(Math.random() * 28),  // 18–45 coins on them
+      wobblePhase: Math.random() * Math.PI * 2,
+      wanderAngle: Math.random() * Math.PI * 2,
+      wanderTimer: 0,
+      pickpocketCooldowns: {},   // birdId -> expiry
+      spawnedAt: now,
+    };
+    this.drunkPigeons.set(id, pigeon);
+    console.log(`[GameEngine] 🍺 Drunk pigeon spawned with ${pigeon.coins}c`);
+  }
+
+  _updateDrunkPigeons(dt, now) {
+    const isNight = this.dayPhase === 'night' || this.dayPhase === 'dusk';
+
+    // Despawn at dawn/day
+    if (!isNight) {
+      if (this.drunkPigeons.size > 0) {
+        this.drunkPigeons.clear();
+        this.drunkPigeonSpawnTimer = 0;
+        this.events.push({ type: 'drunk_pigeons_gone' });
+      }
+      return;
+    }
+
+    // Spawn up to 6 drunk pigeons at night, one every 20–35s
+    if (this.drunkPigeons.size < 6 && now >= this.drunkPigeonSpawnTimer && this.birds.size > 0) {
+      this._spawnDrunkPigeon(now);
+      this.drunkPigeonSpawnTimer = now + this._randomRange(20000, 35000);
+      if (this.drunkPigeons.size === 1) {
+        this.events.push({ type: 'drunk_pigeon_spawn' });
+      }
+    }
+
+    // Speed of drunk wander (slow — they're wasted)
+    const WANDER_SPEED = 38;
+
+    for (const [dpId, dp] of this.drunkPigeons) {
+      // Wobbly wandering: change direction frequently with big random swings
+      dp.wanderTimer -= dt;
+      if (dp.wanderTimer <= 0) {
+        // Big random direction change (±100° swing = very drunk)
+        dp.wanderAngle += (Math.random() - 0.5) * (Math.PI * 100 / 180) * 3.5;
+        dp.wanderTimer = this._randomRange(0.8, 2.5);
+      }
+
+      // Move in wanderAngle direction, with a sine-wave stagger side-to-side
+      const staggerOffset = Math.sin(now * 0.003 + dp.wobblePhase) * 25 * dt;
+      dp.x += Math.cos(dp.wanderAngle) * WANDER_SPEED * dt + Math.cos(dp.wanderAngle + Math.PI / 2) * staggerOffset;
+      dp.y += Math.sin(dp.wanderAngle) * WANDER_SPEED * dt + Math.sin(dp.wanderAngle + Math.PI / 2) * staggerOffset;
+      dp.wobblePhase += dt * 2;
+
+      // Face their movement direction (slightly slurred — lags behind)
+      dp.rotation = dp.wanderAngle;
+
+      // Bounce off world edges
+      if (dp.x < 80)  { dp.x = 80;  dp.wanderAngle = Math.PI - dp.wanderAngle; }
+      if (dp.x > world.WORLD_WIDTH - 80)  { dp.x = world.WORLD_WIDTH - 80;  dp.wanderAngle = Math.PI - dp.wanderAngle; }
+      if (dp.y < 80)  { dp.y = 80;  dp.wanderAngle = -dp.wanderAngle; }
+      if (dp.y > world.WORLD_HEIGHT - 80) { dp.y = world.WORLD_HEIGHT - 80; dp.wanderAngle = -dp.wanderAngle; }
+
+      // Pickpocket check: bird within 45px steals coins
+      if (dp.coins > 0) {
+        for (const bird of this.birds.values()) {
+          if (bird.stunnedUntil > now) continue;
+          // Per-bird cooldown (8s) — can't farm the same drunk all night
+          if (dp.pickpocketCooldowns[bird.id] && dp.pickpocketCooldowns[bird.id] > now) continue;
+
+          const dx = bird.x - dp.x;
+          const dy = bird.y - dp.y;
+          if (Math.sqrt(dx * dx + dy * dy) < 45) {
+            const stolen = Math.min(dp.coins, 8 + Math.floor(Math.random() * 12));
+            dp.coins -= stolen;
+            bird.coins += stolen;
+            bird.xp += 12;
+            dp.pickpocketCooldowns[bird.id] = now + 8000;
+            // Stumble: big sudden direction change when pickpocketed
+            dp.wanderAngle += (Math.random() - 0.5) * Math.PI * 1.5;
+            this.events.push({
+              type: 'drunk_pigeon_pickpocket',
+              birdId: bird.id, birdName: bird.name,
+              dpId, stolen, remaining: dp.coins,
+              x: dp.x, y: dp.y,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  _explodeDrunkPigeon(dpId, dp, now) {
+    if (!this.drunkPigeons.has(dpId)) return;
+    this.drunkPigeons.delete(dpId);
+
+    // Every bird within 250px gets a windfall share of the coins
+    const winners = [];
+    for (const bird of this.birds.values()) {
+      const dx = bird.x - dp.x;
+      const dy = bird.y - dp.y;
+      if (Math.sqrt(dx * dx + dy * dy) < 250) {
+        const share = Math.floor(dp.coins / 2) + Math.floor(Math.random() * 15);
+        bird.coins += share;
+        bird.xp += 30;
+        winners.push({ id: bird.id, name: bird.name, share });
+      }
+    }
+
+    this.events.push({
+      type: 'drunk_pigeon_coin_shower',
+      x: dp.x, y: dp.y,
+      totalCoins: dp.coins,
+      winners,
+    });
+    console.log(`[GameEngine] ⚡🍺 Drunk pigeon ZAPPED — coin shower! ${dp.coins}c scattered`);
   }
 
   // ============================================================
@@ -2784,6 +2936,19 @@ class GameEngine {
       }
     }
 
+    // Drunk Pigeons (city-wide visible — players need to spot and chase them)
+    const nearbyDrunkPigeons = [];
+    for (const dp of this.drunkPigeons.values()) {
+      if (Math.abs(dp.x - bird.x) < viewRange && Math.abs(dp.y - bird.y) < viewRange) {
+        nearbyDrunkPigeons.push({
+          id: dp.id, x: dp.x, y: dp.y,
+          rotation: dp.rotation,
+          wobblePhase: dp.wobblePhase,
+          coins: dp.coins,
+        });
+      }
+    }
+
     // Cop birds — all visible city-wide (sirens make them visible from afar)
     const nearbyCops = [];
     for (const cop of this.copBirds.values()) {
@@ -2819,6 +2984,7 @@ class GameEngine {
       wantedBirdId: this.wantedBirdId,
       foodTruck: foodTruckState,
       raccoons: nearbyRaccoons,
+      drunkPigeons: nearbyDrunkPigeons,
       cops: nearbyCops,
       weather: this.weather ? {
         type: this.weather.type,

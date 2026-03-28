@@ -191,6 +191,36 @@ A hooded raccoon fence sets up in a dark alley behind the Cafe District at dusk,
 
 **Creative intent**: Night was already *dangerous*. Now it's also *profitable*. The Disguise Kit is the game-changer — a Level 5 Most Wanted bird spending 100c to vanish into the shadows is a cinematic moment. The Lucky Charm turns poop sprints into XP explosions. Pure DISCOVERY + PROGRESSION energy. The city now has a shadow economy.
 
+**Session 7 — 2026-03-28: Drunk Pigeons at Night — Pickpocket & Lightning Coin Shower**
+Night is now even more chaotic. Up to 6 drunk pigeons stumble around the city after dark, loaded with coins. Fly near them to pickpocket their wallets. And when a storm rolls in... lightning + drunk pigeon = explosive coin shower.
+
+**Drunk Pigeon NPC (`server/game.js`):**
+- Up to 6 spawn at dusk (one every 20–35s), vanish at dawn with a message
+- Movement: erratic stagger walk — direction changes every 0.8–2.5s with ±100° random swings + sine-wave side-to-side sway. Genuinely looks drunk
+- Each pigeon carries 18–45 coins and bounces off world edges
+- **Pickpocket mechanic**: Fly within 45px to steal 8–20 coins + 12 XP. 8s per-bird cooldown prevents farming the same pigeon
+- After being pickpocketed: pigeon stumbles away with a sharp direction change (emergent chase behavior)
+
+**Lightning Interaction (the killer feature):**
+- When storm lightning strikes within 150px of a drunk pigeon: `_explodeDrunkPigeon()` fires
+- All birds within 250px of the zapped pigeon instantly receive a windfall coin share + 30 XP
+- Event announces winners city-wide: "⚡ Lightning zapped a drunk pigeon! Coins scattered: PlayerA (+22c), PlayerB (+18c)"
+- Creates a risk-reward loop: hover near drunk pigeons during storms = maximum reward, but lightning can stun YOU too
+
+**Visual Spectacle (`public/js/sprites.js`):**
+- Custom `drawDrunkPigeon()` sprite: fatter pigeon body, drooped wings, bloodshot red eyes with half-closed lids, rosy cheeks, coin-badge label (🍺 Xc)
+- 3 yellow stars orbit the head continuously (screen-space, no body-rotation snap)
+- Body sways with sine-wave wobble + vertical bob (each pigeon independently phased)
+- Coin badge updates live as pickpockets drain them
+
+**Event Feed & Announcements:**
+- Spawn: "🍺 DRUNK PIGEONS ARE OUT TONIGHT!"
+- Pickpocket: shows floating "+Xc" at pigeon position, event feed shoutout
+- Coin shower: full screen shake + "⚡🍺 DRUNK PIGEON ZAPPED — COIN SHOWER!" + individual winner callouts
+- Dawn: "The drunk pigeons passed out and went home."
+
+**Creative intent**: Night was already dangerous (cats, raccoons, cops, black market). Now it's also PROFITABLE in a new way. Drunk pigeons create a risk-reward economy: do you risk getting close during a storm for the coin shower windfall? Or play it safe and pickpocket slowly? Lightning is no longer just a hazard — it's an opportunity if you're near the right target. Pure DISCOVERY + CARNAGE energy. The emergent behavior of birds chasing drunk pigeons during storms while also dodging lightning is peak Bird City chaos.
+
 ### Next Ideas Queue
 - Underground sewer system (secret map layer)
 - Raid bosses (giant cat, dog pack, eagle overlord)
@@ -202,9 +232,9 @@ A hooded raccoon fence sets up in a dark alley behind the Cafe District at dusk,
 - Egg protection mini-game
 - Bird gangs with custom colors/tags
 - Radio tower control (broadcast messages server-wide)
-- Drunk pigeons at night (wander erratically, bump into players)
 - Owl enforcer in park at night (creates no-poop zone, alerts NPCs)
 - Bioluminescent park pond at night (glowing water effect)
 - Raccoon boss: "The Godfather Raccoon" — giant alpha raccoon that steals from players directly
 - Weather combos: fog (low visibility), hailstorm (poop projectiles deflected), hot day (food spoils faster)
 - Birds can shelter under awnings/trees during storms (mechanic: reduced lightning hit radius if near cover)
+- Combo multiplier: chain actions (poop→steal→pickpocket) for escalating XP bonuses

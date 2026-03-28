@@ -847,6 +847,38 @@
       addEventMessage('The raccoon thieves fled at dawn.', '#aaaaaa');
     }
 
+    // === DRUNK PIGEON EVENTS ===
+    if (ev.type === 'drunk_pigeon_spawn') {
+      showAnnouncement('🍺 DRUNK PIGEONS ARE OUT TONIGHT!', '#ffaa44', 4000);
+      addEventMessage('Drunk pigeons are stumbling around the city — pickpocket them for coins!', '#ffaa44');
+    }
+    if (ev.type === 'drunk_pigeon_pickpocket') {
+      const isMe = ev.birdId === myId;
+      if (isMe) {
+        showAnnouncement(`PICKPOCKETED! +${ev.stolen}c`, '#ffd700', 1800);
+      }
+      if (isMe || Math.random() < 0.25) {
+        addEventMessage(`🍺 ${ev.birdName} swiped ${ev.stolen}c from a drunk pigeon!`, '#ffd700');
+      }
+      effects.push({ type: 'text', x: ev.x, y: ev.y, text: '+' + ev.stolen + 'c', color: '#ffd700', size: 13, time: performance.now(), duration: 1600 });
+    }
+    if (ev.type === 'drunk_pigeon_coin_shower') {
+      // Big screen flash for everyone
+      showAnnouncement('⚡🍺 DRUNK PIGEON ZAPPED — COIN SHOWER!', '#ffd700', 4000);
+      const winnerNames = ev.winners.map(w => `${w.name} (+${w.share}c)`).join(', ');
+      addEventMessage(`⚡ Lightning zapped a drunk pigeon! Coins scattered: ${winnerNames || 'nobody nearby'}`, '#ffd700');
+      effects.push({ type: 'text', x: ev.x, y: ev.y, text: '💰 COIN SHOWER!', color: '#ffd700', size: 16, time: performance.now(), duration: 3000 });
+      effects.push({ type: 'screen_shake', intensity: 10, duration: 500, time: performance.now() });
+      // Bonus announcement if I was in range
+      if (ev.winners && ev.winners.some(w => w.id === myId)) {
+        const myWin = ev.winners.find(w => w.id === myId);
+        showAnnouncement(`💰 YOU GOT ${myWin.share}c FROM THE SHOWER!`, '#ffd700', 3000);
+      }
+    }
+    if (ev.type === 'drunk_pigeons_gone') {
+      addEventMessage('The drunk pigeons passed out and went home at dawn.', '#aaaaaa');
+    }
+
     // === TERRITORY EVENTS ===
     if (ev.type === 'territory_captured') {
       addEventMessage(`🏴 ${ev.teamName} seized ${ev.zoneName}!`, '#ffe066');
@@ -2165,6 +2197,17 @@
         const sy = raccoon.y - camera.y + camera.screenH / 2;
         if (sx > -margin - 20 && sx < camera.screenW + margin + 20 && sy > -margin - 20 && sy < camera.screenH + margin + 20) {
           Sprites.drawRaccoon(ctx, sx, sy, raccoon.rotation, raccoon.state, raccoon.carriedFoodType);
+        }
+      }
+    }
+
+    // Drunk Pigeons (night-only, pickpocketable)
+    if (gameState.drunkPigeons) {
+      for (const dp of gameState.drunkPigeons) {
+        const sx = dp.x - camera.x + camera.screenW / 2;
+        const sy = dp.y - camera.y + camera.screenH / 2;
+        if (sx > -margin - 30 && sx < camera.screenW + margin + 30 && sy > -margin - 30 && sy < camera.screenH + margin + 30) {
+          Sprites.drawDrunkPigeon(ctx, sx, sy, dp.rotation, dp.wobblePhase, dp.coins, now);
         }
       }
     }

@@ -1824,4 +1824,127 @@ window.Sprites = {
 
     ctx.restore();
   },
+
+  // === DRUNK PIGEON (night-only, stumbling city bird full of coins) ===
+  drawDrunkPigeon(ctx, x, y, rotation, wobblePhase, coins, now) {
+    const wobble = Math.sin(wobblePhase + now * 0.002) * 0.28;   // sway angle
+    const bob    = Math.sin(wobblePhase * 1.3 + now * 0.003) * 3; // vertical bob
+
+    ctx.save();
+    ctx.translate(x, y + bob);
+    ctx.rotate(rotation + wobble);
+
+    const s = 13; // slightly chunkier than a normal pigeon
+
+    // Shadow (bigger than normal — they're waddling)
+    ctx.fillStyle = 'rgba(0,0,0,0.22)';
+    ctx.beginPath();
+    ctx.ellipse(2, 5, s * 0.85, s * 0.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Wings (drooped, barely flapping — too drunk to fly properly)
+    ctx.fillStyle = '#7a7a8a';
+    ctx.save();
+    ctx.translate(-s * 0.2, 0);
+    ctx.rotate(0.15); // drooped
+    ctx.beginPath();
+    ctx.ellipse(0, -s * 0.55, s * 0.58, s * 0.22, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    ctx.save();
+    ctx.translate(-s * 0.2, 0);
+    ctx.rotate(-0.15); // drooped
+    ctx.beginPath();
+    ctx.ellipse(0, s * 0.55, s * 0.58, s * 0.22, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Body (slightly bluish-grey — classic city pigeon look, but fatter)
+    ctx.fillStyle = '#9090a8';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, s, s * 0.6, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Belly patch (lighter — they've been eating well)
+    ctx.fillStyle = '#c8c8d8';
+    ctx.beginPath();
+    ctx.ellipse(-2, 0, s * 0.55, s * 0.38, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Beak
+    ctx.fillStyle = '#e8a020';
+    ctx.beginPath();
+    ctx.moveTo(s, 0);
+    ctx.lineTo(s + s * 0.55, -s * 0.14);
+    ctx.lineTo(s + s * 0.55,  s * 0.14);
+    ctx.closePath();
+    ctx.fill();
+
+    // Eyes — glassy half-closed (drunk squint)
+    ctx.fillStyle = '#cc3344';  // bloodshot red
+    ctx.beginPath();
+    ctx.arc(s * 0.42, -s * 0.24, s * 0.13, 0, Math.PI * 2);
+    ctx.arc(s * 0.42,  s * 0.24, s * 0.13, 0, Math.PI * 2);
+    ctx.fill();
+    // Half-lid
+    ctx.fillStyle = '#7070a0';
+    ctx.beginPath();
+    ctx.ellipse(s * 0.42, -s * 0.24 - s * 0.04, s * 0.13, s * 0.08, 0, Math.PI, 0);
+    ctx.ellipse(s * 0.42,  s * 0.24 - s * 0.04, s * 0.13, s * 0.08, 0, Math.PI, 0);
+    ctx.fill();
+
+    // Rosy red cheeks (very drunk)
+    ctx.fillStyle = 'rgba(255, 80, 80, 0.35)';
+    ctx.beginPath();
+    ctx.arc(s * 0.3, -s * 0.38, s * 0.22, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(s * 0.3,  s * 0.38, s * 0.22, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Tail
+    ctx.fillStyle = '#7a7a8a';
+    ctx.beginPath();
+    ctx.moveTo(-s, 0);
+    ctx.lineTo(-s * 1.45, -s * 0.32);
+    ctx.lineTo(-s * 1.22, 0);
+    ctx.lineTo(-s * 1.45,  s * 0.32);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.restore();
+
+    // ── Orbiting stars (drawn in screen-space, no body-rotation) ──
+    const numStars = 3;
+    const orbitR  = 18;
+    const orbitSpeed = now * 0.0022;
+    for (let i = 0; i < numStars; i++) {
+      const angle = orbitSpeed + (i / numStars) * Math.PI * 2;
+      const sx2 = x + Math.cos(angle) * orbitR;
+      const sy2 = y + bob - s - 6 + Math.sin(angle) * orbitR * 0.4;
+      ctx.save();
+      ctx.translate(sx2, sy2);
+      ctx.rotate(angle * 2);
+      ctx.fillStyle = '#ffe040';
+      ctx.font = 'bold 8px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('★', 0, 0);
+      ctx.restore();
+    }
+
+    // ── Coin badge (how much loot they're carrying) ──
+    if (coins > 0) {
+      const labelY = y + bob - s - 18;
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.beginPath();
+      ctx.roundRect(x - 18, labelY - 7, 36, 14, 4);
+      ctx.fill();
+      ctx.fillStyle = '#ffd700';
+      ctx.font = 'bold 9px Courier New';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('🍺 ' + coins + 'c', x, labelY);
+    }
+  },
 };
