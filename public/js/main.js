@@ -59,6 +59,7 @@
   const iosPromptClose = document.getElementById('iosPromptClose');
   const soundToggle = document.getElementById('soundToggle');
   const wantedHud = document.getElementById('wantedHud');
+  const comboHud = document.getElementById('comboHud');
 
   // === Persistent Identity (localStorage) ===
   function getSavedAccount() {
@@ -237,6 +238,7 @@
       const todHud = document.getElementById('timeOfDayHud');
       if (todHud) todHud.style.display = 'block';
       if (wantedHud) wantedHud.style.display = 'none'; // only shown when wanted level > 0
+      if (comboHud) comboHud.style.display = 'none'; // only shown when combo >= 2
 
       if (!isTouchDevice) {
         poopCooldown.style.display = 'block';
@@ -336,6 +338,19 @@
           type: 'text', x: ev.x, y: ev.y - 35,
           time: now, duration: 2000,
           text: 'MEGA POOP!', color: '#ffd700', size: 22,
+        });
+      }
+
+      // Floating combo text for own poop hits at streak 3+
+      if (ev.birdId === myId && ev.combo >= 3 && ev.hitTarget && ev.hitTarget !== 'none') {
+        const comboColors = ['', '', '', '#ffaa00', '#ff8800', '#ff6600', '#ff4400', '#ff2200', '#ff0088', '#dd00ff', '#ff00ff'];
+        const comboColor = ev.combo >= 10 ? '#ff00ff' : (comboColors[ev.combo] || '#ff8800');
+        const comboFire = ev.combo >= 15 ? '🔥🔥🔥' : ev.combo >= 10 ? '🔥🔥' : '🔥';
+        effects.push({
+          type: 'text', x: ev.x, y: ev.y - 50,
+          time: now, duration: 1800,
+          text: comboFire + ' x' + ev.combo,
+          color: comboColor, size: ev.combo >= 10 ? 22 : 18,
         });
       }
     }
@@ -787,6 +802,16 @@
       } else {
         addEventMessage(ev.birdName + ' stunned a ' + (ev.copType === 'swat' ? 'SWAT crow' : 'cop') + '!', '#4ade80');
       }
+    }
+
+    // === COMBO MILESTONE ===
+    if (ev.type === 'combo_milestone') {
+      const fireCount = ev.combo >= 15 ? '🔥🔥🔥' : ev.combo >= 10 ? '🔥🔥' : '🔥';
+      if (ev.birdId === myId) {
+        showAnnouncement(fireCount + ' COMBO x' + ev.combo + '! ' + fireCount, '#ff8c00', 2500);
+        effects.push({ type: 'screen_shake', intensity: Math.min(6, Math.floor(ev.combo / 5)), duration: 300, time: now });
+      }
+      addEventMessage(fireCount + ' ' + ev.birdName + ' is ON FIRE! x' + ev.combo + ' combo!', '#ff8c00');
     }
 
     // === FOOD TRUCK EVENTS ===
@@ -1468,6 +1493,27 @@
         const copCount = gameState.cops ? gameState.cops.length : 0;
         const copText = copCount > 0 ? ' 🚔' + copCount : '';
         wantedHud.textContent = '🚨 ' + stars + ' ' + labels[wLevel] + copText;
+      }
+    }
+
+    // Combo Streak HUD
+    if (comboHud && gameState.self) {
+      const combo = gameState.self.comboCount || 0;
+      const expiresAt = gameState.self.comboExpiresAt || 0;
+      const serverNow = Date.now(); // rough approximation
+      if (combo < 2 || serverNow > expiresAt) {
+        comboHud.style.display = 'none';
+      } else {
+        comboHud.style.display = 'block';
+        let comboMult = '1×';
+        if (combo >= 15) comboMult = '4× XP';
+        else if (combo >= 10) comboMult = '3× XP';
+        else if (combo >= 7) comboMult = '2.5× XP';
+        else if (combo >= 5) comboMult = '2× XP';
+        else if (combo >= 3) comboMult = '1.5× XP';
+        const fire = combo >= 10 ? '🔥🔥' : '🔥';
+        comboHud.textContent = fire + ' COMBO x' + combo + '  ' + comboMult;
+        comboHud.className = combo >= 10 ? 'mega' : '';
       }
     }
 

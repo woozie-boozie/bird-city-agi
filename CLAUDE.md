@@ -246,6 +246,33 @@ The apex predator of Bird City has arrived. The Eagle Overlord is a massive aeri
 
 **Creative intent**: The Eagle Overlord hits every pillar at once. CARNAGE: it snatches players mid-flight. SOCIAL: requires coordinated poop bombardment to defeat — and rescuing a snatched teammate is a heroic moment. SPECTACLE: the 3× scale sprite swooping across the city with a 90-second countdown is thrilling. PROGRESSION: reward scaling means high-effort players get huge payouts. DISCOVERY: seeing it appear for the first time from the map edge is genuinely surprising. This is Bird City's first true RAID event.
 
+**Session 9 — 2026-03-28: Poop Combo Streak System**
+Every mechanic now rewards aggressive, uninterrupted play. Chain poop hits within 8 seconds to build a combo streak with escalating XP multipliers. The longer your streak, the bigger the payout — and the more you have to lose.
+
+**Combo Multiplier Tiers (`server/game.js`):**
+- x1 (1-2 hits): no bonus
+- x1.5 (3-4 hits): 50% XP boost
+- x2.0 (5-6 hits): double XP
+- x2.5 (7-9 hits): 2.5× XP
+- x3.0 (10-14 hits): triple XP
+- x4.0 (15+ hits): quadruple XP — god-tier rampage
+
+**Combo mechanics:**
+- 8-second window to land the next hit before streak resets
+- Hits on ANY target extend the combo: NPCs, cars, cops, raccoons, the eagle, statues, laundry — everything counts
+- Stacks multiplicatively with Lucky Charm (Black Market double XP buff) — a 4× combo + Lucky Charm = 8× XP per hit
+- **Combo breakers**: getting arrested by cops, stunned by lightning, snatched by the eagle, or caught by a cat all instantly wipe your streak — adds real consequences to those systems
+- City-wide milestone broadcasts at x5, x10, x15, x20 combos
+
+**Visual (`public/js/main.js`, `public/css/style.css`):**
+- Floating `🔥 x5` text on each hit when combo ≥ 3 (color intensifies from orange → red → magenta as streak climbs)
+- Combo HUD pill in top-right corner: `🔥 COMBO x7  2.5× XP` with orange border glow
+- At combo 10+: HUD goes `mega` class — magenta color, pulsing box-shadow animation
+- Personal screen shake on milestone achievements (scaled to combo level)
+- Event feed shouts like "🔥🔥 PlayerName is ON FIRE! x10 combo!" visible to all players
+
+**Creative intent**: This makes EVERY existing mechanic more exciting. Instead of pooping casually, you're now chasing a streak, keeping it alive, and terrified of getting caught. The cat, cops, eagle, and lightning all now have a second layer of threat: they don't just hurt you — they ERASE your streak. High-combo play is visible to all players (city-wide broadcasts), creating a social spectacle. Lucky Charm + high combo creates explosive XP moments that feel genuinely earned. Pure PROGRESSION + CARNAGE energy.
+
 ### Next Ideas Queue
 - Underground sewer system (secret map layer)
 - Eagle Overlord rare drop: "Eagle Feather" cosmetic badge
@@ -262,4 +289,4 @@ The apex predator of Bird City has arrived. The Eagle Overlord is a massive aeri
 - Raccoon boss: "The Godfather Raccoon" — giant alpha raccoon that steals from players directly
 - Weather combos: fog (low visibility), hailstorm (poop projectiles deflected), hot day (food spoils faster)
 - Birds can shelter under awnings/trees during storms (mechanic: reduced lightning hit radius if near cover)
-- Combo multiplier: chain actions (poop→steal→pickpocket) for escalating XP bonuses
+- ~~Combo multiplier: chain actions (poop→steal→pickpocket) for escalating XP bonuses~~ (DONE Session 9)

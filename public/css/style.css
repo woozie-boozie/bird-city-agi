@@ -1458,6 +1458,38 @@ html, body {
 }
 
 /* ============================================================
+   COMBO STREAK HUD
+   ============================================================ */
+#comboHud {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  background: rgba(0, 0, 0, 0.75);
+  border: 2px solid rgba(255, 140, 0, 0.7);
+  border-radius: 10px;
+  padding: 4px 10px;
+  color: #ff8c00;
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
+  font-weight: bold;
+  pointer-events: none;
+  z-index: 50;
+  white-space: nowrap;
+  text-shadow: 0 0 6px rgba(255, 140, 0, 0.8);
+  transition: border-color 0.2s, color 0.2s;
+}
+#comboHud.mega {
+  border-color: rgba(255, 0, 120, 1);
+  color: #ff44cc;
+  text-shadow: 0 0 10px rgba(255, 0, 180, 0.9);
+  animation: comboPulse 0.4s ease-in-out infinite alternate;
+}
+@keyframes comboPulse {
+  from { box-shadow: 0 0 6px rgba(255, 100, 0, 0.5); }
+  to   { box-shadow: 0 0 20px rgba(255, 100, 0, 1.0); }
+}
+
+/* ============================================================
    BLACK MARKET SHOP
    ============================================================ */
 #blackMarketShop {

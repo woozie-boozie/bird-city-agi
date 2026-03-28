@@ -335,6 +335,9 @@ class GameEngine {
       bmMegaPoops: 0,
       bmSmokeBombUntil: 0,
       bmDoubleXpUntil: 0,
+      // === COMBO STREAK ===
+      comboCount: 0,        // current consecutive hit streak
+      comboExpiresAt: 0,    // timestamp when combo resets if no new hit
     };
 
     // Determine bird type from XP
@@ -468,6 +471,11 @@ class GameEngine {
     // Update birds
     for (const bird of this.birds.values()) {
       this._updateBird(bird, dt, now);
+      // Combo expiry: reset streak if window elapsed
+      if (bird.comboCount > 0 && now > bird.comboExpiresAt) {
+        bird.comboCount = 0;
+        bird.comboExpiresAt = 0;
+      }
     }
 
     // Update NPCs
@@ -637,6 +645,9 @@ class GameEngine {
         // Bird loses 20% food, gets stunned 3 seconds
         nearestBird.food = Math.max(0, Math.floor(nearestBird.food * 0.8));
         nearestBird.stunnedUntil = now + 3000;
+        // Combo break — the cat got your streak!
+        nearestBird.comboCount = 0;
+        nearestBird.comboExpiresAt = 0;
         this.events.push({
           type: 'cat_attack',
           birdId: nearestBird.id,
@@ -1710,6 +1721,26 @@ class GameEngine {
       if (hit.npc && hit.npc.poopedOn >= 3) coinGain += 5; // made cry bonus
       bird.coins += coinGain;
 
+      // === COMBO STREAK — chain hits within 8s for escalating XP ===
+      if (hit.target && hit.target !== 'none') {
+        const comboActive = now < bird.comboExpiresAt;
+        bird.comboCount = comboActive ? bird.comboCount + 1 : 1;
+        bird.comboExpiresAt = now + 8000;
+        const combo = bird.comboCount;
+        // XP bonus: flat multiplier applied to base xpGain
+        let comboMult = 1.0;
+        if (combo >= 15) comboMult = 4.0;
+        else if (combo >= 10) comboMult = 3.0;
+        else if (combo >= 7) comboMult = 2.5;
+        else if (combo >= 5) comboMult = 2.0;
+        else if (combo >= 3) comboMult = 1.5;
+        if (comboMult > 1.0) xpGain = Math.floor(xpGain * comboMult);
+        // City-wide shoutout at milestones
+        if (combo === 5 || combo === 10 || combo === 15 || combo === 20) {
+          this.events.push({ type: 'combo_milestone', birdId: bird.id, birdName: bird.name, combo });
+        }
+      }
+
       // Black Market: Lucky Charm doubles all XP
       if (bird.bmDoubleXpUntil > now) xpGain *= 2;
       bird.xp += xpGain;
@@ -1746,6 +1777,7 @@ class GameEngine {
         x: poop.x, y: poop.y,
         hitTarget: hit.target, xp: xpGain,
         isMegaPoop,
+        combo: bird.comboCount,
       });
 
       // Persist
@@ -2129,6 +2161,8 @@ class GameEngine {
         const dy = b.y - ly;
         if (Math.sqrt(dx * dx + dy * dy) < 90) {
           b.stunnedUntil = now + 1800;
+          b.comboCount = 0;
+          b.comboExpiresAt = 0;
           this.events.push({ type: 'lightning_hit', birdId: b.id, birdName: b.name, x: b.x, y: b.y });
         }
       }
@@ -3083,6 +3117,9 @@ class GameEngine {
         bmMegaPoops: bird.bmMegaPoops,
         bmSmokeBombUntil: bird.bmSmokeBombUntil,
         bmDoubleXpUntil: bird.bmDoubleXpUntil,
+        // Combo streak
+        comboCount: bird.comboCount,
+        comboExpiresAt: bird.comboExpiresAt,
       },
     };
   }
@@ -4026,6 +4063,8 @@ class GameEngine {
           boss.lastAttack = now;
           boss.snatched = { birdId: bird.id, snatchedAt: now };
           bird.stunnedUntil = now + 5500;
+          bird.comboCount = 0;
+          bird.comboExpiresAt = 0;
           const stolen = Math.floor(bird.coins * 0.12);
           bird.coins = Math.max(0, bird.coins - stolen);
           this.events.push({ type: 'eagle_snatch', birdId: bird.id, birdName: bird.name, x: boss.x, y: boss.y, stolenCoins: stolen });
@@ -4364,6 +4403,9 @@ class GameEngine {
       if (dist < 18 && wanted.stunnedUntil <= now) {
         const arrestDuration = cop.type === 'swat' ? 4000 : 2500;
         wanted.stunnedUntil = now + arrestDuration;
+        // Combo break — busted kills your streak
+        wanted.comboCount = 0;
+        wanted.comboExpiresAt = 0;
 
         // Steal coins (25% of coins, min 5)
         const stolen = Math.max(5, Math.floor(wanted.coins * 0.25));
