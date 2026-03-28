@@ -322,6 +322,29 @@ Regular small threats (cops, normal raccoons, normal cats) can still roam freely
 
 **Do this BEFORE adding any new features. The game is currently unplayable when a boss spawns.**
 
+### URGENT PRIORITY FIX #2 (from human playtester Akhil — 2026-03-28)
+**UI/UX is broken in multiple places. Fix ALL of these before building new features:**
+
+**1. Skill Shop is not accessible / unusable:**
+- Players can't easily find or open the skill shop
+- No close/X button to dismiss the shop UI
+- Buying and equipping skills is confusing and not user-friendly
+- You can apparently equip more than one skill but then only one shows — this is broken and misleading
+- Make the shop intuitive: clear buy button, clear equip/unequip, show ALL equipped skills visibly
+- Poop powers need to feel more exciting — better names, better descriptions, visual preview of what they do
+
+**2. Flock Lobby overlaps Mission Board:**
+- When you open the Mission Board, the Flock Lobby UI overlaps on top of it
+- You can't read or interact with the missions because the flock UI is covering it
+- Fix z-index / visibility so only one panel shows at a time, or add proper close buttons to each
+
+**3. General UI cleanup needed:**
+- Every popup/overlay/panel MUST have a visible close/X button
+- Only one panel should be visible at a time (skill shop, mission board, flock lobby, bird home)
+- Opening one panel should close any other open panel
+
+**These are basic usability issues that make the game frustrating. Fix them.**
+
 ### Next Ideas Queue
 - Underground sewer system (secret map layer)
 - Eagle Overlord rare drop: "Eagle Feather" cosmetic badge
