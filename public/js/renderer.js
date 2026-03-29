@@ -107,14 +107,26 @@ window.Renderer = {
   },
 
   // Draw buildings
-  drawBuildings(ctx, camera) {
+  drawBuildings(ctx, camera, bankHeistPhase) {
     if (!this.worldData) return;
+    const heistActive = bankHeistPhase && bankHeistPhase !== 'idle' && bankHeistPhase !== 'cooldown';
+    const heistAlarm = heistActive && (bankHeistPhase === 'cracking' || bankHeistPhase === 'escape');
+    const now = Date.now();
+
     for (const b of this.worldData.buildings) {
       // Frustum culling
       const sx = b.x - camera.x + camera.screenW / 2;
       const sy = b.y - camera.y + camera.screenH / 2;
       if (sx + b.w < -50 || sx > camera.screenW + 50 ||
           sy + b.h < -50 || sy > camera.screenH + 50) continue;
+
+      // Bank gets a tinted overlay during heist phases
+      const isBank = b.name === 'Bank';
+      if (isBank && heistAlarm) {
+        const flashA = 0.15 + 0.1 * Math.sin(now / 150);
+        ctx.fillStyle = `rgba(255,50,0,${flashA})`;
+        ctx.fillRect(sx - 3, sy - 3, b.w + 6, b.h + 6);
+      }
 
       Sprites.drawBuilding(ctx, sx, sy, b.w, b.h, b.color);
 
@@ -128,6 +140,23 @@ window.Renderer = {
         ctx.fillText('\u2665', sx + b.w - 15, sy + 15);
         // Mission board icon
         Sprites.drawMissionBoard(ctx, sx + b.w / 2, sy);
+      }
+
+      // Bank heist label
+      if (isBank && heistActive) {
+        const pulse = 0.7 + 0.3 * Math.abs(Math.sin(now / 400));
+        ctx.font = 'bold 10px Courier New';
+        ctx.textAlign = 'center';
+        ctx.globalAlpha = pulse;
+        const label = bankHeistPhase === 'casing' ? '🏦 HEIST ACTIVE' :
+                      bankHeistPhase === 'cracking' ? '🔒 CRACK VAULT' :
+                      '🚨 ALARM!';
+        ctx.fillStyle = bankHeistPhase === 'cracking' ? '#ffdd44' : '#ff6644';
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 2;
+        ctx.strokeText(label, sx + b.w / 2, sy - 6);
+        ctx.fillText(label, sx + b.w / 2, sy - 6);
+        ctx.globalAlpha = 1;
       }
 
       // Building name
@@ -199,7 +228,7 @@ window.Renderer = {
   },
 
   // Draw minimap
-  drawMinimap(minimapCtx, worldData, birds, selfBird, activeEvent, cat, janitor, territories) {
+  drawMinimap(minimapCtx, worldData, birds, selfBird, activeEvent, cat, janitor, territories, bankHeist) {
     if (!worldData) return;
 
     const mw = minimapCtx.canvas.width;
@@ -312,6 +341,45 @@ window.Renderer = {
       minimapCtx.arc(activeEvent.x * sx, activeEvent.y * sy, 4, 0, Math.PI * 2);
       minimapCtx.fill();
       minimapCtx.globalAlpha = 1;
+    }
+
+    // Bank heist indicators
+    if (bankHeist && bankHeist.phase !== 'idle' && bankHeist.phase !== 'cooldown') {
+      const bx = 1960 * sx;
+      const by = 1775 * sy;
+      const pulse = Math.sin(Date.now() * 0.005) * 0.5 + 0.5;
+
+      if (bankHeist.phase === 'casing' || bankHeist.phase === 'cracking') {
+        // Pulsing blue bank indicator
+        minimapCtx.globalAlpha = 0.5 + 0.5 * pulse;
+        minimapCtx.fillStyle = '#4466ff';
+        minimapCtx.beginPath();
+        minimapCtx.arc(bx, by, 4, 0, Math.PI * 2);
+        minimapCtx.fill();
+        minimapCtx.globalAlpha = 0.4 * pulse;
+        minimapCtx.strokeStyle = '#aaccff';
+        minimapCtx.lineWidth = 1;
+        minimapCtx.beginPath();
+        minimapCtx.arc(bx, by, 7, 0, Math.PI * 2);
+        minimapCtx.stroke();
+        minimapCtx.globalAlpha = 1;
+      }
+
+      if (bankHeist.phase === 'escape' && bankHeist.escapeVan) {
+        // Yellow van indicator
+        const vx = bankHeist.escapeVan.x * sx;
+        const vy = bankHeist.escapeVan.y * sy;
+        minimapCtx.globalAlpha = 0.6 + 0.4 * pulse;
+        minimapCtx.fillStyle = '#ffd700';
+        minimapCtx.beginPath();
+        minimapCtx.arc(vx, vy, 5, 0, Math.PI * 2);
+        minimapCtx.fill();
+        minimapCtx.globalAlpha = 1;
+        minimapCtx.font = 'bold 8px sans-serif';
+        minimapCtx.textAlign = 'center';
+        minimapCtx.fillStyle = '#ffd700';
+        minimapCtx.fillText('🚐', vx, vy - 6);
+      }
     }
 
     // Border
@@ -900,6 +968,88 @@ window.Renderer = {
       }
 
       ctx.restore();
+    }
+  },
+
+  // Draw bank heist overlays: cameras, vault bar, escape van
+  drawBankHeist(ctx, camera, bankHeist, now) {
+    if (!bankHeist || bankHeist.phase === 'idle' || bankHeist.phase === 'cooldown') return;
+
+    const phase = bankHeist.phase;
+    const toS = (wx, wy) => ({
+      x: wx - camera.x + camera.screenW / 2,
+      y: wy - camera.y + camera.screenH / 2,
+    });
+
+    // ---- CAMERAS (casing + cracking phases) ----
+    if (phase === 'casing' || phase === 'cracking') {
+      for (const cam of bankHeist.cameras) {
+        const sp = toS(cam.x, cam.y);
+        Sprites.drawSecurityCamera(ctx, sp.x, sp.y, cam.disabled, cam.disableProgress, now);
+      }
+    }
+
+    // ---- VAULT PROGRESS (cracking phase) ----
+    if (phase === 'cracking') {
+      // Show crack progress bar at vault door (north face of Bank)
+      const vaultSp = toS(1960, 1695);
+      const prog = bankHeist.crackProgress || 0;
+      const barW = 90, barH = 8;
+      const barX = vaultSp.x - barW / 2;
+      const barY = vaultSp.y - 20;
+
+      // Background
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.fillRect(barX - 2, barY - 2, barW + 4, barH + 4);
+
+      // Progress fill (green -> yellow -> red)
+      const t = prog;
+      const r = Math.floor(255 * Math.min(1, t * 2));
+      const g = Math.floor(255 * Math.min(1, (1 - t) * 2));
+      ctx.fillStyle = `rgb(${r},${g},0)`;
+      ctx.fillRect(barX, barY, barW * prog, barH);
+
+      // Border
+      ctx.strokeStyle = '#aaaaff';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(barX - 2, barY - 2, barW + 4, barH + 4);
+
+      // Label
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 9px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('🔒 VAULT ' + Math.floor(prog * 100) + '%', vaultSp.x, barY - 6);
+
+      // Alarm flash when alarm sent
+      if (bankHeist.crackStartedAt && now - bankHeist.crackStartedAt > 8000) {
+        const flashA = 0.15 * Math.abs(Math.sin(now / 200));
+        ctx.fillStyle = `rgba(255,0,0,${flashA})`;
+        ctx.fillRect(0, 0, camera.screenW, camera.screenH);
+      }
+    }
+
+    // ---- ESCAPE VAN ----
+    if (phase === 'escape' && bankHeist.escapeVan) {
+      const van = bankHeist.escapeVan;
+      const sp = toS(van.x, van.y);
+      Sprites.drawGetawayVan(ctx, sp.x, sp.y, now);
+
+      // Timer above van
+      const secsLeft = bankHeist.escapeEndsAt
+        ? Math.max(0, Math.ceil((bankHeist.escapeEndsAt - now) / 1000))
+        : 0;
+      ctx.font = 'bold 11px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = secsLeft <= 10 ? '#ff4444' : '#ffdd00';
+      ctx.fillText('ESCAPE: ' + secsLeft + 's', sp.x, sp.y - 42);
+
+      // Pulsing ring
+      const ringR = 55 + 8 * Math.sin(now / 200);
+      ctx.beginPath();
+      ctx.arc(sp.x, sp.y, ringR, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255,220,0,' + (0.4 + 0.4 * Math.sin(now / 150)) + ')';
+      ctx.lineWidth = 3;
+      ctx.stroke();
     }
   },
 };

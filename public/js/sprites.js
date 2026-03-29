@@ -2359,4 +2359,144 @@ window.Sprites = {
     ctx.strokeText(tributeLabel, x, y + 52);
     ctx.fillText(tributeLabel, x, y + 52);
   },
+
+  // ============================================================
+  // BANK HEIST SPRITES
+  // ============================================================
+
+  // Security camera — wall-mounted, red eye blinks when active
+  drawSecurityCamera(ctx, x, y, disabled, progress, now) {
+    ctx.save();
+    // Mount bracket
+    ctx.fillStyle = disabled ? '#336633' : '#553300';
+    ctx.fillRect(x - 6, y - 5, 12, 5);
+
+    // Camera body
+    ctx.fillStyle = disabled ? '#44aa44' : '#222222';
+    ctx.beginPath();
+    ctx.roundRect(x - 10, y, 20, 10, 3);
+    ctx.fill();
+    ctx.strokeStyle = disabled ? '#66ff66' : '#888888';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Lens
+    ctx.beginPath();
+    ctx.arc(x + 7, y + 5, 4, 0, Math.PI * 2);
+    ctx.fillStyle = disabled ? '#004400' : '#000033';
+    ctx.fill();
+    if (!disabled) {
+      // Blinking red LED
+      const blinkAlpha = 0.5 + 0.5 * Math.sin(now / 300);
+      ctx.beginPath();
+      ctx.arc(x - 5, y + 2, 2, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255,40,0,${blinkAlpha})`;
+      ctx.fill();
+    } else {
+      // Green LED (disabled/blind)
+      ctx.beginPath();
+      ctx.arc(x - 5, y + 2, 2, 0, Math.PI * 2);
+      ctx.fillStyle = '#00ff44';
+      ctx.fill();
+    }
+
+    // Disable progress bar (shown while being hacked)
+    if (!disabled && progress > 0) {
+      const barW = 30, barH = 4;
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.fillRect(x - barW / 2, y - 16, barW, barH);
+      ctx.fillStyle = '#44ffaa';
+      ctx.fillRect(x - barW / 2, y - 16, barW * progress, barH);
+    }
+
+    // Label
+    ctx.font = '8px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = disabled ? '#44ff88' : '#ffaa00';
+    ctx.fillText(disabled ? '✓ BLIND' : '📷 CAM', x, y + 20);
+
+    ctx.restore();
+  },
+
+  // Getaway van — sleek dark van with "CLEANERS" livery, engine running
+  drawGetawayVan(ctx, x, y, now) {
+    ctx.save();
+
+    // Pulsing shadow underneath
+    const shadowA = 0.3 + 0.15 * Math.sin(now / 200);
+    ctx.beginPath();
+    ctx.ellipse(x, y + 16, 38, 10, 0, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(0,0,0,${shadowA})`;
+    ctx.fill();
+
+    // Van body
+    ctx.fillStyle = '#1a1a2e';
+    ctx.beginPath();
+    ctx.roundRect(x - 30, y - 14, 60, 28, 5);
+    ctx.fill();
+    ctx.strokeStyle = '#ffdd00';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Windshield (front-left)
+    ctx.fillStyle = 'rgba(100,180,255,0.4)';
+    ctx.fillRect(x - 28, y - 10, 14, 12);
+
+    // Side window
+    ctx.fillRect(x - 8, y - 10, 16, 10);
+
+    // Wheel arches
+    ctx.fillStyle = '#0a0a1a';
+    ctx.beginPath();
+    ctx.arc(x - 16, y + 14, 7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(x + 16, y + 14, 7, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Wheels (spinning)
+    const spin = now / 80;
+    for (const wx of [x - 16, x + 16]) {
+      ctx.fillStyle = '#333';
+      ctx.beginPath();
+      ctx.arc(wx, y + 14, 6, 0, Math.PI * 2);
+      ctx.fill();
+      // Rim spoke
+      ctx.strokeStyle = '#aaa';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(wx + Math.cos(spin) * 5, y + 14 + Math.sin(spin) * 5);
+      ctx.lineTo(wx - Math.cos(spin) * 5, y + 14 - Math.sin(spin) * 5);
+      ctx.stroke();
+    }
+
+    // "CLEANERS" text on side
+    ctx.font = 'bold 6px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ffdd00';
+    ctx.fillText('CLEANERS', x, y + 4);
+
+    // Exhaust smoke puffs (rear)
+    for (let i = 0; i < 3; i++) {
+      const age = ((now / 300) + i * 0.33) % 1;
+      const puffA = (1 - age) * 0.4;
+      const puffR = 3 + age * 8;
+      ctx.beginPath();
+      ctx.arc(x + 30 + age * 12, y + 10 - age * 6, puffR, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(200,200,200,${puffA})`;
+      ctx.fill();
+    }
+
+    // "GET IN!" flashing text above
+    const flashA = 0.6 + 0.4 * Math.abs(Math.sin(now / 300));
+    ctx.font = 'bold 11px Courier New';
+    ctx.textAlign = 'center';
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 3;
+    ctx.strokeText('🚐 GET IN!', x, y - 22);
+    ctx.fillStyle = `rgba(255,220,0,${flashA})`;
+    ctx.fillText('🚐 GET IN!', x, y - 22);
+
+    ctx.restore();
+  },
 };

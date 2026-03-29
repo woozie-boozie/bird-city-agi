@@ -122,6 +122,10 @@ class GameEngine {
       { id: 'lucky_charm',  name: 'Lucky Charm',    desc: '2x XP for 5 full minutes',      cost: 150, emoji: '🍀' },
     ];
 
+    // === BANK HEIST (multi-phase cooperative heist event) ===
+    this.bankHeist = this._initBankHeistState();
+    this.bankHeistTimer = Date.now() + this._randomRange(480000, 720000); // 8-12 min first opportunity
+
     // === TERRITORY CONTROL ===
     this.territories = new Map();  // zoneId -> zone state
     this._initTerritories();
@@ -571,6 +575,9 @@ class GameEngine {
 
     // === The Arena ===
     this._updateArena(dt, now);
+
+    // === Bank Heist ===
+    this._updateBankHeist(dt, now);
 
     // === Day/Night Cycle ===
     this._updateDayNight(dt, now);
@@ -3245,6 +3252,7 @@ class GameEngine {
         comboCount: bird.comboCount,
         comboExpiresAt: bird.comboExpiresAt,
       },
+      bankHeist: this._getBankHeistStateFor(bird.id),
     };
   }
 
@@ -5368,6 +5376,319 @@ class GameEngine {
       waitUntil: arena.waitingUntil,
     });
     console.log(`[Arena] ⚔️ ${bird.name} entered the arena (pot: ${arena.pot}c, fighters: ${arena.fighters.size})`);
+  }
+
+  // ============================================================
+  // BANK HEIST — multi-phase cooperative robbery
+  // Phase 1: CASING   — disable 3 security cameras (hold E, 3s each)
+  // Phase 2: CRACKING — drill the vault (hold E at north face)
+  // Phase 3: ESCAPE   — fly to getaway van before timer expires
+  // ============================================================
+  _initBankHeistState() {
+    return {
+      phase: 'idle',
+      cameras: [
+        { id: 0, x: 1888, y: 1680, disabled: false, disableProgress: 0, disabledBy: null },
+        { id: 1, x: 2035, y: 1745, disabled: false, disableProgress: 0, disabledBy: null },
+        { id: 2, x: 1958, y: 1858, disabled: false, disableProgress: 0, disabledBy: null },
+      ],
+      casingStartedAt: null,
+      casingExpiresAt: null,
+      crackProgress: 0,
+      crackContributions: {},
+      crackContributorNames: {},
+      crackStartedAt: null,
+      crackAlarmSent: false,
+      crackSwatSent: false,
+      escapeVan: null,   // { x, y, escapees: Set<birdId> }
+      escapeEndsAt: null,
+      cooldownUntil: null,
+    };
+  }
+
+  _getBankHeistStateFor(birdId) {
+    const bh = this.bankHeist;
+    return {
+      phase: bh.phase,
+      cameras: bh.cameras.map(c => ({
+        id: c.id, x: c.x, y: c.y,
+        disabled: c.disabled,
+        disableProgress: c.disableProgress,
+        disabledBy: c.disabledBy,
+      })),
+      crackProgress: bh.crackProgress,
+      crackContributorCount: Object.keys(bh.crackContributions).length,
+      crackStartedAt: bh.crackStartedAt,
+      isCracker: !!bh.crackContributions[birdId],
+      escapeVan: bh.escapeVan ? {
+        x: bh.escapeVan.x,
+        y: bh.escapeVan.y,
+        hasEscaped: bh.escapeVan.escapees.has(birdId),
+        escapeeCount: bh.escapeVan.escapees.size,
+      } : null,
+      escapeEndsAt: bh.escapeEndsAt,
+      casingExpiresAt: bh.casingExpiresAt,
+    };
+  }
+
+  _updateBankHeist(dt, now) {
+    const bh = this.bankHeist;
+    const VAULT_X = 1960, VAULT_Y = 1695; // north face of the Bank building
+    const ESCAPE_POINTS = [
+      { x: 2960, y: 1560 },
+      { x: 80,   y: 1560 },
+      { x: 1660, y: 2960 },
+    ];
+
+    // ---- IDLE: wait for timer ----
+    if (bh.phase === 'idle') {
+      if (now >= this.bankHeistTimer && this.birds.size > 0) {
+        bh.phase = 'casing';
+        bh.casingStartedAt = now;
+        bh.casingExpiresAt = now + 120000; // 2 minutes to disable cameras
+        for (const cam of bh.cameras) {
+          cam.disabled = false;
+          cam.disableProgress = 0;
+          cam.disabledBy = null;
+        }
+        this.events.push({ type: 'bank_heist_casing_start' });
+        console.log('[BankHeist] Phase 1: CASING started');
+      }
+      return;
+    }
+
+    // ---- COOLDOWN ----
+    if (bh.phase === 'cooldown') {
+      if (now >= bh.cooldownUntil) {
+        bh.phase = 'idle';
+        this.bankHeistTimer = now + this._randomRange(480000, 720000);
+      }
+      return;
+    }
+
+    // ---- PHASE 1: CASING — disable 3 cameras ----
+    if (bh.phase === 'casing') {
+      if (now > bh.casingExpiresAt) {
+        // Window closed — announce failure & cooldown
+        this.events.push({ type: 'bank_heist_casing_failed' });
+        bh.phase = 'cooldown';
+        bh.cooldownUntil = now + 300000; // 5 min retry
+        for (const cam of bh.cameras) {
+          cam.disabled = false;
+          cam.disableProgress = 0;
+          cam.disabledBy = null;
+        }
+        console.log('[BankHeist] Casing FAILED — timeout');
+        return;
+      }
+
+      for (const cam of bh.cameras) {
+        if (cam.disabled) continue;
+        const disablers = [];
+        for (const bird of this.birds.values()) {
+          if (!bird.input.e) continue;
+          const dx = bird.x - cam.x;
+          const dy = bird.y - cam.y;
+          if (Math.sqrt(dx * dx + dy * dy) < 55) disablers.push(bird);
+        }
+
+        if (disablers.length > 0) {
+          // Progress fills: 3s per camera solo, faster with more birds
+          cam.disableProgress = Math.min(1.0, cam.disableProgress + 0.33 * disablers.length * dt);
+          cam.disabledBy = disablers[0].name;
+          if (cam.disableProgress >= 1.0) {
+            cam.disabled = true;
+            for (const b of disablers) {
+              b.xp += 20;
+              b.coins += 8;
+            }
+            const allDown = bh.cameras.every(c => c.disabled);
+            this.events.push({
+              type: 'bank_heist_camera_down',
+              cameraId: cam.id,
+              birdName: disablers[0].name,
+              allDown,
+            });
+            console.log(`[BankHeist] Camera ${cam.id} disabled by ${disablers[0].name}. All down: ${allDown}`);
+          }
+        } else {
+          // Slowly drain back if untouched
+          cam.disableProgress = Math.max(0, cam.disableProgress - 0.08 * dt);
+          if (cam.disableProgress === 0) cam.disabledBy = null;
+        }
+      }
+
+      if (bh.cameras.every(c => c.disabled)) {
+        bh.phase = 'cracking';
+        bh.crackStartedAt = now;
+        bh.crackProgress = 0;
+        bh.crackContributions = {};
+        bh.crackContributorNames = {};
+        bh.crackAlarmSent = false;
+        bh.crackSwatSent = false;
+        this.events.push({ type: 'bank_heist_cracking_start' });
+        console.log('[BankHeist] Phase 2: CRACKING started');
+      }
+      return;
+    }
+
+    // ---- PHASE 2: CRACKING — drill the vault ----
+    if (bh.phase === 'cracking') {
+      const drillers = [];
+      for (const bird of this.birds.values()) {
+        if (!bird.input.e) continue;
+        const dx = bird.x - VAULT_X;
+        const dy = bird.y - VAULT_Y;
+        if (Math.sqrt(dx * dx + dy * dy) < 75) drillers.push(bird);
+      }
+
+      if (drillers.length > 0) {
+        const drillRate = Math.min(drillers.length, 4) * 0.05; // 1 bird=20s, 3 birds~7s
+        bh.crackProgress = Math.min(1.0, bh.crackProgress + drillRate * dt);
+
+        for (const bird of drillers) {
+          bh.crackContributions[bird.id] = (bh.crackContributions[bird.id] || 0) + dt;
+          bh.crackContributorNames[bird.id] = bird.name;
+          this._addHeat(bird.id, 1.5 * dt); // drilling generates serious heat
+        }
+
+        // 8s in: cops respond
+        if (!bh.crackAlarmSent && now - bh.crackStartedAt > 8000) {
+          bh.crackAlarmSent = true;
+          for (let i = 0; i < 3; i++) {
+            const angle = (i / 3) * Math.PI * 2 + Math.random() * 0.5;
+            const dist = 450 + Math.random() * 200;
+            const cx = Math.max(50, Math.min(world.WORLD_WIDTH - 50, VAULT_X + Math.cos(angle) * dist));
+            const cy = Math.max(50, Math.min(world.WORLD_HEIGHT - 50, VAULT_Y + Math.sin(angle) * dist));
+            const copId = 'cop_bank_' + uid();
+            this.copBirds.set(copId, {
+              id: copId, type: 'cop_pigeon',
+              x: cx, y: cy, rotation: 0,
+              targetBirdId: drillers[0] ? drillers[0].id : null,
+              speed: 130, state: 'chasing',
+              stunUntil: 0, offDutyUntil: 0, sirensPhase: Math.random() * Math.PI * 2,
+            });
+          }
+          this.events.push({ type: 'bank_heist_alarm', x: VAULT_X, y: VAULT_Y });
+          console.log('[BankHeist] ALARM! 3 cops dispatched to bank');
+        }
+
+        // 16s in: SWAT arrives
+        if (!bh.crackSwatSent && now - bh.crackStartedAt > 16000) {
+          bh.crackSwatSent = true;
+          const angle = Math.random() * Math.PI * 2;
+          const sx = Math.max(50, Math.min(world.WORLD_WIDTH - 50, VAULT_X + Math.cos(angle) * 550));
+          const sy = Math.max(50, Math.min(world.WORLD_HEIGHT - 50, VAULT_Y + Math.sin(angle) * 550));
+          const swatId = 'swat_bank_' + uid();
+          this.copBirds.set(swatId, {
+            id: swatId, type: 'swat_crow',
+            x: sx, y: sy, rotation: 0,
+            targetBirdId: drillers[0] ? drillers[0].id : null,
+            speed: 155, state: 'chasing',
+            stunUntil: 0, offDutyUntil: 0, sirensPhase: Math.random() * Math.PI * 2,
+          });
+          this.events.push({ type: 'bank_heist_swat', x: VAULT_X, y: VAULT_Y });
+          console.log('[BankHeist] SWAT dispatched!');
+        }
+
+        // VAULT CRACKED!
+        if (bh.crackProgress >= 1.0) {
+          const ep = ESCAPE_POINTS[Math.floor(Math.random() * ESCAPE_POINTS.length)];
+          bh.escapeVan = { x: ep.x, y: ep.y, escapees: new Set() };
+          bh.escapeEndsAt = now + 45000; // 45s to reach van
+          bh.phase = 'escape';
+          this.events.push({ type: 'bank_heist_escape_start', vanX: ep.x, vanY: ep.y });
+          console.log(`[BankHeist] VAULT CRACKED! Escape van at ${ep.x},${ep.y}`);
+        }
+      } else {
+        // Progress drains slowly if nobody drilling
+        if (bh.crackProgress > 0) {
+          bh.crackProgress = Math.max(0, bh.crackProgress - 0.025 * dt);
+        }
+      }
+      return;
+    }
+
+    // ---- PHASE 3: ESCAPE — reach the getaway van ----
+    if (bh.phase === 'escape') {
+      const van = bh.escapeVan;
+
+      // Check if any heister reached the van
+      for (const bird of this.birds.values()) {
+        if (van.escapees.has(bird.id)) continue;
+        if (!bh.crackContributions[bird.id]) continue; // not a heister
+        const dx = bird.x - van.x;
+        const dy = bird.y - van.y;
+        if (Math.sqrt(dx * dx + dy * dy) < 65) {
+          van.escapees.add(bird.id);
+          this.events.push({
+            type: 'bank_heist_bird_escaped',
+            birdId: bird.id,
+            birdName: bird.name,
+          });
+        }
+      }
+
+      // Time's up — resolve rewards
+      if (now >= bh.escapeEndsAt) {
+        this._resolveBankHeist(now);
+      }
+      return;
+    }
+  }
+
+  _resolveBankHeist(now) {
+    const bh = this.bankHeist;
+    const contributions = bh.crackContributions;
+    const names = bh.crackContributorNames;
+    const totalTime = Object.values(contributions).reduce((a, b) => a + b, 0) || 1;
+    const numContributors = Object.keys(contributions).length;
+    const escapees = bh.escapeVan ? bh.escapeVan.escapees : new Set();
+    const escapeCount = escapees.size;
+
+    const basePot = 500 + numContributors * 150;
+    const rewards = [];
+
+    for (const [birdId, time] of Object.entries(contributions)) {
+      const bird = this.birds.get(birdId);
+      const share = time / totalTime;
+      const fullCoins = Math.floor(share * basePot);
+      const escaped = escapees.has(birdId);
+      const coins = escaped ? fullCoins : Math.floor(fullCoins * 0.3);
+      const xp = escaped ? Math.floor(250 + share * 400) : Math.floor(60 + share * 80);
+      if (bird) {
+        bird.coins += coins;
+        bird.xp += xp;
+        bird.food += escaped ? 40 : 10;
+        this._addHeat(birdId, escaped ? 60 : 30);
+        const newLevel = world.getLevelFromXP(bird.xp);
+        const newType = world.getBirdTypeForLevel(newLevel);
+        if (newType !== bird.type) {
+          bird.type = newType;
+          this.events.push({ type: 'evolve', birdId: bird.id, name: bird.name, birdType: newType });
+        }
+        bird.level = newLevel;
+      }
+      rewards.push({ birdId, name: names[birdId] || '?', coins, xp, escaped });
+    }
+
+    this._addChaos(80);
+
+    this.events.push({
+      type: 'bank_heist_complete',
+      rewards,
+      escapeCount,
+      totalCrackers: numContributors,
+    });
+
+    console.log(`[BankHeist] RESOLVED! Escapees: ${escapeCount}/${numContributors}`);
+
+    bh.phase = 'cooldown';
+    bh.cooldownUntil = now + this._randomRange(480000, 720000);
+    bh.escapeVan = null;
+    bh.escapeEndsAt = null;
+    bh.crackContributions = {};
+    bh.crackContributorNames = {};
   }
 
 }

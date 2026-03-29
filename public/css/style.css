@@ -1732,3 +1732,57 @@ html, body {
   from { box-shadow: 0 0 8px rgba(255, 60, 0, 0.5); }
   to   { box-shadow: 0 0 22px rgba(255, 100, 0, 1.0); }
 }
+
+/* ============================
+   BANK HEIST UI
+   ============================ */
+#bankHeistPrompt {
+  position: fixed;
+  bottom: 230px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(10, 10, 40, 0.94);
+  border: 2px solid #4466ff;
+  border-radius: 20px;
+  padding: 6px 18px;
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  color: #aaccff;
+  z-index: 60;
+  pointer-events: none;
+  white-space: nowrap;
+  animation: bankPromptPulse 0.9s ease-in-out infinite alternate;
+}
+#bankHeistPrompt kbd {
+  background: #223388;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 12px;
+  color: #ffd700;
+}
+@keyframes bankPromptPulse {
+  from { box-shadow: 0 0 6px rgba(68, 102, 255, 0.5); }
+  to   { box-shadow: 0 0 20px rgba(100, 140, 255, 0.9); }
+}
+#bankEscapeHud {
+  position: fixed;
+  top: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(80, 0, 0, 0.92);
+  border: 2px solid #ff4400;
+  border-radius: 12px;
+  padding: 8px 22px;
+  font-family: 'Courier New', monospace;
+  font-size: 15px;
+  font-weight: bold;
+  color: #ffcc00;
+  z-index: 70;
+  pointer-events: none;
+  text-align: center;
+  animation: escapeHudPulse 0.5s ease-in-out infinite alternate;
+}
+@keyframes escapeHudPulse {
+  from { box-shadow: 0 0 8px rgba(255, 68, 0, 0.6); }
+  to   { box-shadow: 0 0 25px rgba(255, 180, 0, 1.0); }
+}

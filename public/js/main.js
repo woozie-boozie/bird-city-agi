@@ -865,6 +865,75 @@
       }
     }
 
+    // === BANK HEIST EVENTS ===
+    if (ev.type === 'bank_heist_casing_start') {
+      showAnnouncement('🏦 BANK HEIST OPPORTUNITY!', '#4466ff', 5000);
+      addEventMessage('🏦 The Bank\'s security window is open! Disable the 3 cameras (hold E near each). 2 minutes!', '#aaccff');
+      effects.push({ type: 'screen_shake', intensity: 4, duration: 400, time: now });
+    }
+    if (ev.type === 'bank_heist_camera_down') {
+      if (ev.allDown) {
+        showAnnouncement('📷 ALL CAMERAS DOWN — CRACK THE VAULT!', '#44ffaa', 4000);
+        addEventMessage('📷 All 3 cameras disabled! Fly to the vault door (north face of the Bank) and hold E!', '#44ffaa');
+        effects.push({ type: 'screen_shake', intensity: 6, duration: 500, time: now });
+      } else {
+        addEventMessage('📷 Camera ' + (ev.cameraId + 1) + ' disabled by ' + ev.birdName + '!', '#88ffcc');
+      }
+    }
+    if (ev.type === 'bank_heist_casing_failed') {
+      addEventMessage('🔒 Bank security window closed. Try again later...', '#ff6644');
+    }
+    if (ev.type === 'bank_heist_cracking_start') {
+      showAnnouncement('🔒 CRACK THE VAULT! Hold E at the north face of the Bank!', '#ffcc00', 5000);
+      addEventMessage('🔓 Vault cracking begun! Hold E at the Bank vault door — cops will respond in 8 seconds!', '#ffcc00');
+    }
+    if (ev.type === 'bank_heist_alarm') {
+      showAnnouncement('🚨 BANK ALARM! COPS INBOUND!', '#ff2200', 3000);
+      addEventMessage('🚨 BANK ALARM TRIGGERED — 3 cops dispatched to the Bank!', '#ff6644');
+      effects.push({ type: 'screen_shake', intensity: 8, duration: 600, time: now });
+    }
+    if (ev.type === 'bank_heist_swat') {
+      showAnnouncement('⚠️ SWAT DEPLOYED!', '#ff0000', 3000);
+      addEventMessage('⚠️ SWAT CROW deployed to the Bank!', '#ff4444');
+    }
+    if (ev.type === 'bank_heist_escape_start') {
+      showAnnouncement('💰 VAULT CRACKED! GET TO THE VAN!', '#ffd700', 5000);
+      addEventMessage('🚐 Getaway van spotted! 45 seconds to escape! Fly to it!', '#ffdd00');
+      effects.push({ type: 'screen_shake', intensity: 12, duration: 800, time: now });
+      // Coin explosion at vault
+      for (let i = 0; i < 25; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 80 + Math.random() * 150;
+        effects.push({
+          type: 'particle', x: 1960, y: 1695,
+          vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+          color: Math.random() > 0.5 ? '#ffd700' : '#44ff88',
+          size: 5 + Math.random() * 6, life: 1.5, maxLife: 1.5,
+        });
+      }
+    }
+    if (ev.type === 'bank_heist_bird_escaped') {
+      if (ev.birdId === myId) {
+        showAnnouncement('🚐 YOU MADE IT TO THE VAN!', '#44ff88', 3000);
+      }
+      addEventMessage('🚐 ' + ev.birdName + ' made it to the getaway van!', '#44ff88');
+    }
+    if (ev.type === 'bank_heist_complete') {
+      const count = ev.escapeCount || 0;
+      const total = ev.totalCrackers || 1;
+      showAnnouncement('🏦 HEIST COMPLETE! ' + count + '/' + total + ' ESCAPED!', '#ffd700', 6000);
+      effects.push({ type: 'screen_shake', intensity: 15, duration: 1000, time: now });
+      if (ev.rewards) {
+        for (const r of ev.rewards) {
+          const escLabel = r.escaped ? '🚐 ESCAPED' : '🔒 CAUGHT';
+          if (r.birdId === myId) {
+            showAnnouncement((r.escaped ? '💰' : '😰') + ' YOUR TAKE: +' + r.coins + 'c  +' + r.xp + ' XP  [' + (r.escaped ? 'ESCAPED' : 'CAUGHT') + ']', r.escaped ? '#ffd700' : '#ff6644', 5000);
+          }
+          addEventMessage(escLabel + ' ' + r.name + ' +' + r.coins + 'c +' + r.xp + 'XP', r.escaped ? '#ffd700' : '#ff8866');
+        }
+      }
+    }
+
     // === NPC REVENGE EVENTS ===
     if (ev.type === 'npc_revenge') {
       SoundEngine.npcRevenge();
@@ -1950,6 +2019,115 @@
   }
 
   // ============================================================
+  // BANK HEIST UI — proximity prompts for each phase
+  // ============================================================
+  function updateBankHeistUI() {
+    const bhPrompt = document.getElementById('bankHeistPrompt');
+    const bhEscapeHud = document.getElementById('bankEscapeHud');
+    if (!bhPrompt || !bhEscapeHud) return;
+    if (!gameState || !gameState.self || !gameState.bankHeist) {
+      bhPrompt.style.display = 'none';
+      bhEscapeHud.style.display = 'none';
+      return;
+    }
+
+    const s = gameState.self;
+    const bh = gameState.bankHeist;
+    const BANK_X = 1960, BANK_Y = 1775;
+    const VAULT_X = 1960, VAULT_Y = 1695;
+    const now = Date.now();
+
+    // ---- CASING: show which cameras are near ----
+    if (bh.phase === 'casing') {
+      let nearCam = null;
+      let minDist = Infinity;
+      for (const cam of (bh.cameras || [])) {
+        if (cam.disabled) continue;
+        const dx = s.x - cam.x;
+        const dy = s.y - cam.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 60 && dist < minDist) { minDist = dist; nearCam = cam; }
+      }
+      const disabledCount = (bh.cameras || []).filter(c => c.disabled).length;
+      const secsLeft = bh.casingExpiresAt ? Math.max(0, Math.ceil((bh.casingExpiresAt - now) / 1000)) : 0;
+
+      if (nearCam) {
+        const pct = Math.floor(nearCam.disableProgress * 100);
+        bhPrompt.innerHTML = '📷 Hold <kbd>E</kbd> to blind camera (' + disabledCount + '/3 down, ' + pct + '%) — <span style="color:#ff8866">' + secsLeft + 's left</span>';
+        bhPrompt.style.display = 'block';
+      } else {
+        const dxBank = s.x - BANK_X;
+        const dyBank = s.y - BANK_Y;
+        if (Math.sqrt(dxBank * dxBank + dyBank * dyBank) < 250) {
+          bhPrompt.innerHTML = '🏦 HEIST ACTIVE — Disable the ' + (3 - disabledCount) + ' cameras! (<span style="color:#ff8866">' + secsLeft + 's</span>)';
+          bhPrompt.style.display = 'block';
+        } else {
+          bhPrompt.style.display = 'none';
+        }
+      }
+      bhEscapeHud.style.display = 'none';
+    }
+
+    // ---- CRACKING: show drill progress prompt ----
+    else if (bh.phase === 'cracking') {
+      const dx = s.x - VAULT_X;
+      const dy = s.y - VAULT_Y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 85) {
+        const pct = Math.floor((bh.crackProgress || 0) * 100);
+        const contributors = bh.crackContributorCount || 0;
+        bhPrompt.innerHTML = '🔒 Hold <kbd>E</kbd> to CRACK VAULT — ' + pct + '%' +
+          (contributors > 0 ? ' (' + contributors + ' driller' + (contributors !== 1 ? 's' : '') + ')' : '');
+        bhPrompt.style.display = 'block';
+      } else {
+        const dxBank = s.x - BANK_X;
+        const dyBank = s.y - BANK_Y;
+        if (Math.sqrt(dxBank * dxBank + dyBank * dyBank) < 250) {
+          bhPrompt.innerHTML = '🔒 Fly to the vault door (north face of Bank) and hold <kbd>E</kbd>!';
+          bhPrompt.style.display = 'block';
+        } else {
+          bhPrompt.style.display = 'none';
+        }
+      }
+      bhEscapeHud.style.display = 'none';
+    }
+
+    // ---- ESCAPE: show escape HUD for crackers ----
+    else if (bh.phase === 'escape') {
+      bhPrompt.style.display = 'none';
+      if (bh.isCracker && bh.escapeVan) {
+        const secsLeft = bh.escapeEndsAt ? Math.max(0, Math.ceil((bh.escapeEndsAt - now) / 1000)) : 0;
+        const escaped = bh.escapeVan.hasEscaped;
+        const timerColor = secsLeft <= 10 ? '#ff4444' : '#ffcc00';
+        if (escaped) {
+          bhEscapeHud.innerHTML = '🚐 SAFE IN THE VAN! ' + (bh.escapeVan.escapeeCount || 1) + ' escaped';
+          bhEscapeHud.style.borderColor = '#44ff88';
+        } else {
+          bhEscapeHud.innerHTML = '🚐 GET TO THE VAN! <span style="color:' + timerColor + '">' + secsLeft + 's</span>';
+          bhEscapeHud.style.borderColor = secsLeft <= 10 ? '#ff4444' : '#ffcc00';
+        }
+        bhEscapeHud.style.display = 'block';
+
+        // Show proximity prompt near the van
+        const vdx = s.x - bh.escapeVan.x;
+        const vdy = s.y - bh.escapeVan.y;
+        if (Math.sqrt(vdx * vdx + vdy * vdy) < 80 && !escaped) {
+          bhPrompt.innerHTML = '🚐 Fly into the van to ESCAPE!';
+          bhPrompt.style.display = 'block';
+        }
+      } else {
+        bhEscapeHud.style.display = 'none';
+      }
+    }
+
+    // ---- All other phases: hide everything ----
+    else {
+      bhPrompt.style.display = 'none';
+      bhEscapeHud.style.display = 'none';
+    }
+  }
+
+  // ============================================================
   // FLOCK LOBBY UI
   // ============================================================
   function renderFlockLobby(lobbyBirds, selfState) {
@@ -2670,8 +2848,13 @@
       }
     }
 
+    // Bank Heist overlays (cameras, vault progress, escape van) — drawn before buildings for z-order
+    if (gameState.bankHeist) {
+      Renderer.drawBankHeist(ctx, camera, gameState.bankHeist, now);
+    }
+
     // Buildings & trees on top
-    Renderer.drawBuildings(ctx, camera);
+    Renderer.drawBuildings(ctx, camera, gameState.bankHeist ? gameState.bankHeist.phase : null);
     Renderer.drawTrees(ctx, camera);
 
     // Birds
@@ -2826,9 +3009,10 @@
     updateEventFeed();
     updateArenaUI();
     updateFoodTruckHeistUI();
+    updateBankHeistUI();
 
     // Minimap (now includes activeEvent and cat)
-    Renderer.drawMinimap(minimapCtx, worldData, gameState.birds, selfBird, gameState.activeEvent, gameState.cat, gameState.janitor, gameState.territories);
+    Renderer.drawMinimap(minimapCtx, worldData, gameState.birds, selfBird, gameState.activeEvent, gameState.cat, gameState.janitor, gameState.territories, gameState.bankHeist);
 
     // Draw beacons on minimap
     if (gameState.beacons && worldData) {
