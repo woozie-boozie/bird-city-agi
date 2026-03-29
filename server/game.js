@@ -150,6 +150,26 @@ class GameEngine {
     this.territories = new Map();  // zoneId -> zone state
     this._initTerritories();
 
+    // === PIGEON RACING TRACK ===
+    this.pigeonRace = {
+      state: 'idle',      // 'idle' | 'open' | 'countdown' | 'racing' | 'finished'
+      racers: new Map(),  // birdId -> { name, nextCpIdx, needsFinish, finished, finishTime, finishPosition }
+      pot: 0,
+      openUntil: null,
+      countdownUntil: null,
+      raceStartAt: null,
+      raceEndsAt: null,   // max race time (3 min)
+      winners: [],        // ordered finishers: [{ birdId, name, time }]
+      finishedAt: null,   // when results were shown (idle cooldown)
+    };
+    this.pigeonRaceTimer = Date.now() + this._randomRange(300000, 480000); // 5-8 min to first race
+    this.RACE_ENTRY_FEE = 25;
+    this.RACE_MAX_RACERS = 8;
+    this.RACE_OPEN_MS = 30000;      // 30s registration window
+    this.RACE_COUNTDOWN_MS = 5000;  // 5s countdown
+    this.RACE_MAX_DURATION = 180000; // 3 min max race time
+    this.RACE_CHECKPOINTS = world.RACE_CHECKPOINTS;
+
     // === LEADERBOARD CACHE (async Firestore) ===
     this._cachedLeaderboard = [];
     this._refreshLeaderboard();
@@ -524,6 +544,11 @@ class GameEngine {
       this._handleTowerBroadcast(bird, action.broadcastType, now);
     }
 
+    // === Pigeon Racing ===
+    if (action.type === 'race_join') {
+      this._handleRaceJoin(bird, now);
+    }
+
     // === Graffiti Tagging ===
     if (action.type === 'spray_tag') {
       const buildingIdx = typeof action.buildingIdx === 'number' ? action.buildingIdx : -1;
@@ -692,6 +717,9 @@ class GameEngine {
 
     // === Radio Tower ===
     this._updateRadioTower(dt, now);
+
+    // === Pigeon Racing Track ===
+    this._updatePigeonRace(dt, now);
 
     // === Day/Night Cycle ===
     this._updateDayNight(dt, now);
@@ -3319,6 +3347,33 @@ class GameEngine {
             }))
           : null,
       },
+      pigeonRace: (() => {
+        const race = this.pigeonRace;
+        const myRacer = race.racers.get(bird.id);
+        return {
+          state: race.state,
+          pot: race.pot,
+          racerCount: race.racers.size,
+          isRacer: !!myRacer,
+          myNextCpIdx: myRacer ? myRacer.nextCpIdx : null,
+          myNeedsFinish: myRacer ? myRacer.needsFinish : false,
+          myFinished: myRacer ? myRacer.finished : false,
+          myFinishPosition: myRacer ? myRacer.finishPosition : null,
+          openUntil: race.openUntil,
+          countdownUntil: race.countdownUntil,
+          raceEndsAt: race.raceEndsAt,
+          winners: race.winners,
+          positions: (race.state === 'racing' || race.state === 'countdown' || race.state === 'finished')
+            ? [...race.racers.entries()].map(([id, r]) => ({
+                id, name: r.name,
+                progress: r.finished ? 99 : (r.needsFinish ? 5 : r.nextCpIdx - 1),
+                finished: r.finished,
+                finishTime: r.finishTime,
+                finishPosition: r.finishPosition,
+              })).sort((a, b) => b.progress - a.progress)
+            : null,
+        };
+      })(),
       self: {
         id: bird.id,
         name: bird.name,
@@ -5979,6 +6034,328 @@ class GameEngine {
         duration: 60000,
       });
     }
+  }
+
+  // ============================================================
+  // PIGEON RACING TRACK
+  // ============================================================
+
+  _handleRaceJoin(bird, now) {
+    const race = this.pigeonRace;
+
+    if (race.state !== 'open') {
+      this.events.push({ type: 'race_join_fail', birdId: bird.id, reason: 'not_open' });
+      return;
+    }
+    if (race.racers.has(bird.id)) {
+      this.events.push({ type: 'race_join_fail', birdId: bird.id, reason: 'already_joined' });
+      return;
+    }
+    if (race.racers.size >= this.RACE_MAX_RACERS) {
+      this.events.push({ type: 'race_join_fail', birdId: bird.id, reason: 'full' });
+      return;
+    }
+    if (bird.coins < this.RACE_ENTRY_FEE) {
+      this.events.push({ type: 'race_join_fail', birdId: bird.id, reason: 'no_coins' });
+      return;
+    }
+
+    // Proximity check to the start/finish line
+    const start = this.RACE_CHECKPOINTS[0];
+    const dx = bird.x - start.x;
+    const dy = bird.y - start.y;
+    if (dx * dx + dy * dy > 250 * 250) {
+      this.events.push({ type: 'race_join_fail', birdId: bird.id, reason: 'too_far' });
+      return;
+    }
+
+    bird.coins -= this.RACE_ENTRY_FEE;
+    race.pot += this.RACE_ENTRY_FEE;
+
+    race.racers.set(bird.id, {
+      birdId: bird.id,
+      name: bird.name,
+      nextCpIdx: 1,       // next checkpoint to hit (1..4)
+      needsFinish: false, // true after all 4 CPs cleared — must return to finish
+      finished: false,
+      finishTime: null,
+      finishPosition: null,
+    });
+
+    this.events.push({
+      type: 'race_join',
+      birdId: bird.id,
+      birdName: bird.name,
+      racerCount: race.racers.size,
+      pot: race.pot,
+      openUntil: race.openUntil,
+    });
+  }
+
+  _updatePigeonRace(dt, now) {
+    const race = this.pigeonRace;
+
+    // ── IDLE: open registration when timer fires ──────────────
+    if (race.state === 'idle') {
+      if (now >= this.pigeonRaceTimer && this.birds.size > 0) {
+        race.state = 'open';
+        race.openUntil = now + this.RACE_OPEN_MS;
+        this.events.push({
+          type: 'race_open',
+          openUntil: race.openUntil,
+          entryFee: this.RACE_ENTRY_FEE,
+        });
+      }
+      return;
+    }
+
+    // ── OPEN: registration window ─────────────────────────────
+    if (race.state === 'open') {
+      // Drop disconnected racers (refund them)
+      for (const [bid] of race.racers) {
+        if (!this.birds.has(bid)) {
+          race.racers.delete(bid);
+          race.pot = Math.max(0, race.pot - this.RACE_ENTRY_FEE);
+        }
+      }
+
+      // Fill up → start countdown immediately
+      if (race.racers.size >= this.RACE_MAX_RACERS) {
+        this._startRaceCountdown(now);
+        return;
+      }
+
+      // Time expired
+      if (now >= race.openUntil) {
+        if (race.racers.size < 2) {
+          // Not enough — cancel and refund
+          for (const [bid] of race.racers) {
+            const b = this.birds.get(bid);
+            if (b) b.coins += this.RACE_ENTRY_FEE;
+          }
+          race.racers.clear();
+          race.pot = 0;
+          race.state = 'idle';
+          this.pigeonRaceTimer = now + this._randomRange(300000, 480000);
+          this.events.push({ type: 'race_cancelled', reason: 'not_enough_racers' });
+        } else {
+          this._startRaceCountdown(now);
+        }
+      }
+      return;
+    }
+
+    // ── COUNTDOWN: 5-second GO! countdown ────────────────────
+    if (race.state === 'countdown') {
+      // Drop disconnected racers
+      for (const [bid] of race.racers) {
+        if (!this.birds.has(bid)) {
+          race.racers.delete(bid);
+          race.pot = Math.max(0, race.pot - this.RACE_ENTRY_FEE);
+        }
+      }
+
+      if (race.racers.size < 2) {
+        for (const [bid] of race.racers) {
+          const b = this.birds.get(bid);
+          if (b) b.coins += this.RACE_ENTRY_FEE;
+        }
+        race.racers.clear();
+        race.pot = 0;
+        race.state = 'idle';
+        race.countdownUntil = null;
+        this.pigeonRaceTimer = now + this._randomRange(300000, 480000);
+        this.events.push({ type: 'race_cancelled', reason: 'not_enough_racers' });
+        return;
+      }
+
+      if (now >= race.countdownUntil) {
+        race.state = 'racing';
+        race.raceStartAt = now;
+        race.raceEndsAt = now + this.RACE_MAX_DURATION;
+        this.events.push({
+          type: 'race_start',
+          racerCount: race.racers.size,
+          pot: race.pot,
+          racers: [...race.racers.values()].map(r => r.name),
+        });
+      }
+      return;
+    }
+
+    // ── RACING: checkpoint detection ─────────────────────────
+    if (race.state === 'racing') {
+      // Mark disconnected racers as DNF
+      for (const [bid, racer] of race.racers) {
+        if (!this.birds.has(bid) && !racer.finished) {
+          racer.finished = true;
+          racer.finishTime = null; // DNF
+        }
+      }
+
+      // Detect checkpoint hits
+      for (const [bid, racer] of race.racers) {
+        if (racer.finished) continue;
+        const b = this.birds.get(bid);
+        if (!b) continue;
+
+        // Which checkpoint are they aiming for?
+        const targetCp = racer.needsFinish
+          ? this.RACE_CHECKPOINTS[0]  // finish line = start position
+          : this.RACE_CHECKPOINTS[racer.nextCpIdx];
+
+        const dx = b.x - targetCp.x;
+        const dy = b.y - targetCp.y;
+        if (dx * dx + dy * dy <= targetCp.r * targetCp.r) {
+          if (racer.needsFinish) {
+            // 🏁 FINISHED!
+            racer.finished = true;
+            racer.finishTime = now - race.raceStartAt;
+            racer.finishPosition = race.winners.length + 1;
+            race.winners.push({ birdId: bid, name: racer.name, time: racer.finishTime });
+
+            this.events.push({
+              type: 'race_finish',
+              birdId: bid,
+              birdName: racer.name,
+              position: racer.finishPosition,
+              time: racer.finishTime,
+            });
+
+            // Check if all racers are done
+            const allDone = [...race.racers.values()].every(r => r.finished);
+            if (allDone) {
+              this._endPigeonRace(now, false);
+              return;
+            }
+          } else {
+            // Hit an intermediate checkpoint
+            racer.nextCpIdx++;
+            if (racer.nextCpIdx >= this.RACE_CHECKPOINTS.length) {
+              racer.needsFinish = true; // all CPs cleared — head for finish!
+            }
+
+            const position = this._getRacerPosition(bid);
+            this.events.push({
+              type: 'race_checkpoint_hit',
+              birdId: bid,
+              birdName: racer.name,
+              checkpoint: racer.needsFinish ? 'FINISH' : ('CP ' + racer.nextCpIdx),
+              cpNum: racer.needsFinish ? 5 : racer.nextCpIdx,
+              position,
+            });
+          }
+        }
+      }
+
+      // Time limit expired
+      if (now >= race.raceEndsAt) {
+        this._endPigeonRace(now, true);
+      }
+      return;
+    }
+
+    // ── FINISHED: show results then reset ────────────────────
+    if (race.state === 'finished') {
+      if (race.finishedAt && now >= race.finishedAt + 15000) {
+        race.state = 'idle';
+        race.racers.clear();
+        race.pot = 0;
+        race.winners = [];
+        race.finishedAt = null;
+        race.openUntil = null;
+        race.countdownUntil = null;
+        race.raceStartAt = null;
+        race.raceEndsAt = null;
+        this.pigeonRaceTimer = now + this._randomRange(480000, 720000); // 8-12 min
+      }
+    }
+  }
+
+  _startRaceCountdown(now) {
+    const race = this.pigeonRace;
+    race.state = 'countdown';
+    race.countdownUntil = now + this.RACE_COUNTDOWN_MS;
+    this.events.push({
+      type: 'race_countdown',
+      countdown: this.RACE_COUNTDOWN_MS / 1000,
+      racerCount: race.racers.size,
+      pot: race.pot,
+      racers: [...race.racers.values()].map(r => r.name),
+    });
+  }
+
+  _getRacerPosition(birdId) {
+    const race = this.pigeonRace;
+    const positions = [...race.racers.entries()].map(([id, r]) => ({
+      id,
+      score: r.finished ? 999 : (r.needsFinish ? 5 : r.nextCpIdx - 1),
+    }));
+    positions.sort((a, b) => b.score - a.score);
+    return positions.findIndex(p => p.id === birdId) + 1;
+  }
+
+  _endPigeonRace(now, isTimeout) {
+    const race = this.pigeonRace;
+    race.state = 'finished';
+    race.finishedAt = now;
+
+    // Assign finish positions to any unfinished racers by checkpoint progress
+    if (isTimeout || [...race.racers.values()].some(r => !r.finished)) {
+      const unfinished = [...race.racers.entries()]
+        .filter(([, r]) => !r.finished)
+        .map(([id, r]) => ({ id, score: r.needsFinish ? 5 : r.nextCpIdx - 1 }))
+        .sort((a, b) => b.score - a.score);
+
+      for (const { id } of unfinished) {
+        const racer = race.racers.get(id);
+        if (racer) {
+          racer.finished = true;
+          racer.finishTime = null; // DNF / timeout
+          racer.finishPosition = race.winners.length + 1;
+          race.winners.push({ birdId: id, name: racer.name, time: null });
+        }
+      }
+    }
+
+    // Calculate and distribute rewards
+    const pot = race.pot;
+    const rewards = [];
+
+    for (const [bid, racer] of race.racers) {
+      const b = this.birds.get(bid);
+      if (!b) continue;
+
+      const fp = racer.finishPosition || (race.racers.size + 1);
+      let coins = 0;
+      let xp = 0;
+
+      if (fp === 1) {
+        coins = Math.floor(pot * 0.60);
+        xp = 400;
+      } else if (fp === 2) {
+        coins = Math.floor(pot * 0.25);
+        xp = 200;
+      } else if (fp === 3) {
+        coins = Math.floor(pot * 0.15);
+        xp = 100;
+      } else {
+        xp = 50; // consolation XP for racing
+      }
+
+      b.coins += coins;
+      b.xp += xp;
+      rewards.push({ birdId: bid, name: racer.name, position: fp, coins, xp, time: racer.finishTime });
+    }
+
+    rewards.sort((a, b) => a.position - b.position);
+
+    this.events.push({
+      type: 'race_results',
+      isTimeout,
+      pot,
+      rewards,
+    });
   }
 
 }

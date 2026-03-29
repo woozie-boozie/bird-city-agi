@@ -303,12 +303,25 @@ const RADIO_TOWER = {
   captureRadius: 90,
 };
 
+// ============================================================
+// PIGEON RACING TRACK — 5-checkpoint loop around the city
+// START at park center, race clockwise through all 4 corners,
+// then return to the finish line for glory and coins!
+// ============================================================
+const RACE_CHECKPOINTS = [
+  { x: 1200, y: 1200, label: 'START', r: 85 },   // idx 0 = start/finish line (park center)
+  { x: 2350, y: 600,  label: 'CP 1',  r: 85 },   // top-right: between Mall and highway
+  { x: 2500, y: 2480, label: 'CP 2',  r: 85 },   // bottom-right: below Downtown
+  { x: 350,  y: 2480, label: 'CP 3',  r: 85 },   // bottom-left: below Cafe District
+  { x: 350,  y: 480,  label: 'CP 4',  r: 85 },   // top-left: Residential corner
+];
+
 module.exports = {
   WORLD_WIDTH, WORLD_HEIGHT,
   BUILDINGS, TREES, PARK, CAFE_TABLES, ROADS, CARS, LAUNDRY,
   MOVING_CARS, EVENT_LOCATIONS, POWERUP_TYPES,
   NPC_TYPES, BIRD_TYPES, DATE_CENTER,
   SKILL_CATALOG, BIRD_COLORS, STREET_LAMPS,
-  TERRITORY_ZONES, ARENA, RADIO_TOWER,
+  TERRITORY_ZONES, ARENA, RADIO_TOWER, RACE_CHECKPOINTS,
   getXPForLevel, getLevelFromXP, getBirdTypeForLevel,
 };

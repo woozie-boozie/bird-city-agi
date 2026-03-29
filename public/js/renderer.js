@@ -1259,4 +1259,196 @@ window.Renderer = {
       ctx.fillText('Hold E to capture', sx, sy + 26);
     }
   },
+
+  // ============================================================
+  // PIGEON RACING TRACK — checkpoint rings + dotted track path
+  // ============================================================
+  drawRaceTrack(ctx, camera, checkpoints, pigeonRace, now) {
+    if (!checkpoints || checkpoints.length === 0) return;
+
+    const raceState = pigeonRace ? pigeonRace.state : 'idle';
+    const isActive = raceState === 'open' || raceState === 'countdown' || raceState === 'racing' || raceState === 'finished';
+    const isRacer = pigeonRace && pigeonRace.isRacer;
+    const myNextCp = isRacer ? pigeonRace.myNextCpIdx : null;
+    const myNeedsFinish = isRacer ? pigeonRace.myNeedsFinish : false;
+    const myFinished = isRacer ? pigeonRace.myFinished : false;
+
+    // Draw dotted track path connecting checkpoints when race is active
+    if (isActive) {
+      ctx.save();
+      ctx.setLineDash([8, 12]);
+      ctx.lineWidth = 2;
+      ctx.globalAlpha = 0.3;
+      ctx.strokeStyle = '#ffdd44';
+      ctx.beginPath();
+      for (let i = 0; i < checkpoints.length; i++) {
+        const cp = checkpoints[i];
+        const sx = cp.x - camera.x + camera.screenW / 2;
+        const sy = cp.y - camera.y + camera.screenH / 2;
+        if (i === 0) ctx.moveTo(sx, sy);
+        else ctx.lineTo(sx, sy);
+      }
+      // Close loop back to start
+      const s0 = checkpoints[0];
+      ctx.lineTo(s0.x - camera.x + camera.screenW / 2, s0.y - camera.y + camera.screenH / 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+
+    // Draw each checkpoint ring
+    for (let i = 0; i < checkpoints.length; i++) {
+      const cp = checkpoints[i];
+      const sx = cp.x - camera.x + camera.screenW / 2;
+      const sy = cp.y - camera.y + camera.screenH / 2;
+      const r = cp.r || 80;
+
+      // Cull if off screen
+      if (sx + r < -80 || sx - r > camera.screenW + 80 ||
+          sy + r < -80 || sy - r > camera.screenH + 80) continue;
+
+      // Only show start ring when idle; show all when active
+      if (!isActive && i !== 0) continue;
+
+      // Is this the checkpoint this player needs to hit next?
+      let isMyTarget = false;
+      if (isRacer && !myFinished && raceState === 'racing') {
+        if (myNeedsFinish && i === 0) isMyTarget = true;
+        else if (!myNeedsFinish && i === myNextCp) isMyTarget = true;
+      }
+
+      const pulse = Math.sin(now * 0.004 + i * 0.8) * 0.5 + 0.5;
+      const isStart = i === 0;
+
+      // Color theme per checkpoint
+      const cpColors = ['#ffd700', '#ff4444', '#ff8800', '#44ff44', '#44aaff'];
+      const ringColor = cpColors[i] || '#ffffff';
+      const glowColor = ringColor;
+
+      ctx.save();
+
+      // Pulsing glow halo for my target
+      if (isMyTarget) {
+        ctx.globalAlpha = 0.25 + pulse * 0.25;
+        ctx.fillStyle = glowColor;
+        ctx.beginPath();
+        ctx.arc(sx, sy, r + 18, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Outer ring with glow
+      ctx.globalAlpha = isMyTarget ? (0.7 + pulse * 0.3) : 0.4;
+      ctx.strokeStyle = ringColor;
+      ctx.lineWidth = isMyTarget ? 6 : 3;
+      ctx.shadowColor = glowColor;
+      ctx.shadowBlur = isMyTarget ? 22 : 8;
+      ctx.beginPath();
+      ctx.arc(sx, sy, r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // Inner dashed ring
+      ctx.globalAlpha = isMyTarget ? (0.5 + pulse * 0.2) : 0.2;
+      ctx.strokeStyle = isMyTarget ? '#ffffff' : ringColor;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 8]);
+      ctx.beginPath();
+      ctx.arc(sx, sy, r - 12, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Checkered pattern on start/finish ring
+      if (isStart && isActive) {
+        const stripeCount = 8;
+        for (let s = 0; s < stripeCount; s++) {
+          const a1 = (s / stripeCount) * Math.PI * 2;
+          const a2 = ((s + 0.5) / stripeCount) * Math.PI * 2;
+          ctx.globalAlpha = 0.5;
+          ctx.fillStyle = s % 2 === 0 ? '#ffffff' : '#000000';
+          ctx.beginPath();
+          ctx.arc(sx, sy, r + 6, a1, a2);
+          ctx.arc(sx, sy, r, a2, a1, true);
+          ctx.closePath();
+          ctx.fill();
+        }
+      }
+
+      // Checkpoint label / icon
+      ctx.globalAlpha = isMyTarget ? 1.0 : 0.8;
+      ctx.font = `bold ${isMyTarget ? 14 : 12}px Courier New`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const labelText = isStart ? (isActive ? '🏁' : '🏁 RACE') : cp.label;
+      ctx.fillStyle = '#000000';
+      ctx.fillText(labelText, sx + 1, sy + 1);
+      ctx.fillStyle = isMyTarget ? '#ffffff' : ringColor;
+      ctx.fillText(labelText, sx, sy);
+
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+  },
+
+  // Draw race track checkpoints on minimap
+  drawRaceOnMinimap(minimapCtx, worldData, checkpoints, pigeonRace) {
+    if (!checkpoints || checkpoints.length === 0) return;
+    const raceState = pigeonRace ? pigeonRace.state : 'idle';
+    const mw = 100 / worldData.width;
+    const mh = 100 / worldData.height;
+
+    // Always show start dot
+    const cp0 = checkpoints[0];
+    const s0x = cp0.x * mw;
+    const s0y = cp0.y * mh;
+    minimapCtx.globalAlpha = 0.75;
+    minimapCtx.fillStyle = '#ffd700';
+    minimapCtx.beginPath();
+    minimapCtx.arc(s0x, s0y, 2.5, 0, Math.PI * 2);
+    minimapCtx.fill();
+
+    if (raceState === 'idle') {
+      minimapCtx.globalAlpha = 1;
+      return;
+    }
+
+    // Track path
+    minimapCtx.save();
+    minimapCtx.setLineDash([3, 5]);
+    minimapCtx.strokeStyle = '#ffdd44';
+    minimapCtx.lineWidth = 0.8;
+    minimapCtx.globalAlpha = 0.4;
+    minimapCtx.beginPath();
+    for (let i = 0; i < checkpoints.length; i++) {
+      const cp = checkpoints[i];
+      const sx = cp.x * mw;
+      const sy = cp.y * mh;
+      if (i === 0) minimapCtx.moveTo(sx, sy);
+      else minimapCtx.lineTo(sx, sy);
+    }
+    minimapCtx.lineTo(s0x, s0y); // close loop
+    minimapCtx.stroke();
+    minimapCtx.setLineDash([]);
+
+    // CP dots
+    const isRacer = pigeonRace && pigeonRace.isRacer;
+    const myNextCp = isRacer ? pigeonRace.myNextCpIdx : null;
+    const myNeedsFinish = isRacer ? pigeonRace.myNeedsFinish : false;
+    const cpColors = ['#ffd700','#ff4444','#ff8800','#44ff44','#44aaff'];
+
+    for (let i = 1; i < checkpoints.length; i++) {
+      const cp = checkpoints[i];
+      const sx = cp.x * mw;
+      const sy = cp.y * mh;
+      const isMyTarget = isRacer && !myNeedsFinish && i === myNextCp;
+      minimapCtx.globalAlpha = isMyTarget ? 1.0 : 0.6;
+      minimapCtx.fillStyle = cpColors[i] || '#ffffff';
+      minimapCtx.beginPath();
+      minimapCtx.arc(sx, sy, isMyTarget ? 3.5 : 2, 0, Math.PI * 2);
+      minimapCtx.fill();
+    }
+
+    minimapCtx.globalAlpha = 1;
+    minimapCtx.restore();
+  },
 };

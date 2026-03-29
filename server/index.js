@@ -33,6 +33,7 @@ app.get('/api/world', (req, res) => {
     streetLamps: world.STREET_LAMPS,
     arena: world.ARENA,
     radioTowerPos: world.RADIO_TOWER,
+    raceCheckpoints: world.RACE_CHECKPOINTS,
   });
 });
 

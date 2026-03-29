@@ -166,6 +166,11 @@
   let towerBroadcastOpen = false;
   let lastNearTower = false;
 
+  // Pigeon Racing state
+  let lastNearRaceStart = false;
+  const raceProximityPrompt = document.getElementById('raceProximityPrompt');
+  const raceHud = document.getElementById('raceHud');
+
   // Leaderboard data
   let leaderboardData = [];
   let serverStats = { playersOnline: 0, totalPoops: 0 };
@@ -1048,6 +1053,64 @@
       addEventMessage('⚔️ Arena fight cancelled — not enough fighters', '#888');
     }
 
+    // === PIGEON RACING ===
+    if (ev.type === 'race_open') {
+      const sec = Math.round(Math.max(0, (ev.openUntil - Date.now()) / 1000));
+      showAnnouncement('🏁 PIGEON RACE STARTING!\nFly to the START ring & press [R] to enter (-' + ev.entryFee + 'c)\n' + sec + 's to register', '#ffd700', 6000);
+      addEventMessage('🏁 RACE OPEN — fly to START in the Park and press [R] to enter! (-' + ev.entryFee + 'c)', '#ffd700');
+    }
+    if (ev.type === 'race_join') {
+      if (ev.birdId === selfId) {
+        addEventMessage('🏁 You joined the race! ' + ev.racerCount + ' racer(s) — pot: ' + ev.pot + 'c', '#ffd700');
+      } else {
+        addEventMessage('🏁 ' + ev.birdName + ' joined the race! (' + ev.racerCount + ' racers, pot: ' + ev.pot + 'c)', '#aaffaa');
+      }
+    }
+    if (ev.type === 'race_join_fail') {
+      if (ev.birdId === selfId) {
+        const msgs = { not_open: 'No race open right now!', already_joined: 'You\'re already in!', full: 'Race is full!', no_coins: 'Not enough coins!', too_far: 'Fly to the START ring first!' };
+        addEventMessage('❌ ' + (msgs[ev.reason] || 'Can\'t join race'), '#ff6644');
+      }
+    }
+    if (ev.type === 'race_countdown') {
+      const names = ev.racers.slice(0, 4).join(', ') + (ev.racers.length > 4 ? '...' : '');
+      showAnnouncement('🏁 RACE STARTING IN ' + ev.countdown + 's!\n' + ev.racerCount + ' racers — 💰 ' + ev.pot + 'c pot\n' + names, '#ffd700', 5500);
+    }
+    if (ev.type === 'race_start') {
+      showAnnouncement('🏁 RACE START — GO GO GO!\n' + ev.racerCount + ' birds racing for ' + ev.pot + 'c', '#ffd700', 3000);
+      addEventMessage('🏁 RACE STARTED! ' + ev.racerCount + ' birds racing for ' + ev.pot + 'c!', '#ffd700');
+      effects.push({ type: 'screen_shake', time: performance.now(), duration: 400, intensity: 6 });
+    }
+    if (ev.type === 'race_checkpoint_hit') {
+      if (ev.birdId === selfId) {
+        showAnnouncement('✅ ' + ev.checkpoint + ' CLEARED!\n📍 Position: #' + ev.position, '#44ff44', 2200);
+        effects.push({ type: 'screen_shake', time: performance.now(), duration: 200, intensity: 3 });
+      } else {
+        addEventMessage('🏁 ' + ev.birdName + ' hit ' + ev.checkpoint + '! (P' + ev.position + ')', '#aaffaa');
+      }
+    }
+    if (ev.type === 'race_finish') {
+      const medals = ['🥇','🥈','🥉'];
+      const medal = medals[(ev.position || 1) - 1] || ('#' + ev.position);
+      const timeStr = ev.time ? (ev.time / 1000).toFixed(1) + 's' : 'DNF';
+      if (ev.birdId === selfId) {
+        showAnnouncement(medal + ' YOU FINISHED! Position: ' + medal + '\nTime: ' + timeStr, '#ffd700', 5000);
+        effects.push({ type: 'screen_shake', time: performance.now(), duration: 500, intensity: 8 });
+      } else {
+        showAnnouncement(medal + ' ' + ev.birdName + ' finished! (#' + ev.position + ' — ' + timeStr + ')', ev.position === 1 ? '#ffd700' : '#aaaaff', 3000);
+        addEventMessage('🏁 ' + medal + ' ' + ev.birdName + ' crossed the FINISH LINE! (' + timeStr + ')', '#ffd700');
+      }
+    }
+    if (ev.type === 'race_cancelled') {
+      addEventMessage('🏁 Race cancelled — not enough racers', '#888');
+    }
+    if (ev.type === 'race_results') {
+      const top = (ev.rewards || []).filter(r => r.coins > 0).slice(0, 3);
+      const podium = top.map((r, i) => ['🥇','🥈','🥉'][i] + ' ' + r.name + ' (+' + r.coins + 'c)').join('  ');
+      showAnnouncement('🏁 RACE RESULTS!\n' + (podium || 'No finishers'), '#ffd700', 7000);
+      addEventMessage('🏁 RACE OVER! Winner: ' + ((ev.rewards && ev.rewards[0]) ? ev.rewards[0].name : '???') + ' 🏆', '#ffd700');
+    }
+
     // === DAY/NIGHT PHASE CHANGE ===
     if (ev.type === 'phase_change') {
       const phaseColors = {
@@ -1314,7 +1377,13 @@
       socket.emit('action', { type: 'caw' });
     }
     if (e.key.toLowerCase() === 'r') {
-      socket.emit('action', { type: 'use_skill', slot: 0 });
+      // Race join when near START and race is open
+      if (gameState && gameState.pigeonRace && gameState.pigeonRace.state === 'open' &&
+          !gameState.pigeonRace.isRacer && lastNearRaceStart) {
+        socket.emit('action', { type: 'race_join' });
+      } else {
+        socket.emit('action', { type: 'use_skill', slot: 0 });
+      }
     }
     if (e.key === '1') {
       socket.emit('action', { type: 'use_skill', slot: 0 });
@@ -2478,6 +2547,110 @@
     }
   }
 
+  // ============================================================
+  // PIGEON RACING UI — proximity prompt + race HUD
+  // ============================================================
+  function updateRaceUI() {
+    if (!gameState || !gameState.self || !worldData || !worldData.raceCheckpoints) return;
+    const s = gameState.self;
+    const race = gameState.pigeonRace;
+    const cp0 = worldData.raceCheckpoints[0];
+    if (!cp0) return;
+
+    // Proximity check to START/FINISH ring
+    const rdx = s.x - cp0.x;
+    const rdy = s.y - cp0.y;
+    const rDist = Math.sqrt(rdx * rdx + rdy * rdy);
+    lastNearRaceStart = rDist < 280;
+
+    // Proximity prompt
+    if (raceProximityPrompt) {
+      const raceState = race ? race.state : 'idle';
+      if (lastNearRaceStart && raceState === 'open' && race && !race.isRacer) {
+        const secsLeft = Math.max(0, Math.ceil((race.openUntil - Date.now()) / 1000));
+        raceProximityPrompt.textContent = '🏁 Press [R] to ENTER RACE (-' + (25) + 'c)  ' + race.racerCount + ' entered — ' + secsLeft + 's left';
+        raceProximityPrompt.style.display = 'block';
+      } else if (lastNearRaceStart && raceState === 'idle') {
+        raceProximityPrompt.textContent = '🏁 START LINE — Race opens soon!';
+        raceProximityPrompt.style.display = 'block';
+      } else {
+        raceProximityPrompt.style.display = 'none';
+      }
+    }
+
+    // Race HUD — shown during open / countdown / racing
+    if (raceHud) {
+      if (!race) { raceHud.style.display = 'none'; return; }
+      const raceState = race.state;
+
+      if (raceState === 'idle' || raceState === 'finished') {
+        // Brief results screen
+        if (raceState === 'finished' && race.positions && race.positions.length > 0) {
+          const podium = race.positions.slice(0, 3).map((r, i) => {
+            const m = ['🥇','🥈','🥉'][i] || ('#' + (i+1));
+            return m + ' ' + (r.name || '?');
+          }).join('  ');
+          raceHud.innerHTML = '<div style="color:#ffd700;font-size:11px;">🏁 RACE RESULTS: ' + podium + '</div>';
+          raceHud.style.display = 'block';
+        } else {
+          raceHud.style.display = 'none';
+        }
+        return;
+      }
+
+      if (raceState === 'open') {
+        const secsLeft = Math.max(0, Math.ceil((race.openUntil - Date.now()) / 1000));
+        if (race.isRacer) {
+          raceHud.innerHTML = '<div style="color:#44ff44;">✅ REGISTERED for the race!</div><div style="color:#ffd700;font-size:10px;">' + race.racerCount + ' racers — 💰 ' + race.pot + 'c pot — starts in ' + secsLeft + 's</div>';
+        } else {
+          raceHud.innerHTML = '<div style="color:#ffd700;">🏁 RACE REGISTRATION OPEN — ' + secsLeft + 's left</div><div style="color:#aaffaa;font-size:10px;">' + race.racerCount + ' joined — fly to START ring [R] to enter (-25c)</div>';
+        }
+        raceHud.style.display = 'block';
+        return;
+      }
+
+      if (raceState === 'countdown') {
+        const secsLeft = Math.max(0, Math.ceil((race.countdownUntil - Date.now()) / 1000));
+        raceHud.innerHTML = '<div style="color:#ffd700;font-size:16px;">🏁 RACE STARTS IN ' + secsLeft + '...</div><div style="font-size:10px;color:#ffaa44;">' + race.racerCount + ' racers — 💰 ' + race.pot + 'c pot</div>';
+        raceHud.style.display = 'block';
+        return;
+      }
+
+      if (raceState === 'racing') {
+        const timeLeft = race.raceEndsAt ? Math.max(0, Math.ceil((race.raceEndsAt - Date.now()) / 1000)) : '??';
+        let myStatus = '';
+        if (race.isRacer) {
+          if (race.myFinished) {
+            myStatus = '<div style="color:#44ff44;">✅ FINISHED! Position: ' + (race.myFinishPosition || '?') + '</div>';
+          } else if (race.myNeedsFinish) {
+            myStatus = '<div style="color:#ffd700;">→ HEAD FOR FINISH LINE! 🏁</div>';
+          } else {
+            myStatus = '<div style="color:#ffd700;">→ CP ' + race.myNextCpIdx + ' NEXT</div>';
+          }
+        }
+
+        let leaderboard = '';
+        if (race.positions && race.positions.length > 0) {
+          leaderboard = race.positions.slice(0, 4).map((r, i) => {
+            const isSelf = r.id === selfId;
+            const style = isSelf ? 'color:#ffd700;font-weight:bold;' : 'color:#aaaaaa;';
+            const cpLabel = r.finished ? '🏁' : ('CP' + r.progress);
+            return '<span style="' + style + '">' + (i+1) + '. ' + r.name.slice(0,10) + ' [' + cpLabel + ']</span>';
+          }).join('  ');
+        }
+
+        raceHud.innerHTML =
+          '<div style="color:#ffd700;font-size:12px;">🏁 RACE — ⏱ ' + timeLeft + 's left — 💰 ' + race.pot + 'c</div>' +
+          myStatus +
+          '<div style="font-size:9px;margin-top:3px;">' + leaderboard + '</div>';
+        raceHud.style.display = 'block';
+        return;
+      }
+
+      raceHud.style.display = 'none';
+    }
+  }
+
   function toggleTowerBroadcastMenu() {
     if (towerBroadcastOpen) {
       closeTowerBroadcastMenu();
@@ -3293,6 +3466,11 @@
       Renderer.drawRadioTower(ctx, camera, gameState.radioTower, now);
     }
 
+    // Pigeon Race track checkpoints
+    if (worldData && worldData.raceCheckpoints) {
+      Renderer.drawRaceTrack(ctx, camera, worldData.raceCheckpoints, gameState.pigeonRace || null, now);
+    }
+
     // Birds
     if (gameState.birds) {
       for (const bird of gameState.birds) {
@@ -3448,9 +3626,15 @@
     updateBankHeistUI();
     updateSprayUI(now);
     updateRadioTowerUI(now);
+    updateRaceUI();
 
     // Minimap (now includes activeEvent and cat)
     Renderer.drawMinimap(minimapCtx, worldData, gameState.birds, selfBird, gameState.activeEvent, gameState.cat, gameState.janitor, gameState.territories, gameState.bankHeist, gameState.graffiti);
+
+    // Race checkpoints on minimap
+    if (worldData && worldData.raceCheckpoints) {
+      Renderer.drawRaceOnMinimap(minimapCtx, worldData, worldData.raceCheckpoints, gameState.pigeonRace || null);
+    }
 
     // Draw beacons on minimap
     if (gameState.beacons && worldData) {

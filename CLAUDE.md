@@ -492,6 +492,47 @@ A towering antenna landmark (x:1200, y:450) sits in the center-north of the city
 
 **Creative intent**: The Radio Tower is the most SOCIAL mechanic yet. It's the one thing on the map that has no tactical combat purpose — pure power and ego. Capturing it says "I'm the best bird right now." Broadcasting a taunt to 10 players while they all read your words in the same color as your sprite is a moment you remember. The Signal Boost creates a collective win where the captor's generosity (or strategic timing) benefits the whole city — or gets deployed during their own Lucky Charm + combo rampage for astronomical XP. Two rival flocks both trying to claim the tower mid-game creates instant drama. Pure SOCIAL + SPECTACLE + PROGRESSION energy.
 
+**Session 16 — 2026-03-29: Pigeon Racing Track — City-Wide Speed Circuit**
+Bird City now has a proper racing league. A 5-checkpoint loop winds clockwise through all four corners of the city, with the start/finish line at the park center. Every 8-12 minutes a race opens for 30 seconds of registration, then 5 seconds of countdown, then GO.
+
+**The Circuit (5 checkpoints in `server/world.js`):**
+- START/FINISH: Park center (x:1200, y:1200) — iconic checkered ring
+- CP 1: Mall/top-right corridor (x:2350, y:600)
+- CP 2: Below Downtown bottom-right (x:2500, y:2480)
+- CP 3: Below Cafe District bottom-left (x:350, y:2480)
+- CP 4: Residential top-left corner (x:350, y:480)
+- Back to START = FINISH
+
+**Race flow (`server/game.js`):**
+- Race opens automatically on a 5-8 min timer (8-12 min between races)
+- 30-second registration window: fly to START ring, press [R] to enter (-25c each)
+- Max 8 racers. 2+ registered after 30s = race starts; < 2 = cancelled + refunded
+- 5-second countdown broadcast → GO!
+- 3-minute max time limit — birds are ranked by checkpoint progress if time runs out
+- Checkpoint detection: server checks every tick if a racer is within 85px of their next checkpoint
+- Sequence: must hit CPs 1→2→3→4 in order, then return to START to finish
+- `needsFinish` flag activates after all 4 CPs cleared
+- First finisher takes 60% of pot + 400 XP; 2nd takes 25% + 200 XP; 3rd takes 15% + 100 XP; others 50 XP consolation
+
+**Visual system (`public/js/renderer.js`, `public/js/main.js`):**
+- Glowing checkpoint rings in 5 distinct colors (gold start, red CP1, orange CP2, green CP3, blue CP4)
+- **Your next checkpoint** pulses with a bright halo glow + white inner ring — impossible to miss
+- Dotted yellow track path connecting all checkpoints (visible when race is active)
+- Checkered black/white arc pattern on the START/FINISH ring (iconic finish-line aesthetic)
+- Race HUD (bottom-center): shows your position (#1/3), next checkpoint, timer, live leaderboard
+- Proximity prompt: "Press [R] to ENTER RACE" when near START ring during registration
+- Race open announcement with entry fee and timer
+- Checkpoint cleared announcement + position update
+- Finish announcement with medal + time
+- Results screen with full podium
+
+**Minimap integration:**
+- START dot always visible (gold 🏁)
+- During race: dotted track path + all 4 CP dots in their colors
+- Your next target checkpoint pulsing larger
+
+**Creative intent**: Racing creates a completely different kind of play session. You're not attacking anyone — you're flying FAST in a straight line toward the next checkpoint. But there's still emergent chaos: a Most Wanted bird being chased by cops mid-race, a storm blowing you off-course, two rival flock members neck-and-neck on the final stretch. The pot mechanic means free-riders who don't race still have skin in the game through betting culture ("I bet $bird wins"). Races fire every 8-12 minutes which means if you happen to be online, you see the "RACE OPEN" announcement and make a split-second decision to commit or not. Pure SPECTACLE + PROGRESSION energy.
+
 ### Next Ideas Queue
 - Underground sewer system (secret map layer)
 - Eagle Overlord rare drop: "Eagle Feather" cosmetic badge
@@ -503,7 +544,9 @@ A towering antenna landmark (x:1200, y:450) sits in the center-north of the city
 - Bioluminescent park pond at night (glowing water effect)
 - Weather combos: fog (low visibility), hailstorm (poop projectiles deflected), hot day (food spoils faster)
 - Birds can shelter under awnings/trees during storms (mechanic: reduced lightning hit radius if near cover)
-- Pigeon Racing Track — 5-checkpoint race, fastest bird wins the pot
+- Race betting system (spectators bet coins on a racer from anywhere on the map)
+- Race power-ups: speed boost gates on the track that any bird can fly through
+- ~~Pigeon Racing Track — 5-checkpoint race, fastest bird wins the pot~~ (DONE Session 16)
 - ~~Radio tower control (broadcast messages server-wide)~~ (DONE Session 15)
 - ~~Graffiti system (birds tag buildings for territory)~~ (DONE Session 14)
 - ~~Bank heist: separate multi-phase event (case → drill → escape) at the Bank building downtown~~ (DONE Session 13)
