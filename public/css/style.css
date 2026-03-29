@@ -1649,6 +1649,34 @@ html, body {
 /* ============================================================
    THE ARENA — PvP Combat Pit
    ============================================================ */
+#heistProximityPrompt {
+  position: fixed;
+  bottom: 195px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(60, 30, 0, 0.92);
+  border: 2px solid #ff8800;
+  border-radius: 20px;
+  padding: 6px 18px;
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  color: #ffffff;
+  z-index: 60;
+  pointer-events: none;
+  animation: heistPromptPulse 0.8s ease-in-out infinite alternate;
+}
+#heistProximityPrompt kbd {
+  background: #883300;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 12px;
+  color: #ffd700;
+}
+@keyframes heistPromptPulse {
+  from { box-shadow: 0 0 6px rgba(255, 136, 0, 0.5); }
+  to   { box-shadow: 0 0 20px rgba(255, 68, 0, 0.95); }
+}
+
 #arenaProximityPrompt {
   position: fixed;
   bottom: 160px;

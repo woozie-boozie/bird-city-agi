@@ -3078,8 +3078,11 @@ class GameEngine {
       foodTruckState = {
         x: this.foodTruck.x, y: this.foodTruck.y,
         w: this.foodTruck.w, h: this.foodTruck.h,
-        foodLeft: this.foodTruck.foodLeft,
         angle: this.foodTruck.angle,
+        heistProgress: this.foodTruck.heistProgress,
+        heistActive: this.foodTruck.heistActive,
+        looted: this.foodTruck.looted || false,
+        heisterCount: Object.keys(this.foodTruck.contributions || {}).length,
       };
     }
 
@@ -4557,7 +4560,7 @@ class GameEngine {
   }
 
   // ============================================================
-  // FOOD TRUCK
+  // FOOD TRUCK HEIST
   // ============================================================
   _updateFoodTruck(dt, now) {
     // Spawn food truck
@@ -4569,74 +4572,199 @@ class GameEngine {
 
     const truck = this.foodTruck;
 
-    // Drive toward waypoint
-    const dx = truck.targetX - truck.x;
-    const dy = truck.targetY - truck.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-
-    if (dist < 10) {
-      // Pick next waypoint
-      this._setFoodTruckWaypoint(truck);
-    } else {
-      truck.x += (dx / dist) * truck.speed * dt;
-      truck.y += (dy / dist) * truck.speed * dt;
-      truck.angle = Math.atan2(dy, dx);
+    // --- LOOTED STATE: truck speeds away, then despawns ---
+    if (truck.looted) {
+      // Drive fast toward escape waypoint
+      const dx = truck.targetX - truck.x;
+      const dy = truck.targetY - truck.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 10) {
+        this._setFoodTruckEscapeWaypoint(truck);
+      } else {
+        truck.x += (dx / dist) * truck.speed * dt;
+        truck.y += (dy / dist) * truck.speed * dt;
+        truck.angle = Math.atan2(dy, dx);
+      }
+      truck.x = Math.max(20, Math.min(world.WORLD_WIDTH - 20, truck.x));
+      truck.y = Math.max(20, Math.min(world.WORLD_HEIGHT - 20, truck.y));
+      if (now - truck.lootedAt > 8000) {
+        this.foodTruck = null;
+        this.foodTruckSpawnTimer = now + this._randomRange(240000, 360000); // 4-6 min until next
+      }
+      return;
     }
 
-    // Keep in bounds
-    truck.x = Math.max(20, Math.min(world.WORLD_WIDTH - 20, truck.x));
-    truck.y = Math.max(20, Math.min(world.WORLD_HEIGHT - 20, truck.y));
+    // --- NORMAL DRIVING: stop during active heist ---
+    const heistBeingDrained = truck.heistActive && now < truck.driveStopUntil;
+    if (!heistBeingDrained) {
+      const dx = truck.targetX - truck.x;
+      const dy = truck.targetY - truck.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 10) {
+        this._setFoodTruckWaypoint(truck);
+      } else {
+        truck.x += (dx / dist) * truck.speed * dt;
+        truck.y += (dy / dist) * truck.speed * dt;
+        truck.angle = Math.atan2(dy, dx);
+      }
+      truck.x = Math.max(20, Math.min(world.WORLD_WIDTH - 20, truck.x));
+      truck.y = Math.max(20, Math.min(world.WORLD_HEIGHT - 20, truck.y));
+    }
 
-    // Honk when birds are near (60px)
-    if (truck.honkCooldown > 0) {
-      truck.honkCooldown -= dt;
-    } else {
-      for (const bird of this.birds.values()) {
-        const bdx = bird.x - truck.x;
-        const bdy = bird.y - truck.y;
-        if (Math.sqrt(bdx * bdx + bdy * bdy) < 60) {
-          truck.honkCooldown = 3;
-          this.events.push({ type: 'truck_honk', x: truck.x, y: truck.y });
-          break;
+    // Honk when birds are near (80px) — only while not being heisted
+    if (!truck.heistActive) {
+      if (truck.honkCooldown > 0) {
+        truck.honkCooldown -= dt;
+      } else {
+        for (const bird of this.birds.values()) {
+          const bdx = bird.x - truck.x;
+          const bdy = bird.y - truck.y;
+          if (Math.sqrt(bdx * bdx + bdy * bdy) < 80) {
+            truck.honkCooldown = 3;
+            this.events.push({ type: 'truck_honk', x: truck.x, y: truck.y });
+            break;
+          }
         }
       }
     }
 
-    // Steal food from truck: birds within 50px pressing E
-    if (truck.foodLeft > 0) {
-      for (const bird of this.birds.values()) {
-        if (!bird.input.e || now - bird.lastSteal <= 1000) continue;
-        const bdx = bird.x - truck.x;
-        const bdy = bird.y - truck.y;
-        if (Math.sqrt(bdx * bdx + bdy * bdy) < 50) {
-          truck.foodLeft--;
-          bird.xp += 10;
-          bird.coins += 5;
-          bird.food += 10;
-          bird.totalSteals++;
-          bird.lastSteal = now;
-          this._addHeat(bird.id, 2);
-          this._addChaos(2);
-          this.events.push({
-            type: 'steal', birdId: bird.id, foodId: 'truck_food',
-            foodType: 'truck_food', x: truck.x, y: truck.y, value: 10,
+    // --- HEIST MECHANICS ---
+    // Collect birds holding E within 80px
+    const heistingBirds = [];
+    for (const bird of this.birds.values()) {
+      if (!bird.input.e) continue;
+      const bdx = bird.x - truck.x;
+      const bdy = bird.y - truck.y;
+      if (Math.sqrt(bdx * bdx + bdy * bdy) < 80) {
+        heistingBirds.push(bird);
+      }
+    }
+
+    if (heistingBirds.length > 0) {
+      // At least one bird is actively heisting
+      if (!truck.heistActive) {
+        // Heist just started!
+        truck.heistActive = true;
+        truck.heistStartedAt = now;
+        this.events.push({
+          type: 'heist_started',
+          x: truck.x, y: truck.y,
+          birdCount: heistingBirds.length,
+        });
+        console.log('[GameEngine] Food Truck Heist started!');
+      }
+
+      // Freeze the truck while actively being drained
+      truck.driveStopUntil = now + 500;
+
+      // Progress fills at 0.075/s per bird (1 bird = ~13.3s, 2 = ~6.7s, 4 = ~3.3s)
+      const heistRate = Math.min(heistingBirds.length, 4) * 0.075;
+      truck.heistProgress = Math.min(1.0, truck.heistProgress + heistRate * dt);
+
+      // Track per-bird contributions (for proportional rewards)
+      for (const bird of heistingBirds) {
+        truck.contributions[bird.id] = (truck.contributions[bird.id] || 0) + dt;
+        truck.contributorNames[bird.id] = bird.name;
+        bird.totalSteals++;
+        // Small heat per second of heisting
+        this._addHeat(bird.id, 0.3 * dt);
+      }
+
+      // Dispatch cops after 5 seconds of heist
+      if (!truck.copsDispatched && now - truck.heistStartedAt > 5000) {
+        truck.copsDispatched = true;
+        // Spawn 2 cop pigeons headed to the truck
+        for (let i = 0; i < 2; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const spawnDist = 400 + Math.random() * 200;
+          const cx = Math.max(50, Math.min(world.WORLD_WIDTH - 50, truck.x + Math.cos(angle) * spawnDist));
+          const cy = Math.max(50, Math.min(world.WORLD_HEIGHT - 50, truck.y + Math.sin(angle) * spawnDist));
+          const copId = 'cop_heist_' + uid();
+          this.copBirds.set(copId, {
+            id: copId, type: 'cop_pigeon',
+            x: cx, y: cy, rotation: 0,
+            targetBirdId: null,
+            heistTarget: { x: truck.x, y: truck.y }, // heading to truck location
+            speed: 130, state: 'chasing',
+            stunUntil: 0, offDutyUntil: 0, sirensPhase: Math.random() * Math.PI * 2,
           });
-          break;
+        }
+        this.events.push({ type: 'heist_cops_dispatched', x: truck.x, y: truck.y });
+      }
+
+      // Heist alarm sound (every 2s while in progress)
+      if (!truck.alarmCooldown || now > truck.alarmCooldown) {
+        truck.alarmCooldown = now + 2000;
+        this.events.push({ type: 'heist_alarm', x: truck.x, y: truck.y });
+      }
+
+      // HEIST COMPLETE!
+      if (truck.heistProgress >= 1.0) {
+        this._triggerHeistLoot(truck, now);
+        return;
+      }
+    } else {
+      // No birds heisting — slowly drain progress back (pressure to stay)
+      if (truck.heistProgress > 0) {
+        truck.heistProgress = Math.max(0, truck.heistProgress - 0.03 * dt);
+        if (truck.heistProgress === 0) {
+          truck.heistActive = false;
+          truck.heistStartedAt = null;
+          truck.copsDispatched = false;
+          truck.contributions = {};
+          truck.contributorNames = {};
         }
       }
     }
+  }
 
-    // When empty, speed up and drive away
-    if (truck.foodLeft <= 0 && !truck.emptyAt) {
-      truck.emptyAt = now;
-      truck.speed = 120;
+  _triggerHeistLoot(truck, now) {
+    const contributions = truck.contributions;
+    const names = truck.contributorNames;
+    const totalTime = Object.values(contributions).reduce((a, b) => a + b, 0) || 1;
+    const numContributors = Object.keys(contributions).length;
+    const totalPot = 200 + numContributors * 60; // 260-440 coins total
+
+    const rewards = [];
+    for (const [birdId, time] of Object.entries(contributions)) {
+      const bird = this.birds.get(birdId);
+      const share = time / totalTime;
+      const coins = Math.floor(share * totalPot);
+      const xp = Math.floor(80 + share * 320);
+      if (bird) {
+        bird.coins += coins;
+        bird.xp += xp;
+        bird.food += 25;
+        this._addHeat(birdId, 20);
+      }
+      rewards.push({ birdId, name: names[birdId] || '?', coins, xp });
     }
 
-    // Despawn 10s after empty
-    if (truck.emptyAt && now - truck.emptyAt > 10000) {
-      this.foodTruck = null;
-      this.foodTruckSpawnTimer = now + this._randomRange(180000, 300000);
+    // Scatter food items around truck position
+    for (let i = 0; i < 14; i++) {
+      const angle = (i / 14) * Math.PI * 2 + Math.random() * 0.5;
+      const r = 40 + Math.random() * 100;
+      const fx = Math.max(50, Math.min(world.WORLD_WIDTH - 50, truck.x + Math.cos(angle) * r));
+      const fy = Math.max(50, Math.min(world.WORLD_HEIGHT - 50, truck.y + Math.sin(angle) * r));
+      const foodId = 'heist_food_' + uid();
+      this.foods.set(foodId, { id: foodId, x: fx, y: fy, type: 'pizza', active: true, respawnAt: null });
     }
+
+    this._addChaos(40);
+
+    this.events.push({
+      type: 'heist_complete',
+      x: truck.x, y: truck.y,
+      rewards,
+    });
+
+    // Truck speeds away panicking
+    truck.looted = true;
+    truck.lootedAt = now;
+    truck.speed = 160;
+    truck.heistActive = false;
+    this._setFoodTruckEscapeWaypoint(truck);
+    console.log('[GameEngine] Food Truck Heist complete! Loot distributed.');
   }
 
   _spawnFoodTruck(now) {
@@ -4649,12 +4777,21 @@ class GameEngine {
     this.foodTruck = {
       x, y,
       w: 50, h: 26,
-      speed: 60,
+      speed: 55,
       angle: 0,
-      foodLeft: 10,
       targetX: x, targetY: y,
       honkCooldown: 0,
-      emptyAt: null,
+      // Heist state
+      heistProgress: 0,
+      heistActive: false,
+      heistStartedAt: null,
+      copsDispatched: false,
+      driveStopUntil: 0,
+      alarmCooldown: 0,
+      contributions: {},
+      contributorNames: {},
+      looted: false,
+      lootedAt: null,
     };
     this._setFoodTruckWaypoint(this.foodTruck);
     this.events.push({ type: 'food_truck_spawn', x, y });
@@ -4667,6 +4804,19 @@ class GameEngine {
     const road = roads[Math.floor(Math.random() * roads.length)];
     truck.targetX = road.x + Math.random() * road.w;
     truck.targetY = road.y + Math.random() * road.h;
+  }
+
+  _setFoodTruckEscapeWaypoint(truck) {
+    // Head toward a map edge to escape
+    const edges = [
+      { x: -50, y: truck.y },
+      { x: world.WORLD_WIDTH + 50, y: truck.y },
+      { x: truck.x, y: -50 },
+      { x: truck.x, y: world.WORLD_HEIGHT + 50 },
+    ];
+    const edge = edges[Math.floor(Math.random() * edges.length)];
+    truck.targetX = edge.x;
+    truck.targetY = edge.y;
   }
 
   // ============================================================

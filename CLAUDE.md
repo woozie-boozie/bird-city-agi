@@ -360,11 +360,42 @@ Bird City now has a dedicated PvP combat pit — the biggest missing feature. Lo
 
 **Creative intent**: Fills the direct PvP gap. High-stakes 1v1 or FFA with real coin consequences. Two territory rivals can now settle it in the arena. Pure CARNAGE + SOCIAL energy.
 
+**Session 12 — 2026-03-29: Food Truck Heist — Multiplayer Robbery Event**
+Upgraded the food truck from a passive E-to-steal mechanic into a full **multiplayer heist event** — the most socially charged feature yet.
+
+**The Heist Flow:**
+- Food truck drives around on city roads every 4-6 minutes
+- Fly within 90px and hold E — a HEIST BAR starts filling above the truck
+- Progress fills at 0.075/s per bird (solo = ~13s, 2 birds = ~6.7s, 4 birds = ~3.3s)
+- Let go and the bar slowly drains back (you must stay committed!)
+- **5 seconds in:** Cop birds are dispatched to the truck location — pressure mounts
+- **Bar hits 100%:** LOOT EXPLOSION! 14 food items scatter around the truck, coins distributed to all contributors proportional to their time spent heisting
+
+**Cop response:** Two cop pigeons spawn 400-600px away and rush to the truck 5s after heist begins. They'll then chase the hottest bird in the area — creating a natural escape-or-fight decision.
+
+**Rewards (proportional to contribution):**
+- Base pot: 200c + 60c per contributor (260-440c total)
+- Each bird's cut: floor(their_time / total_time × pot) coins
+- XP: 80 + up to 320 XP based on contribution share
+- +25 food per contributor
+- Heat: +20 for all contributors (you're criminals now)
+
+**Visual & audio:**
+- Truck body flashes red/orange with alarm light on roof during heist
+- Heist progress bar appears above the truck (green → yellow → red)
+- "🚨HEIST" label flashes on the truck side
+- Minimap: truck dot grows and flashes red/yellow during heist with 🚨 label
+- Proximity prompt: "Hold E to HEIST the food truck!" (pulsing orange)
+- Heist active prompt shows live % and number of birds joining
+- On complete: massive screen shake, 20 coin explosion particles, per-player reward callouts
+- After loot: truck speeds away at 160px/s, despawns in 8s
+
+**Creative intent**: The old food truck was boring — press E once per second, get 10 food, meh. Now it's a social moment: someone spots the truck, calls out to their flock, 3 birds swoop in together to drain the bar while watching for cops. Solo birds can still heist but it takes longer and the cops arrive before they finish. The bar-drain-on-disengage mechanic ensures you can't just tap it and walk away — you commit or the job fails. Pure CARNAGE + SOCIAL energy.
+
 ### Next Ideas Queue
 - Underground sewer system (secret map layer)
 - Eagle Overlord rare drop: "Eagle Feather" cosmetic badge
 - Graffiti system (birds tag buildings for territory)
-- Food truck heists (multiplayer coordinated robbery)
 - Pigeon mafia questline
 - Nest building and decoration
 - Egg protection mini-game
@@ -374,6 +405,8 @@ Bird City now has a dedicated PvP combat pit — the biggest missing feature. Lo
 - Bioluminescent park pond at night (glowing water effect)
 - Weather combos: fog (low visibility), hailstorm (poop projectiles deflected), hot day (food spoils faster)
 - Birds can shelter under awnings/trees during storms (mechanic: reduced lightning hit radius if near cover)
+- Bank heist: separate multi-phase event (case → drill → escape) at the Bank building downtown
 - ~~Combo multiplier: chain actions (poop→steal→pickpocket) for escalating XP bonuses~~ (DONE Session 9)
 - ~~Raccoon boss: "The Godfather Raccoon" — giant alpha raccoon that steals from players directly~~ (DONE Session 10)
 - ~~Arena/colosseum PvP zone~~ (DONE Session 11)
+- ~~Food truck heists (multiplayer coordinated robbery)~~ (DONE Session 12)

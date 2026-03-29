@@ -1170,10 +1170,19 @@ window.Sprites = {
   },
 
   // === FOOD TRUCK ===
-  drawFoodTruck(ctx, x, y, angle, foodLeft) {
+  drawFoodTruck(ctx, x, y, angle, heistProgress, heistActive, looted) {
+    const now = Date.now();
+    const alarmFlash = heistActive && Math.floor(now / 250) % 2 === 0;
+
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(angle);
+
+    // Alarm glow behind truck when heist is active
+    if (heistActive) {
+      ctx.shadowColor = alarmFlash ? 'rgba(255,40,40,0.9)' : 'rgba(255,160,0,0.7)';
+      ctx.shadowBlur = 18;
+    }
 
     // Shadow
     ctx.fillStyle = 'rgba(0,0,0,0.2)';
@@ -1181,12 +1190,18 @@ window.Sprites = {
     ctx.ellipse(2, 4, 28, 14, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Truck body (larger than car)
-    ctx.fillStyle = '#ff8800';
+    // Truck body — dark red if looted, flashing if heist active, else orange
+    if (looted) {
+      ctx.fillStyle = '#cc4400';
+    } else if (heistActive) {
+      ctx.fillStyle = alarmFlash ? '#ff3300' : '#ff8800';
+    } else {
+      ctx.fillStyle = '#ff8800';
+    }
     ctx.fillRect(-25, -13, 50, 26);
 
     // Cab
-    ctx.fillStyle = '#cc6600';
+    ctx.fillStyle = looted ? '#993300' : '#cc6600';
     ctx.fillRect(18, -11, 10, 22);
 
     // Windshield
@@ -1200,26 +1215,59 @@ window.Sprites = {
     ctx.fillRect(12, -15, 8, 4);
     ctx.fillRect(12, 11, 8, 4);
 
-    // Food icon on side
+    ctx.shadowBlur = 0;
+
+    // Alarm light on roof when heist active
+    if (heistActive) {
+      ctx.fillStyle = alarmFlash ? '#ff0000' : '#ffaa00';
+      ctx.beginPath();
+      ctx.arc(0, -15, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Side label
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 10px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(foodLeft > 0 ? 'FOOD' : 'EMPTY', -3, 0);
-
-    // Food count
-    if (foodLeft > 0) {
-      ctx.fillStyle = '#ffd700';
-      ctx.font = 'bold 8px Courier New';
-      ctx.fillText(foodLeft + '', -3, 8);
+    if (looted) {
+      ctx.fillStyle = '#ffddaa';
+      ctx.fillText('LOOTED', -3, 0);
+    } else if (heistActive) {
+      ctx.fillStyle = alarmFlash ? '#ffff00' : '#ffffff';
+      ctx.fillText('🚨HEIST', -3, 0);
+    } else {
+      ctx.fillText('FOOD', -3, 0);
     }
 
     // Border
-    ctx.strokeStyle = '#aa5500';
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = heistActive ? (alarmFlash ? '#ff0000' : '#ff8800') : '#aa5500';
+    ctx.lineWidth = heistActive ? 2 : 1;
     ctx.strokeRect(-25, -13, 50, 26);
 
     ctx.restore();
+
+    // Heist progress bar — drawn in world space (not rotated with truck)
+    if (heistProgress > 0 && !looted) {
+      const barW = 64;
+      const barH = 7;
+      const barX = x - barW / 2;
+      const barY = y - 30;
+
+      ctx.fillStyle = 'rgba(0,0,0,0.65)';
+      ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
+
+      const r = Math.min(255, Math.floor(255 * heistProgress * 2));
+      const g = Math.min(255, Math.floor(255 * (1 - heistProgress) * 2));
+      ctx.fillStyle = `rgb(${r},${g},0)`;
+      ctx.fillRect(barX, barY, barW * heistProgress, barH);
+
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 7px Courier New';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('HEIST ' + Math.floor(heistProgress * 100) + '%', x, barY + barH / 2);
+    }
   },
 
   // === REVENGE NPC (angry red-faced NPC with exclamation mark) ===

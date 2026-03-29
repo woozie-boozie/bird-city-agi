@@ -819,12 +819,50 @@
       addEventMessage(fireCount + ' ' + ev.birdName + ' is ON FIRE! x' + ev.combo + ' combo!', '#ff8c00');
     }
 
-    // === FOOD TRUCK EVENTS ===
+    // === FOOD TRUCK / HEIST EVENTS ===
     if (ev.type === 'food_truck_spawn') {
-      addEventMessage('A Food Truck is cruising the streets!', '#ff8800');
+      addEventMessage('🚚 A Food Truck is cruising the streets! Hold E near it to HEIST it!', '#ff8800');
     }
     if (ev.type === 'truck_honk') {
       SoundEngine.truckHonk();
+    }
+    if (ev.type === 'heist_started') {
+      showAnnouncement('🚨 FOOD TRUCK HEIST IN PROGRESS!', '#ff4400', 3000);
+      addEventMessage('🚨 Someone is robbing the food truck! Cops dispatched in 5s!', '#ff8800');
+      effects.push({ type: 'screen_shake', intensity: 4, duration: 400, time: now });
+    }
+    if (ev.type === 'heist_alarm') {
+      // Play alarm sound (reuse truck honk or a beep)
+      SoundEngine.truckHonk && SoundEngine.truckHonk();
+    }
+    if (ev.type === 'heist_cops_dispatched') {
+      addEventMessage('🚔 Cops heading to the food truck heist!', '#4488ff');
+    }
+    if (ev.type === 'heist_complete') {
+      showAnnouncement('💰 FOOD TRUCK LOOTED!', '#ffd700', 4000);
+      effects.push({ type: 'screen_shake', intensity: 10, duration: 700, time: now });
+      // Coin explosion particles at truck position
+      const sx = ev.x - camera.x + camera.screenW / 2;
+      const sy = ev.y - camera.y + camera.screenH / 2;
+      for (let i = 0; i < 20; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 60 + Math.random() * 120;
+        effects.push({
+          type: 'particle', x: ev.x, y: ev.y,
+          vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+          color: Math.random() > 0.5 ? '#ffd700' : '#ff8800',
+          size: 4 + Math.random() * 5, life: 1.2, maxLife: 1.2,
+        });
+      }
+      // Reward callouts
+      if (ev.rewards) {
+        for (const r of ev.rewards) {
+          if (r.birdId === myId) {
+            showAnnouncement('💰 YOUR CUT: +' + r.coins + 'c  +' + r.xp + ' XP', '#ffd700', 4000);
+          }
+          addEventMessage('💰 ' + (r.name || 'Bird') + ' got +' + r.coins + 'c +' + r.xp + 'XP from the heist!', '#ffcc44');
+        }
+      }
     }
 
     // === NPC REVENGE EVENTS ===
@@ -1876,6 +1914,42 @@
   }
 
   // ============================================================
+  // FOOD TRUCK HEIST UI — proximity prompt
+  // ============================================================
+  function updateFoodTruckHeistUI() {
+    const heistPrompt = document.getElementById('heistProximityPrompt');
+    if (!heistPrompt || !gameState || !gameState.self || !gameState.foodTruck) {
+      if (heistPrompt) heistPrompt.style.display = 'none';
+      return;
+    }
+    const truck = gameState.foodTruck;
+    if (truck.looted) {
+      heistPrompt.style.display = 'none';
+      return;
+    }
+    const s = gameState.self;
+    const dx = s.x - truck.x;
+    const dy = s.y - truck.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < 90) {
+      if (truck.heistActive) {
+        const pct = Math.floor((truck.heistProgress || 0) * 100);
+        const contributors = truck.heisterCount || 1;
+        heistPrompt.innerHTML = '🚨 Hold <kbd>E</kbd> — HEIST ' + pct + '% (' + contributors + ' bird' + (contributors !== 1 ? 's' : '') + ')';
+        heistPrompt.style.borderColor = '#ff4400';
+        heistPrompt.style.color = '#ffcc44';
+      } else {
+        heistPrompt.innerHTML = '🚚 Hold <kbd>E</kbd> to HEIST the food truck!';
+        heistPrompt.style.borderColor = '#ff8800';
+        heistPrompt.style.color = '#ffffff';
+      }
+      heistPrompt.style.display = 'block';
+    } else {
+      heistPrompt.style.display = 'none';
+    }
+  }
+
+  // ============================================================
   // FLOCK LOBBY UI
   // ============================================================
   function renderFlockLobby(lobbyBirds, selfState) {
@@ -2539,7 +2613,7 @@
       const sx = truck.x - camera.x + camera.screenW / 2;
       const sy = truck.y - camera.y + camera.screenH / 2;
       if (sx > -margin - 40 && sx < camera.screenW + margin + 40 && sy > -margin - 40 && sy < camera.screenH + margin + 40) {
-        Sprites.drawFoodTruck(ctx, sx, sy, truck.angle, truck.foodLeft);
+        Sprites.drawFoodTruck(ctx, sx, sy, truck.angle, truck.heistProgress || 0, truck.heistActive || false, truck.looted || false);
       }
     }
 
@@ -2751,6 +2825,7 @@
     updateHUD();
     updateEventFeed();
     updateArenaUI();
+    updateFoodTruckHeistUI();
 
     // Minimap (now includes activeEvent and cat)
     Renderer.drawMinimap(minimapCtx, worldData, gameState.birds, selfBird, gameState.activeEvent, gameState.cat, gameState.janitor, gameState.territories);
@@ -2834,16 +2909,24 @@
       }
     }
 
-    // Draw food truck on minimap
+    // Draw food truck on minimap (flashing red during heist)
     if (gameState.foodTruck && worldData) {
       const mw = minimapCtx.canvas.width;
       const mh = minimapCtx.canvas.height;
       const msx = mw / worldData.width;
       const msy = mh / worldData.height;
-      minimapCtx.fillStyle = '#ff8800';
+      const truck = gameState.foodTruck;
+      const heistFlash = truck.heistActive && Math.floor(now / 300) % 2 === 0;
+      minimapCtx.fillStyle = truck.looted ? '#884400' : (heistFlash ? '#ff2200' : '#ff8800');
       minimapCtx.beginPath();
-      minimapCtx.arc(gameState.foodTruck.x * msx, gameState.foodTruck.y * msy, 3, 0, Math.PI * 2);
+      minimapCtx.arc(truck.x * msx, truck.y * msy, truck.heistActive ? 4 : 3, 0, Math.PI * 2);
       minimapCtx.fill();
+      if (truck.heistActive) {
+        minimapCtx.font = 'bold 6px sans-serif';
+        minimapCtx.textAlign = 'center';
+        minimapCtx.fillStyle = '#ffff00';
+        minimapCtx.fillText('🚨', truck.x * msx, truck.y * msy - 5);
+      }
     }
 
     // Draw black market on minimap (purple dot when open)
