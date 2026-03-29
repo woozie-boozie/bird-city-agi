@@ -392,6 +392,40 @@ Upgraded the food truck from a passive E-to-steal mechanic into a full **multipl
 
 **Creative intent**: The old food truck was boring — press E once per second, get 10 food, meh. Now it's a social moment: someone spots the truck, calls out to their flock, 3 birds swoop in together to drain the bar while watching for cops. Solo birds can still heist but it takes longer and the cops arrive before they finish. The bar-drain-on-disengage mechanic ensures you can't just tap it and walk away — you commit or the job fails. Pure CARNAGE + SOCIAL energy.
 
+**Session 13 — 2026-03-29: The Bank Heist — 3-Phase Cooperative Robbery**
+The most cinematic event in Bird City yet. A full multi-phase cooperative heist at the Bank building in Downtown.
+
+**Phase 1: CASING (2-minute window)**
+- 3 security cameras positioned around the Bank exterior, each at a fixed corner/edge
+- Hold E within 55px of each camera for 3 seconds to blind it (progress drains if you walk away)
+- Multiple birds can work different cameras simultaneously
+- All cameras must be disabled within 120 seconds — or the window closes (5-min retry)
+- Disabling a camera: +20 XP, +8 coins per contributor
+
+**Phase 2: CRACKING (hold E at vault door, north face of Bank)**
+- Progress rate: 0.05/s × bird count (1 bird = ~20s, 3 birds = ~7s)
+- 8s in: ALARM — 3 cop birds dispatched to the Bank, drilling birds gain serious heat (1.5/s)
+- 16s in: SWAT crow deployed
+- Progress drains slowly if nobody drilling — must commit or abort
+- Vault cracked → Phase 3 triggers
+
+**Phase 3: ESCAPE (45-second countdown)**
+- Getaway van spawns at one of 3 preset map-edge escape points (random each heist)
+- Crackers must fly within 65px of the van to get in
+- Birds who escape: full loot share (500–1100c base pot + XP scaled by drilling time)
+- Birds who don't reach the van: 30% consolation cut (they got "caught")
+- Creates epic end-game chase — cops pursuing everyone while they race to the van
+
+**Visual system:**
+- Security cameras: wall-mounted sprites with blinking red LED (turns green when blinded), disable progress bar
+- Vault door: crack progress bar on north face of Bank, building flashes red during alarm
+- Getaway van: dark "CLEANERS" van with spinning wheel rims, exhaust puffs, "GET IN!" flash label
+- Escape HUD shows countdown timer (turns red at <10s), whether you've made it in
+- Minimap: blue pulsing Bank indicator during casing/cracking, gold van indicator during escape
+- Proximity prompts guide players through each phase automatically
+
+**Creative intent**: Every phase forces different social dynamics. Phase 1 demands team split — can't solo all 3 cameras in 2 minutes without rushing. Phase 2 is tense drilling while watching the alarm timer tick, knowing cops are closing in. Phase 3 is a full sprint — rich birds have SWAT on them, making the van run genuinely dangerous. The 30% consolation rule keeps everyone invested through the escape even if they get caught. Pure CARNAGE + SOCIAL energy.
+
 ### Next Ideas Queue
 - Underground sewer system (secret map layer)
 - Eagle Overlord rare drop: "Eagle Feather" cosmetic badge
@@ -405,7 +439,7 @@ Upgraded the food truck from a passive E-to-steal mechanic into a full **multipl
 - Bioluminescent park pond at night (glowing water effect)
 - Weather combos: fog (low visibility), hailstorm (poop projectiles deflected), hot day (food spoils faster)
 - Birds can shelter under awnings/trees during storms (mechanic: reduced lightning hit radius if near cover)
-- Bank heist: separate multi-phase event (case → drill → escape) at the Bank building downtown
+- ~~Bank heist: separate multi-phase event (case → drill → escape) at the Bank building downtown~~ (DONE Session 13)
 - ~~Combo multiplier: chain actions (poop→steal→pickpocket) for escalating XP bonuses~~ (DONE Session 9)
 - ~~Raccoon boss: "The Godfather Raccoon" — giant alpha raccoon that steals from players directly~~ (DONE Session 10)
 - ~~Arena/colosseum PvP zone~~ (DONE Session 11)
