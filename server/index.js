@@ -32,6 +32,7 @@ app.get('/api/world', (req, res) => {
     birdColors: world.BIRD_COLORS,
     streetLamps: world.STREET_LAMPS,
     arena: world.ARENA,
+    radioTowerPos: world.RADIO_TOWER,
   });
 });
 

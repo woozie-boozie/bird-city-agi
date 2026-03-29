@@ -161,6 +161,11 @@
   // Graffiti spray state
   let sprayState = null; // { buildingIdx, progress, startTime } while holding G near a building
 
+  // Radio Tower state
+  let towerCapState = null;     // { progress, startTime } while holding E near tower
+  let towerBroadcastOpen = false;
+  let lastNearTower = false;
+
   // Leaderboard data
   let leaderboardData = [];
   let serverStats = { playersOnline: 0, totalPoops: 0 };
@@ -1229,6 +1234,33 @@
       addEventMessage('🎨🔥 ' + ev.name + ' tagged 5 buildings — STREET DOMINATION!', '#ff44ff');
       effects.push({ type: 'screen_shake', intensity: 10, duration: 800, time: now });
     }
+
+    // === RADIO TOWER EVENTS ===
+    if (ev.type === 'tower_captured') {
+      const msg = ev.prevOwnerName
+        ? '📡 ' + ev.birdName + ' SEIZED the Radio Tower from ' + ev.prevOwnerName + '!'
+        : '📡 ' + ev.birdName + ' captured the Radio Tower!';
+      showAnnouncement('📡 TOWER CAPTURED — ' + ev.birdName, ev.ownerColor || '#44aaff', 4000);
+      addEventMessage(msg, ev.ownerColor || '#44aaff');
+      effects.push({ type: 'screen_shake', intensity: 6, duration: 500, time: now });
+      if (ev.birdId === myId) {
+        showAnnouncement('📡 YOU OWN THE RADIO TOWER! Press [T] to broadcast!', '#44ffff', 5000);
+      }
+    }
+    if (ev.type === 'tower_expired') {
+      addEventMessage('📡 The Radio Tower signal cut out — ' + (ev.ownerName || 'nobody') + '\'s broadcast has ended.', '#888888');
+    }
+    if (ev.type === 'tower_broadcast') {
+      // Big overlay-style announcement for broadcasts
+      showAnnouncement('📻 PIGEON RADIO: ' + ev.message, ev.ownerColor || '#44aaff', 6000);
+      addEventMessage('📻 ' + ev.message, ev.ownerColor || '#44aaff');
+      if (ev.broadcastType === 'signal_boost') {
+        effects.push({ type: 'screen_shake', intensity: 8, duration: 600, time: now });
+      }
+    }
+    if (ev.type === 'signal_boost_ended') {
+      addEventMessage('📡 Signal Boost has faded.', '#888888');
+    }
   }
 
   function showAnnouncement(text, color, duration) {
@@ -1314,6 +1346,24 @@
           !gameState.arena.isFighter) {
         socket.emit('action', { type: 'arena_enter' });
       }
+      // Radio Tower capture — hold E near tower (not near arena)
+      if (gameState && gameState.self && worldData && worldData.radioTowerPos && !lastNearArena && towerCapState === null) {
+        const s = gameState.self;
+        const rt = worldData.radioTowerPos;
+        const tdx = s.x - rt.x;
+        const tdy = s.y - rt.y;
+        const tDist = Math.sqrt(tdx * tdx + tdy * tdy);
+        const rtState = gameState.radioTower;
+        if (tDist < (rt.captureRadius || 90) && rtState && !rtState.isOwner) {
+          towerCapState = { progress: 0, startTime: performance.now() };
+        }
+      }
+    }
+    // Radio Tower broadcast — press T when near and owning the tower
+    if (e.key.toLowerCase() === 't') {
+      if (gameState && gameState.radioTower && gameState.radioTower.isOwner && lastNearTower) {
+        toggleTowerBroadcastMenu();
+      }
     }
     // Graffiti spray — hold G near a building to tag it
     if (e.key.toLowerCase() === 'g') {
@@ -1343,6 +1393,9 @@
     keys[e.key.toLowerCase()] = false;
     if (e.key.toLowerCase() === 'g') {
       sprayState = null; // cancel spray on key release
+    }
+    if (e.key.toLowerCase() === 'e') {
+      towerCapState = null; // cancel tower capture on key release
     }
     syncInput();
   });
@@ -1955,6 +2008,20 @@
 
     // Active buffs HUD
     updateActiveBuffsHud();
+
+    // Signal Boost HUD
+    const sbHud = document.getElementById('signalBoostHud');
+    if (sbHud && gameState.radioTower) {
+      const sbUntil = gameState.radioTower.signalBoostUntil;
+      if (sbUntil && sbUntil > Date.now()) {
+        const secsLeft = Math.max(0, Math.ceil((sbUntil - Date.now()) / 1000));
+        sbHud.style.display = 'block';
+        const timerEl = document.getElementById('signalBoostTimer');
+        if (timerEl) timerEl.textContent = secsLeft + 's';
+      } else {
+        sbHud.style.display = 'none';
+      }
+    }
   }
 
   // ============================================================
@@ -2287,6 +2354,193 @@
       ctx.fillText('🎨 SPRAYING ' + Math.floor(sprayState.progress * 100) + '%', bsx + barW / 2, barY - 3);
       ctx.restore();
     }
+  }
+
+  // ============================================================
+  // RADIO TOWER UI — proximity prompt, hold-capture progress, broadcast menu
+  // ============================================================
+  function updateRadioTowerUI(now) {
+    if (!gameState || !gameState.self || !worldData || !worldData.radioTowerPos) return;
+    const s = gameState.self;
+    const rt = worldData.radioTowerPos;
+    const rtState = gameState.radioTower;
+    const tdx = s.x - rt.x;
+    const tdy = s.y - rt.y;
+    const tDist = Math.sqrt(tdx * tdx + tdy * tdy);
+    const isNear = tDist < (rt.captureRadius || 90) + 20;
+    lastNearTower = isNear;
+
+    // Close broadcast menu if walked away or no longer owner
+    if (towerBroadcastOpen && (!isNear || !rtState || !rtState.isOwner)) {
+      closeTowerBroadcastMenu();
+    }
+
+    // Proximity prompt
+    let towerPrompt = document.getElementById('towerPrompt');
+    if (!towerPrompt) {
+      towerPrompt = document.createElement('div');
+      towerPrompt.id = 'towerPrompt';
+      towerPrompt.style.cssText = 'position:fixed;bottom:150px;left:50%;transform:translateX(-50%);' +
+        'background:rgba(0,0,10,0.82);color:#44ddff;font:bold 13px Courier New;' +
+        'padding:8px 18px;border-radius:22px;border:1px solid #44aaff;display:none;pointer-events:none;z-index:50;text-align:center;';
+      document.body.appendChild(towerPrompt);
+    }
+
+    if (isNear && rtState) {
+      if (rtState.isOwner) {
+        const secsLeft = Math.max(0, Math.ceil((rtState.expiresAt - Date.now()) / 1000));
+        const canBoost = !rtState.signalBoostUsed;
+        const boostCd = rtState.broadcastCooldownUntil > Date.now()
+          ? Math.ceil((rtState.broadcastCooldownUntil - Date.now()) / 1000) + 's'
+          : 'ready';
+        towerPrompt.innerHTML = '📡 ON AIR — ' + secsLeft + 's left | Press [T] to BROADCAST' +
+          (canBoost ? ' | [T]→Signal Boost (-30c)' : '');
+        towerPrompt.style.color = '#44ffff';
+        towerPrompt.style.borderColor = '#44ffff';
+        towerPrompt.style.display = 'block';
+      } else if (towerCapState !== null) {
+        const pct = Math.floor(towerCapState.progress * 100);
+        towerPrompt.innerHTML = '📡 CAPTURING TOWER... ' + pct + '%';
+        towerPrompt.style.color = '#ffcc44';
+        towerPrompt.style.borderColor = '#ffcc44';
+        towerPrompt.style.display = 'block';
+      } else {
+        const ownerText = rtState.state === 'owned'
+          ? ' (owned by ' + (rtState.ownerName || '?') + ')'
+          : '';
+        towerPrompt.innerHTML = '📡 Hold <kbd>E</kbd> to CAPTURE Radio Tower' + ownerText;
+        towerPrompt.style.color = '#44ddff';
+        towerPrompt.style.borderColor = '#44aaff';
+        towerPrompt.style.display = 'block';
+      }
+    } else {
+      towerPrompt.style.display = 'none';
+    }
+
+    // Update hold-capture progress
+    if (towerCapState !== null) {
+      const elapsed = performance.now() - towerCapState.startTime;
+      towerCapState.progress = Math.min(1, elapsed / 5000); // 5-second hold
+
+      // Cancel if walked away
+      if (!isNear) {
+        towerCapState = null;
+        return;
+      }
+
+      // Complete the capture
+      if (towerCapState.progress >= 1) {
+        if (socket && joined) {
+          socket.emit('action', { type: 'tower_capture' });
+        }
+        // Capture spark burst
+        const sx = rt.x - camera.x + camera.screenW / 2;
+        const sy = rt.y - camera.y + camera.screenH / 2;
+        for (let p = 0; p < 22; p++) {
+          const angle = Math.random() * Math.PI * 2;
+          const speed = 40 + Math.random() * 80;
+          effects.push({
+            type: 'particle',
+            x: rt.x, y: rt.y - 50,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            color: '#44aaff',
+            time: performance.now(),
+            duration: 700 + Math.random() * 400,
+            radius: 3 + Math.random() * 3,
+          });
+        }
+        towerCapState = null;
+      }
+    }
+
+    // Draw capture progress bar on canvas (above the tower)
+    if (towerCapState !== null && isNear) {
+      const tsx = rt.x - camera.x + camera.screenW / 2;
+      const tsy = rt.y - camera.y + camera.screenH / 2;
+      const barW = 80;
+      const barH = 7;
+      const barX = tsx - barW / 2;
+      const barY = tsy - 110;
+      ctx.save();
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(barX, barY, barW, barH);
+      ctx.fillStyle = '#44aaff';
+      ctx.fillRect(barX, barY, barW * towerCapState.progress, barH);
+      ctx.strokeStyle = '#44ddff';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(barX, barY, barW, barH);
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 9px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('📡 ' + Math.floor(towerCapState.progress * 100) + '%', tsx, barY - 4);
+      ctx.restore();
+    }
+  }
+
+  function toggleTowerBroadcastMenu() {
+    if (towerBroadcastOpen) {
+      closeTowerBroadcastMenu();
+    } else {
+      openTowerBroadcastMenu();
+    }
+  }
+
+  function openTowerBroadcastMenu() {
+    towerBroadcastOpen = true;
+    let menu = document.getElementById('towerBroadcastMenu');
+    if (!menu) {
+      menu = document.createElement('div');
+      menu.id = 'towerBroadcastMenu';
+      menu.style.cssText =
+        'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);' +
+        'background:rgba(0,5,20,0.95);border:2px solid #44aaff;border-radius:12px;' +
+        'padding:18px 24px;z-index:200;min-width:280px;text-align:center;' +
+        'font-family:Courier New,monospace;color:#fff;';
+      document.body.appendChild(menu);
+    }
+    const rt = gameState && gameState.radioTower;
+    const canBoost = rt && !rt.signalBoostUsed;
+    const taunting = rt && rt.broadcastCooldownUntil > Date.now();
+    const tauntCd = taunting ? Math.ceil((rt.broadcastCooldownUntil - Date.now()) / 1000) + 's' : '';
+    const coins = (gameState && gameState.self && gameState.self.coins) || 0;
+
+    menu.innerHTML =
+      '<div style="color:#44ddff;font-size:15px;font-weight:bold;margin-bottom:12px;">📻 PIGEON RADIO — ON AIR</div>' +
+      '<div style="font-size:11px;color:#aaaacc;margin-bottom:14px;">You\'re broadcasting. Make it count.</div>' +
+
+      '<button id="towerTauntBtn" style="display:block;width:100%;margin-bottom:10px;' +
+      'background:' + (taunting ? 'rgba(80,80,100,0.5)' : 'rgba(20,80,160,0.9)') + ';' +
+      'color:' + (taunting ? '#888' : '#fff') + ';border:1px solid #44aaff;border-radius:8px;' +
+      'padding:9px 12px;cursor:pointer;font:bold 12px Courier New;">' +
+      '📢 TAUNT the city' + (taunting ? ' (cooldown ' + tauntCd + ')' : ' [FREE]') + '</button>' +
+
+      '<button id="towerBoostBtn" style="display:block;width:100%;margin-bottom:14px;' +
+      'background:' + (!canBoost ? 'rgba(80,80,100,0.5)' : 'rgba(30,140,30,0.9)') + ';' +
+      'color:' + (!canBoost ? '#888' : '#fff') + ';border:1px solid #44ff44;border-radius:8px;' +
+      'padding:9px 12px;cursor:pointer;font:bold 12px Courier New;">' +
+      '⚡ SIGNAL BOOST — 50% XP for all, 60s [-30c]' + (!canBoost ? ' (USED)' : '') + '</button>' +
+
+      '<button id="towerMenuClose" style="background:rgba(80,30,30,0.8);color:#ff8888;' +
+      'border:1px solid #ff4444;border-radius:8px;padding:6px 20px;cursor:pointer;' +
+      'font:bold 11px Courier New;">CLOSE [T]</button>';
+
+    document.getElementById('towerTauntBtn').onclick = function() {
+      if (!taunting && socket && joined) socket.emit('action', { type: 'tower_broadcast', broadcastType: 'taunt' });
+      closeTowerBroadcastMenu();
+    };
+    document.getElementById('towerBoostBtn').onclick = function() {
+      if (canBoost && coins >= 30 && socket && joined) socket.emit('action', { type: 'tower_broadcast', broadcastType: 'signal_boost' });
+      closeTowerBroadcastMenu();
+    };
+    document.getElementById('towerMenuClose').onclick = closeTowerBroadcastMenu;
+    menu.style.display = 'block';
+  }
+
+  function closeTowerBroadcastMenu() {
+    towerBroadcastOpen = false;
+    const menu = document.getElementById('towerBroadcastMenu');
+    if (menu) menu.style.display = 'none';
   }
 
   // ============================================================
@@ -3034,6 +3288,11 @@
     }
     Renderer.drawTrees(ctx, camera);
 
+    // Radio Tower (drawn after trees — it's a tall landmark)
+    if (gameState.radioTower && worldData) {
+      Renderer.drawRadioTower(ctx, camera, gameState.radioTower, now);
+    }
+
     // Birds
     if (gameState.birds) {
       for (const bird of gameState.birds) {
@@ -3188,6 +3447,7 @@
     updateFoodTruckHeistUI();
     updateBankHeistUI();
     updateSprayUI(now);
+    updateRadioTowerUI(now);
 
     // Minimap (now includes activeEvent and cat)
     Renderer.drawMinimap(minimapCtx, worldData, gameState.birds, selfBird, gameState.activeEvent, gameState.cat, gameState.janitor, gameState.territories, gameState.bankHeist, gameState.graffiti);
@@ -3356,6 +3616,40 @@
       minimapCtx.beginPath();
       minimapCtx.arc(gameState.hawk.x * msx, gameState.hawk.y * msy, 3, 0, Math.PI * 2);
       minimapCtx.fill();
+    }
+
+    // Draw Radio Tower on minimap (always visible — fixed landmark)
+    if (worldData && worldData.radioTowerPos) {
+      const mw = minimapCtx.canvas.width;
+      const mh = minimapCtx.canvas.height;
+      const msx = mw / worldData.width;
+      const msy = mh / worldData.height;
+      const tx = worldData.radioTowerPos.x * msx;
+      const ty = worldData.radioTowerPos.y * msy;
+      const rt = gameState.radioTower;
+      const owned = rt && rt.state === 'owned';
+      const sigBoost = rt && rt.signalBoostUntil > Date.now();
+      const tPulse = Math.sin(performance.now() * 0.006) * 0.35 + 0.65;
+
+      // Glow for signal boost
+      if (sigBoost) {
+        minimapCtx.strokeStyle = 'rgba(80,255,80,' + tPulse + ')';
+        minimapCtx.lineWidth = 2;
+        minimapCtx.beginPath();
+        minimapCtx.arc(tx, ty, 6, 0, Math.PI * 2);
+        minimapCtx.stroke();
+      }
+
+      minimapCtx.fillStyle = owned
+        ? (rt.ownerColor || '#44aaff')
+        : 'rgba(100,120,160,0.8)';
+      minimapCtx.beginPath();
+      minimapCtx.arc(tx, ty, owned ? 4 : 3, 0, Math.PI * 2);
+      minimapCtx.fill();
+      minimapCtx.font = 'bold 6px sans-serif';
+      minimapCtx.textAlign = 'center';
+      minimapCtx.fillStyle = owned ? '#fff' : '#aabbcc';
+      minimapCtx.fillText('📡', tx, ty - 4);
     }
 
     // Directional arrow pointing toward active event when off-screen

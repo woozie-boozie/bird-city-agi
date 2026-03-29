@@ -293,12 +293,22 @@ const ARENA = {
   entryFee: 30, // coins to enter
 };
 
+// ============================================================
+// THE RADIO TOWER — contested control point (center-north)
+// Hold E to capture. Own it to broadcast to the whole city.
+// ============================================================
+const RADIO_TOWER = {
+  x: 1200,         // center between vertical roads (x:740 & x:1640)
+  y: 450,          // above main horizontal road (y:840)
+  captureRadius: 90,
+};
+
 module.exports = {
   WORLD_WIDTH, WORLD_HEIGHT,
   BUILDINGS, TREES, PARK, CAFE_TABLES, ROADS, CARS, LAUNDRY,
   MOVING_CARS, EVENT_LOCATIONS, POWERUP_TYPES,
   NPC_TYPES, BIRD_TYPES, DATE_CENTER,
   SKILL_CATALOG, BIRD_COLORS, STREET_LAMPS,
-  TERRITORY_ZONES, ARENA,
+  TERRITORY_ZONES, ARENA, RADIO_TOWER,
   getXPForLevel, getLevelFromXP, getBirdTypeForLevel,
 };

@@ -454,19 +454,57 @@ Bird City now has a persistent vandalism economy. Birds can spray-tag buildings 
 
 **Creative intent**: This adds a persistent layer of social expression to the map. Territory control (Session 4) is about zones — graffiti is about individual buildings and bragging rights. Two rivals fighting over the same Bank or Cinema creates very personal turf wars. The minimap showing all tagged buildings as colored dots lets players see the entire city's gang landscape at a glance. Pure SOCIAL + DISCOVERY energy — the city's history is written in paint.
 
+**Session 15 — 2026-03-29: Radio Tower Control — The City's Voice**
+A towering antenna landmark (x:1200, y:450) sits in the center-north of the city, between the residential district and the park. Hold E for 5 seconds to seize it. The owner controls Bird City's airwaves.
+
+**Capture mechanics (`server/game.js`, `public/js/main.js`):**
+- Approach within 90px and hold [E] for 5 full seconds to capture — progress bar fills on the tower with live percentage
+- Capturing a tower already owned by a rival shows the previous owner name in the takeover announcement
+- Tower ownership lasts 3 minutes, then returns to neutral (or until someone seizes it)
+- +50 XP and +20 coins on capture. Passive +5c every 20s for the owner while they're online
+
+**Broadcast powers (press [T] near tower while owning it):**
+- 📢 **TAUNT** (free, 30s cooldown): broadcasts one of 10 savage city-wide taunts in the owner's name — shows as "PIGEON RADIO" announcement overlay on every player's screen
+- ⚡ **SIGNAL BOOST** (−30c, once per ownership): activates 60 seconds of +50% XP for ALL birds in the city. Green aura pulses from the tower, "⚡ BOOST ACTIVE" appears on minimap, global HUD counter counts down
+- Broadcast menu is a clean popup that opens with [T] and shows current cooldowns, costs, and one-use status
+
+**Visual system (`public/js/renderer.js`):**
+- Tall lattice antenna structure: two legged A-frame with cross-braces and X-diagonals, antenna spike on top
+- Blinking red LED at the antenna tip (independent of ownership)
+- When owned: radio wave rings pulse outward from the antenna top (3 concentric dashed circles expanding + fading)
+- When owned: "ON AIR" label flashes red above the tower
+- When signal boost active: bright green radial aura pulses around the tower base
+- Owner name displayed below the tower base in their color with glow shadow
+- Neutral state: grey struts with "RADIO TOWER / Hold E to capture" labels
+- **Minimap**: permanent 📡 dot at tower position; turns owner color when captured; green ring pulses around dot during signal boost
+
+**Signal boost integration (`server/game.js`):**
+- Server-side `radioTower.signalBoostUntil` timestamp
+- In `_checkPoopHit()`: after Lucky Charm multiplier, applies 1.5× to all poop XP when boost active
+- Stacks with Lucky Charm — a 4× combo + Lucky Charm + Signal Boost = 12× XP per hit
+
+**Events & announcements:**
+- `tower_captured`: city-wide "TOWER CAPTURED" announcement with owner color + "YOU OWN THE TOWER! Press [T]" for the captor
+- `tower_broadcast` / taunt: "📻 PIGEON RADIO: [Name] says: ..." overlay on all players
+- `tower_broadcast` / signal_boost: "⚡ SIGNAL BOOST ACTIVE" HUD + screen shake + city-wide green announcement
+- `tower_expired`: quiet event feed note when ownership expires naturally
+- `signal_boost_ended`: subtle event feed note
+
+**Creative intent**: The Radio Tower is the most SOCIAL mechanic yet. It's the one thing on the map that has no tactical combat purpose — pure power and ego. Capturing it says "I'm the best bird right now." Broadcasting a taunt to 10 players while they all read your words in the same color as your sprite is a moment you remember. The Signal Boost creates a collective win where the captor's generosity (or strategic timing) benefits the whole city — or gets deployed during their own Lucky Charm + combo rampage for astronomical XP. Two rival flocks both trying to claim the tower mid-game creates instant drama. Pure SOCIAL + SPECTACLE + PROGRESSION energy.
+
 ### Next Ideas Queue
 - Underground sewer system (secret map layer)
 - Eagle Overlord rare drop: "Eagle Feather" cosmetic badge
-- Graffiti system (birds tag buildings for territory)
 - Pigeon mafia questline
 - Nest building and decoration
 - Egg protection mini-game
 - Bird gangs with custom colors/tags
-- Radio tower control (broadcast messages server-wide)
 - Owl enforcer in park at night (creates no-poop zone, alerts NPCs)
 - Bioluminescent park pond at night (glowing water effect)
 - Weather combos: fog (low visibility), hailstorm (poop projectiles deflected), hot day (food spoils faster)
 - Birds can shelter under awnings/trees during storms (mechanic: reduced lightning hit radius if near cover)
+- Pigeon Racing Track — 5-checkpoint race, fastest bird wins the pot
+- ~~Radio tower control (broadcast messages server-wide)~~ (DONE Session 15)
 - ~~Graffiti system (birds tag buildings for territory)~~ (DONE Session 14)
 - ~~Bank heist: separate multi-phase event (case → drill → escape) at the Bank building downtown~~ (DONE Session 13)
 - ~~Combo multiplier: chain actions (poop→steal→pickpocket) for escalating XP bonuses~~ (DONE Session 9)

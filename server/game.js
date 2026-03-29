@@ -131,6 +131,21 @@ class GameEngine {
     this.graffiti = new Map();
     this._lastGraffitiClean = Date.now();
 
+    // === RADIO TOWER ===
+    // Contested control point — hold E to capture, press T to broadcast
+    this.radioTower = {
+      state: 'neutral',   // 'neutral' | 'owned'
+      ownerId: null,
+      ownerName: null,
+      ownerColor: null,
+      capturedAt: null,
+      expiresAt: null,    // ownership lasts 3 minutes
+      lastRewardAt: 0,
+      broadcastCooldownUntil: 0,  // taunt cooldown
+      signalBoostUsed: false,
+      signalBoostUntil: 0,        // global XP boost ends at
+    };
+
     // === TERRITORY CONTROL ===
     this.territories = new Map();  // zoneId -> zone state
     this._initTerritories();
@@ -501,6 +516,14 @@ class GameEngine {
       this._handleArenaEnter(bird, now);
     }
 
+    // === Radio Tower ===
+    if (action.type === 'tower_capture') {
+      this._handleTowerCapture(bird, now);
+    }
+    if (action.type === 'tower_broadcast') {
+      this._handleTowerBroadcast(bird, action.broadcastType, now);
+    }
+
     // === Graffiti Tagging ===
     if (action.type === 'spray_tag') {
       const buildingIdx = typeof action.buildingIdx === 'number' ? action.buildingIdx : -1;
@@ -666,6 +689,9 @@ class GameEngine {
 
     // === Graffiti ===
     this._updateGraffiti(now);
+
+    // === Radio Tower ===
+    this._updateRadioTower(dt, now);
 
     // === Day/Night Cycle ===
     this._updateDayNight(dt, now);
@@ -1908,6 +1934,8 @@ class GameEngine {
 
       // Black Market: Lucky Charm doubles all XP
       if (bird.bmDoubleXpUntil > now) xpGain *= 2;
+      // Radio Tower: Signal Boost gives 1.5x XP to ALL birds
+      if (this.radioTower.signalBoostUntil > now) xpGain = Math.floor(xpGain * 1.5);
       bird.xp += xpGain;
 
       // Mission progress: poop hits
@@ -3339,6 +3367,17 @@ class GameEngine {
         // Combo streak
         comboCount: bird.comboCount,
         comboExpiresAt: bird.comboExpiresAt,
+      },
+      radioTower: {
+        state: this.radioTower.state,
+        ownerId: this.radioTower.ownerId,
+        ownerName: this.radioTower.ownerName,
+        ownerColor: this.radioTower.ownerColor,
+        expiresAt: this.radioTower.expiresAt,
+        broadcastCooldownUntil: this.radioTower.broadcastCooldownUntil,
+        signalBoostUsed: this.radioTower.signalBoostUsed,
+        signalBoostUntil: this.radioTower.signalBoostUntil,
+        isOwner: this.radioTower.ownerId === bird.id,
       },
       bankHeist: this._getBankHeistStateFor(bird.id),
       graffiti: Array.from(this.graffiti.entries())
@@ -5799,6 +5838,146 @@ class GameEngine {
       if (tag.expiresAt <= now) {
         this.graffiti.delete(idx);
       }
+    }
+  }
+
+  // ============================================================
+  // RADIO TOWER SYSTEM
+  // ============================================================
+  _updateRadioTower(dt, now) {
+    const rt = this.radioTower;
+
+    // Expire signal boost
+    if (rt.signalBoostUntil > 0 && now >= rt.signalBoostUntil) {
+      rt.signalBoostUntil = 0;
+      this.events.push({ type: 'signal_boost_ended' });
+    }
+
+    // Expire ownership
+    if (rt.state === 'owned' && rt.expiresAt && now >= rt.expiresAt) {
+      this.events.push({
+        type: 'tower_expired',
+        ownerName: rt.ownerName,
+      });
+      rt.state = 'neutral';
+      rt.ownerId = null;
+      rt.ownerName = null;
+      rt.ownerColor = null;
+      rt.capturedAt = null;
+      rt.expiresAt = null;
+      rt.signalBoostUsed = false;
+      rt.broadcastCooldownUntil = 0;
+      rt.lastRewardAt = 0;
+      return;
+    }
+
+    // Passive coins for owner while they're online (5c per 20s)
+    if (rt.state === 'owned' && rt.ownerId && now - rt.lastRewardAt >= 20000) {
+      const owner = this.birds.get(rt.ownerId);
+      if (owner) {
+        owner.coins += 5;
+        rt.lastRewardAt = now;
+      }
+    }
+  }
+
+  _handleTowerCapture(bird, now) {
+    const rt = this.radioTower;
+    const towerPos = world.RADIO_TOWER;
+
+    // Server-side proximity validation
+    const dx = bird.x - towerPos.x;
+    const dy = bird.y - towerPos.y;
+    if (Math.sqrt(dx * dx + dy * dy) > towerPos.captureRadius + 40) return;
+
+    // Already the owner
+    if (rt.ownerId === bird.id) return;
+
+    const prevOwnerName = rt.ownerName;
+    const ownerColor = bird.birdColor || this._teamColor(bird.flockId || bird.id);
+
+    rt.state = 'owned';
+    rt.ownerId = bird.id;
+    rt.ownerName = bird.name;
+    rt.ownerColor = ownerColor;
+    rt.capturedAt = now;
+    rt.expiresAt = now + 180000;  // 3 minutes
+    rt.lastRewardAt = now;
+    rt.broadcastCooldownUntil = 0;
+    rt.signalBoostUsed = false;
+    rt.signalBoostUntil = 0;
+
+    // XP + coin reward for capture
+    bird.xp += 50;
+    bird.coins += 20;
+    const newLevel = world.getLevelFromXP(bird.xp);
+    bird.level = newLevel;
+    const newType = world.getBirdTypeForLevel(newLevel);
+    if (newType !== bird.type) {
+      bird.type = newType;
+      this.events.push({ type: 'evolve', birdId: bird.id, name: bird.name, birdType: newType });
+    }
+
+    this._addChaos(25);
+    this.events.push({
+      type: 'tower_captured',
+      birdId: bird.id,
+      birdName: bird.name,
+      ownerColor,
+      prevOwnerName: prevOwnerName || null,
+    });
+  }
+
+  _handleTowerBroadcast(bird, broadcastType, now) {
+    const rt = this.radioTower;
+    if (rt.ownerId !== bird.id) return;
+
+    const displayName = bird.flockName
+      ? '[' + bird.flockName + '] ' + bird.name
+      : bird.name;
+
+    if (broadcastType === 'taunt') {
+      if (now < rt.broadcastCooldownUntil) return;
+
+      const TAUNTS = [
+        'runs this city. Everyone else is just visiting.',
+        'broadcasts: Your coins are safe... unless I find them.',
+        'says: Challenge me. I dare you.',
+        'announces: Tonight we feast. On your losses.',
+        'declares: The airwaves, the streets, the skies — ALL MINE.',
+        'reports: Today\'s weather forecast — CHAOS, all day.',
+        'says: All complaints go through me. In poop form.',
+        'on air: Looking for worthy opponents. Criteria: none so far.',
+        'broadcast: If you\'re hearing this, you\'re already in my territory.',
+        'announces: The city has spoken. It said my name.',
+      ];
+      const taunt = TAUNTS[Math.floor(Math.random() * TAUNTS.length)];
+      rt.broadcastCooldownUntil = now + 30000; // 30s cooldown
+
+      bird.xp += 10;
+      this.events.push({
+        type: 'tower_broadcast',
+        broadcastType: 'taunt',
+        message: displayName + ' ' + taunt,
+        ownerColor: rt.ownerColor,
+      });
+
+    } else if (broadcastType === 'signal_boost') {
+      if (rt.signalBoostUsed) return;
+      if (bird.coins < 30) return;
+
+      bird.coins -= 30;
+      rt.signalBoostUsed = true;
+      rt.signalBoostUntil = now + 60000; // 60 seconds
+
+      this._addChaos(30);
+      this.events.push({
+        type: 'tower_broadcast',
+        broadcastType: 'signal_boost',
+        message: bird.name + ' activated the SIGNAL BOOST! All birds get +50% XP for 60 seconds!',
+        ownerColor: rt.ownerColor,
+        duration: 60000,
+      });
     }
   }
 

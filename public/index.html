@@ -192,6 +192,12 @@
   <!-- Arena proximity prompt -->
   <div id="arenaProximityPrompt" style="display:none">⚔️ Press <kbd>E</kbd> to ENTER THE ARENA</div>
 
+  <!-- Radio Tower signal boost indicator (shown globally when boost is active) -->
+  <div id="signalBoostHud" style="display:none;position:fixed;top:56px;left:50%;transform:translateX(-50%);
+    background:rgba(0,30,0,0.88);color:#44ff44;font:bold 12px 'Courier New',monospace;
+    padding:5px 14px;border-radius:16px;border:1px solid #44ff44;pointer-events:none;z-index:60;
+    text-align:center;">⚡ SIGNAL BOOST ACTIVE — +50% XP! <span id="signalBoostTimer"></span></div>
+
   <!-- Arena Fight HUD (shown when player is an active fighter) -->
   <div id="arenaHud" style="display:none"></div>
 

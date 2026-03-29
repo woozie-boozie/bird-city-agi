@@ -5,6 +5,7 @@ window.Renderer = {
 
   init(worldData) {
     this.worldData = worldData;
+    this._radioTowerPos = worldData.radioTowerPos || { x: 1200, y: 450 };
   },
 
   // Draw the ground / base layer
@@ -1118,6 +1119,144 @@ window.Renderer = {
       ctx.shadowBlur = 0;
 
       ctx.restore();
+    }
+  },
+
+  // Draw the Radio Tower control point
+  drawRadioTower(ctx, camera, radioTower, now) {
+    if (!radioTower) return;
+    // Tower position is fixed — read from world data injected at init
+    const tx = this._radioTowerPos ? this._radioTowerPos.x : 1200;
+    const ty = this._radioTowerPos ? this._radioTowerPos.y : 450;
+    const sx = tx - camera.x + camera.screenW / 2;
+    const sy = ty - camera.y + camera.screenH / 2;
+
+    // Frustum cull with generous margin
+    if (sx < -120 || sx > camera.screenW + 120 || sy < -120 || sy > camera.screenH + 120) return;
+
+    const owned = radioTower.state === 'owned';
+    const ownerColor = owned ? (radioTower.ownerColor || '#44aaff') : '#888888';
+    const blinkOn = Math.floor(now / 700) % 2 === 0;
+    const sigBoost = radioTower.signalBoostUntil > now;
+
+    // ── Signal Boost aura ──
+    if (sigBoost) {
+      const pulse = 0.55 + 0.35 * Math.sin(now / 180);
+      const r = 70 + 12 * Math.sin(now / 350);
+      const aura = ctx.createRadialGradient(sx, sy - 45, 0, sx, sy - 45, r);
+      aura.addColorStop(0, 'rgba(80,255,80,0)');
+      aura.addColorStop(0.5, 'rgba(80,255,80,' + (pulse * 0.3) + ')');
+      aura.addColorStop(1, 'rgba(80,255,80,0)');
+      ctx.save();
+      ctx.fillStyle = aura;
+      ctx.fillRect(sx - r, sy - 45 - r, r * 2, r * 2);
+      ctx.restore();
+    }
+
+    // ── Radio-wave rings (owned only) ──
+    if (owned) {
+      ctx.save();
+      for (let i = 0; i < 3; i++) {
+        const phase = ((now / 1400 + i / 3) % 1);
+        const ringR = 15 + phase * 65;
+        const alpha = Math.max(0, 0.55 - phase * 0.55);
+        ctx.beginPath();
+        ctx.arc(sx, sy - 48, ringR, 0, Math.PI * 2);
+        ctx.strokeStyle = ownerColor + Math.round(alpha * 255).toString(16).padStart(2, '0');
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([5, 4]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      ctx.restore();
+    }
+
+    // ── Tower structure ──
+    ctx.save();
+    const strut = owned ? ownerColor : '#666677';
+    ctx.strokeStyle = strut;
+    ctx.lineCap = 'round';
+
+    // Left leg
+    ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(sx - 18, sy); ctx.lineTo(sx - 2, sy - 58); ctx.stroke();
+    // Right leg
+    ctx.beginPath(); ctx.moveTo(sx + 18, sy); ctx.lineTo(sx + 2, sy - 58); ctx.stroke();
+
+    // Horizontal cross-braces
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(sx - 14, sy - 16); ctx.lineTo(sx + 14, sy - 16); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(sx - 9,  sy - 36); ctx.lineTo(sx + 9,  sy - 36); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(sx - 5,  sy - 50); ctx.lineTo(sx + 5,  sy - 50); ctx.stroke();
+
+    // Diagonal X-braces
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.7;
+    ctx.beginPath(); ctx.moveTo(sx - 14, sy - 16); ctx.lineTo(sx + 9,  sy - 36); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(sx + 14, sy - 16); ctx.lineTo(sx - 9,  sy - 36); ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    // Antenna spike
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = owned ? ownerColor : '#888';
+    ctx.beginPath(); ctx.moveTo(sx, sy - 58); ctx.lineTo(sx, sy - 82); ctx.stroke();
+
+    // ── Blinking red LED ──
+    ctx.shadowColor = '#ff2200';
+    ctx.shadowBlur = blinkOn ? 12 : 2;
+    ctx.fillStyle = blinkOn ? '#ff5555' : '#881111';
+    ctx.beginPath();
+    ctx.arc(sx, sy - 82, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // ── Base platform ──
+    ctx.fillStyle = owned ? ownerColor : '#555566';
+    ctx.fillRect(sx - 20, sy, 40, 5);
+    ctx.fillStyle = '#33333a';
+    ctx.fillRect(sx - 22, sy + 4, 44, 4);
+
+    ctx.restore();
+
+    // ── Labels ──
+    ctx.textAlign = 'center';
+
+    if (owned) {
+      // "ON AIR" flashing
+      const onAirBlink = Math.floor(now / 500) % 2 === 0;
+      ctx.font = 'bold 9px Courier New';
+      ctx.fillStyle = onAirBlink ? '#ff3300' : '#cc0000';
+      ctx.shadowColor = '#ff0000';
+      ctx.shadowBlur = onAirBlink ? 8 : 2;
+      ctx.fillText('ON AIR', sx, sy - 89);
+      ctx.shadowBlur = 0;
+
+      // Signal boost label
+      if (sigBoost) {
+        ctx.font = 'bold 10px Courier New';
+        ctx.fillStyle = '#44ff44';
+        ctx.shadowColor = '#44ff44';
+        ctx.shadowBlur = 8;
+        ctx.fillText('⚡ BOOST ACTIVE', sx, sy - 101);
+        ctx.shadowBlur = 0;
+      }
+
+      // Owner name below base
+      ctx.font = 'bold 9px Courier New';
+      ctx.fillStyle = ownerColor;
+      ctx.shadowColor = ownerColor;
+      ctx.shadowBlur = 4;
+      const label = (radioTower.ownerName || '').slice(0, 12);
+      ctx.fillText('📡 ' + label, sx, sy + 16);
+      ctx.shadowBlur = 0;
+    } else {
+      // Neutral label
+      ctx.font = '9px Courier New';
+      ctx.fillStyle = '#aaaaaa';
+      ctx.fillText('RADIO TOWER', sx, sy + 16);
+      ctx.fillStyle = '#777788';
+      ctx.font = '8px Courier New';
+      ctx.fillText('Hold E to capture', sx, sy + 26);
     }
   },
 };
