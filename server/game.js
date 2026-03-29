@@ -126,6 +126,11 @@ class GameEngine {
     this.bankHeist = this._initBankHeistState();
     this.bankHeistTimer = Date.now() + this._randomRange(480000, 720000); // 8-12 min first opportunity
 
+    // === GRAFFITI TAGS ===
+    // buildingIdx -> { ownerBirdId, ownerName, ownerColor, flockId, flockName, taggedAt, expiresAt }
+    this.graffiti = new Map();
+    this._lastGraffitiClean = Date.now();
+
     // === TERRITORY CONTROL ===
     this.territories = new Map();  // zoneId -> zone state
     this._initTerritories();
@@ -495,6 +500,86 @@ class GameEngine {
     if (action.type === 'arena_enter') {
       this._handleArenaEnter(bird, now);
     }
+
+    // === Graffiti Tagging ===
+    if (action.type === 'spray_tag') {
+      const buildingIdx = typeof action.buildingIdx === 'number' ? action.buildingIdx : -1;
+      const building = world.BUILDINGS[buildingIdx];
+      if (!building) return;
+
+      // Server-side proximity check
+      const bcx = building.x + building.w / 2;
+      const bcy = building.y + building.h / 2;
+      const ddx = bird.x - bcx;
+      const ddy = bird.y - bcy;
+      if (Math.sqrt(ddx * ddx + ddy * ddy) > 100) return;
+
+      const existing = this.graffiti.get(buildingIdx);
+      const isOvertag = existing && existing.expiresAt > now && existing.ownerBirdId !== bird.id;
+      const cost = isOvertag ? 8 : 5;
+
+      if (bird.coins < cost) return;
+
+      const tagColor = bird.birdColor || this._teamColor(bird.flockId || bird.id);
+      bird.coins -= cost;
+      const xpGain = isOvertag ? 25 : 20;
+      bird.xp += xpGain;
+
+      const TAG_DURATION = 8 * 60 * 1000; // 8 minutes
+      this.graffiti.set(buildingIdx, {
+        ownerBirdId: bird.id,
+        ownerName: bird.name,
+        ownerColor: tagColor,
+        flockId: bird.flockId || null,
+        flockName: bird.flockName || null,
+        taggedAt: now,
+        expiresAt: now + TAG_DURATION,
+      });
+
+      if (isOvertag) {
+        this.events.push({
+          type: 'graffiti_overtag',
+          buildingName: building.name,
+          newOwner: bird.name,
+          oldOwner: existing.ownerName,
+        });
+      } else {
+        this.events.push({
+          type: 'graffiti_tagged',
+          birdId: bird.id,
+          buildingName: building.name,
+          ownerName: bird.name,
+          x: bcx, y: bcy,
+          xp: xpGain,
+        });
+      }
+
+      // Check for street domination (5+ buildings owned by same team)
+      const myTeamId = bird.flockId || bird.id;
+      let myTagCount = 0;
+      for (const tag of this.graffiti.values()) {
+        if (tag.expiresAt > now && (tag.flockId || tag.ownerBirdId) === myTeamId) {
+          myTagCount++;
+        }
+      }
+      if (myTagCount === 5) {
+        bird.coins += 100; // domination bonus
+        this.events.push({
+          type: 'graffiti_domination',
+          name: bird.flockName || bird.name,
+          color: tagColor,
+        });
+      }
+
+      // Level up check
+      const newLevel = world.getLevelFromXP(bird.xp);
+      bird.level = newLevel;
+      const newType = world.getBirdTypeForLevel(newLevel);
+      if (newType !== bird.type) {
+        bird.type = newType;
+        this.events.push({ type: 'evolve', birdId: bird.id, name: bird.name, birdType: newType });
+      }
+    }
   }
 
   tick() {
@@ -578,6 +663,9 @@ class GameEngine {
 
     // === Bank Heist ===
     this._updateBankHeist(dt, now);
+
+    // === Graffiti ===
+    this._updateGraffiti(now);
 
     // === Day/Night Cycle ===
     this._updateDayNight(dt, now);
@@ -3253,6 +3341,15 @@ class GameEngine {
         comboExpiresAt: bird.comboExpiresAt,
       },
       bankHeist: this._getBankHeistStateFor(bird.id),
+      graffiti: Array.from(this.graffiti.entries())
+        .filter(([, tag]) => tag.expiresAt > now)
+        .map(([buildingIdx, tag]) => ({
+          buildingIdx,
+          ownerName: tag.ownerName,
+          ownerColor: tag.ownerColor,
+          flockName: tag.flockName,
+          expiresAt: tag.expiresAt,
+        })),
     };
   }
 
@@ -5689,6 +5786,20 @@ class GameEngine {
     bh.escapeEndsAt = null;
     bh.crackContributions = {};
     bh.crackContributorNames = {};
+  }
+
+  // ============================================================
+  // GRAFFITI SYSTEM
+  // ============================================================
+  _updateGraffiti(now) {
+    // Clean expired tags every 15s
+    if (now - this._lastGraffitiClean < 15000) return;
+    this._lastGraffitiClean = now;
+    for (const [idx, tag] of this.graffiti.entries()) {
+      if (tag.expiresAt <= now) {
+        this.graffiti.delete(idx);
+      }
+    }
   }
 
 }

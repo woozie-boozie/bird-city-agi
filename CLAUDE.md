@@ -426,6 +426,34 @@ The most cinematic event in Bird City yet. A full multi-phase cooperative heist 
 
 **Creative intent**: Every phase forces different social dynamics. Phase 1 demands team split — can't solo all 3 cameras in 2 minutes without rushing. Phase 2 is tense drilling while watching the alarm timer tick, knowing cops are closing in. Phase 3 is a full sprint — rich birds have SWAT on them, making the van run genuinely dangerous. The 30% consolation rule keeps everyone invested through the escape even if they get caught. Pure CARNAGE + SOCIAL energy.
 
+**Session 14 — 2026-03-29: Graffiti Tagging — Spray the City**
+Bird City now has a persistent vandalism economy. Birds can spray-tag buildings to mark turf, over-tag rivals for drama, and earn a city-wide shoutout for dominating 5 buildings.
+
+**Core mechanic:**
+- Fly within 90px of any building and hold [G] for 2 seconds to spray-tag it
+- Tag costs 5 coins (8 if over-tagging someone else's mark) — gives 20–25 XP
+- Tags last 8 minutes then fade — must maintain your marks to keep dominance
+- Each building can only have one owner at a time
+
+**Over-tagging & rivalry:**
+- If a rival already tagged the building, over-tag costs 8c and gives 25 XP
+- City-wide event feed announces every over-tag: "🎨 [Bird] OVER-TAGGED [Building] from [OldOwner]!"
+- Classic turf war tension: do you defend your tags or keep spraying new ones?
+
+**Street Domination:**
+- Tag 5+ buildings = city-wide announcement + 100 coin bonus
+- "🎨 [Name] OWNS THE STREETS!" broadcast to all players
+
+**Visual system:**
+- Left-edge color stripe + bottom color bar on tagged buildings (alpha fades when tag is near expiry)
+- Tag label shows gang name (flock name or bird name) in small spray-style text
+- Spray particle burst (18 particles in owner's color) when tag fires
+- Progress bar appears above the building while holding G, shows "SPRAYING 47%"
+- Proximity prompt: "Hold [G] to SPRAY TAG [Building Name] (-5c)" appears when in range
+- **Minimap**: tagged buildings change from grey to the owner's color — gives full city overview of who owns the streets
+
+**Creative intent**: This adds a persistent layer of social expression to the map. Territory control (Session 4) is about zones — graffiti is about individual buildings and bragging rights. Two rivals fighting over the same Bank or Cinema creates very personal turf wars. The minimap showing all tagged buildings as colored dots lets players see the entire city's gang landscape at a glance. Pure SOCIAL + DISCOVERY energy — the city's history is written in paint.
+
 ### Next Ideas Queue
 - Underground sewer system (secret map layer)
 - Eagle Overlord rare drop: "Eagle Feather" cosmetic badge
@@ -439,6 +467,7 @@ The most cinematic event in Bird City yet. A full multi-phase cooperative heist 
 - Bioluminescent park pond at night (glowing water effect)
 - Weather combos: fog (low visibility), hailstorm (poop projectiles deflected), hot day (food spoils faster)
 - Birds can shelter under awnings/trees during storms (mechanic: reduced lightning hit radius if near cover)
+- ~~Graffiti system (birds tag buildings for territory)~~ (DONE Session 14)
 - ~~Bank heist: separate multi-phase event (case → drill → escape) at the Bank building downtown~~ (DONE Session 13)
 - ~~Combo multiplier: chain actions (poop→steal→pickpocket) for escalating XP bonuses~~ (DONE Session 9)
 - ~~Raccoon boss: "The Godfather Raccoon" — giant alpha raccoon that steals from players directly~~ (DONE Session 10)

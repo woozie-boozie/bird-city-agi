@@ -228,7 +228,7 @@ window.Renderer = {
   },
 
   // Draw minimap
-  drawMinimap(minimapCtx, worldData, birds, selfBird, activeEvent, cat, janitor, territories, bankHeist) {
+  drawMinimap(minimapCtx, worldData, birds, selfBird, activeEvent, cat, janitor, territories, bankHeist, graffiti) {
     if (!worldData) return;
 
     const mw = minimapCtx.canvas.width;
@@ -270,10 +270,21 @@ window.Renderer = {
       }
     }
 
-    // Buildings
-    minimapCtx.fillStyle = '#666';
-    for (const b of worldData.buildings) {
+    // Buildings (with graffiti color hints)
+    const graffitiMap = {};
+    if (graffiti) {
+      const now = Date.now();
+      for (const tag of graffiti) {
+        if (tag.expiresAt > now) graffitiMap[tag.buildingIdx] = tag;
+      }
+    }
+    for (let i = 0; i < worldData.buildings.length; i++) {
+      const b = worldData.buildings[i];
+      const tag = graffitiMap[i];
+      minimapCtx.fillStyle = tag ? tag.ownerColor : '#666';
+      minimapCtx.globalAlpha = tag ? 0.8 : 1;
       minimapCtx.fillRect(b.x * sx, b.y * sy, Math.max(b.w * sx, 1), Math.max(b.h * sy, 1));
+      minimapCtx.globalAlpha = 1;
     }
 
     // Date Center as purple dot
@@ -1050,6 +1061,63 @@ window.Renderer = {
       ctx.strokeStyle = 'rgba(255,220,0,' + (0.4 + 0.4 * Math.sin(now / 150)) + ')';
       ctx.lineWidth = 3;
       ctx.stroke();
+    }
+  },
+
+  // Draw graffiti tags on buildings
+  drawGraffiti(ctx, camera, graffiti) {
+    if (!graffiti || !graffiti.length || !this.worldData) return;
+    const now = Date.now();
+
+    // Build lookup map
+    const tagMap = {};
+    for (const tag of graffiti) {
+      tagMap[tag.buildingIdx] = tag;
+    }
+
+    for (let i = 0; i < this.worldData.buildings.length; i++) {
+      const tag = tagMap[i];
+      if (!tag) continue;
+
+      const b = this.worldData.buildings[i];
+      const sx = b.x - camera.x + camera.screenW / 2;
+      const sy = b.y - camera.y + camera.screenH / 2;
+
+      // Frustum cull
+      if (sx + b.w < -60 || sx > camera.screenW + 60 ||
+          sy + b.h < -60 || sy > camera.screenH + 60) continue;
+
+      // Fade when < 90s left
+      const timeLeft = tag.expiresAt - now;
+      const alpha = timeLeft < 90000
+        ? Math.max(0, (timeLeft / 90000) * 0.88)
+        : 0.88;
+      if (alpha <= 0) continue;
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+
+      // Left color stripe
+      ctx.fillStyle = tag.ownerColor;
+      ctx.fillRect(sx, sy, 5, b.h);
+
+      // Bottom color bar
+      ctx.fillRect(sx, sy + b.h - 7, b.w, 7);
+
+      // Squiggly spray-paint style text on the bottom bar
+      const label = '\uD83C\uDFA8' + (tag.flockName || tag.ownerName).slice(0, 9);
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillRect(sx + 6, sy + b.h - 7, b.w - 6, 7);
+
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 7px Courier New';
+      ctx.textAlign = 'left';
+      ctx.shadowColor = tag.ownerColor;
+      ctx.shadowBlur = 4;
+      ctx.fillText(label, sx + 8, sy + b.h - 1);
+      ctx.shadowBlur = 0;
+
+      ctx.restore();
     }
   },
 };

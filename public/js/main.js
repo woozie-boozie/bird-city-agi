@@ -158,6 +158,9 @@
   const arenaHud = document.getElementById('arenaHud');
   const arenaProximityPrompt = document.getElementById('arenaProximityPrompt');
 
+  // Graffiti spray state
+  let sprayState = null; // { buildingIdx, progress, startTime } while holding G near a building
+
   // Leaderboard data
   let leaderboardData = [];
   let serverStats = { playersOnline: 0, totalPoops: 0 };
@@ -1207,6 +1210,25 @@
         addEventMessage(`💰 ${ev.teamName} collecting tribute from ${ev.zoneName}`, '#aaddff');
       }
     }
+
+    // === GRAFFITI EVENTS ===
+    if (ev.type === 'graffiti_tagged') {
+      if (ev.birdId === myId) {
+        effects.push({ type: 'text', x: ev.x, y: ev.y - 20, time: now, duration: 1500,
+          text: '🎨 TAGGED! +' + ev.xp + 'XP', color: '#ff88ff', size: 16 });
+      }
+      addEventMessage('🎨 ' + ev.ownerName + ' tagged ' + ev.buildingName, '#dd88ff');
+    }
+    if (ev.type === 'graffiti_overtag') {
+      addEventMessage('🎨 ' + ev.newOwner + ' OVER-TAGGED ' + ev.buildingName + ' (was ' + ev.oldOwner + '!)', '#ff4488');
+      effects.push({ type: 'text', x: camera.x, y: camera.y - 40, time: now, duration: 2000,
+        text: '🎨 TURF WAR!', color: '#ff4488', size: 18 });
+    }
+    if (ev.type === 'graffiti_domination') {
+      showAnnouncement('🎨 ' + ev.name + ' OWNS THE STREETS! (+100c)', '#ff44ff', 5000);
+      addEventMessage('🎨🔥 ' + ev.name + ' tagged 5 buildings — STREET DOMINATION!', '#ff44ff');
+      effects.push({ type: 'screen_shake', intensity: 10, duration: 800, time: now });
+    }
   }
 
   function showAnnouncement(text, color, duration) {
@@ -1293,11 +1315,35 @@
         socket.emit('action', { type: 'arena_enter' });
       }
     }
+    // Graffiti spray — hold G near a building to tag it
+    if (e.key.toLowerCase() === 'g') {
+      if (gameState && gameState.self && worldData && sprayState === null) {
+        const self = gameState.self;
+        let nearest = -1, nearestDist = Infinity;
+        worldData.buildings.forEach((b, idx) => {
+          const bcx = b.x + b.w / 2;
+          const bcy = b.y + b.h / 2;
+          const ddx = self.x - bcx;
+          const ddy = self.y - bcy;
+          const dist = Math.sqrt(ddx * ddx + ddy * ddy);
+          if (dist < 90 && dist < nearestDist) {
+            nearestDist = dist;
+            nearest = idx;
+          }
+        });
+        if (nearest !== -1) {
+          sprayState = { buildingIdx: nearest, progress: 0, startTime: performance.now() };
+        }
+      }
+    }
     syncInput();
   });
 
   window.addEventListener('keyup', (e) => {
     keys[e.key.toLowerCase()] = false;
+    if (e.key.toLowerCase() === 'g') {
+      sprayState = null; // cancel spray on key release
+    }
     syncInput();
   });
 
@@ -2128,6 +2174,122 @@
   }
 
   // ============================================================
+  // GRAFFITI SPRAY UI — proximity prompt + hold progress
+  // ============================================================
+  function updateSprayUI(now) {
+    if (!gameState || !gameState.self || !worldData) return;
+    const s = gameState.self;
+
+    // Update spray progress if holding G
+    if (sprayState !== null) {
+      const elapsed = performance.now() - sprayState.startTime;
+      sprayState.progress = Math.min(1, elapsed / 2000);
+
+      // Cancel if moved too far from building
+      const b = worldData.buildings[sprayState.buildingIdx];
+      if (b) {
+        const bcx = b.x + b.w / 2;
+        const bcy = b.y + b.h / 2;
+        const ddx = s.x - bcx;
+        const ddy = s.y - bcy;
+        if (Math.sqrt(ddx * ddx + ddy * ddy) > 100) {
+          sprayState = null;
+          return;
+        }
+      }
+
+      // Fire when complete
+      if (sprayState.progress >= 1) {
+        if (socket && joined) {
+          socket.emit('action', { type: 'spray_tag', buildingIdx: sprayState.buildingIdx });
+        }
+        // Spray burst visual
+        if (gameState.self && worldData.buildings[sprayState.buildingIdx]) {
+          const tb = worldData.buildings[sprayState.buildingIdx];
+          const tbcx = tb.x + tb.w / 2;
+          const tbcy = tb.y + tb.h / 2;
+          const tagColor = gameState.self.birdColor || '#ff44ff';
+          for (let p = 0; p < 18; p++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 30 + Math.random() * 60;
+            effects.push({
+              type: 'particle',
+              x: tbcx, y: tbcy,
+              vx: Math.cos(angle) * speed,
+              vy: Math.sin(angle) * speed,
+              color: tagColor,
+              time: performance.now(),
+              duration: 600 + Math.random() * 400,
+              radius: 3 + Math.random() * 3,
+            });
+          }
+        }
+        sprayState = null;
+        return;
+      }
+    }
+
+    // Proximity prompt — show when near a building but not spraying
+    let sprayPrompt = document.getElementById('sprayPrompt');
+    if (!sprayPrompt) {
+      sprayPrompt = document.createElement('div');
+      sprayPrompt.id = 'sprayPrompt';
+      sprayPrompt.style.cssText = 'position:fixed;bottom:120px;left:50%;transform:translateX(-50%);' +
+        'background:rgba(0,0,0,0.75);color:#ff88ff;font:bold 13px Courier New;' +
+        'padding:7px 16px;border-radius:20px;border:1px solid #ff44ff;display:none;pointer-events:none;z-index:50;';
+      document.body.appendChild(sprayPrompt);
+    }
+
+    let nearAnyBuilding = false;
+    if (!sprayState) {
+      for (let i = 0; i < worldData.buildings.length; i++) {
+        const b = worldData.buildings[i];
+        const bcx = b.x + b.w / 2;
+        const bcy = b.y + b.h / 2;
+        const ddx = s.x - bcx;
+        const ddy = s.y - bcy;
+        if (Math.sqrt(ddx * ddx + ddy * ddy) < 90) {
+          nearAnyBuilding = true;
+          const existing = gameState.graffiti && gameState.graffiti.find(function(t) { return t.buildingIdx === i; });
+          const cost = (existing && existing.ownerName !== s.name) ? 8 : 5;
+          sprayPrompt.textContent = '🎨 Hold [G] to SPRAY TAG ' + b.name + ' (-' + cost + 'c)';
+          break;
+        }
+      }
+    }
+    sprayPrompt.style.display = nearAnyBuilding ? 'block' : 'none';
+
+    // Draw spray progress bar in canvas
+    if (sprayState !== null && worldData.buildings[sprayState.buildingIdx]) {
+      const tb = worldData.buildings[sprayState.buildingIdx];
+      const bsx = tb.x - camera.x + camera.screenW / 2;
+      const bsy = tb.y - camera.y + camera.screenH / 2;
+      const barW = tb.w;
+      const barH = 7;
+      const barY = bsy - 14;
+      ctx.save();
+      ctx.globalAlpha = 1;
+      // Background
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(bsx, barY, barW, barH);
+      // Fill
+      const sprayColor = (gameState.self && gameState.self.birdColor) || '#ff44ff';
+      ctx.fillStyle = sprayColor;
+      ctx.fillRect(bsx, barY, barW * sprayState.progress, barH);
+      // Border
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(bsx, barY, barW, barH);
+      // Label
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 9px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('🎨 SPRAYING ' + Math.floor(sprayState.progress * 100) + '%', bsx + barW / 2, barY - 3);
+      ctx.restore();
+    }
+  }
+
+  // ============================================================
   // FLOCK LOBBY UI
   // ============================================================
   function renderFlockLobby(lobbyBirds, selfState) {
@@ -2324,6 +2486,17 @@
 
       if (fx.type === 'screen_shake') {
         // Screen shake handled by camera offset
+      }
+
+      if (fx.type === 'particle') {
+        const px = sx + fx.vx * (age / 1000);
+        const py = sy + fx.vy * (age / 1000);
+        ctx.globalAlpha = 1 - progress;
+        ctx.fillStyle = fx.color || '#ff44ff';
+        ctx.beginPath();
+        ctx.arc(px, py, fx.radius || 3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
       }
     }
 
@@ -2855,6 +3028,10 @@
 
     // Buildings & trees on top
     Renderer.drawBuildings(ctx, camera, gameState.bankHeist ? gameState.bankHeist.phase : null);
+    // Graffiti tags (drawn on top of buildings)
+    if (gameState.graffiti) {
+      Renderer.drawGraffiti(ctx, camera, gameState.graffiti);
+    }
     Renderer.drawTrees(ctx, camera);
 
     // Birds
@@ -3010,9 +3187,10 @@
     updateArenaUI();
     updateFoodTruckHeistUI();
     updateBankHeistUI();
+    updateSprayUI(now);
 
     // Minimap (now includes activeEvent and cat)
-    Renderer.drawMinimap(minimapCtx, worldData, gameState.birds, selfBird, gameState.activeEvent, gameState.cat, gameState.janitor, gameState.territories, gameState.bankHeist);
+    Renderer.drawMinimap(minimapCtx, worldData, gameState.birds, selfBird, gameState.activeEvent, gameState.cat, gameState.janitor, gameState.territories, gameState.bankHeist, gameState.graffiti);
 
     // Draw beacons on minimap
     if (gameState.beacons && worldData) {
