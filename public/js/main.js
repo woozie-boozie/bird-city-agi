@@ -1180,9 +1180,11 @@
     // === WEATHER EVENTS ===
     if (ev.type === 'weather_start') {
       const msgs = {
-        rain:  ['🌧️ IT\'S RAINING! Worms are surfacing — free food!', '#66aaff'],
-        wind:  ['💨 STRONG WINDS! The city is being swept!', '#aaddff'],
-        storm: ['⛈️ THUNDERSTORM! Take cover — lightning incoming!', '#ffdd44'],
+        rain:      ['🌧️ IT\'S RAINING! Worms are surfacing — free food!', '#66aaff'],
+        wind:      ['💨 STRONG WINDS! The city is being swept!', '#aaddff'],
+        storm:     ['⛈️ THUNDERSTORM! Take cover — lightning incoming!', '#ffdd44'],
+        fog:       ['🌫️ DENSE FOG rolls in... cops lose your trail in the mist!', '#b8ddc0'],
+        hailstorm: ['🌨️ HAILSTORM! Ice chunks will slow anyone they hit!', '#aaddff'],
       };
       const [msg, color] = msgs[ev.weatherType] || ['Weather changed!', '#fff'];
       showAnnouncement(msg, color, 4000);
@@ -1191,9 +1193,11 @@
     }
     if (ev.type === 'weather_end') {
       const endMsgs = {
-        rain: 'The rain has stopped. Worms retreating underground.',
-        wind: 'The wind has died down.',
-        storm: 'The storm has passed.',
+        rain:      'The rain has stopped. Worms retreating underground.',
+        wind:      'The wind has died down.',
+        storm:     'The storm has passed.',
+        fog:       '🌫️ The fog lifts. Cops can see you again.',
+        hailstorm: '🌨️ The hailstorm passes.',
       };
       addEventMessage(endMsgs[ev.weatherType] || 'Weather cleared.', '#aaaaaa');
       weatherState = null;
@@ -1213,6 +1217,26 @@
       }
       addEventMessage(`⚡ ${ev.birdName || 'A bird'} was struck by lightning!`, '#ffdd44');
       effects.push({ type: 'text', x: ev.x, y: ev.y, text: '⚡ ZAP!', color: '#ffff44', size: 14, time: performance.now(), duration: 1500 });
+    }
+    if (ev.type === 'hail_strike') {
+      // Brief ice-blue screen flash at strike location
+      const sx = ev.x - camera.x + camera.screenW / 2;
+      const sy = ev.y - camera.y + camera.screenH / 2;
+      effects.push({ type: 'text', x: ev.x, y: ev.y, text: '🧊', color: '#aaddff', size: 16, time: performance.now(), duration: 800 });
+      // Small screen shake for nearby strikes
+      const strikeDist = Math.sqrt((sx - camera.screenW / 2) ** 2 + (sy - camera.screenH / 2) ** 2);
+      if (strikeDist < 300) {
+        effects.push({ type: 'screen_shake', intensity: 4, duration: 250, time: performance.now() });
+      }
+    }
+    if (ev.type === 'hail_hit') {
+      const isMe = ev.birdId === myId;
+      if (isMe) {
+        showAnnouncement('🧊 HIT BY HAIL! Slowed!', '#aaddff', 1500);
+        effects.push({ type: 'screen_shake', intensity: 6, duration: 300, time: performance.now() });
+      }
+      addEventMessage(`🧊 ${ev.birdName || 'A bird'} was slowed by hail!`, '#88ccff');
+      effects.push({ type: 'text', x: ev.x, y: ev.y, text: '🧊 SLOW!', color: '#aaddff', size: 13, time: performance.now(), duration: 1200 });
     }
 
     // === RACCOON EVENTS ===
@@ -3123,6 +3147,41 @@
     }
   }
 
+  // Lazily generated hail chunk pool
+  let _hailChunks = null;
+  function _ensureHailChunks(sw, sh) {
+    if (_hailChunks && _hailChunks.sw === sw && _hailChunks.sh === sh) return;
+    _hailChunks = { sw, sh, chunks: [] };
+    for (let i = 0; i < 180; i++) {
+      _hailChunks.chunks.push({
+        x: Math.random() * sw,
+        y: Math.random() * sh,
+        size: 2.5 + Math.random() * 3.5,   // chunky ice pellets
+        speed: 380 + Math.random() * 240,   // faster than rain
+        opacity: 0.55 + Math.random() * 0.35,
+        wobble: Math.random() * Math.PI * 2, // slight horizontal wobble phase
+      });
+    }
+  }
+
+  // Lazily generated fog wisp pool
+  let _fogWisps = null;
+  function _ensureFogWisps(sw, sh) {
+    if (_fogWisps && _fogWisps.sw === sw && _fogWisps.sh === sh) return;
+    _fogWisps = { sw, sh, wisps: [] };
+    for (let i = 0; i < 40; i++) {
+      _fogWisps.wisps.push({
+        x: Math.random() * sw,
+        y: Math.random() * sh,
+        w: 80 + Math.random() * 200,
+        h: 18 + Math.random() * 30,
+        speed: 6 + Math.random() * 14,       // slow horizontal drift
+        opacity: 0.06 + Math.random() * 0.1,
+        phase: Math.random() * Math.PI * 2,
+      });
+    }
+  }
+
   function drawWeather(ctx, camera, now, weather) {
     if (!weather) return;
     const sw = camera.screenW;
@@ -3131,6 +3190,82 @@
 
     const isRainy = weather.type === 'rain' || weather.type === 'storm';
     const isWindy = weather.windSpeed > 0;
+
+    // === FOG VIGNETTE ===
+    // Dense fog fills the screen except for a clear radius around the player's bird
+    if (weather.type === 'fog') {
+      _ensureFogWisps(sw, sh);
+      const density = weather.intensity; // 0.75–1.0
+      const playerSx = sw / 2;
+      const playerSy = sh / 2;
+
+      // Background fog tint (grey-green haze over entire screen)
+      ctx.save();
+      ctx.globalAlpha = density * 0.18;
+      ctx.fillStyle = '#8aaa90';
+      ctx.fillRect(0, 0, sw, sh);
+      ctx.globalAlpha = 1;
+      ctx.restore();
+
+      // Fog wisps drifting slowly left to right
+      ctx.save();
+      for (const wisp of _fogWisps.wisps) {
+        wisp.x += wisp.speed * dt;
+        if (wisp.x > sw + wisp.w) wisp.x = -wisp.w;
+        const wy = wisp.y + Math.sin(now * 0.0003 + wisp.phase) * 8;
+        const pulse = 0.85 + Math.sin(now * 0.0008 + wisp.phase * 2) * 0.15;
+        ctx.globalAlpha = wisp.opacity * density * pulse;
+        ctx.fillStyle = '#b8d0bc';
+        ctx.beginPath();
+        ctx.ellipse(wisp.x, wy, wisp.w / 2, wisp.h / 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      ctx.restore();
+
+      // Radial visibility mask: clear around player, thick fog far from player
+      ctx.save();
+      const fogRadius = 220 + (1 - density) * 100; // smaller radius = denser fog
+      const outerRadius = fogRadius * 2.2;
+      const grad = ctx.createRadialGradient(playerSx, playerSy, fogRadius * 0.6, playerSx, playerSy, outerRadius);
+      grad.addColorStop(0, 'rgba(168, 190, 170, 0)');
+      grad.addColorStop(0.45, 'rgba(160, 185, 165, ' + (density * 0.55) + ')');
+      grad.addColorStop(1.0, 'rgba(148, 175, 155, ' + (density * 0.88) + ')');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, sw, sh);
+      ctx.restore();
+    }
+
+    // === HAILSTORM CHUNKS ===
+    if (weather.type === 'hailstorm') {
+      _ensureHailChunks(sw, sh);
+      const wx = Math.cos(weather.windAngle);
+      const wy = Math.sin(weather.windAngle);
+      const windTilt = wx * 0.35;
+
+      ctx.save();
+      for (const chunk of _hailChunks.chunks) {
+        // Animate: fast downward fall + wind tilt + slight wobble
+        chunk.y += chunk.speed * dt;
+        chunk.x += windTilt * chunk.speed * dt + Math.sin(now * 0.003 + chunk.wobble) * 0.4;
+        if (chunk.y > sh + 10) { chunk.y = -10; chunk.x = Math.random() * sw; }
+        if (chunk.x > sw + 10) chunk.x -= sw + 20;
+        if (chunk.x < -10) chunk.x += sw + 20;
+
+        ctx.globalAlpha = chunk.opacity * weather.intensity;
+        // Ice pellet: small white-blue rounded square
+        ctx.fillStyle = '#d8eeff';
+        ctx.beginPath();
+        ctx.roundRect(chunk.x - chunk.size / 2, chunk.y - chunk.size / 2, chunk.size, chunk.size, 1.5);
+        ctx.fill();
+        // Subtle blue outline
+        ctx.strokeStyle = 'rgba(160, 210, 255, 0.6)';
+        ctx.lineWidth = 0.5;
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
 
     // === RAIN DROPS ===
     if (isRainy) {
@@ -3228,21 +3363,39 @@
     }
 
     // === WEATHER BADGE (top-center, alongside clock) ===
-    const badges = { rain: '🌧️ RAIN', wind: '💨 WIND', storm: '⛈️ STORM' };
+    const badges = {
+      rain: '🌧️ RAIN',
+      wind: '💨 WIND',
+      storm: '⛈️ STORM',
+      fog: '🌫️ FOG',
+      hailstorm: '🌨️ HAIL',
+    };
+    const badgeBg = {
+      storm: 'rgba(60, 40, 0, 0.75)',
+      fog: 'rgba(80, 100, 80, 0.72)',
+      hailstorm: 'rgba(20, 50, 90, 0.78)',
+    };
+    const badgeColor = {
+      storm: '#ffdd44',
+      fog: '#c8e8cc',
+      hailstorm: '#aaddff',
+    };
     const badge = badges[weather.type];
     if (badge) {
       const timeRemaining = Math.max(0, Math.ceil((weather.endsAt - Date.now()) / 1000));
       const mins = Math.floor(timeRemaining / 60);
       const secs = timeRemaining % 60;
       const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
-      const pulse = weather.type === 'storm' ? (Math.sin(now * 0.006) * 0.15 + 0.85) : 1;
+      const pulse = (weather.type === 'storm' || weather.type === 'hailstorm')
+        ? (Math.sin(now * 0.006) * 0.15 + 0.85)
+        : (weather.type === 'fog' ? (Math.sin(now * 0.002) * 0.08 + 0.92) : 1);
       ctx.save();
       ctx.globalAlpha = pulse * 0.88;
-      ctx.fillStyle = weather.type === 'storm' ? 'rgba(60, 40, 0, 0.75)' : 'rgba(20, 40, 80, 0.65)';
+      ctx.fillStyle = badgeBg[weather.type] || 'rgba(20, 40, 80, 0.65)';
       ctx.beginPath();
       ctx.roundRect(sw / 2 + 75, 6, 105, 24, 5);
       ctx.fill();
-      ctx.fillStyle = weather.type === 'storm' ? '#ffdd44' : '#88ccff';
+      ctx.fillStyle = badgeColor[weather.type] || '#88ccff';
       ctx.font = 'bold 10px Courier New';
       ctx.textAlign = 'center';
       ctx.fillText(badge + ' ' + timeStr, sw / 2 + 127, 22);
@@ -4196,6 +4349,10 @@
     if (s.bmDoubleXpUntil && s.bmDoubleXpUntil > now) {
       const secs = Math.ceil((s.bmDoubleXpUntil - now) / 1000);
       html += '<div class="bm-buff-pill">🍀 2× XP — ' + Math.floor(secs / 60) + 'm' + (secs % 60) + 's</div>';
+    }
+    if (s.hailSlowUntil && s.hailSlowUntil > now) {
+      const secs = Math.ceil((s.hailSlowUntil - now) / 1000);
+      html += '<div class="bm-buff-pill" style="background:rgba(40,80,140,0.7);border-color:#aaddff;color:#aaddff">🧊 HAIL SLOW — ' + secs + 's</div>';
     }
 
     el.innerHTML = html;

@@ -557,6 +557,28 @@ Every non-racer can now put money where their mouth is. When a race opens, a bet
 
 **Creative intent**: This was always the missing piece of the racing system. Session 16 mentioned "betting culture" as a future goal — now it's real. A bird who doesn't want to race can still be fully invested in every race outcome. Rival flock members betting against each other on their own race creates instant drama. The pari-mutuel pool means that betting on the underdog pays huge if you're right. A player with a Lucky Charm + high combo who also happens to pick the winning racer gets an XP + coin windfall that feels incredible. Pure SOCIAL + PROGRESSION energy.
 
+**Session 18 — 2026-03-30: Fog & Hailstorm — Two New Weather Types**
+Expanded the weather system with two dramatically different new types: thick fog that turns cop chases into hide-and-seek, and hailstorm that pelts birds with ice chunks and slows anyone they hit.
+
+**Fog (`type: 'fog'`):**
+- Spawns with 14% probability (alongside rain/wind/storm), lasts 3–5 minutes
+- **Gameplay effect**: Cops lose sight of birds beyond 220px and wander in a confused drift instead of pursuing. The wanted bird can actually escape by staying > 220px away from each cop. Fog creates genuine hide-and-seek tension — if you're Most Wanted, fog is your best friend.
+- **Visual**: Multi-layer effect — grey-green background haze covers the whole screen; 40 slow-drifting wispy ellipses bob gently across the scene; a radial gradient vignette around the player creates a visible "seeing radius" of ~220px that fades to thick murk beyond. The more intense the fog, the smaller and more opaque the radius.
+- **Badge**: 🌫️ FOG (grey-green pill, slow pulse animation)
+- **Events**: "Dense fog rolls in... cops lose your trail!" on start; "The fog lifts. Cops can see you again." on end
+
+**Hailstorm (`type: 'hailstorm'`):**
+- Spawns with 13% probability, lasts only 1–2 minutes (intense but brief)
+- Has moderate wind (40–100px/s) so hail falls at a diagonal angle
+- **Gameplay effect**: Every 2.5–5 seconds, 1–3 hail strikes fire at random world positions. Any bird within 80px of a strike gets slowed to 50% speed for 1.2 seconds AND their combo streak is wiped. This makes hailstorm the hardest combo-killer in the game.
+- **`hailSlowUntil` stat**: tracked on bird server-side, exposed in self snapshot, visible as a debuff in the active buffs HUD (🧊 HAIL SLOW — Xs pill)
+- **Visual**: 180-particle hail chunk pool — chunky white/blue rounded squares (2.5–6px) falling fast at wind angle. Each chunk wobbles slightly side to side for a natural tumbling look. Small screen shake + 🧊 emoji effect at each strike location.
+- **Events**: announcement on start/end; "🧊 SLOW!" floating text at hit location; personal announcement "HIT BY HAIL! Slowed!" if it's your bird; event feed for all
+
+**Cop fog behavior (server):** Added `fogWanderAngle` to cop state. When fog is active AND cop's target bird is >220px away, cop enters a confused wander mode — drifting in the last-known direction with random angular drift. Resets when they close within 220px (or fog clears).
+
+**Creative intent**: The weather system had rain/wind/storm but they were all "obstacle" mechanics. Fog flips this — it's a BUFF for criminals, not a hazard. A Level 5 Most Wanted bird hiding in the fog while 3 cops wander confusedly 250px away is a genuinely cinematic stealth moment. Hailstorm is the opposite: pure CARNAGE, unpredictable punishment that destroys combo streaks and forces evasive flying. Together they make the weather system feel like a living force with personality.
+
 ### Next Ideas Queue
 - Underground sewer system (secret map layer)
 - Eagle Overlord rare drop: "Eagle Feather" cosmetic badge
@@ -566,9 +588,10 @@ Every non-racer can now put money where their mouth is. When a race opens, a bet
 - Bird gangs with custom colors/tags
 - Owl enforcer in park at night (creates no-poop zone, alerts NPCs)
 - Bioluminescent park pond at night (glowing water effect)
-- Weather combos: fog (low visibility), hailstorm (poop projectiles deflected), hot day (food spoils faster)
-- Birds can shelter under awnings/trees during storms (mechanic: reduced lightning hit radius if near cover)
+- Hot day weather: food spoils faster, birds need water puddles
+- Birds can shelter under awnings/trees during storms (mechanic: reduced hail hit radius if near cover)
 - Race power-ups: speed boost gates on the track that any bird can fly through
+- ~~Weather combos: fog (low visibility) + hailstorm~~ (DONE Session 18)
 - ~~Race betting system (spectators bet coins on a racer from anywhere on the map)~~ (DONE Session 17)
 - ~~Pigeon Racing Track — 5-checkpoint race, fastest bird wins the pot~~ (DONE Session 16)
 - ~~Radio tower control (broadcast messages server-wide)~~ (DONE Session 15)

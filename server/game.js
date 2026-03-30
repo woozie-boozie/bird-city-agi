@@ -403,6 +403,8 @@ class GameEngine {
       // === COMBO STREAK ===
       comboCount: 0,        // current consecutive hit streak
       comboExpiresAt: 0,    // timestamp when combo resets if no new hit
+      // === WEATHER EFFECTS ===
+      hailSlowUntil: 0,     // timestamp when hail slow wears off
     };
 
     // Determine bird type from XP
@@ -1635,6 +1637,11 @@ class GameEngine {
       maxSpeed *= 1.6;
     }
 
+    // Hailstorm: ice chunks slow birds
+    if (bird.hailSlowUntil > now) {
+      maxSpeed *= 0.5;
+    }
+
     // V Formation speed buff: 3+ flock mates within 200px with similar velocity
     if (bird.flockId) {
       let flockMatesNearby = 0;
@@ -2346,12 +2353,14 @@ class GameEngine {
 
     // Spawn new weather when timer fires
     if (!this.weather && now >= this.weatherTimer) {
-      // Rain is most common, storm is rarest
+      // Rain most common; fog and hailstorm rarer surprises
       const roll = Math.random();
       let type;
-      if (roll < 0.40) type = 'rain';
-      else if (roll < 0.75) type = 'wind';
-      else type = 'storm';
+      if (roll < 0.32) type = 'rain';
+      else if (roll < 0.58) type = 'wind';
+      else if (roll < 0.73) type = 'storm';
+      else if (roll < 0.87) type = 'fog';
+      else type = 'hailstorm';
 
       const windAngle = Math.random() * Math.PI * 2;
       let duration, windSpeed, intensity;
@@ -2363,10 +2372,18 @@ class GameEngine {
         duration = this._randomRange(90000, 180000); // 1.5–3 min
         windSpeed = 55 + Math.random() * 85;
         intensity = 0.5 + Math.random() * 0.5;
-      } else { // storm
+      } else if (type === 'storm') {
         duration = this._randomRange(90000, 150000); // 1.5–2.5 min
         windSpeed = 80 + Math.random() * 100;
         intensity = 1.0;
+      } else if (type === 'fog') {
+        duration = this._randomRange(180000, 300000); // 3–5 min
+        windSpeed = 0;
+        intensity = 0.75 + Math.random() * 0.25; // 0.75–1.0 fog density
+      } else { // hailstorm
+        duration = this._randomRange(60000, 120000); // 1–2 min (intense but brief)
+        windSpeed = 40 + Math.random() * 60; // moderate wind + hail
+        intensity = 0.8 + Math.random() * 0.2;
       }
 
       this.weather = {
@@ -2377,6 +2394,7 @@ class GameEngine {
         endsAt: now + duration,
         wormSpawnTimer: now + 5000,
         lightningTimer: now + this._randomRange(6000, 18000),
+        hailTimer: now + this._randomRange(2000, 4000), // for hailstorm
       };
 
       this.events.push({ type: 'weather_start', weatherType: type, windAngle, windSpeed, intensity });
@@ -2427,6 +2445,31 @@ class GameEngine {
       }
 
       this.weather.lightningTimer = now + this._randomRange(8000, 28000);
+    }
+
+    // Hailstorm: periodic hail strikes that slow birds
+    if (this.weather.type === 'hailstorm' && now >= this.weather.hailTimer) {
+      // Pick 1–3 random positions in the world for hail strikes
+      const strikeCount = 1 + Math.floor(Math.random() * 3);
+      for (let s = 0; s < strikeCount; s++) {
+        const hx = 200 + Math.random() * (world.WORLD_WIDTH - 400);
+        const hy = 200 + Math.random() * (world.WORLD_HEIGHT - 400);
+        this.events.push({ type: 'hail_strike', x: hx, y: hy });
+
+        // Slow any bird within 80px of the strike
+        for (const b of this.birds.values()) {
+          if (b.stunnedUntil > now) continue;
+          const dx = b.x - hx;
+          const dy = b.y - hy;
+          if (Math.sqrt(dx * dx + dy * dy) < 80) {
+            b.hailSlowUntil = now + 1200; // slowed for 1.2 seconds
+            b.comboCount = 0;             // hail breaks your combo streak
+            b.comboExpiresAt = 0;
+            this.events.push({ type: 'hail_hit', birdId: b.id, birdName: b.name, x: b.x, y: b.y });
+          }
+        }
+      }
+      this.weather.hailTimer = now + this._randomRange(2500, 5000);
     }
   }
 
@@ -3439,6 +3482,8 @@ class GameEngine {
         // Combo streak
         comboCount: bird.comboCount,
         comboExpiresAt: bird.comboExpiresAt,
+        // Weather debuffs
+        hailSlowUntil: bird.hailSlowUntil,
       },
       radioTower: {
         state: this.radioTower.state,
@@ -4725,10 +4770,26 @@ class GameEngine {
         continue;
       }
 
+      // Fog: cops lose sight of birds beyond 220px — they wander instead of pursuing
+      const fogActive = this.weather && this.weather.type === 'fog';
+
       // Pursue wanted bird
       const dx = wanted.x - cop.x;
       const dy = wanted.y - cop.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
+
+      if (fogActive && dist > 220) {
+        // Lost in the fog — wander in last-known direction with drift
+        cop.fogWanderAngle = cop.fogWanderAngle || Math.atan2(dy, dx);
+        cop.fogWanderAngle += (Math.random() - 0.5) * 0.6 * dt * 3;
+        cop.x += Math.cos(cop.fogWanderAngle) * cop.speed * 0.5 * dt;
+        cop.y += Math.sin(cop.fogWanderAngle) * cop.speed * 0.5 * dt;
+        cop.x = Math.max(10, Math.min(world.WORLD_WIDTH - 10, cop.x));
+        cop.y = Math.max(10, Math.min(world.WORLD_HEIGHT - 10, cop.y));
+        continue;
+      }
+      // Reset fog wander state once they can "see" again
+      if (!fogActive || dist <= 220) cop.fogWanderAngle = null;
 
       if (dist > 1) {
         cop.x += (dx / dist) * cop.speed * dt;
