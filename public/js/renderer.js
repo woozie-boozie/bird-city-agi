@@ -229,6 +229,107 @@ window.Renderer = {
   },
 
   // Draw minimap
+
+  // Convert hex color to rgba string
+  _hexToRgba(hex, alpha) {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    if (!result) return `rgba(255,255,255,${alpha})`;
+    return `rgba(${parseInt(result[1],16)},${parseInt(result[2],16)},${parseInt(result[3],16)},${alpha})`;
+  },
+
+  // Draw territory zone overlays — uses upstream state format (ownerTeamId, ownerColor, captureProgress)
+  drawTerritories(ctx, camera, territories) {
+    if (!territories || !territories.length) return;
+    const animTime = Date.now() / 1000;
+
+    for (const zone of territories) {
+      const sx = zone.x - camera.x + camera.screenW / 2;
+      const sy = zone.y - camera.y + camera.screenH / 2;
+
+      if (sx + zone.w < -20 || sy + zone.h < -20 || sx > camera.screenW + 20 || sy > camera.screenH + 20) continue;
+
+      const isOwned = zone.ownerTeamId !== null;
+      const isContested = isOwned && zone.capturingTeamId !== null;
+      const captureProgress = zone.captureProgress || 0; // 0-1
+
+      let fillAlpha = 0.05;
+      let fillColor;
+      let borderColor;
+      let borderWidth = 1;
+
+      if (isOwned) {
+        const ownerColor = zone.ownerColor || '#ffffff';
+        fillAlpha = 0.08 + captureProgress * 0.10;
+        fillColor = this._hexToRgba(ownerColor, fillAlpha);
+        borderColor = this._hexToRgba(ownerColor, 0.55);
+        borderWidth = 1.5;
+      } else if (zone.capturingTeamId) {
+        fillColor = `rgba(200,200,200,0.06)`;
+        const cColor = zone.baseColor || '#ffffff';
+        borderColor = this._hexToRgba(cColor, 0.3);
+      } else {
+        fillColor = `rgba(200,200,200,0.04)`;
+        borderColor = `rgba(200,200,200,0.10)`;
+      }
+
+      if (isContested) {
+        const pulse = 0.5 + 0.5 * Math.sin(animTime * 5);
+        borderColor = `rgba(255,100,50,${0.4 + pulse * 0.6})`;
+        borderWidth = 2;
+      }
+
+      ctx.fillStyle = fillColor;
+      ctx.fillRect(sx, sy, zone.w, zone.h);
+
+      ctx.strokeStyle = borderColor;
+      ctx.lineWidth = borderWidth;
+      ctx.setLineDash(isOwned ? [] : [6, 8]);
+      ctx.strokeRect(sx + 1, sy + 1, zone.w - 2, zone.h - 2);
+      ctx.setLineDash([]);
+
+      ctx.save();
+      ctx.textAlign = 'center';
+      const cx = sx + zone.w / 2;
+      const ty = sy + 20;
+
+      ctx.font = 'bold 11px monospace';
+      ctx.fillStyle = isOwned ? (zone.ownerColor || '#fff') : 'rgba(255,255,255,0.35)';
+      ctx.shadowColor = 'rgba(0,0,0,0.8)';
+      ctx.shadowBlur = 4;
+      ctx.fillText(zone.name.toUpperCase(), cx, ty);
+
+      if (isOwned) {
+        ctx.font = '9px monospace';
+        ctx.shadowBlur = 3;
+        if (isContested && zone.capturingName) {
+          const pulse = 0.6 + 0.4 * Math.sin(animTime * 5);
+          ctx.fillStyle = `rgba(255,100,50,${pulse})`;
+          ctx.fillText(`\u2694 ${zone.capturingName} ATTACKING`, cx, ty + 13);
+        } else {
+          ctx.fillStyle = 'rgba(255,255,255,0.55)';
+          ctx.fillText(zone.ownerName || '', cx, ty + 13);
+        }
+      }
+      ctx.restore();
+
+      // Capture progress bar
+      if (captureProgress > 0 || isOwned) {
+        const bx = sx + 8;
+        const by = sy + zone.h - 9;
+        const bw = zone.w - 16;
+        const bh = 4;
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.fillRect(bx, by, bw, bh);
+        const fillW = captureProgress * bw;
+        const barColor = isOwned
+          ? (isContested ? '#ff6633' : (zone.ownerColor || '#4ade80'))
+          : (zone.baseColor || '#888');
+        ctx.fillStyle = barColor;
+        ctx.fillRect(bx, by, fillW, bh);
+      }
+    }
+  },
+
   drawMinimap(minimapCtx, worldData, birds, selfBird, activeEvent, cat, janitor, territories, bankHeist, graffiti) {
     if (!worldData) return;
 

@@ -611,6 +611,15 @@ Bird City now has a whole hidden layer beneath the streets. 7 iron manhole cover
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - Eagle Overlord rare drop: "Eagle Feather" cosmetic badge
+**Session 20 — 2026-03-30: Territory Control System (Parallel Session)**
+Built the Territory Control System on top of the existing upstream code:
+- 6 named districts (Nest Side, Mall, Park, Cafe Quarter, Downtown, The Docks) — including a Docks zone added to upstream's 5
+- Integrated with upstream's territory state format: captureProgress 0-1, ownerTeamId, ownerColor
+- Added +30% XP/coins home turf bonus for poop hits in your owned zone
+- Added drawTerritories() renderer function with zone overlays, contested pulsing, capture bars
+- Territory zones shown in owner color on minimap
+- Event feed: territory_captured, territory_contested, territory_lost announcements
+- Added _getZoneForPoint() utility for other systems to query zone ownership
 - Pigeon mafia questline
 - Nest building and decoration
 - Egg protection mini-game

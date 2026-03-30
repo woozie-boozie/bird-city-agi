@@ -248,79 +248,50 @@ const POWERUP_TYPES = ['hot_sauce', 'speed_feather', 'ghost_feather', 'mega_poop
 
 // Street lamps — appear along roads and park perimeter, glow at night
 const STREET_LAMPS = [];
-// Along horizontal roads (placed at top edge of each road)
 [840, 1540, 2280].forEach(ry => {
   for (let x = 150; x < WORLD_WIDTH - 100; x += 280) {
     STREET_LAMPS.push({ x, y: ry - 8 });
   }
 });
-// Along vertical roads (placed at left edge of each road)
 [740, 1640, 2540].forEach(rx => {
   for (let y = 150; y < WORLD_HEIGHT - 100; y += 280) {
     STREET_LAMPS.push({ x: rx - 8, y });
   }
 });
-// Park perimeter lamps
 for (let px = 850; px <= 1480; px += 220) {
-  STREET_LAMPS.push({ x: px, y: 898 });   // top edge
-  STREET_LAMPS.push({ x: px, y: 1552 });  // bottom edge
+  STREET_LAMPS.push({ x: px, y: 898 });
+  STREET_LAMPS.push({ x: px, y: 1552 });
 }
 for (let py = 950; py <= 1500; py += 220) {
-  STREET_LAMPS.push({ x: 798, y: py });   // left edge
-  STREET_LAMPS.push({ x: 1502, y: py }); // right edge
+  STREET_LAMPS.push({ x: 798, y: py });
+  STREET_LAMPS.push({ x: 1502, y: py });
 }
 
-// ============================================================
-// TERRITORY ZONES — capturable areas for flocks & solo birds
-// Each zone: { id, name, x, y, w, h, baseColor }
-// ============================================================
 const TERRITORY_ZONES = [
   { id: 'park',        name: 'The Park',       x: 820,  y: 920,  w: 660, h: 610, baseColor: '#22cc55' },
   { id: 'downtown',    name: 'Downtown',        x: 1720, y: 1720, w: 730, h: 700, baseColor: '#4488ff' },
   { id: 'cafe',        name: 'Cafe District',   x: 200,  y: 1800, w: 510, h: 260, baseColor: '#ff8844' },
   { id: 'residential', name: 'Residential',     x: 140,  y: 140,  w: 560, h: 620, baseColor: '#cc44ff' },
   { id: 'mall',        name: 'The Mall',        x: 1790, y: 190,  w: 760, h: 410, baseColor: '#ffcc00' },
+  { id: 'docks',       name: 'The Docks',       x: 50,   y: 2310, w: 2470, h: 640, baseColor: '#778899' },
 ];
 
-// ============================================================
-// THE ARENA — PvP combat zone in the open grassland
-// Birds enter, pay an entry fee, and fight to the last wing
-// ============================================================
 const ARENA = {
-  x: 2750,      // center X
-  y: 1200,      // center Y
-  radius: 175,  // arena ring radius
-  entryFee: 30, // coins to enter
+  x: 2750, y: 1200, radius: 175, entryFee: 30,
 };
 
-// ============================================================
-// THE RADIO TOWER — contested control point (center-north)
-// Hold E to capture. Own it to broadcast to the whole city.
-// ============================================================
 const RADIO_TOWER = {
-  x: 1200,         // center between vertical roads (x:740 & x:1640)
-  y: 450,          // above main horizontal road (y:840)
-  captureRadius: 90,
+  x: 1200, y: 450, captureRadius: 90,
 };
 
-// ============================================================
-// PIGEON RACING TRACK — 5-checkpoint loop around the city
-// START at park center, race clockwise through all 4 corners,
-// then return to the finish line for glory and coins!
-// ============================================================
 const RACE_CHECKPOINTS = [
-  { x: 1200, y: 1200, label: 'START', r: 85 },   // idx 0 = start/finish line (park center)
-  { x: 2350, y: 600,  label: 'CP 1',  r: 85 },   // top-right: between Mall and highway
-  { x: 2500, y: 2480, label: 'CP 2',  r: 85 },   // bottom-right: below Downtown
-  { x: 350,  y: 2480, label: 'CP 3',  r: 85 },   // bottom-left: below Cafe District
-  { x: 350,  y: 480,  label: 'CP 4',  r: 85 },   // top-left: Residential corner
+  { x: 1200, y: 1200, label: 'START', r: 85 },
+  { x: 2350, y: 600,  label: 'CP 1',  r: 85 },
+  { x: 2500, y: 2480, label: 'CP 2',  r: 85 },
+  { x: 350,  y: 2480, label: 'CP 3',  r: 85 },
+  { x: 350,  y: 480,  label: 'CP 4',  r: 85 },
 ];
 
-// ============================================================
-// UNDERGROUND SEWER SYSTEM — manholes to a secret underworld
-// Press [E] near a manhole to descend. No cops can follow.
-// Sewer rats patrol underground. Rare loot caches await.
-// ============================================================
 const MANHOLES = [
   { id: 'mh1', x: 400,  y: 855,  label: 'Residential' },
   { id: 'mh2', x: 1050, y: 855,  label: 'Park Entrance' },
@@ -331,14 +302,13 @@ const MANHOLES = [
   { id: 'mh7', x: 450,  y: 2295, label: 'South Alley' },
 ];
 
-// Underground loot cache positions (scattered deep in the sewer)
 const SEWER_LOOT_POSITIONS = [
-  { x: 500,  y: 1050 },   // under Park area
-  { x: 1350, y: 320  },   // under north, near radio tower
-  { x: 1580, y: 1450 },   // center of city, underground
-  { x: 2300, y: 850  },   // under Mall district
-  { x: 680,  y: 2380 },   // under south cafe
-  { x: 2480, y: 2350 },   // southeast underground
+  { x: 500,  y: 1050 },
+  { x: 1350, y: 320  },
+  { x: 1580, y: 1450 },
+  { x: 2300, y: 850  },
+  { x: 680,  y: 2380 },
+  { x: 2480, y: 2350 },
 ];
 
 module.exports = {

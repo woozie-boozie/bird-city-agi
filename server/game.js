@@ -1970,6 +1970,22 @@ class GameEngine {
       else if (hit.target === 'bride') coinGain = 10;
       else if (hit.target === 'janitor') coinGain = 3;
       if (hit.npc && hit.npc.poopedOn >= 3) coinGain += 5; // made cry bonus
+
+      // Territory home turf bonus: +30% XP and coins when pooping in your own zone
+      if (xpGain > 2) { // only for actual hits, not bare ground poop
+        const poopZone = this._getZoneForPoint(poop.x, poop.y);
+        if (poopZone) {
+          const territory = this.territories.get(poopZone.id);
+          if (territory && territory.ownerTeamId && territory.captureProgress >= 0.5) {
+            const myTeamId = bird.flockId || ('solo_' + bird.id);
+            if (territory.ownerTeamId === myTeamId) {
+              xpGain = Math.floor(xpGain * 1.3);
+              coinGain = Math.max(1, Math.floor(coinGain * 1.3));
+            }
+          }
+        }
+      }
+
       bird.coins += coinGain;
 
       // === COMBO STREAK — chain hits within 8s for escalating XP ===
@@ -3638,6 +3654,17 @@ class GameEngine {
     clearInterval(this._leaderboardInterval);
     this.saveAll();
   }
+
+  // Helper: find which territory zone contains point (x, y)
+  _getZoneForPoint(x, y) {
+    for (const zone of world.TERRITORY_ZONES) {
+      if (x >= zone.x && x <= zone.x + zone.w && y >= zone.y && y <= zone.y + zone.h) {
+        return zone;
+      }
+    }
+    return null;
+  }
+
 
   // ============================================================
   // SKILL SYSTEM

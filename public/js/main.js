@@ -1433,6 +1433,19 @@
     if (ev.type === 'signal_boost_ended') {
       addEventMessage('📡 Signal Boost has faded.', '#888888');
     }
+
+    // === TERRITORY EVENTS ===
+    if (ev.type === 'territory_captured') {
+      showAnnouncement('🏴 ' + ev.teamName + ' seized ' + ev.zoneName + '!', '#ffc832', 3000);
+      addEventMessage('🏴 ' + ev.teamName + ' claimed ' + ev.zoneName, '#ffc832');
+    }
+    if (ev.type === 'territory_contested') {
+      addEventMessage('⚔ ' + ev.attackerName + ' attacks ' + ev.zoneName + ' (' + ev.ownerName + ')', '#ff8800');
+    }
+    if (ev.type === 'territory_lost') {
+      showAnnouncement('⚔ ' + ev.ownerName + ' LOST ' + ev.zoneName + '!', '#ff4444', 3000);
+      addEventMessage('⚔ ' + ev.ownerName + ' lost ' + ev.zoneName + ' to ' + ev.attackerName, '#ff4444');
+    }
   }
 
   function showAnnouncement(text, color, duration) {
@@ -3592,8 +3605,6 @@
 
     // World layers
     Renderer.drawGround(ctx, camera);
-    Renderer.drawRoads(ctx, camera);
-    Renderer.drawPark(ctx, camera);
 
     // Territory zones (drawn on top of ground, below buildings/entities)
     if (gameState.territories && gameState.self) {
@@ -3601,6 +3612,9 @@
       const myTeamId = selfBird.flockId || ('solo_' + selfBird.id);
       Renderer.drawTerritories(ctx, camera, gameState.territories, myTeamId);
     }
+
+    Renderer.drawRoads(ctx, camera);
+    Renderer.drawPark(ctx, camera);
 
     // The Arena (drawn on ground level, below buildings)
     if (worldData && worldData.arena) {

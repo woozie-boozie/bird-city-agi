@@ -35,6 +35,7 @@ app.get('/api/world', (req, res) => {
     radioTowerPos: world.RADIO_TOWER,
     raceCheckpoints: world.RACE_CHECKPOINTS,
     manholes: world.MANHOLES,
+    territoryZones: world.TERRITORY_ZONES,
   });
 });
 
