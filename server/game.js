@@ -171,6 +171,12 @@ class GameEngine {
     this.RACE_MAX_DURATION = 180000; // 3 min max race time
     this.RACE_CHECKPOINTS = world.RACE_CHECKPOINTS;
 
+    // === UNDERGROUND SEWER SYSTEM ===
+    this.sewerRats = new Map();     // id -> sewer rat state
+    this.sewerLoot = new Map();     // id -> loot cache state
+    this._lastSewerRatSpawn = 0;
+    this._initSewerLoot();
+
     // === LEADERBOARD CACHE (async Firestore) ===
     this._cachedLeaderboard = [];
     this._refreshLeaderboard();
@@ -395,6 +401,9 @@ class GameEngine {
       activeMission: null, // { missionId, progress, startedAt }
       // Nest (safe AFK)
       inNest: false,
+      // Underground sewer
+      inSewer: false,
+      lastSewerEntry: 0,
       // Black Market active items
       bmSpeedUntil: 0,
       bmMegaPoops: 0,
@@ -633,6 +642,14 @@ class GameEngine {
         bird.type = newType;
         this.events.push({ type: 'evolve', birdId: bird.id, name: bird.name, birdType: newType });
       }
+
+    // === Sewer entry / exit ===
+    if (action.type === 'enter_sewer') {
+      this._handleEnterSewer(bird, now);
+    }
+    if (action.type === 'exit_sewer') {
+      this._handleExitSewer(bird, now);
+    }
     }
   }
 
@@ -729,6 +746,10 @@ class GameEngine {
 
     // === Day/Night Cycle ===
     this._updateDayNight(dt, now);
+
+    // === Underground Sewer ===
+    this._updateSewerRats(dt, now);
+    this._updateSewerLoot(now);
   }
 
   // ============================================================
@@ -2120,6 +2141,22 @@ class GameEngine {
     }
 
     // === Auto-pickup power-ups (within 30px, handled in _updatePowerUps) ===
+
+    // === Sewer loot collection (auto-collect when underground and in range) ===
+    if (bird.inSewer) {
+      for (const loot of this.sewerLoot.values()) {
+        if (!loot.available) continue;
+        const dx = bird.x - loot.x;
+        const dy = bird.y - loot.y;
+        if (Math.sqrt(dx * dx + dy * dy) < 38) {
+          loot.available = false;
+          loot.respawnAt = now + 90000 + Math.random() * 30000; // 90-120s respawn
+          bird.coins += loot.value;
+          bird.xp += Math.floor(loot.value * 0.5);
+          this.events.push({ type: 'sewer_loot', birdId: bird.id, name: bird.name, value: loot.value, x: loot.x, y: loot.y });
+        }
+      }
+    }
   }
 
   _checkPoopHit(poop, isMegaPoop) {
@@ -3457,6 +3494,7 @@ class GameEngine {
         eagleEye: bird.eagleEyeUntil > now,
         cloaked: bird.cloakedUntil > now,
         inNest: bird.inNest,
+        inSewer: bird.inSewer,
         flockId: bird.flockId,
         flockName,
         flockMembers,
@@ -3497,6 +3535,13 @@ class GameEngine {
         isOwner: this.radioTower.ownerId === bird.id,
       },
       bankHeist: this._getBankHeistStateFor(bird.id),
+      // Sewer layer — only visible when underground
+      sewerRats: bird.inSewer
+        ? Array.from(this.sewerRats.values()).map(r => ({ id: r.id, x: r.x, y: r.y, rotation: r.rotation, state: r.state }))
+        : [],
+      sewerLoot: bird.inSewer
+        ? Array.from(this.sewerLoot.values()).filter(l => l.available).map(l => ({ id: l.id, x: l.x, y: l.y, value: l.value }))
+        : [],
       graffiti: Array.from(this.graffiti.entries())
         .filter(([, tag]) => tag.expiresAt > now)
         .map(([buildingIdx, tag]) => ({
@@ -4769,6 +4814,17 @@ class GameEngine {
         cop.y = Math.max(10, Math.min(world.WORLD_HEIGHT - 10, cop.y));
         continue;
       }
+
+      // Sewer: cops can't follow birds underground — they wander confused at manhole
+      if (wanted.inSewer) {
+        cop.sewerWanderAngle = (cop.sewerWanderAngle || Math.random() * Math.PI * 2) + dt * 0.4;
+        cop.x += Math.cos(cop.sewerWanderAngle) * cop.speed * 0.25 * dt;
+        cop.y += Math.sin(cop.sewerWanderAngle) * cop.speed * 0.25 * dt;
+        cop.x = Math.max(10, Math.min(world.WORLD_WIDTH - 10, cop.x));
+        cop.y = Math.max(10, Math.min(world.WORLD_HEIGHT - 10, cop.y));
+        continue;
+      }
+      cop.sewerWanderAngle = null;
 
       // Fog: cops lose sight of birds beyond 220px — they wander instead of pursuing
       const fogActive = this.weather && this.weather.type === 'fog';
@@ -6483,6 +6539,139 @@ class GameEngine {
           betResults.push({ birdId: bid, birdName: b ? b.name : '?', betAmount: bet.amount, payout: 0, profit: -bet.amount, won: false });
         }
         this.events.push({ type: 'race_bet_results', winnerName, noWinners: false, results: betResults });
+      }
+    }
+  }
+
+  // ============================================================
+  // UNDERGROUND SEWER SYSTEM
+  // ============================================================
+  _initSewerLoot() {
+    world.SEWER_LOOT_POSITIONS.forEach((pos, i) => {
+      const id = 'sewer_loot_' + i;
+      this.sewerLoot.set(id, {
+        id, x: pos.x, y: pos.y,
+        value: 30 + Math.floor(Math.random() * 60), // 30–89 coins
+        available: true,
+        respawnAt: 0,
+      });
+    });
+  }
+
+  _handleEnterSewer(bird, now) {
+    if (bird.inSewer) return;
+    if (now - (bird.lastSewerEntry || 0) < 3000) return; // 3s cooldown
+    // Server-side proximity to any manhole
+    for (const mh of world.MANHOLES) {
+      const dx = bird.x - mh.x;
+      const dy = bird.y - mh.y;
+      if (Math.sqrt(dx * dx + dy * dy) < 60) {
+        bird.inSewer = true;
+        bird.lastSewerEntry = now;
+        // Heat decays 3x faster underground (paranoid birds hide well)
+        this.events.push({ type: 'sewer_enter', birdId: bird.id, name: bird.name, x: bird.x, y: bird.y });
+        return;
+      }
+    }
+  }
+
+  _handleExitSewer(bird, now) {
+    if (!bird.inSewer) return;
+    if (now - (bird.lastSewerEntry || 0) < 2000) return; // must stay 2s min
+    for (const mh of world.MANHOLES) {
+      const dx = bird.x - mh.x;
+      const dy = bird.y - mh.y;
+      if (Math.sqrt(dx * dx + dy * dy) < 60) {
+        bird.inSewer = false;
+        bird.lastSewerEntry = now;
+        this.events.push({ type: 'sewer_exit', birdId: bird.id, name: bird.name, x: bird.x, y: bird.y });
+        return;
+      }
+    }
+  }
+
+  _updateSewerRats(dt, now) {
+    const anyBirdUnderground = Array.from(this.birds.values()).some(b => b.inSewer);
+
+    // Despawn all rats when nobody is underground
+    if (!anyBirdUnderground) {
+      this.sewerRats.clear();
+      return;
+    }
+
+    // Spawn up to 4 rats (one every 6s)
+    if (this.sewerRats.size < 4 && now - this._lastSewerRatSpawn > 6000) {
+      this._lastSewerRatSpawn = now;
+      const id = 'rat_' + Math.random().toString(36).slice(2, 8);
+      this.sewerRats.set(id, {
+        id,
+        x: this._randomRange(200, world.WORLD_WIDTH - 200),
+        y: this._randomRange(200, world.WORLD_HEIGHT - 200),
+        rotation: 0,
+        state: 'patrolling',
+        targetX: 0, targetY: 0,
+        nextPatrolAt: now,
+        lastAttack: 0,
+        speed: 110 + Math.random() * 50,
+      });
+    }
+
+    for (const rat of this.sewerRats.values()) {
+      // Find nearest underground bird
+      let nearestBird = null, nearestDist = 240;
+      for (const bird of this.birds.values()) {
+        if (!bird.inSewer) continue;
+        const dx = bird.x - rat.x, dy = bird.y - rat.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < nearestDist) { nearestBird = bird; nearestDist = dist; }
+      }
+
+      if (nearestBird) {
+        rat.state = 'chasing';
+        const dx = nearestBird.x - rat.x, dy = nearestBird.y - rat.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > 1) {
+          rat.x += (dx / dist) * rat.speed * dt;
+          rat.y += (dy / dist) * rat.speed * dt;
+          rat.rotation = Math.atan2(dy, dx);
+        }
+        // Attack on contact
+        if (dist < 45 && now - rat.lastAttack > 3500 && nearestBird.stunnedUntil <= now) {
+          rat.lastAttack = now;
+          const stolen = Math.min(Math.floor(this._randomRange(8, 28)), nearestBird.coins);
+          nearestBird.coins -= stolen;
+          nearestBird.stunnedUntil = now + 1500;
+          // Break combo streak
+          nearestBird.comboCount = 0;
+          nearestBird.comboExpiresAt = 0;
+          this.events.push({ type: 'sewer_rat_attack', birdId: nearestBird.id, ratId: rat.id, stolen, x: rat.x, y: rat.y });
+        }
+      } else {
+        rat.state = 'patrolling';
+        if (now >= rat.nextPatrolAt) {
+          rat.targetX = this._randomRange(100, world.WORLD_WIDTH - 100);
+          rat.targetY = this._randomRange(100, world.WORLD_HEIGHT - 100);
+          rat.nextPatrolAt = now + this._randomRange(3000, 7000);
+        }
+        const dx = rat.targetX - rat.x, dy = rat.targetY - rat.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > 20) {
+          rat.x += (dx / dist) * rat.speed * 0.5 * dt;
+          rat.y += (dy / dist) * rat.speed * 0.5 * dt;
+          rat.rotation = Math.atan2(dy, dx);
+        }
+      }
+
+      rat.x = Math.max(10, Math.min(world.WORLD_WIDTH - 10, rat.x));
+      rat.y = Math.max(10, Math.min(world.WORLD_HEIGHT - 10, rat.y));
+    }
+  }
+
+  _updateSewerLoot(now) {
+    for (const loot of this.sewerLoot.values()) {
+      if (!loot.available && loot.respawnAt > 0 && now >= loot.respawnAt) {
+        loot.available = true;
+        loot.value = 30 + Math.floor(Math.random() * 60); // fresh value on respawn
       }
     }
   }

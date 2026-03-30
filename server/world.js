@@ -316,6 +316,31 @@ const RACE_CHECKPOINTS = [
   { x: 350,  y: 480,  label: 'CP 4',  r: 85 },   // top-left: Residential corner
 ];
 
+// ============================================================
+// UNDERGROUND SEWER SYSTEM — manholes to a secret underworld
+// Press [E] near a manhole to descend. No cops can follow.
+// Sewer rats patrol underground. Rare loot caches await.
+// ============================================================
+const MANHOLES = [
+  { id: 'mh1', x: 400,  y: 855,  label: 'Residential' },
+  { id: 'mh2', x: 1050, y: 855,  label: 'Park Entrance' },
+  { id: 'mh3', x: 2050, y: 855,  label: 'Mall District' },
+  { id: 'mh4', x: 755,  y: 380,  label: 'North Quarter' },
+  { id: 'mh5', x: 755,  y: 1380, label: 'Midtown West' },
+  { id: 'mh6', x: 1655, y: 1800, label: 'Downtown' },
+  { id: 'mh7', x: 450,  y: 2295, label: 'South Alley' },
+];
+
+// Underground loot cache positions (scattered deep in the sewer)
+const SEWER_LOOT_POSITIONS = [
+  { x: 500,  y: 1050 },   // under Park area
+  { x: 1350, y: 320  },   // under north, near radio tower
+  { x: 1580, y: 1450 },   // center of city, underground
+  { x: 2300, y: 850  },   // under Mall district
+  { x: 680,  y: 2380 },   // under south cafe
+  { x: 2480, y: 2350 },   // southeast underground
+];
+
 module.exports = {
   WORLD_WIDTH, WORLD_HEIGHT,
   BUILDINGS, TREES, PARK, CAFE_TABLES, ROADS, CARS, LAUNDRY,
@@ -323,5 +348,6 @@ module.exports = {
   NPC_TYPES, BIRD_TYPES, DATE_CENTER,
   SKILL_CATALOG, BIRD_COLORS, STREET_LAMPS,
   TERRITORY_ZONES, ARENA, RADIO_TOWER, RACE_CHECKPOINTS,
+  MANHOLES, SEWER_LOOT_POSITIONS,
   getXPForLevel, getLevelFromXP, getBirdTypeForLevel,
 };

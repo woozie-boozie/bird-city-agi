@@ -1451,4 +1451,151 @@ window.Renderer = {
     minimapCtx.globalAlpha = 1;
     minimapCtx.restore();
   },
+
+  // Draw manhole covers on the surface map
+  drawManholes(ctx, camera, manholes, nearManholeId, inSewer) {
+    if (!manholes) return;
+    for (const mh of manholes) {
+      const sx = mh.x - camera.x + camera.screenW / 2;
+      const sy = mh.y - camera.y + camera.screenH / 2;
+      if (sx < -30 || sx > camera.screenW + 30 || sy < -30 || sy > camera.screenH + 30) continue;
+
+      const glowing = (nearManholeId === mh.id);
+      Sprites.drawManholeCover(ctx, sx, sy, glowing);
+
+      // Label near glowing one
+      if (glowing) {
+        ctx.save();
+        ctx.font = 'bold 10px Courier New';
+        ctx.textAlign = 'center';
+        const label = inSewer ? '⬆ Press [E] to surface' : '⬇ Press [E] to enter sewer';
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 3;
+        ctx.strokeText(label, sx, sy - 20);
+        ctx.fillStyle = '#44ffaa';
+        ctx.fillText(label, sx, sy - 20);
+        ctx.restore();
+      }
+    }
+  },
+
+  // Draw the full sewer environment overlay (when player is underground)
+  drawSewerOverlay(ctx, camera, selfBird, sewerRats, sewerLoot, now) {
+    const sw = camera.screenW, sh = camera.screenH;
+    const px = sw / 2, py = sh / 2;
+    const sightR = 320;
+
+    // === Use offscreen canvas so destination-out doesn't destroy main canvas ===
+    if (!this._sewerCanvas || this._sewerCanvas.width !== sw || this._sewerCanvas.height !== sh) {
+      this._sewerCanvas = document.createElement('canvas');
+      this._sewerCanvas.width = sw;
+      this._sewerCanvas.height = sh;
+      this._sewerCtx = this._sewerCanvas.getContext('2d');
+    }
+    const sc = this._sewerCtx;
+    sc.clearRect(0, 0, sw, sh);
+
+    // Fill entire offscreen canvas with dark sewer colour
+    sc.fillStyle = 'rgba(5, 18, 8, 0.93)';
+    sc.fillRect(0, 0, sw, sh);
+
+    // Punch a transparent sight circle using destination-out
+    sc.globalCompositeOperation = 'destination-out';
+    const clearGrad = sc.createRadialGradient(px, py, 0, px, py, sightR);
+    clearGrad.addColorStop(0,   'rgba(0,0,0,1)');
+    clearGrad.addColorStop(0.65,'rgba(0,0,0,0.88)');
+    clearGrad.addColorStop(1,   'rgba(0,0,0,0)');
+    sc.fillStyle = clearGrad;
+    sc.beginPath();
+    sc.arc(px, py, sightR, 0, Math.PI * 2);
+    sc.fill();
+    sc.globalCompositeOperation = 'source-over';
+
+    // Blit offscreen darkness onto main canvas
+    ctx.drawImage(this._sewerCanvas, 0, 0);
+
+    // === Green sewer tint over the visible area ===
+    ctx.save();
+    ctx.fillStyle = 'rgba(30, 80, 40, 0.15)';
+    ctx.beginPath();
+    ctx.arc(px, py, sightR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // === Dripping water particles (atmospheric) ===
+    ctx.save();
+    for (let i = 0; i < 12; i++) {
+      const seed = i * 137.5;
+      const drip_x = ((seed * 71 + now * 0.02) % sw);
+      const drip_y = ((now * (0.3 + (seed % 0.5)) + seed * 200) % (sightR * 2)) + py - sightR;
+      const alpha = 0.25 * Math.abs(Math.sin(now * 0.002 + seed));
+      const dist = Math.sqrt((drip_x - px) * (drip_x - px) + (drip_y - py) * (drip_y - py));
+      if (dist > sightR * 0.82) continue;
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = '#66cc88';
+      ctx.beginPath();
+      ctx.arc(drip_x, drip_y, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillRect(drip_x - 0.5, drip_y, 1, 5);
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+
+    // === Sewer loot caches (visible through darkness) ===
+    if (sewerLoot) {
+      for (const loot of sewerLoot) {
+        const sx = loot.x - camera.x + sw / 2;
+        const sy = loot.y - camera.y + sh / 2;
+        const dist = Math.sqrt((sx - px) * (sx - px) + (sy - py) * (sy - py));
+        if (dist > sightR + 40) continue;
+        Sprites.drawSewerTreasure(ctx, sx, sy, loot.value, now);
+      }
+    }
+
+    // === Sewer rats (visible through darkness) ===
+    if (sewerRats) {
+      for (const rat of sewerRats) {
+        const sx = rat.x - camera.x + sw / 2;
+        const sy = rat.y - camera.y + sh / 2;
+        const dist = Math.sqrt((sx - px) * (sx - px) + (sy - py) * (sy - py));
+        if (dist > sightR + 50) continue;
+        Sprites.drawSewerRat(ctx, sx, sy, rat.rotation, rat.state, now);
+      }
+    }
+
+    // === SEWER HUD — top banner ===
+    ctx.save();
+    ctx.fillStyle = 'rgba(0, 60, 20, 0.85)';
+    ctx.strokeStyle = '#44ff88';
+    ctx.lineWidth = 1.5;
+    const hudW = 260, hudH = 28;
+    const hudX = (sw - hudW) / 2;
+    ctx.beginPath();
+    ctx.roundRect(hudX, 8, hudW, hudH, 6);
+    ctx.fill();
+    ctx.stroke();
+    ctx.font = 'bold 13px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#44ff88';
+    const ratCount = sewerRats ? sewerRats.length : 0;
+    ctx.fillText('🐀 UNDERGROUND  ·  ' + ratCount + ' rat' + (ratCount !== 1 ? 's' : '') + ' nearby', sw / 2, 27);
+    ctx.restore();
+  },
+
+  // Manhole dots on minimap
+  drawManholesOnMinimap(minimapCtx, worldData, manholes, inSewer) {
+    if (!manholes || !worldData) return;
+    const mw = 100 / worldData.width;
+    const mh = 100 / worldData.height;
+    for (const hole of manholes) {
+      const sx = hole.x * mw;
+      const sy = hole.y * mh;
+      minimapCtx.globalAlpha = inSewer ? 0.9 : 0.5;
+      minimapCtx.fillStyle = inSewer ? '#44ff88' : '#668866';
+      minimapCtx.beginPath();
+      minimapCtx.arc(sx, sy, 2, 0, Math.PI * 2);
+      minimapCtx.fill();
+    }
+    minimapCtx.globalAlpha = 1;
+  },
 };

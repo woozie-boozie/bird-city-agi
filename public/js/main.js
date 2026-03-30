@@ -166,6 +166,9 @@
   let towerBroadcastOpen = false;
   let lastNearTower = false;
 
+  // Sewer state
+  let lastNearManholeId = null; // id of the manhole the player is near, or null
+
   // Pigeon Racing state
   let lastNearRaceStart = false;
   const raceProximityPrompt = document.getElementById('raceProximityPrompt');
@@ -1292,6 +1295,39 @@
       addEventMessage('The drunk pigeons passed out and went home at dawn.', '#aaaaaa');
     }
 
+    // === UNDERGROUND SEWER EVENTS ===
+    if (ev.type === 'sewer_enter') {
+      const isMe = ev.birdId === myId;
+      if (isMe) {
+        showAnnouncement('🐀 UNDERGROUND — No cops can follow you here!', '#44ff88', 3000);
+      } else {
+        addEventMessage('🚇 ' + ev.name + ' disappeared into the sewer!', '#44ff88');
+      }
+    }
+    if (ev.type === 'sewer_exit') {
+      const isMe = ev.birdId === myId;
+      if (isMe) {
+        showAnnouncement('⬆ Resurfaced!', '#aaffcc', 1800);
+      }
+    }
+    if (ev.type === 'sewer_rat_attack') {
+      const isMe = ev.birdId === myId;
+      if (isMe) {
+        showAnnouncement('🐀 RAT ATTACK! −' + ev.stolen + 'c', '#ff4444', 2000);
+        effects.push({ type: 'screen_shake', intensity: 5, duration: 350, time: performance.now() });
+        effects.push({ type: 'text', x: gameState && gameState.self ? gameState.self.x : ev.x, y: gameState && gameState.self ? gameState.self.y : ev.y, text: '−' + ev.stolen + 'c', color: '#ff4444', size: 13, time: performance.now(), duration: 1600 });
+      }
+    }
+    if (ev.type === 'sewer_loot') {
+      const isMe = ev.birdId === myId;
+      if (isMe) {
+        showAnnouncement('💰 SEWER STASH! +' + ev.value + 'c', '#ffd700', 2500);
+        effects.push({ type: 'text', x: ev.x, y: ev.y, text: '+' + ev.value + 'c 💰', color: '#ffd700', size: 14, time: performance.now(), duration: 2000 });
+      } else {
+        addEventMessage('🐀 ' + ev.name + ' found a sewer stash! +' + ev.value + 'c', '#ffd700');
+      }
+    }
+
     // === GODFATHER RACCOON EVENTS ===
     if (ev.type === 'godfather_spawn') {
       SoundEngine.bossSpawn();
@@ -1487,6 +1523,14 @@
           (gameState.arena.state === 'idle' || gameState.arena.state === 'waiting') &&
           !gameState.arena.isFighter) {
         socket.emit('action', { type: 'arena_enter' });
+      }
+      // Sewer entry / exit — press E near a manhole
+      if (gameState && gameState.self && lastNearManholeId) {
+        if (gameState.self.inSewer) {
+          socket.emit('action', { type: 'exit_sewer' });
+        } else {
+          socket.emit('action', { type: 'enter_sewer' });
+        }
       }
       // Radio Tower capture — hold E near tower (not near arena)
       if (gameState && gameState.self && worldData && worldData.radioTowerPos && !lastNearArena && towerCapState === null) {
@@ -2734,6 +2778,44 @@
   // ============================================================
   // PIGEON RACING UI — proximity prompt + race HUD
   // ============================================================
+  // SEWER UI — proximity prompt for manholes
+  // ============================================================
+  function updateSewerUI(now) {
+    if (!gameState || !gameState.self || !worldData || !worldData.manholes) return;
+    const s = gameState.self;
+    const inSewer = s.inSewer;
+
+    // Find nearest manhole
+    let nearId = null, nearDist = Infinity;
+    for (const mh of worldData.manholes) {
+      const dx = s.x - mh.x, dy = s.y - mh.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 70 && dist < nearDist) { nearDist = dist; nearId = mh.id; }
+    }
+    lastNearManholeId = nearId;
+
+    // Show/hide sewer proximity prompt
+    let sewerPrompt = document.getElementById('sewerProximityPrompt');
+    if (!sewerPrompt) {
+      sewerPrompt = document.createElement('div');
+      sewerPrompt.id = 'sewerProximityPrompt';
+      sewerPrompt.style.cssText = 'position:fixed;bottom:145px;left:50%;transform:translateX(-50%);' +
+        'background:rgba(0,30,10,0.85);color:#44ff88;font:bold 13px Courier New;' +
+        'padding:7px 16px;border-radius:20px;border:1px solid #44ff88;display:none;pointer-events:none;z-index:50;';
+      document.body.appendChild(sewerPrompt);
+    }
+
+    if (nearId) {
+      sewerPrompt.textContent = inSewer
+        ? '⬆ Press [E] to resurface'
+        : '🐀 Press [E] to enter the sewer';
+      sewerPrompt.style.display = 'block';
+    } else {
+      sewerPrompt.style.display = 'none';
+    }
+  }
+
+  // ============================================================
   function updateRaceUI() {
     if (!gameState || !gameState.self || !worldData || !worldData.raceCheckpoints) return;
     const s = gameState.self;
@@ -3899,8 +3981,19 @@
     // Effects (in zoomed world space)
     drawEffects(ctx, camera, now);
 
+    // Manholes (surface) — drawn in world space before zoom restore
+    if (worldData && worldData.manholes) {
+      const inSewer = gameState.self && gameState.self.inSewer;
+      Renderer.drawManholes(ctx, camera, worldData.manholes, lastNearManholeId, inSewer);
+    }
+
     // Restore zoom (HUD drawn at screen scale, not zoomed)
     ctx.restore();
+
+    // Sewer overlay (screen-space, drawn after zoom restore so it covers whole screen)
+    if (gameState.self && gameState.self.inSewer) {
+      Renderer.drawSewerOverlay(ctx, camera, gameState.self, gameState.sewerRats || [], gameState.sewerLoot || [], now);
+    }
 
     // Day/Night overlay (screen-space, after zoom restore)
     if (gameState.dayTime !== undefined && worldData) {
@@ -3941,6 +4034,7 @@
     updateRadioTowerUI(now);
     updateRaceUI();
     updateRaceBettingPanel();
+    updateSewerUI(now);
 
     // Minimap (now includes activeEvent and cat)
     Renderer.drawMinimap(minimapCtx, worldData, gameState.birds, selfBird, gameState.activeEvent, gameState.cat, gameState.janitor, gameState.territories, gameState.bankHeist, gameState.graffiti);
@@ -3948,6 +4042,11 @@
     // Race checkpoints on minimap
     if (worldData && worldData.raceCheckpoints) {
       Renderer.drawRaceOnMinimap(minimapCtx, worldData, worldData.raceCheckpoints, gameState.pigeonRace || null);
+    }
+
+    // Manholes on minimap
+    if (worldData && worldData.manholes) {
+      Renderer.drawManholesOnMinimap(minimapCtx, worldData, worldData.manholes, gameState.self && gameState.self.inSewer);
     }
 
     // Draw beacons on minimap

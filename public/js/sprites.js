@@ -2499,4 +2499,191 @@ window.Sprites = {
 
     ctx.restore();
   },
+
+  // === MANHOLE COVER (iron grate, on road surface) ===
+  drawManholeCover(ctx, x, y, glowing) {
+    ctx.save();
+    ctx.translate(x, y);
+    const r = 13;
+
+    // Outer iron ring
+    ctx.fillStyle = glowing ? '#88ffcc' : '#4a4a4a';
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Inner grate (slightly inset)
+    ctx.fillStyle = glowing ? '#55ddaa' : '#333';
+    ctx.beginPath();
+    ctx.arc(0, 0, r - 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Grate cross pattern
+    ctx.strokeStyle = glowing ? '#88ffcc' : '#555';
+    ctx.lineWidth = 1.5;
+    // Horizontal bars
+    for (let gy = -8; gy <= 8; gy += 4) {
+      const halfW = Math.sqrt(Math.max(0, (r - 4) * (r - 4) - gy * gy));
+      ctx.beginPath();
+      ctx.moveTo(-halfW, gy);
+      ctx.lineTo(halfW, gy);
+      ctx.stroke();
+    }
+    // Vertical bars
+    for (let gx = -8; gx <= 8; gx += 4) {
+      const halfH = Math.sqrt(Math.max(0, (r - 4) * (r - 4) - gx * gx));
+      ctx.beginPath();
+      ctx.moveTo(gx, -halfH);
+      ctx.lineTo(gx, halfH);
+      ctx.stroke();
+    }
+
+    // Outer rim highlight
+    ctx.strokeStyle = glowing ? '#aaffdd' : '#666';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Glow effect when player is nearby
+    if (glowing) {
+      ctx.shadowBlur = 14;
+      ctx.shadowColor = '#44ffaa';
+      ctx.strokeStyle = 'rgba(68,255,170,0.6)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(0, 0, r + 4, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+
+    ctx.restore();
+  },
+
+  // === SEWER RAT (small, grey, beady eyes, long tail) ===
+  drawSewerRat(ctx, x, y, rotation, state, now) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rotation);
+
+    const chasing = state === 'chasing';
+
+    // Body
+    ctx.fillStyle = chasing ? '#8b3a3a' : '#5a5040';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 11, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Head
+    ctx.fillStyle = chasing ? '#7a2a2a' : '#4a4030';
+    ctx.beginPath();
+    ctx.ellipse(12, 0, 7, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Snout
+    ctx.fillStyle = chasing ? '#aa4444' : '#6a5a40';
+    ctx.beginPath();
+    ctx.ellipse(18, 0, 4, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Ears
+    ctx.fillStyle = '#cc8888';
+    ctx.beginPath();
+    ctx.ellipse(9, -7, 3, 4, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(14, -6, 2.5, 3.5, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Beady eyes (glowing red when chasing)
+    ctx.fillStyle = chasing ? '#ff2222' : '#cc0000';
+    ctx.beginPath();
+    ctx.arc(14, -2, 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = chasing ? '#ff8888' : '#ff4444';
+    ctx.beginPath();
+    ctx.arc(14.5, -2.5, 0.8, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Tail (curved behind body)
+    ctx.strokeStyle = '#3a3028';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(-10, 2);
+    ctx.bezierCurveTo(-18, 8, -22, 0, -20, -8);
+    ctx.stroke();
+
+    // Front legs (scurrying motion)
+    const legPhase = now * 0.008;
+    ctx.strokeStyle = '#4a4030';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(6, 5);
+    ctx.lineTo(6 + Math.sin(legPhase) * 5, 11);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, 5);
+    ctx.lineTo(0 - Math.sin(legPhase) * 5, 11);
+    ctx.stroke();
+
+    // Glow aura when chasing
+    if (chasing) {
+      ctx.shadowBlur = 8;
+      ctx.shadowColor = '#ff4444';
+      ctx.fillStyle = 'rgba(255,60,60,0.15)';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 16, 12, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
+    ctx.restore();
+  },
+
+  // === SEWER TREASURE CACHE (pile of glowing coins) ===
+  drawSewerTreasure(ctx, x, y, value, now) {
+    ctx.save();
+    ctx.translate(x, y);
+
+    const pulse = 0.85 + 0.15 * Math.sin(now * 0.003 + x * 0.01);
+
+    // Glow
+    ctx.globalAlpha = 0.4 * pulse;
+    const grad = ctx.createRadialGradient(0, 0, 2, 0, 0, 22);
+    grad.addColorStop(0, '#ffe040');
+    grad.addColorStop(1, 'transparent');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(0, 0, 22, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // Coin pile (3 stacked coins)
+    const coinPositions = [[-6, 4], [0, 0], [6, 4]];
+    for (const [cx, cy] of coinPositions) {
+      ctx.fillStyle = '#cc8800';
+      ctx.beginPath();
+      ctx.arc(cx, cy, 7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffcc00';
+      ctx.beginPath();
+      ctx.arc(cx - 1, cy - 1, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffe566';
+      ctx.beginPath();
+      ctx.arc(cx - 2, cy - 2, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Value label
+    ctx.font = 'bold 9px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ffe040';
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 2;
+    ctx.strokeText(value + 'c', 0, -14);
+    ctx.fillText(value + 'c', 0, -14);
+
+    ctx.restore();
+  },
 };

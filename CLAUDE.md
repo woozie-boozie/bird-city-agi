@@ -579,8 +579,37 @@ Expanded the weather system with two dramatically different new types: thick fog
 
 **Creative intent**: The weather system had rain/wind/storm but they were all "obstacle" mechanics. Fog flips this — it's a BUFF for criminals, not a hazard. A Level 5 Most Wanted bird hiding in the fog while 3 cops wander confusedly 250px away is a genuinely cinematic stealth moment. Hailstorm is the opposite: pure CARNAGE, unpredictable punishment that destroys combo streaks and forces evasive flying. Together they make the weather system feel like a living force with personality.
 
+**Session 19 — 2026-03-30: Underground Sewer System — A Secret World Below the City**
+Bird City now has a whole hidden layer beneath the streets. 7 iron manhole covers sit on the city's roads — fly near one and press [E] to descend into the darkness.
+
+**Underground mechanics (`server/game.js`, `server/world.js`):**
+- 7 manholes placed on roads near key districts: Residential, Park, Mall, North Quarter, Midtown West, Downtown, South Alley
+- Press [E] near any manhole to enter the sewer; press [E] near any manhole to resurface
+- **Cop evasion**: cops can't follow you underground — they wander in confused circles at the manhole entrance while you hide
+- **Sewer rats**: up to 4 sewer rats patrol underground while any bird is down there. They chase birds within 240px, attack within 45px (steal 8-28 coins + stun 1.5s + wipe combo streak). Despawn when all birds resurface
+- **Sewer loot caches**: 6 hidden coin piles (30-89c each) distributed deep in the sewer at underground-only positions. Auto-collect by flying over them. Respawn every 90-120 seconds
+- Heat decays at normal rate underground — the sewer isn't permanent safety, just a tactical escape
+
+**Visual (`public/js/renderer.js`, `public/js/sprites.js`):**
+- **Manhole covers**: iron grate pattern with cross bars, rendered in world space on road surfaces. Glow green + label when you're within range
+- **Sewer darkness**: full-screen dark green overlay with an offscreen canvas + destination-out punch for the sight circle (~320px radius) around the player — same technique as the night cycle
+- **Sight vignette**: gentle radial fade from clear vision at center to thick murk at the edges
+- **Atmospheric drips**: 12 animated water droplets slowly fall within the sight radius for that underground damp feeling
+- **Sewer loot**: glowing gold coin piles with pulsing yellow aura and "Xc" value label — visible through the darkness
+- **Sewer rats**: custom sprite — grey-brown body, beady red eyes, curved tail, scurrying legs. Turn red-tinted when chasing
+- **Sewer HUD**: permanent green banner at top showing "🐀 UNDERGROUND · N rats nearby"
+- **Minimap**: small green dots at each manhole position (brighter when underground)
+
+**Events & announcements:**
+- Enter: city-wide "🚇 [Name] disappeared into the sewer!" + personal "No cops can follow you here!"
+- Exit: personal "⬆ Resurfaced!" announcement
+- Rat attack: personal "🐀 RAT ATTACK! −Xc" + screen shake
+- Loot collect: personal "💰 SEWER STASH! +Xc" + city-wide callout
+
+**Creative intent**: The sewer fills the DISCOVERY pillar completely. First-timers stumble onto a manhole and drop into a secret world. The core loop is a risk-reward: you enter to escape the cops (SAFE from heat system), but the sewer has its own dangers (rats) and its own rewards (loot caches). The limited sight radius creates genuine tension — you can hear the rats but can barely see them. A Most Wanted bird ditching into a manhole mid-chase to escape 3 pursuing cops is a genuinely cinematic moment. The loot caches give explorers a reason to venture deep instead of just hiding near the entrance. Pure DISCOVERY + CARNAGE energy.
+
 ### Next Ideas Queue
-- Underground sewer system (secret map layer)
+- ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - Eagle Overlord rare drop: "Eagle Feather" cosmetic badge
 - Pigeon mafia questline
 - Nest building and decoration
