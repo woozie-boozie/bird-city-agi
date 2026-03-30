@@ -1699,4 +1699,128 @@ window.Renderer = {
     }
     minimapCtx.globalAlpha = 1;
   },
+
+  // Draw golden egg nest delivery zones (glowing gold rings on the map)
+  drawEggNestZones(ctx, camera, nestZones, t) {
+    if (!nestZones || !nestZones.length) return;
+    for (const nest of nestZones) {
+      const sx = nest.x - camera.x + camera.screenW / 2;
+      const sy = nest.y - camera.y + camera.screenH / 2;
+      if (sx < -150 || sx > camera.screenW + 150 || sy < -150 || sy > camera.screenH + 150) continue;
+
+      const pulse = 0.55 + 0.45 * Math.sin(t * 2.2 + nest.x * 0.003);
+
+      // Filled area
+      ctx.beginPath();
+      ctx.arc(sx, sy, nest.r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255, 210, 0, ${0.06 + 0.05 * pulse})`;
+      ctx.fill();
+
+      // Pulsing border ring
+      ctx.beginPath();
+      ctx.arc(sx, sy, nest.r, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(255, 215, 0, ${0.5 + 0.4 * pulse})`;
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+
+      // Outer glow ring
+      ctx.beginPath();
+      ctx.arc(sx, sy, nest.r + 6 + 4 * pulse, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(255, 200, 0, ${0.18 * pulse})`;
+      ctx.lineWidth = 4;
+      ctx.stroke();
+
+      // Label
+      ctx.save();
+      ctx.font = 'bold 11px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(255, 230, 50, 0.9)';
+      ctx.shadowColor = 'rgba(0,0,0,0.8)';
+      ctx.shadowBlur = 4;
+      ctx.fillText('🪺 DELIVER HERE', sx, sy - nest.r - 6);
+      ctx.restore();
+    }
+  },
+
+  // Draw golden eggs lying on the ground (unclaimed)
+  drawGoldenEggs(ctx, camera, eggs, t) {
+    if (!eggs || !eggs.length) return;
+    for (const egg of eggs) {
+      if (egg.delivered || egg.carrierId) continue; // Only draw uncarried eggs
+      const sx = egg.x - camera.x + camera.screenW / 2;
+      const sy = egg.y - camera.y + camera.screenH / 2;
+      if (sx < -60 || sx > camera.screenW + 60 || sy < -60 || sy > camera.screenH + 60) continue;
+
+      Sprites.drawGoldenEgg(ctx, sx, sy, 13, t);
+
+      // "EGG" label below
+      ctx.save();
+      ctx.font = 'bold 10px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#ffd700';
+      ctx.shadowColor = 'rgba(0,0,0,0.9)';
+      ctx.shadowBlur = 3;
+      ctx.fillText('EGG', sx, sy + 25);
+      ctx.restore();
+    }
+  },
+
+  // Draw egg indicator above a bird that is carrying a golden egg
+  drawCarriedEggIndicator(ctx, bx, by, t) {
+    const bobY = -38 + 3 * Math.sin(t * 4);
+    Sprites.drawGoldenEgg(ctx, bx, by + bobY, 8, t);
+
+    // "EGG!" label
+    ctx.save();
+    ctx.font = 'bold 10px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ffd700';
+    ctx.shadowColor = 'rgba(0,0,0,0.9)';
+    ctx.shadowBlur = 3;
+    ctx.fillText('EGG!', bx, by + bobY - 16);
+    ctx.restore();
+  },
+
+  // Draw egg scramble minimap indicators
+  drawEggScrambleOnMinimap(minimapCtx, worldData, eggScramble, eggNestZones) {
+    if (!worldData) return;
+    const mw = minimapCtx.canvas.width;
+    const mh = minimapCtx.canvas.height;
+    const sx = mw / worldData.width;
+    const sy = mh / worldData.height;
+    const pulse = 0.5 + 0.5 * Math.sin(Date.now() * 0.005);
+
+    // Draw nest zones as small gold dots
+    if (eggNestZones) {
+      for (const nest of eggNestZones) {
+        minimapCtx.globalAlpha = 0.55 + 0.25 * pulse;
+        minimapCtx.fillStyle = '#ffd700';
+        minimapCtx.beginPath();
+        minimapCtx.arc(nest.x * sx, nest.y * sy, 3, 0, Math.PI * 2);
+        minimapCtx.fill();
+      }
+    }
+
+    // Draw eggs (unclaimed = gold, carried = brighter/pulsing)
+    if (eggScramble && eggScramble.eggs) {
+      for (const egg of eggScramble.eggs) {
+        if (egg.delivered) continue;
+        minimapCtx.globalAlpha = egg.carrierId ? (0.7 + 0.3 * pulse) : 0.85;
+        minimapCtx.fillStyle = egg.carrierId ? '#ff8c00' : '#ffd700';
+        minimapCtx.beginPath();
+        minimapCtx.arc(egg.x * sx, egg.y * sy, egg.carrierId ? 4 : 3, 0, Math.PI * 2);
+        minimapCtx.fill();
+        if (egg.carrierId) {
+          // Ring around carried egg
+          minimapCtx.globalAlpha = 0.4 * pulse;
+          minimapCtx.strokeStyle = '#ffcc00';
+          minimapCtx.lineWidth = 1;
+          minimapCtx.beginPath();
+          minimapCtx.arc(egg.x * sx, egg.y * sy, 6, 0, Math.PI * 2);
+          minimapCtx.stroke();
+        }
+      }
+    }
+    minimapCtx.globalAlpha = 1;
+  },
 };

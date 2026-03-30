@@ -608,8 +608,36 @@ Bird City now has a whole hidden layer beneath the streets. 7 iron manhole cover
 
 **Creative intent**: The sewer fills the DISCOVERY pillar completely. First-timers stumble onto a manhole and drop into a secret world. The core loop is a risk-reward: you enter to escape the cops (SAFE from heat system), but the sewer has its own dangers (rats) and its own rewards (loot caches). The limited sight radius creates genuine tension — you can hear the rats but can barely see them. A Most Wanted bird ditching into a manhole mid-chase to escape 3 pursuing cops is a genuinely cinematic moment. The loot caches give explorers a reason to venture deep instead of just hiding near the entrance. Pure DISCOVERY + CARNAGE energy.
 
+**Session 21 — 2026-03-30: Golden Egg Scramble — City-Wide Capture-the-Egg Event**
+Every 12–18 minutes, 3 golden eggs drop across Bird City in a chaotic capture-the-egg free-for-all. First bird to snag one and sprint it to a nest wins massive rewards — but rivals can tackle you mid-flight to steal it.
+
+**The Scramble flow (`server/game.js`):**
+- Timer fires every 12–18 min (when ≥1 player online), spawning 3 eggs at randomized positions from an 8-point spread map
+- Eggs auto-picked up: fly within 35px of an unclaimed egg to grab it
+- Egg carrier: -20% speed, CANNOT poop (both talons occupied — a real sacrifice of combat capability)
+- **Tackle steal**: rival flies within 45px of a carrier → instantly steals the egg. 3-second immunity after being tackled (no instant re-steal loop)
+- 4 nest delivery zones spread across the map (top-left Residential, top-right Mall, Park center, Docks):  fly into the glowing nest ring to deliver
+- **Rewards by delivery order**: 1st = 500 XP + 250c, 2nd = 300 XP + 150c, 3rd = 200 XP + 100c
+- Event ends after 3 minutes or all 3 eggs delivered
+- Disconnected egg carrier: egg drops at last position for others to grab
+
+**Visual system (`public/js/sprites.js`, `public/js/renderer.js`):**
+- `drawGoldenEgg()`: shimmering golden egg sprite with pulsing glow halo, gradient body, highlight, rotating 4-point sparkle
+- `drawEggNestZones()`: glowing pulsing gold rings for delivery zones with "🪺 DELIVER HERE" labels
+- `drawGoldenEggs()`: draws unclaimed eggs on the ground with "EGG" labels
+- `drawCarriedEggIndicator()`: golden egg bobs above any carrier's head (visible to all players nearby)
+- `drawEggScrambleOnMinimap()`: gold dots for all eggs + nest zones; carried eggs pulse brighter
+
+**HUD & Events:**
+- `#eggScrambleHud`: top-center pill showing egg count, timer, and "YOU HAVE AN EGG — FLY TO 🪺!" when carrying
+- City-wide announcements: scramble start (screen shake), egg grabbed, tackle steal, each delivery (medal emoji), scramble end
+- Carrying bird is immediately visible to all players — you become a target the moment you grab an egg
+
+**Creative intent**: Pure capture-the-flag chaos designed for emergent social moments. Can't poop while carrying = forces real choice between offense and objective play. Tackle mechanic creates chase sequences without needing new buttons — just proximity. The flock coordination emergent behavior: "you carry, I protect you from tackles." 4 nest zones spread far apart mean you can't just camp one — you have to commit to a direction. The 12-18 min timer means it fires during longer play sessions as a wild-card event that disrupts everything else happening. Pure CARNAGE + SOCIAL energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
+- ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
 - Eagle Overlord rare drop: "Eagle Feather" cosmetic badge
 **Session 20 — 2026-03-30: Territory Control System (Parallel Session)**
 Built the Territory Control System on top of the existing upstream code:
@@ -622,7 +650,6 @@ Built the Territory Control System on top of the existing upstream code:
 - Added _getZoneForPoint() utility for other systems to query zone ownership
 - Pigeon mafia questline
 - Nest building and decoration
-- Egg protection mini-game
 - Bird gangs with custom colors/tags
 - Owl enforcer in park at night (creates no-poop zone, alerts NPCs)
 - Bioluminescent park pond at night (glowing water effect)

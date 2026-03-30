@@ -2686,4 +2686,60 @@ window.Sprites = {
 
     ctx.restore();
   },
+
+  // Golden egg — shimmering prize for the egg scramble event
+  drawGoldenEgg(ctx, x, y, size, t) {
+    const s = size || 12;
+    const pulse = 0.88 + 0.12 * Math.sin(t * 3.2);
+    const w = s * pulse;
+    const h = w * 1.38;
+
+    ctx.save();
+    ctx.translate(x, y);
+
+    // Outer glow halo
+    const glowGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, w * 2.4);
+    glowGrad.addColorStop(0, 'rgba(255, 230, 60, 0.45)');
+    glowGrad.addColorStop(0.5, 'rgba(255, 180, 0, 0.18)');
+    glowGrad.addColorStop(1, 'rgba(255, 150, 0, 0)');
+    ctx.beginPath();
+    ctx.ellipse(0, 0, w * 2.4, h * 2, 0, 0, Math.PI * 2);
+    ctx.fillStyle = glowGrad;
+    ctx.fill();
+
+    // Egg body
+    const bodyGrad = ctx.createRadialGradient(-w * 0.28, -h * 0.25, 0, 0, 0, h);
+    bodyGrad.addColorStop(0, '#fff8b0');
+    bodyGrad.addColorStop(0.35, '#ffd700');
+    bodyGrad.addColorStop(0.75, '#cc8800');
+    bodyGrad.addColorStop(1, '#9a5c00');
+    ctx.beginPath();
+    ctx.ellipse(0, 0, w, h, 0, 0, Math.PI * 2);
+    ctx.fillStyle = bodyGrad;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 200, 0, 0.75)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Highlight
+    ctx.beginPath();
+    ctx.ellipse(-w * 0.26, -h * 0.28, w * 0.28, h * 0.18, -0.3, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255, 255, 200, 0.72)';
+    ctx.fill();
+
+    // Rotating sparkle star
+    const sparkAngle = t * 4;
+    ctx.fillStyle = 'rgba(255, 255, 130, 0.85)';
+    ctx.beginPath();
+    for (let i = 0; i < 4; i++) {
+      const a1 = sparkAngle + i * (Math.PI / 2);
+      const a2 = sparkAngle + i * (Math.PI / 2) + Math.PI / 4;
+      ctx.lineTo(Math.cos(a1) * w * 0.52, Math.sin(a1) * w * 0.52);
+      ctx.lineTo(Math.cos(a2) * w * 0.18, Math.sin(a2) * w * 0.18);
+    }
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.restore();
+  },
 };

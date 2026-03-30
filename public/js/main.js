@@ -1369,6 +1369,50 @@
       }
     }
 
+    // === GOLDEN EGG SCRAMBLE EVENTS ===
+    if (ev.type === 'egg_scramble_start') {
+      SoundEngine.bossSpawn();
+      showAnnouncement('🥚 GOLDEN EGG SCRAMBLE! 3 eggs dropped — grab & deliver to a 🪺 NEST!', '#ffd700', 6000);
+      addEventMessage('🥚 3 golden eggs appeared across the city! Grab one and fly it to a 🪺 nest — but rivals can tackle you to steal it! No pooping while carrying!', '#ffd700');
+      effects.push({ type: 'screen_shake', intensity: 8, duration: 500, time: now });
+    }
+    if (ev.type === 'egg_grabbed') {
+      const isMe = ev.birdId === myId;
+      if (isMe) {
+        showAnnouncement('🥚 YOU GRABBED AN EGG! Fly to a 🪺 NEST — no pooping while carrying!', '#ffd700', 4000);
+      }
+      addEventMessage('🥚 ' + ev.birdName + ' grabbed a golden egg!', '#ffd700');
+      effects.push({ type: 'text', x: ev.x, y: ev.y - 20, text: '🥚 GOT EGG!', color: '#ffd700', size: 16, time: performance.now(), duration: 2000 });
+    }
+    if (ev.type === 'egg_tackled') {
+      const wasMe = ev.victimBirdId === myId;
+      const didITackle = ev.tacklerBirdId === myId;
+      if (wasMe) {
+        showAnnouncement('💥 EGG STOLEN BY ' + ev.tacklerName.toUpperCase() + '!', '#ff4444', 3000);
+        effects.push({ type: 'screen_shake', intensity: 6, duration: 400, time: now });
+      } else if (didITackle) {
+        showAnnouncement('💥 YOU TACKLED ' + ev.victimName.toUpperCase() + ' — EGG SECURED!', '#ffd700', 3000);
+      }
+      addEventMessage('💥 ' + ev.tacklerName + ' tackled ' + ev.victimName + ' and stole the egg!', '#ff8800');
+      effects.push({ type: 'text', x: ev.x, y: ev.y - 20, text: '💥 STOLEN!', color: '#ff8800', size: 16, time: performance.now(), duration: 2000 });
+    }
+    if (ev.type === 'egg_delivered') {
+      const isMe = ev.birdId === myId;
+      if (isMe) {
+        showAnnouncement('🪺 EGG DELIVERED! +' + ev.xp + ' XP +' + ev.coins + 'c', '#4ade80', 5000);
+        effects.push({ type: 'screen_shake', intensity: 10, duration: 600, time: now });
+      }
+      const medal = ev.deliveryNumber === 1 ? '🥇' : ev.deliveryNumber === 2 ? '🥈' : '🥉';
+      addEventMessage(medal + ' ' + ev.birdName + ' delivered egg #' + ev.deliveryNumber + '! (+' + ev.xp + ' XP +' + ev.coins + 'c)', '#4ade80');
+    }
+    if (ev.type === 'egg_scramble_end') {
+      if (ev.allDelivered) {
+        addEventMessage('🥚 All ' + ev.total + ' golden eggs delivered! Next scramble in ~15 minutes.', '#ffd700');
+      } else {
+        addEventMessage('🥚 Egg scramble ended — ' + ev.delivered + '/' + ev.total + ' eggs delivered. Next scramble in ~15 minutes.', '#888888');
+      }
+    }
+
     // === TERRITORY EVENTS ===
     if (ev.type === 'territory_captured') {
       addEventMessage(`🏴 ${ev.teamName} seized ${ev.zoneName}!`, '#ffe066');
@@ -2221,6 +2265,33 @@
         sbHud.style.display = 'none';
       }
     }
+
+    // Egg Scramble HUD
+    updateEggScrambleHud();
+  }
+
+  function updateEggScrambleHud() {
+    const hudEl = document.getElementById('eggScrambleHud');
+    if (!hudEl) return;
+
+    const scramble = gameState && gameState.eggScramble;
+    if (!scramble) {
+      hudEl.style.display = 'none';
+      return;
+    }
+
+    const secsLeft = Math.max(0, Math.ceil((scramble.endsAt - Date.now()) / 1000));
+    const carrying = gameState.self && gameState.self.carryingEggId;
+    const delivered = scramble.delivered || 0;
+    const total = (scramble.eggs && scramble.eggs.length) || 3;
+
+    hudEl.style.display = 'block';
+    hudEl.innerHTML =
+      '<span style="font-size:16px">🥚</span> ' +
+      '<b>EGG SCRAMBLE</b> ' +
+      delivered + '/' + total + ' delivered' +
+      (secsLeft > 0 ? ' &nbsp;·&nbsp; ' + secsLeft + 's' : '') +
+      (carrying ? ' &nbsp;·&nbsp; <span style="color:#ffd700">YOU HAVE AN EGG — FLY TO 🪺!</span>' : '');
   }
 
   // ============================================================
@@ -3613,6 +3684,11 @@
       Renderer.drawTerritories(ctx, camera, gameState.territories, myTeamId);
     }
 
+    // Egg nest delivery zones (always visible when scramble is active)
+    if (gameState.eggScramble && gameState.eggNestZones) {
+      Renderer.drawEggNestZones(ctx, camera, gameState.eggNestZones, now / 1000);
+    }
+
     Renderer.drawRoads(ctx, camera);
     Renderer.drawPark(ctx, camera);
 
@@ -3650,6 +3726,11 @@
           Sprites.drawFood(ctx, sx, sy, food.type);
         }
       }
+    }
+
+    // Golden eggs (on ground, unclaimed)
+    if (gameState.eggScramble && gameState.eggScramble.eggs) {
+      Renderer.drawGoldenEggs(ctx, camera, gameState.eggScramble.eggs, now / 1000);
     }
 
     // Power-ups
@@ -3917,6 +3998,11 @@
             Sprites.drawPowerUpIcon(ctx, sx, sy, b.powerUpType);
           }
 
+          // Golden egg carrier indicator
+          if (b.carryingEggId) {
+            Renderer.drawCarriedEggIndicator(ctx, sx, sy, now / 1000);
+          }
+
           // Wanted indicator
           if (gameState.wantedBirdId && b.id === gameState.wantedBirdId) {
             const wPulse = Math.sin(now * 0.008) * 0.3 + 0.7;
@@ -4061,6 +4147,11 @@
     // Manholes on minimap
     if (worldData && worldData.manholes) {
       Renderer.drawManholesOnMinimap(minimapCtx, worldData, worldData.manholes, gameState.self && gameState.self.inSewer);
+    }
+
+    // Golden egg scramble on minimap
+    if (gameState.eggScramble || gameState.eggNestZones) {
+      Renderer.drawEggScrambleOnMinimap(minimapCtx, worldData, gameState.eggScramble || null, gameState.eggNestZones || null);
     }
 
     // Draw beacons on minimap

@@ -311,6 +311,26 @@ const SEWER_LOOT_POSITIONS = [
   { x: 2480, y: 2350 },
 ];
 
+// Egg Scramble: 4 nest delivery zones spread across the city
+const EGG_NEST_ZONES = [
+  { id: 'nest_residential', label: 'NEST', x: 300,  y: 380,  r: 55 },
+  { id: 'nest_mall',        label: 'NEST', x: 2180, y: 340,  r: 55 },
+  { id: 'nest_park',        label: 'NEST', x: 1200, y: 1230, r: 55 },
+  { id: 'nest_docks',       label: 'NEST', x: 1480, y: 2750, r: 55 },
+];
+
+// Egg Scramble: pool of spawn positions for golden eggs (spread across map, avoiding roads/buildings)
+const EGG_SPAWN_POOL = [
+  { x: 480,  y: 580  },
+  { x: 1050, y: 580  },
+  { x: 2200, y: 680  },
+  { x: 1920, y: 1200 },
+  { x: 580,  y: 1700 },
+  { x: 2430, y: 1400 },
+  { x: 880,  y: 2550 },
+  { x: 2050, y: 2620 },
+];
+
 module.exports = {
   WORLD_WIDTH, WORLD_HEIGHT,
   BUILDINGS, TREES, PARK, CAFE_TABLES, ROADS, CARS, LAUNDRY,
@@ -319,5 +339,6 @@ module.exports = {
   SKILL_CATALOG, BIRD_COLORS, STREET_LAMPS,
   TERRITORY_ZONES, ARENA, RADIO_TOWER, RACE_CHECKPOINTS,
   MANHOLES, SEWER_LOOT_POSITIONS,
+  EGG_NEST_ZONES, EGG_SPAWN_POOL,
   getXPForLevel, getLevelFromXP, getBirdTypeForLevel,
 };

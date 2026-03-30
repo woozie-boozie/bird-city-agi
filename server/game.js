@@ -95,6 +95,10 @@ class GameEngine {
     this.weatherTimer = Date.now() + this._randomRange(60000, 120000); // 1-2 min to first weather
     this.rainWorms = new Map();       // id -> true (worm food ids spawned during rain)
 
+    // === GOLDEN EGG SCRAMBLE ===
+    this.eggScramble = null;          // null or { state, startedAt, endsAt, eggs: Map(id->egg), delivered }
+    this.eggScrambleTimer = Date.now() + this._randomRange(720000, 1080000); // first scramble 12-18 min in
+
     // === THE ARENA (PvP combat pit) ===
     this.arena = {
       state: 'idle', // 'idle' | 'waiting' | 'countdown' | 'fighting' | 'cooldown'
@@ -414,6 +418,9 @@ class GameEngine {
       comboExpiresAt: 0,    // timestamp when combo resets if no new hit
       // === WEATHER EFFECTS ===
       hailSlowUntil: 0,     // timestamp when hail slow wears off
+      // === GOLDEN EGG SCRAMBLE ===
+      carryingEggId: null,         // id of the golden egg this bird is carrying, or null
+      eggTackleImmunityUntil: 0,   // timestamp until tackle immunity (after being robbed)
     };
 
     // Determine bird type from XP
@@ -454,6 +461,14 @@ class GameEngine {
       if (this.arena.fighters.has(id)) {
         const f = this.arena.fighters.get(id);
         f.eliminated = true;
+      }
+      // Drop golden egg if carrying
+      if (bird.carryingEggId && this.eggScramble) {
+        const egg = this.eggScramble.eggs.get(bird.carryingEggId);
+        if (egg && !egg.delivered) {
+          egg.carrierId = null;
+          egg.carrierName = null;
+        }
       }
       this.birds.delete(id);
     }
@@ -750,6 +765,9 @@ class GameEngine {
     // === Underground Sewer ===
     this._updateSewerRats(dt, now);
     this._updateSewerLoot(now);
+
+    // === Golden Egg Scramble ===
+    this._updateEggScramble(dt, now);
   }
 
   // ============================================================
@@ -1663,6 +1681,11 @@ class GameEngine {
       maxSpeed *= 0.5;
     }
 
+    // Egg carrying: precious cargo slows you down
+    if (bird.carryingEggId) {
+      maxSpeed *= 0.8;
+    }
+
     // V Formation speed buff: 3+ flock mates within 200px with similar velocity
     if (bird.flockId) {
       let flockMatesNearby = 0;
@@ -1747,7 +1770,7 @@ class GameEngine {
     bird.wingPhase += dt * (5 + speed * 0.03);
 
     // === POOP ===
-    if (bird.input.space && now - bird.lastPoop > poopCooldown) {
+    if (!bird.carryingEggId && bird.input.space && now - bird.lastPoop > poopCooldown) {
       bird.lastPoop = now;
       const poopId = 'p_' + uid();
       const poop = {
@@ -3055,6 +3078,7 @@ class GameEngine {
           inNest: b.inNest,
           flockId: b.flockId,
           birdColor: b.birdColor,
+          carryingEggId: b.carryingEggId || null,
         });
       }
     }
@@ -3538,6 +3562,9 @@ class GameEngine {
         comboExpiresAt: bird.comboExpiresAt,
         // Weather debuffs
         hailSlowUntil: bird.hailSlowUntil,
+        // Golden Egg Scramble
+        carryingEggId: bird.carryingEggId,
+        eggTackleImmunityUntil: bird.eggTackleImmunityUntil,
       },
       radioTower: {
         state: this.radioTower.state,
@@ -3567,6 +3594,8 @@ class GameEngine {
           flockName: tag.flockName,
           expiresAt: tag.expiresAt,
         })),
+      eggScramble: this._getEggScrambleState(),
+      eggNestZones: world.EGG_NEST_ZONES,
     };
   }
 
@@ -6751,6 +6780,214 @@ class GameEngine {
       amount,
       totalBets: race.bets.size,
     });
+  }
+
+  // ============================================================
+  // GOLDEN EGG SCRAMBLE
+  // ============================================================
+  _startEggScramble(now) {
+    const eggs = new Map();
+    // Pick 3 random spawn positions from the pool
+    const pool = world.EGG_SPAWN_POOL.slice().sort(() => Math.random() - 0.5).slice(0, 3);
+    for (const pos of pool) {
+      const id = 'egg_' + uid();
+      eggs.set(id, {
+        id,
+        x: pos.x + (Math.random() - 0.5) * 60,
+        y: pos.y + (Math.random() - 0.5) * 60,
+        carrierId: null,
+        carrierName: null,
+        delivered: false,
+      });
+    }
+
+    this.eggScramble = {
+      state: 'active',
+      startedAt: now,
+      endsAt: now + 180000, // 3 minutes
+      eggs,
+      delivered: 0,
+    };
+
+    this.events.push({
+      type: 'egg_scramble_start',
+      endsAt: this.eggScramble.endsAt,
+      eggCount: eggs.size,
+    });
+  }
+
+  _updateEggScramble(dt, now) {
+    // Trigger a new scramble if timer elapsed and there are players
+    if (!this.eggScramble && now >= this.eggScrambleTimer && this.birds.size > 0) {
+      this._startEggScramble(now);
+    }
+    if (!this.eggScramble) return;
+
+    const scramble = this.eggScramble;
+    const nestZones = world.EGG_NEST_ZONES;
+
+    // Check expiry or all delivered
+    if (now >= scramble.endsAt || scramble.delivered >= scramble.eggs.size) {
+      // Drop any still-carried eggs
+      for (const egg of scramble.eggs.values()) {
+        if (!egg.delivered && egg.carrierId) {
+          const carrier = this.birds.get(egg.carrierId);
+          if (carrier) {
+            carrier.carryingEggId = null;
+            carrier.eggTackleImmunityUntil = 0;
+          }
+        }
+      }
+      const allDelivered = scramble.delivered >= scramble.eggs.size;
+      this.events.push({
+        type: 'egg_scramble_end',
+        delivered: scramble.delivered,
+        total: scramble.eggs.size,
+        allDelivered,
+      });
+      this.eggScramble = null;
+      this.eggScrambleTimer = now + this._randomRange(720000, 1080000);
+      return;
+    }
+
+    for (const egg of scramble.eggs.values()) {
+      if (egg.delivered) continue;
+
+      if (!egg.carrierId) {
+        // Unclaimed egg — check if any bird picks it up
+        for (const bird of this.birds.values()) {
+          if (bird.inNest || bird.inSewer || bird.stunnedUntil > now) continue;
+          if (bird.carryingEggId) continue; // Already carrying
+          const dx = bird.x - egg.x;
+          const dy = bird.y - egg.y;
+          if (dx * dx + dy * dy < 35 * 35) {
+            egg.carrierId = bird.id;
+            egg.carrierName = bird.name;
+            bird.carryingEggId = egg.id;
+            this.events.push({
+              type: 'egg_grabbed',
+              birdId: bird.id,
+              birdName: bird.name,
+              eggId: egg.id,
+              x: egg.x, y: egg.y,
+            });
+            break;
+          }
+        }
+      } else {
+        // Egg is being carried — sync position with carrier
+        const carrier = this.birds.get(egg.carrierId);
+        if (!carrier) {
+          // Carrier disconnected — drop the egg in place
+          egg.carrierId = null;
+          egg.carrierName = null;
+          continue;
+        }
+
+        egg.x = carrier.x;
+        egg.y = carrier.y;
+
+        // Check for delivery at a nest zone
+        let delivered = false;
+        for (const nest of nestZones) {
+          const dx = carrier.x - nest.x;
+          const dy = carrier.y - nest.y;
+          if (dx * dx + dy * dy < nest.r * nest.r) {
+            egg.delivered = true;
+            egg.carrierId = null;
+            egg.carrierName = null;
+            carrier.carryingEggId = null;
+            carrier.eggTackleImmunityUntil = 0;
+            scramble.delivered++;
+
+            // Reward scales with delivery order
+            const orderRewards = [
+              { xp: 500, coins: 250, food: 25 },
+              { xp: 300, coins: 150, food: 15 },
+              { xp: 200, coins: 100, food: 10 },
+            ];
+            const reward = orderRewards[scramble.delivered - 1] || { xp: 150, coins: 75, food: 8 };
+
+            carrier.xp    += reward.xp;
+            carrier.coins += reward.coins;
+            carrier.food   = Math.min(carrier.food + reward.food, 100);
+
+            // Level up check
+            const newLevel = world.getLevelFromXP(carrier.xp);
+            if (newLevel !== carrier.level) {
+              carrier.level = newLevel;
+              const newType = world.getBirdTypeForLevel(newLevel);
+              if (newType !== carrier.type) {
+                carrier.type = newType;
+                this.events.push({ type: 'evolve', birdId: carrier.id, name: carrier.name, birdType: newType });
+              }
+            }
+
+            this.events.push({
+              type: 'egg_delivered',
+              birdId: carrier.id,
+              birdName: carrier.name,
+              eggId: egg.id,
+              nestId: nest.id,
+              deliveryNumber: scramble.delivered,
+              total: scramble.eggs.size,
+              xp: reward.xp,
+              coins: reward.coins,
+            });
+            delivered = true;
+            break;
+          }
+        }
+        if (delivered) continue;
+
+        // Check for tackle: rival bird close enough steals the egg
+        for (const rival of this.birds.values()) {
+          if (rival.id === egg.carrierId) continue;
+          if (rival.inNest || rival.inSewer || rival.stunnedUntil > now) continue;
+          if (rival.carryingEggId) continue; // Rival already has an egg
+          if (rival.eggTackleImmunityUntil > now) continue;
+
+          const dx = rival.x - carrier.x;
+          const dy = rival.y - carrier.y;
+          if (dx * dx + dy * dy < 45 * 45) {
+            // TACKLE — rival steals the egg
+            carrier.carryingEggId = null;
+            carrier.eggTackleImmunityUntil = now + 3000; // 3s immunity
+            egg.carrierId = rival.id;
+            egg.carrierName = rival.name;
+            rival.carryingEggId = egg.id;
+            egg.x = rival.x;
+            egg.y = rival.y;
+            this.events.push({
+              type: 'egg_tackled',
+              tacklerBirdId: rival.id,
+              tacklerName: rival.name,
+              victimBirdId: carrier.id,
+              victimName: carrier.name,
+              eggId: egg.id,
+              x: rival.x, y: rival.y,
+            });
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  _getEggScrambleState() {
+    if (!this.eggScramble) return null;
+    return {
+      state: this.eggScramble.state,
+      endsAt: this.eggScramble.endsAt,
+      delivered: this.eggScramble.delivered,
+      eggs: Array.from(this.eggScramble.eggs.values()).map(e => ({
+        id: e.id,
+        x: e.x, y: e.y,
+        carrierId: e.carrierId,
+        carrierName: e.carrierName,
+        delivered: e.delivered,
+      })),
+    };
   }
 
 }
