@@ -170,6 +170,8 @@
   let lastNearRaceStart = false;
   const raceProximityPrompt = document.getElementById('raceProximityPrompt');
   const raceHud = document.getElementById('raceHud');
+  const raceBettingPanel = document.getElementById('raceBettingPanel');
+  let raceBetAmount = 50; // default bet amount
 
   // Leaderboard data
   let leaderboardData = [];
@@ -1056,8 +1058,8 @@
     // === PIGEON RACING ===
     if (ev.type === 'race_open') {
       const sec = Math.round(Math.max(0, (ev.openUntil - Date.now()) / 1000));
-      showAnnouncement('🏁 PIGEON RACE STARTING!\nFly to the START ring & press [R] to enter (-' + ev.entryFee + 'c)\n' + sec + 's to register', '#ffd700', 6000);
-      addEventMessage('🏁 RACE OPEN — fly to START in the Park and press [R] to enter! (-' + ev.entryFee + 'c)', '#ffd700');
+      showAnnouncement('🏁 PIGEON RACE STARTING!\nFly to START ring & press [R] to race (-' + ev.entryFee + 'c)\n🎰 Spectators can BET on the winner!', '#ffd700', 6000);
+      addEventMessage('🏁 RACE OPEN — fly to START [R] to race (-' + ev.entryFee + 'c) or 🎰 BET from anywhere!', '#ffd700');
     }
     if (ev.type === 'race_join') {
       if (ev.birdId === selfId) {
@@ -1109,6 +1111,53 @@
       const podium = top.map((r, i) => ['🥇','🥈','🥉'][i] + ' ' + r.name + ' (+' + r.coins + 'c)').join('  ');
       showAnnouncement('🏁 RACE RESULTS!\n' + (podium || 'No finishers'), '#ffd700', 7000);
       addEventMessage('🏁 RACE OVER! Winner: ' + ((ev.rewards && ev.rewards[0]) ? ev.rewards[0].name : '???') + ' 🏆', '#ffd700');
+    }
+    if (ev.type === 'race_bet_placed') {
+      if (ev.birdId === selfId) {
+        addEventMessage('🎰 You bet ' + ev.amount + 'c on ' + ev.targetName + '! Good luck!', '#ffd700');
+      } else {
+        addEventMessage('🎰 ' + ev.birdName + ' placed a bet on ' + ev.targetName + '! (' + ev.totalBets + ' bets total)', '#ccaa44');
+      }
+    }
+    if (ev.type === 'race_bet_fail') {
+      if (ev.birdId === selfId) {
+        const msgs = {
+          not_open: 'Betting is closed!',
+          racer_no_bet: 'Racers can\'t bet on the race!',
+          already_bet: 'You already placed a bet!',
+          no_coins: 'Not enough coins!',
+          invalid_amount: 'Bet must be 10–500 coins!',
+          invalid_racer: 'Invalid racer!',
+          no_racers: 'No racers registered yet!',
+        };
+        addEventMessage('❌ ' + (msgs[ev.reason] || 'Can\'t place bet'), '#ff6644');
+      }
+    }
+    if (ev.type === 'race_bet_results') {
+      if (ev.noWinners) {
+        addEventMessage('🎰 No one bet on ' + ev.winnerName + ' — all bets refunded!', '#ffaa44');
+        // Show refund if this player bet
+        const myResult = (ev.results || []).find(r => r.birdId === selfId);
+        if (myResult) {
+          showAnnouncement('🎰 BET REFUNDED!\nNo one else predicted ' + ev.winnerName + '\n+' + myResult.payout + 'c back', '#ffaa44', 5000);
+        }
+      } else {
+        const myResult = (ev.results || []).find(r => r.birdId === selfId);
+        if (myResult) {
+          if (myResult.won) {
+            showAnnouncement('🎰 WINNING BET!\nYou backed ' + ev.winnerName + '!\n+' + myResult.payout + 'c payout (profit: +' + myResult.profit + 'c)', '#44ff44', 6000);
+            effects.push({ type: 'screen_shake', time: performance.now(), duration: 400, intensity: 5 });
+          } else {
+            showAnnouncement('🎰 Wrong pick...\nYou bet on ' + myResult.betAmount + 'c\n' + ev.winnerName + ' won — lost ' + myResult.betAmount + 'c', '#ff6644', 4000);
+          }
+        }
+        // Announce winners to all
+        const winners = (ev.results || []).filter(r => r.won);
+        if (winners.length > 0) {
+          const winStr = winners.slice(0, 3).map(r => r.birdName + ' (+' + r.profit + 'c)').join(', ');
+          addEventMessage('🎰 RACE BETS SETTLED! Winning bettors: ' + winStr, '#ffd700');
+        }
+      }
     }
 
     // === DAY/NIGHT PHASE CHANGE ===
@@ -2548,6 +2597,117 @@
   }
 
   // ============================================================
+  // RACE BETTING PANEL — shown to spectators during open/countdown/racing
+  // ============================================================
+  function updateRaceBettingPanel() {
+    if (!raceBettingPanel) return;
+    const race = gameState && gameState.pigeonRace;
+    if (!race) { raceBettingPanel.style.display = 'none'; return; }
+
+    const st = race.state;
+
+    // Show during open, countdown, or racing (if player has a bet)
+    const isRacer = race.isRacer;
+    const myBet = race.myBet;
+    const showDuringOpen = (st === 'open' || st === 'countdown') && !isRacer;
+    const showDuringRace = st === 'racing' && myBet;
+
+    if (!showDuringOpen && !showDuringRace) {
+      raceBettingPanel.style.display = 'none';
+      return;
+    }
+
+    raceBettingPanel.style.display = 'block';
+    raceBettingPanel.style.pointerEvents = showDuringOpen ? 'auto' : 'none';
+
+    if (showDuringOpen && !myBet) {
+      // Betting interface — show racers with bet buttons
+      const racers = race.openRacers || [];
+      const betAmts = race.racerBetAmounts || {};
+      const totalPool = race.totalBetPool || 0;
+
+      let html = '<div style="color:#ffd700;font-size:13px;margin-bottom:6px;">🎰 RACE BETTING</div>';
+      if (racers.length === 0) {
+        html += '<div style="color:#888;font-size:10px;">Waiting for racers...</div>';
+      } else {
+        html += '<div style="color:#aaa;font-size:9px;margin-bottom:6px;">Pool: ' + totalPool + 'c · Min 10c · Max 500c</div>';
+        for (const r of racers) {
+          const onRacer = betAmts[r.id] || 0;
+          const pct = totalPool > 0 ? Math.round((onRacer / (totalPool + raceBetAmount)) * 100) : 0;
+          html += '<div style="margin:3px 0;display:flex;align-items:center;gap:6px;">'
+            + '<button data-target-id="' + r.id + '" data-target-name="' + r.name + '" '
+            + 'style="flex:1;background:#2a1a00;border:1px solid #cc8800;color:#ffd700;'
+            + 'font:bold 10px Courier New,monospace;padding:3px 6px;border-radius:6px;cursor:pointer;'
+            + 'text-align:left;" onclick="window._raceBetClick(this)">'
+            + '🐦 ' + r.name.slice(0, 12)
+            + '</button>'
+            + '<span style="color:#aaa;font-size:9px;white-space:nowrap;">' + onRacer + 'c</span>'
+            + '</div>';
+        }
+        html += '<div style="margin-top:7px;display:flex;align-items:center;gap:5px;">'
+          + '<span style="color:#aaa;font-size:9px;">Bet:</span>'
+          + '<input id="raceBetInput" type="number" min="10" max="500" value="' + raceBetAmount + '" '
+          + 'style="width:60px;background:#111;border:1px solid #666;color:#ffd700;'
+          + 'font:11px Courier New,monospace;padding:2px 4px;border-radius:4px;" />'
+          + '<span style="color:#888;font-size:9px;">c</span>'
+          + '</div>';
+        html += '<div style="color:#888;font-size:9px;margin-top:4px;">Click a racer to bet!</div>';
+      }
+      raceBettingPanel.innerHTML = html;
+
+      // Update amount state when input changes
+      const inp = document.getElementById('raceBetInput');
+      if (inp) {
+        inp.addEventListener('change', () => {
+          const v = parseInt(inp.value);
+          if (v >= 10 && v <= 500) raceBetAmount = v;
+        });
+        inp.addEventListener('input', () => {
+          const v = parseInt(inp.value);
+          if (v >= 10 && v <= 500) raceBetAmount = v;
+        });
+      }
+    } else if (showDuringOpen && myBet) {
+      // Already bet — show confirmation
+      const betAmts = race.racerBetAmounts || {};
+      const totalPool = race.totalBetPool || 0;
+      const onMyPick = betAmts[myBet.targetId] || myBet.amount;
+      const estPayout = totalPool > 0 ? Math.floor(totalPool * myBet.amount / onMyPick) : myBet.amount;
+
+      raceBettingPanel.innerHTML =
+        '<div style="color:#44ff44;font-size:12px;">🎰 BET PLACED!</div>'
+        + '<div style="color:#ffd700;margin:4px 0;font-size:11px;">' + myBet.amount + 'c on <b>' + myBet.targetName + '</b></div>'
+        + '<div style="color:#aaa;font-size:9px;">Pool: ' + totalPool + 'c</div>'
+        + '<div style="color:#88ff88;font-size:9px;">Est. payout if they win: ~' + Math.max(Math.floor(myBet.amount * 1.5), estPayout) + 'c</div>';
+    } else if (showDuringRace && myBet) {
+      // Race live — show bet tracking
+      const positions = race.positions || [];
+      const myPickPos = positions.find(p => p.id === myBet.targetId);
+      const pos = myPickPos ? positions.indexOf(myPickPos) + 1 : '?';
+      const status = myPickPos
+        ? (myPickPos.finished ? '🏁 FINISHED #' + myPickPos.finishPosition : 'Position: #' + pos + ' [CP' + myPickPos.progress + ']')
+        : 'Unknown';
+
+      raceBettingPanel.innerHTML =
+        '<div style="color:#ffd700;font-size:12px;">🎰 YOUR BET</div>'
+        + '<div style="font-size:11px;margin:3px 0;">' + myBet.amount + 'c on <b style="color:#ffd700;">' + myBet.targetName + '</b></div>'
+        + '<div style="color:#aaffaa;font-size:10px;">' + status + '</div>';
+    }
+  }
+
+  // Global handler for bet buttons (avoids closure issues with dynamic HTML)
+  window._raceBetClick = function(btn) {
+    const targetId = btn.getAttribute('data-target-id');
+    const targetName = btn.getAttribute('data-target-name');
+    const inp = document.getElementById('raceBetInput');
+    if (inp) {
+      const v = parseInt(inp.value);
+      if (v >= 10 && v <= 500) raceBetAmount = v;
+    }
+    socket.emit('action', { type: 'race_bet', targetId, amount: raceBetAmount });
+  };
+
+  // ============================================================
   // PIGEON RACING UI — proximity prompt + race HUD
   // ============================================================
   function updateRaceUI() {
@@ -3627,6 +3787,7 @@
     updateSprayUI(now);
     updateRadioTowerUI(now);
     updateRaceUI();
+    updateRaceBettingPanel();
 
     // Minimap (now includes activeEvent and cat)
     Renderer.drawMinimap(minimapCtx, worldData, gameState.birds, selfBird, gameState.activeEvent, gameState.cat, gameState.janitor, gameState.territories, gameState.bankHeist, gameState.graffiti);

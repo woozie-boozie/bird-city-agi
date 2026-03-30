@@ -533,6 +533,30 @@ Bird City now has a proper racing league. A 5-checkpoint loop winds clockwise th
 
 **Creative intent**: Racing creates a completely different kind of play session. You're not attacking anyone — you're flying FAST in a straight line toward the next checkpoint. But there's still emergent chaos: a Most Wanted bird being chased by cops mid-race, a storm blowing you off-course, two rival flock members neck-and-neck on the final stretch. The pot mechanic means free-riders who don't race still have skin in the game through betting culture ("I bet $bird wins"). Races fire every 8-12 minutes which means if you happen to be online, you see the "RACE OPEN" announcement and make a split-second decision to commit or not. Pure SPECTACLE + PROGRESSION energy.
 
+**Session 17 — 2026-03-30: Race Betting System — Spectators Bet on Racers**
+Every non-racer can now put money where their mouth is. When a race opens, a betting panel appears automatically on the right side of the screen for all spectators. Click a racer to bet on them winning — it's pari-mutuel: all losing bets fund the winning pool.
+
+**Betting mechanics (`server/game.js`):**
+- Betting window: open during race registration AND countdown (30s + 5s = 35s total)
+- Racers cannot bet on their own race — only spectators
+- One bet per bird per race. Min: 10c, Max: 500c
+- Payout formula: winner gets proportional share of the full bet pool (minimum 1.5× guaranteed)
+- If nobody bet on the winner: all bets are fully refunded (rare but fair)
+- +50 XP bonus for correct bets
+- Server-authoritative: bet stored in `race.bets` Map, processed in `_endPigeonRace` after racer rewards
+
+**Betting panel UI (`public/js/main.js`, `public/index.html`):**
+- Auto-appears at top-right for non-racers when race is open or in countdown
+- Lists all registered racers with total coins already bet on each (live updating)
+- Amount input (default 50c, remembers your last amount)
+- Click any racer's name to place bet instantly
+- Once bet placed: shows confirmation with estimated payout based on current pool odds
+- During race: compact tracker showing your pick's current position in real-time
+- On race end: personal announcement showing win/loss + payout or loss amount
+- City-wide event feed calls out all winning bettors and their profit
+
+**Creative intent**: This was always the missing piece of the racing system. Session 16 mentioned "betting culture" as a future goal — now it's real. A bird who doesn't want to race can still be fully invested in every race outcome. Rival flock members betting against each other on their own race creates instant drama. The pari-mutuel pool means that betting on the underdog pays huge if you're right. A player with a Lucky Charm + high combo who also happens to pick the winning racer gets an XP + coin windfall that feels incredible. Pure SOCIAL + PROGRESSION energy.
+
 ### Next Ideas Queue
 - Underground sewer system (secret map layer)
 - Eagle Overlord rare drop: "Eagle Feather" cosmetic badge
@@ -544,8 +568,8 @@ Bird City now has a proper racing league. A 5-checkpoint loop winds clockwise th
 - Bioluminescent park pond at night (glowing water effect)
 - Weather combos: fog (low visibility), hailstorm (poop projectiles deflected), hot day (food spoils faster)
 - Birds can shelter under awnings/trees during storms (mechanic: reduced lightning hit radius if near cover)
-- Race betting system (spectators bet coins on a racer from anywhere on the map)
 - Race power-ups: speed boost gates on the track that any bird can fly through
+- ~~Race betting system (spectators bet coins on a racer from anywhere on the map)~~ (DONE Session 17)
 - ~~Pigeon Racing Track — 5-checkpoint race, fastest bird wins the pot~~ (DONE Session 16)
 - ~~Radio tower control (broadcast messages server-wide)~~ (DONE Session 15)
 - ~~Graffiti system (birds tag buildings for territory)~~ (DONE Session 14)

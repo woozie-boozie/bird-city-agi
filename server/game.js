@@ -154,6 +154,7 @@ class GameEngine {
     this.pigeonRace = {
       state: 'idle',      // 'idle' | 'open' | 'countdown' | 'racing' | 'finished'
       racers: new Map(),  // birdId -> { name, nextCpIdx, needsFinish, finished, finishTime, finishPosition }
+      bets: new Map(),    // birdId -> { targetId, targetName, amount }
       pot: 0,
       openUntil: null,
       countdownUntil: null,
@@ -547,6 +548,9 @@ class GameEngine {
     // === Pigeon Racing ===
     if (action.type === 'race_join') {
       this._handleRaceJoin(bird, now);
+    }
+    if (action.type === 'race_bet') {
+      this._handleRaceBet(bird, action, now);
     }
 
     // === Graffiti Tagging ===
@@ -3350,6 +3354,12 @@ class GameEngine {
       pigeonRace: (() => {
         const race = this.pigeonRace;
         const myRacer = race.racers.get(bird.id);
+        const myBet = race.bets.get(bird.id) || null;
+        // Compute total coins bet on each racer
+        const racerBetAmounts = {};
+        for (const [, bet] of race.bets) {
+          racerBetAmounts[bet.targetId] = (racerBetAmounts[bet.targetId] || 0) + bet.amount;
+        }
         return {
           state: race.state,
           pot: race.pot,
@@ -3363,6 +3373,13 @@ class GameEngine {
           countdownUntil: race.countdownUntil,
           raceEndsAt: race.raceEndsAt,
           winners: race.winners,
+          myBet,
+          racerBetAmounts,
+          totalBetPool: [...race.bets.values()].reduce((s, b) => s + b.amount, 0),
+          // List of racers with IDs (for betting UI during open/countdown)
+          openRacers: (race.state === 'open' || race.state === 'countdown')
+            ? [...race.racers.entries()].map(([id, r]) => ({ id, name: r.name }))
+            : null,
           positions: (race.state === 'racing' || race.state === 'countdown' || race.state === 'finished')
             ? [...race.racers.entries()].map(([id, r]) => ({
                 id, name: r.name,
@@ -6260,6 +6277,7 @@ class GameEngine {
       if (race.finishedAt && now >= race.finishedAt + 15000) {
         race.state = 'idle';
         race.racers.clear();
+        race.bets.clear();
         race.pot = 0;
         race.winners = [];
         race.finishedAt = null;
@@ -6355,6 +6373,106 @@ class GameEngine {
       isTimeout,
       pot,
       rewards,
+    });
+
+    // === Process spectator bets ===
+    if (race.bets.size > 0 && race.winners.length > 0) {
+      const winnerId = race.winners[0].birdId;
+      const winnerName = race.winners[0].name;
+
+      const winningBets = [...race.bets.entries()].filter(([, b]) => b.targetId === winnerId);
+      const losingBets  = [...race.bets.entries()].filter(([, b]) => b.targetId !== winnerId);
+
+      const totalWinningAmount = winningBets.reduce((s, [, b]) => s + b.amount, 0);
+      const totalPool = [...race.bets.values()].reduce((s, b) => s + b.amount, 0);
+
+      const betResults = [];
+
+      if (winningBets.length === 0) {
+        // No one bet on the winner — refund everyone
+        for (const [bid, bet] of race.bets) {
+          const b = this.birds.get(bid);
+          if (b) b.coins += bet.amount;
+          betResults.push({
+            birdId: bid,
+            birdName: b ? b.name : '?',
+            betAmount: bet.amount,
+            payout: bet.amount,
+            profit: 0,
+            won: false,
+            refund: true,
+          });
+        }
+        this.events.push({ type: 'race_bet_results', winnerName, noWinners: true, results: betResults });
+      } else {
+        // Winners split the full pool proportionally (minimum 1.5× guaranteed)
+        for (const [bid, bet] of winningBets) {
+          const b = this.birds.get(bid);
+          if (!b) continue;
+          const payout = Math.max(
+            Math.floor(bet.amount * 1.5),
+            Math.floor(totalPool * bet.amount / totalWinningAmount)
+          );
+          b.coins += payout;
+          b.xp += 50;
+          betResults.push({ birdId: bid, birdName: b.name, betAmount: bet.amount, payout, profit: payout - bet.amount, won: true });
+        }
+        for (const [bid, bet] of losingBets) {
+          const b = this.birds.get(bid);
+          betResults.push({ birdId: bid, birdName: b ? b.name : '?', betAmount: bet.amount, payout: 0, profit: -bet.amount, won: false });
+        }
+        this.events.push({ type: 'race_bet_results', winnerName, noWinners: false, results: betResults });
+      }
+    }
+  }
+
+  _handleRaceBet(bird, action, now) {
+    const race = this.pigeonRace;
+
+    if (race.state !== 'open' && race.state !== 'countdown') {
+      this.events.push({ type: 'race_bet_fail', birdId: bird.id, reason: 'not_open' });
+      return;
+    }
+    if (race.racers.has(bird.id)) {
+      this.events.push({ type: 'race_bet_fail', birdId: bird.id, reason: 'racer_no_bet' });
+      return;
+    }
+    if (race.bets.has(bird.id)) {
+      this.events.push({ type: 'race_bet_fail', birdId: bird.id, reason: 'already_bet' });
+      return;
+    }
+    if (race.racers.size === 0) {
+      this.events.push({ type: 'race_bet_fail', birdId: bird.id, reason: 'no_racers' });
+      return;
+    }
+
+    const amount = typeof action.amount === 'number' ? Math.floor(action.amount) : 0;
+    if (amount < 10 || amount > 500) {
+      this.events.push({ type: 'race_bet_fail', birdId: bird.id, reason: 'invalid_amount' });
+      return;
+    }
+    if (bird.coins < amount) {
+      this.events.push({ type: 'race_bet_fail', birdId: bird.id, reason: 'no_coins' });
+      return;
+    }
+
+    const targetId = action.targetId;
+    const targetRacer = race.racers.get(targetId);
+    if (!targetRacer) {
+      this.events.push({ type: 'race_bet_fail', birdId: bird.id, reason: 'invalid_racer' });
+      return;
+    }
+
+    bird.coins -= amount;
+    race.bets.set(bird.id, { targetId, targetName: targetRacer.name, amount });
+
+    this.events.push({
+      type: 'race_bet_placed',
+      birdId: bird.id,
+      birdName: bird.name,
+      targetName: targetRacer.name,
+      amount,
+      totalBets: race.bets.size,
     });
   }
 
