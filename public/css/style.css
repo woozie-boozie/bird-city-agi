@@ -1786,3 +1786,141 @@ html, body {
   from { box-shadow: 0 0 8px rgba(255, 68, 0, 0.6); }
   to   { box-shadow: 0 0 25px rgba(255, 180, 0, 1.0); }
 }
+
+/* ============================================================ */
+/* PIGEON MAFIA DON OVERLAY                                     */
+/* ============================================================ */
+#donOverlay {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(6, 3, 14, 0.97);
+  border: 2px solid #ffd700;
+  border-radius: 14px;
+  padding: 20px 24px 16px;
+  color: #ddd;
+  font-family: 'Courier New', monospace;
+  z-index: 200;
+  min-width: 340px;
+  max-width: 92vw;
+  box-shadow: 0 0 40px rgba(180, 140, 0, 0.5), 0 0 80px rgba(130, 50, 180, 0.25);
+}
+.don-header {
+  font-size: 22px;
+  font-weight: bold;
+  color: #ffd700;
+  text-align: center;
+  letter-spacing: 3px;
+  margin-bottom: 2px;
+  text-shadow: 0 0 14px rgba(255, 215, 0, 0.85);
+}
+.don-tagline {
+  font-size: 11px;
+  color: #aaa;
+  font-style: italic;
+  text-align: center;
+  margin-bottom: 12px;
+}
+.don-rep {
+  text-align: center;
+  font-size: 12px;
+  color: #cc88ff;
+  margin-bottom: 10px;
+  letter-spacing: 1px;
+}
+.don-job-card {
+  background: rgba(50, 30, 0, 0.6);
+  border: 1px solid #8b6800;
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+.don-job-title {
+  font-size: 15px;
+  font-weight: bold;
+  color: #ffd700;
+  margin-bottom: 5px;
+}
+.don-job-desc {
+  font-size: 12px;
+  color: #ccc;
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+.don-job-rewards {
+  font-size: 11px;
+  color: #88ff88;
+  letter-spacing: 1px;
+}
+.don-active {
+  background: rgba(0, 40, 0, 0.5);
+  border: 1px solid #44ff44;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 10px;
+}
+.don-active-label {
+  font-size: 10px;
+  color: #44ff44;
+  letter-spacing: 2px;
+  margin-bottom: 4px;
+}
+.don-active-title {
+  font-size: 13px;
+  font-weight: bold;
+  color: #ffd700;
+}
+.don-no-job {
+  font-size: 12px;
+  color: #888;
+  text-align: center;
+  padding: 10px;
+}
+.don-btn {
+  flex: 1;
+  background: rgba(120, 80, 0, 0.8);
+  border: 1px solid #ffd700;
+  border-radius: 8px;
+  color: #ffd700;
+  font: bold 12px 'Courier New', monospace;
+  padding: 8px 14px;
+  cursor: pointer;
+  letter-spacing: 1px;
+  transition: background 0.15s;
+}
+.don-btn:hover { background: rgba(180, 120, 0, 0.9); }
+.don-close {
+  flex: 1;
+  background: rgba(30, 15, 0, 0.7);
+  border: 1px solid #888;
+  border-radius: 8px;
+  color: #999;
+  font: bold 11px 'Courier New', monospace;
+  padding: 8px 14px;
+  cursor: pointer;
+  letter-spacing: 1px;
+  transition: color 0.15s;
+}
+.don-close:hover { color: #ffd700; }
+#donProximityPrompt {
+  position: fixed;
+  bottom: 130px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(20, 10, 0, 0.9);
+  color: #ffd700;
+  font: bold 13px 'Courier New', monospace;
+  padding: 8px 18px;
+  border-radius: 18px;
+  border: 2px solid #ffd700;
+  pointer-events: none;
+  z-index: 70;
+  text-align: center;
+  text-shadow: 0 0 8px #ffd700;
+  animation: donPromptPulse 1.2s ease-in-out infinite alternate;
+}
+@keyframes donPromptPulse {
+  from { box-shadow: 0 0 8px rgba(255, 215, 0, 0.4); }
+  to   { box-shadow: 0 0 22px rgba(255, 215, 0, 0.9); }
+}

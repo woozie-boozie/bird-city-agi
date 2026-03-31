@@ -635,9 +635,48 @@ Every 12–18 minutes, 3 golden eggs drop across Bird City in a chaotic capture-
 
 **Creative intent**: Pure capture-the-flag chaos designed for emergent social moments. Can't poop while carrying = forces real choice between offense and objective play. Tackle mechanic creates chase sequences without needing new buttons — just proximity. The flock coordination emergent behavior: "you carry, I protect you from tackles." 4 nest zones spread far apart mean you can't just camp one — you have to commit to a direction. The 12-18 min timer means it fires during longer play sessions as a wild-card event that disrupts everything else happening. Pure CARNAGE + SOCIAL energy.
 
+**Session 22 — 2026-03-31: The Pigeon Mafia Don — Crime Boss Questgiver**
+Bird City now has a permanent criminal underworld. Don Featherstone — a distinguished pigeon in a tuxedo, fedora, and gold chains — sits in the south docks alley (x:1300, y:2380) 24/7. Fly within 110px and press [M] to get a contract.
+
+**Don Featherstone mechanics (`server/game.js`):**
+- Don's current job rotates every 8 minutes from 5 crime-themed mission types:
+  - **The Hit**: Poop on 8 targets within 90 seconds
+  - **The Getaway**: Reach 3+ wanted stars and survive 20 seconds at that level
+  - **The Spray Contract**: Tag 4 buildings with graffiti within 5 minutes
+  - **The Heist Cut**: Participate in any food truck heist
+  - **The Car Bomb**: Poop on 5 moving cars within 90 seconds
+- Completing a contract: 100–200 coins (scales with existing Mafia Rep) + 50–90 XP + 1 **Mafia Rep** point
+- Don can only offer one contract at a time; birds can only hold one Don contract at a time
+- Contracts can expire (time limit varies by difficulty) — failure announced to bird
+- Don's new job announced city-wide as a subtle event feed entry every rotation
+
+**Mafia Rep System (persistent progression):**
+- New `mafia_rep` stat per bird, saved to Firestore
+- 5 rep tiers: 0 = none → 3 = [Thug] → 7 = [Associate] → 15 = [Made Bird] → 30 = [Capo] → 50 = [The Don]
+- Rep title displayed as a gold badge ABOVE the player's name tag in the world — visible to all players
+- Tier unlock announcement: "🎖 NEW RANK: [Made Bird]" shown to the achieving player
+- Higher rep = higher coin reward on all future contracts (5c per rep point bonus)
+
+**Visual system:**
+- Custom `drawDon()` sprite at 2× scale: plump pigeon in deep navy pinstripe suit, white shirt, dark red tie, gold chain, fedora with cream band, golden glowing eyes, cigar with animated smoke puff, gold cane on right side, purple crime-boss aura pulsing behind him
+- "🎩 DON FEATHERSTONE" gold label above sprite
+- "[M] Meet The Don" prompt visible when in range
+- Permanent 🎩 gold dot on minimap at his corner
+- Full overlay panel on [M]: shows current contract details, rewards, rep badge, live progress if contract active
+
+**UI overlay (`#donOverlay`):**
+- Shows current job title, description, reward (coins + XP + rep)
+- Rep badge showing current rep total and tier name
+- Accept button (hidden if already have active contract)
+- Active contract progress when you already have a job from the Don
+- [M] to close (keyboard) or LEAVE button
+
+**Creative intent**: The Don adds NARRATIVE to the chaos. The regular mission board is functional but feels mechanical — the Don is a CHARACTER you visit. Seeing [Made Bird] or [Capo] above a bird's name tells you that player has a criminal history and is grinding the underworld path. The 5 mission types hit different systems — poop combat, wanted level evasion, graffiti turf war, heist cooperation, car bombing — creating a progression track that touches every part of Bird City. A full "Don" tier (50 rep) is a meaningful prestige milestone. Pure PROGRESSION + DISCOVERY energy, with CARNAGE undertones.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
+- ~~Pigeon mafia questline~~ (DONE Session 22)
 - Eagle Overlord rare drop: "Eagle Feather" cosmetic badge
 **Session 20 — 2026-03-30: Territory Control System (Parallel Session)**
 Built the Territory Control System on top of the existing upstream code:
@@ -648,7 +687,6 @@ Built the Territory Control System on top of the existing upstream code:
 - Territory zones shown in owner color on minimap
 - Event feed: territory_captured, territory_contested, territory_lost announcements
 - Added _getZoneForPoint() utility for other systems to query zone ownership
-- Pigeon mafia questline
 - Nest building and decoration
 - Bird gangs with custom colors/tags
 - Owl enforcer in park at night (creates no-poop zone, alerts NPCs)

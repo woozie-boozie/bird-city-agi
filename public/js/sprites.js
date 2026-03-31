@@ -106,10 +106,21 @@ window.Sprites = {
   },
 
   // === NAME TAG ===
-  drawNameTag(ctx, x, y, name, level, type, isPlayer) {
+  drawNameTag(ctx, x, y, name, level, type, isPlayer, mafiaTitle) {
     const text = `${name} [Lv.${level}]`;
     ctx.font = 'bold 11px Courier New';
     ctx.textAlign = 'center';
+
+    // Mafia title badge above the name tag
+    if (mafiaTitle) {
+      ctx.font = 'bold 10px Courier New';
+      const tw = ctx.measureText(`🎩 ${mafiaTitle}`).width + 8;
+      ctx.fillStyle = 'rgba(80, 50, 0, 0.85)';
+      ctx.fillRect(x - tw / 2, y - 40, tw, 13);
+      ctx.fillStyle = '#ffd700';
+      ctx.fillText(`🎩 ${mafiaTitle}`, x, y - 30);
+      ctx.font = 'bold 11px Courier New';
+    }
 
     // Background
     const w = ctx.measureText(text).width + 8;
@@ -2738,6 +2749,138 @@ window.Sprites = {
       ctx.lineTo(Math.cos(a2) * w * 0.18, Math.sin(a2) * w * 0.18);
     }
     ctx.closePath();
+    ctx.fill();
+
+    ctx.restore();
+  },
+
+  // ============================================================
+  // THE PIGEON MAFIA DON — distinguished crime boss pigeon
+  // ============================================================
+  drawDon(ctx, x, y, t) {
+    ctx.save();
+    ctx.translate(x, y);
+    const scale = 2.0;
+    ctx.scale(scale, scale);
+
+    // Purple crime-boss aura (pulsing glow behind body)
+    const auraAlpha = 0.18 + Math.sin(t * 1.4) * 0.08;
+    const auraGrad = ctx.createRadialGradient(0, 2, 0, 0, 2, 28);
+    auraGrad.addColorStop(0, `rgba(160, 60, 220, ${auraAlpha})`);
+    auraGrad.addColorStop(1, 'rgba(160, 60, 220, 0)');
+    ctx.fillStyle = auraGrad;
+    ctx.beginPath();
+    ctx.ellipse(0, 2, 28, 20, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Body — plump pigeon in a dark suit with white shirt front
+    ctx.fillStyle = '#1a1a2e'; // deep navy suit
+    ctx.beginPath();
+    ctx.ellipse(0, 4, 10, 13, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // White shirt front
+    ctx.fillStyle = '#f0f0f0';
+    ctx.beginPath();
+    ctx.ellipse(0, 5, 4, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Dark red tie
+    ctx.fillStyle = '#8b0000';
+    ctx.beginPath();
+    ctx.moveTo(-1.5, 1);
+    ctx.lineTo(1.5, 1);
+    ctx.lineTo(0.8, 11);
+    ctx.lineTo(0, 13);
+    ctx.lineTo(-0.8, 11);
+    ctx.closePath();
+    ctx.fill();
+
+    // Gold chain
+    ctx.strokeStyle = '#ffd700';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.arc(0, 3, 5, -0.8, Math.PI + 0.8);
+    ctx.stroke();
+
+    // Head
+    ctx.fillStyle = '#888';
+    ctx.beginPath();
+    ctx.arc(0, -8, 7, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Fedora brim
+    ctx.fillStyle = '#111';
+    ctx.beginPath();
+    ctx.ellipse(0, -13.5, 11, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Fedora crown
+    ctx.fillStyle = '#222';
+    ctx.beginPath();
+    ctx.ellipse(0, -17, 7.5, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Fedora hat band — cream
+    ctx.fillStyle = '#f5deb3';
+    ctx.beginPath();
+    ctx.rect(-7.5, -15.5, 15, 2.5);
+    ctx.fill();
+
+    // Eyes — golden glowing
+    ctx.shadowColor = '#ffd700';
+    ctx.shadowBlur = 6;
+    ctx.fillStyle = '#ffd700';
+    ctx.beginPath();
+    ctx.arc(-2.5, -8.5, 1.8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(2.5, -8.5, 1.8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Pupil
+    ctx.fillStyle = '#111';
+    ctx.beginPath();
+    ctx.arc(-2.5, -8.5, 0.8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(2.5, -8.5, 0.8, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Beak
+    ctx.fillStyle = '#c4a000';
+    ctx.beginPath();
+    ctx.moveTo(-1.5, -5.5);
+    ctx.lineTo(1.5, -5.5);
+    ctx.lineTo(0, -3);
+    ctx.closePath();
+    ctx.fill();
+
+    // Cane — right side
+    ctx.strokeStyle = '#ffd700';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(11, -5);
+    ctx.lineTo(11, 14);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(9, -5, 2, 0, Math.PI * 0.8, true);
+    ctx.stroke();
+
+    // Cigar — left beak, with animated smoke
+    ctx.fillStyle = '#c68642';
+    ctx.fillRect(-7, -6.5, 6, 1.5);
+    // Cigar lit end (red-orange)
+    ctx.fillStyle = '#ff4500';
+    ctx.beginPath();
+    ctx.arc(-7, -5.7, 1.2, 0, Math.PI * 2);
+    ctx.fill();
+    // Smoke puff (animated wisp)
+    const smokeAlpha = 0.25 + Math.sin(t * 3 + 1) * 0.1;
+    ctx.fillStyle = `rgba(200,200,200,${smokeAlpha})`;
+    ctx.beginPath();
+    ctx.arc(-9 + Math.sin(t * 2) * 1.5, -9 - (t * 3 % 5), 2 + Math.sin(t * 4) * 0.5, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.restore();

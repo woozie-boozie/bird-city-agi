@@ -86,6 +86,10 @@ class GameEngine {
     this.godfatherRaccoon = null;
     this.godfatherSpawnedThisNight = false;
 
+    // === PIGEON MAFIA DON (permanent NPC questgiver) ===
+    this.donCurrentJob = null;   // current job def on offer
+    this.donJobTimer = Date.now() + 8000; // first job in 8s
+
     // === DRUNK PIGEONS (night-only, pickpocketable) ===
     this.drunkPigeons = new Map();    // id -> drunk pigeon state
     this.drunkPigeonSpawnTimer = 0;   // when to try next spawn
@@ -421,6 +425,9 @@ class GameEngine {
       // === GOLDEN EGG SCRAMBLE ===
       carryingEggId: null,         // id of the golden egg this bird is carrying, or null
       eggTackleImmunityUntil: 0,   // timestamp until tackle immunity (after being robbed)
+      // === PIGEON MAFIA DON ===
+      mafiaRep: saved ? (saved.mafia_rep || 0) : 0,
+      donMission: null,            // { jobId, progress, startedAt, survivalStarted }
     };
 
     // Determine bird type from XP
@@ -553,6 +560,11 @@ class GameEngine {
       this._handleAcceptMission(bird, action.missionId, now);
     }
 
+    // === Pigeon Mafia Don ===
+    if (action.type === 'don_accept') {
+      this._handleDonAccept(bird, now);
+    }
+
     // === Black Market ===
     if (action.type === 'blackmarket_buy') {
       this._handleBlackMarketBuy(bird, action.itemId, now);
@@ -632,6 +644,12 @@ class GameEngine {
         });
       }
 
+      // Don mission progress: spray contract
+      if (bird.donMission && bird.donMission.jobId === 'don_spray') {
+        bird.donMission.progress++;
+        this._checkDonMissionComplete(bird, now);
+      }
+
       // Check for street domination (5+ buildings owned by same team)
       const myTeamId = bird.flockId || bird.id;
       let myTagCount = 0;
@@ -705,6 +723,7 @@ class GameEngine {
     // === Missions ===
     this._updateMissions(now);
     this._updateMissionBoard(now);
+    this._updateDon(now);
 
     // === Chaos Meter ===
     this._updateChaosMeter(dt, now);
@@ -2053,6 +2072,19 @@ class GameEngine {
         }
       }
 
+      // Don mission progress: poop hits
+      if (bird.donMission) {
+        const dj = bird.donMission;
+        if (dj.jobId === 'don_hit') {
+          dj.progress++;
+          this._checkDonMissionComplete(bird, now);
+        }
+        if (dj.jobId === 'don_cars' && hit.target === 'moving_car') {
+          dj.progress++;
+          this._checkDonMissionComplete(bird, now);
+        }
+      }
+
       // Check level up
       const newLevel = world.getLevelFromXP(bird.xp);
       const newType = world.getBirdTypeForLevel(newLevel);
@@ -3079,6 +3111,7 @@ class GameEngine {
           flockId: b.flockId,
           birdColor: b.birdColor,
           carryingEggId: b.carryingEggId || null,
+          mafiaTitle: this._getMafiaTitle(b.mafiaRep || 0),
         });
       }
     }
@@ -3596,6 +3629,29 @@ class GameEngine {
         })),
       eggScramble: this._getEggScrambleState(),
       eggNestZones: world.EGG_NEST_ZONES,
+      // Pigeon Mafia Don
+      donCurrentJob: this.donCurrentJob ? {
+        id: this.donCurrentJob.id,
+        title: this.donCurrentJob.title,
+        desc: this.donCurrentJob.desc,
+        coinReward: this.donCurrentJob.coinReward,
+        xpReward: this.donCurrentJob.xpReward,
+        target: this.donCurrentJob.objective.count || 1,
+      } : null,
+      nearDon: (() => {
+        const dx = bird.x - world.DON_POS.x;
+        const dy = bird.y - world.DON_POS.y;
+        return Math.sqrt(dx * dx + dy * dy) < 110;
+      })(),
+      donMission: bird.donMission ? {
+        jobId: bird.donMission.jobId,
+        title: this._getDonJobDef(bird.donMission.jobId) ? this._getDonJobDef(bird.donMission.jobId).title : '',
+        progress: bird.donMission.progress,
+        target: this._getDonJobDef(bird.donMission.jobId) ? (this._getDonJobDef(bird.donMission.jobId).objective.count || 1) : 1,
+        timeLeft: bird.donMission ? Math.max(0, (bird.donMission.startedAt + (this._getDonJobDef(bird.donMission.jobId) ? this._getDonJobDef(bird.donMission.jobId).timeLimit : 60000)) - now) : 0,
+      } : null,
+      mafiaRep: bird.mafiaRep || 0,
+      mafiaTitle: this._getMafiaTitle(bird.mafiaRep || 0),
     };
   }
 
@@ -3663,6 +3719,7 @@ class GameEngine {
       owned_skills: JSON.stringify(bird.ownedSkills || ['poop_barrage']),
       equipped_skills: JSON.stringify(bird.equippedSkills || ['poop_barrage']),
       bird_color: bird.birdColor || null,
+      mafia_rep: bird.mafiaRep || 0,
     }).catch(e => {
       console.error('[GameEngine] Failed to save bird:', e.message);
     });
@@ -4131,6 +4188,188 @@ class GameEngine {
     }
 
     this.events.push({ type: 'mission_accepted', birdId: bird.id, missionId, title: boardMission.title });
+  }
+
+  // ============================================================
+  // PIGEON MAFIA DON
+  // ============================================================
+  _getDonJobDefs() {
+    return [
+      {
+        id: 'don_hit',
+        title: 'The Hit',
+        desc: 'Poop on 8 targets within 90 seconds. Any target counts.',
+        objective: { type: 'poop_targets', count: 8 },
+        timeLimit: 90000,
+        coinReward: 120,
+        xpReward: 60,
+        repReward: 1,
+      },
+      {
+        id: 'don_getaway',
+        title: 'The Getaway',
+        desc: 'Reach 3 wanted stars and survive for 20 seconds at that level.',
+        objective: { type: 'survive_wanted', count: 1 },
+        timeLimit: 120000,
+        coinReward: 150,
+        xpReward: 80,
+        repReward: 1,
+      },
+      {
+        id: 'don_spray',
+        title: 'The Spray Contract',
+        desc: 'Tag 4 buildings with graffiti within 5 minutes.',
+        objective: { type: 'spray_buildings', count: 4 },
+        timeLimit: 300000,
+        coinReward: 100,
+        xpReward: 50,
+        repReward: 1,
+      },
+      {
+        id: 'don_heist',
+        title: 'The Heist Cut',
+        desc: 'Participate in a food truck heist to get your cut.',
+        objective: { type: 'heist_participate', count: 1 },
+        timeLimit: 600000,
+        coinReward: 180,
+        xpReward: 90,
+        repReward: 1,
+      },
+      {
+        id: 'don_cars',
+        title: 'The Car Bomb',
+        desc: 'Poop on 5 moving cars within 90 seconds.',
+        objective: { type: 'poop_cars', count: 5 },
+        timeLimit: 90000,
+        coinReward: 130,
+        xpReward: 65,
+        repReward: 1,
+      },
+    ];
+  }
+
+  _getDonJobDef(jobId) {
+    return this._getDonJobDefs().find(j => j.id === jobId) || null;
+  }
+
+  _getMafiaTitle(rep) {
+    if (rep >= 50) return 'The Don';
+    if (rep >= 30) return 'Capo';
+    if (rep >= 15) return 'Made Bird';
+    if (rep >= 7) return 'Associate';
+    if (rep >= 3) return 'Thug';
+    return null;
+  }
+
+  _updateDon(now) {
+    // Rotate the Don's current job every 8 minutes
+    if (now >= this.donJobTimer) {
+      const defs = this._getDonJobDefs();
+      // Pick a random job, avoid repeating the same one if possible
+      let candidates = defs;
+      if (this.donCurrentJob) {
+        candidates = defs.filter(d => d.id !== this.donCurrentJob.id);
+      }
+      this.donCurrentJob = candidates[Math.floor(Math.random() * candidates.length)];
+      this.donJobTimer = now + 480000; // 8 minutes
+      this.events.push({ type: 'don_job_rotated', title: this.donCurrentJob.title });
+    }
+
+    // Check active don missions for timeout and getaway survival
+    for (const bird of this.birds.values()) {
+      if (!bird.donMission) continue;
+      const def = this._getDonJobDef(bird.donMission.jobId);
+      if (!def) { bird.donMission = null; continue; }
+
+      // Timeout check
+      if (now > bird.donMission.startedAt + def.timeLimit) {
+        this.events.push({ type: 'don_mission_failed', birdId: bird.id, title: def.title });
+        bird.donMission = null;
+        continue;
+      }
+
+      // Getaway survival tracking
+      if (bird.donMission.jobId === 'don_getaway') {
+        const heat = this.heatScores.get(bird.id) || 0;
+        const level = this._getWantedLevel(heat);
+        if (level >= 3) {
+          if (!bird.donMission.survivalStarted) {
+            bird.donMission.survivalStarted = now;
+          } else if (now - bird.donMission.survivalStarted >= 20000) {
+            // Survived 20s at 3+ stars — mission complete
+            bird.donMission.progress = 1;
+            this._checkDonMissionComplete(bird, now);
+          }
+        } else {
+          // Dropped below 3 stars — reset survival timer
+          bird.donMission.survivalStarted = null;
+        }
+      }
+    }
+  }
+
+  _handleDonAccept(bird, now) {
+    // Proximity check
+    const dx = bird.x - world.DON_POS.x;
+    const dy = bird.y - world.DON_POS.y;
+    if (Math.sqrt(dx * dx + dy * dy) > 120) return;
+
+    // Must have a current job
+    if (!this.donCurrentJob) return;
+
+    // Already has an active don mission
+    if (bird.donMission) return;
+
+    bird.donMission = {
+      jobId: this.donCurrentJob.id,
+      progress: 0,
+      startedAt: now,
+      survivalStarted: null,
+    };
+
+    this.events.push({
+      type: 'don_mission_accepted',
+      birdId: bird.id,
+      birdName: bird.name,
+      jobId: this.donCurrentJob.id,
+      title: this.donCurrentJob.title,
+    });
+  }
+
+  _checkDonMissionComplete(bird, now) {
+    if (!bird.donMission) return;
+    const def = this._getDonJobDef(bird.donMission.jobId);
+    if (!def) return;
+    const target = def.objective.count || 1;
+    if (bird.donMission.progress < target) return;
+
+    // Mission complete!
+    const coinReward = def.coinReward + Math.floor((bird.mafiaRep || 0) * 5); // rep bonus
+    const xpReward = def.xpReward;
+    const repReward = def.repReward;
+
+    bird.coins += coinReward;
+    bird.xp += xpReward;
+    bird.mafiaRep = (bird.mafiaRep || 0) + repReward;
+
+    const newTitle = this._getMafiaTitle(bird.mafiaRep);
+    const oldTitle = this._getMafiaTitle(bird.mafiaRep - repReward);
+
+    this.events.push({
+      type: 'don_mission_complete',
+      birdId: bird.id,
+      birdName: bird.name,
+      title: def.title,
+      coinReward,
+      xpReward,
+      repReward,
+      newRep: bird.mafiaRep,
+      newTitle,
+      titleUnlocked: newTitle !== oldTitle ? newTitle : null,
+    });
+
+    bird.donMission = null;
+    this._saveBird(bird);
   }
 
   // ============================================================
@@ -5146,6 +5385,15 @@ class GameEngine {
       x: truck.x, y: truck.y,
       rewards,
     });
+
+    // Don mission progress: heist participant
+    for (const birdId of Object.keys(contributions)) {
+      const b = this.birds.get(birdId);
+      if (b && b.donMission && b.donMission.jobId === 'don_heist') {
+        b.donMission.progress++;
+        this._checkDonMissionComplete(b, now);
+      }
+    }
 
     // Truck speeds away panicking
     truck.looted = true;

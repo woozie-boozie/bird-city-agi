@@ -61,6 +61,15 @@
   const wantedHud = document.getElementById('wantedHud');
   const comboHud = document.getElementById('comboHud');
 
+  // === Pigeon Mafia Don ===
+  const donOverlay = document.getElementById('donOverlay');
+  const donProximityPrompt = document.getElementById('donProximityPrompt');
+  const donMissionHud = document.getElementById('donMissionHud');
+  const donAcceptBtn = document.getElementById('donAcceptBtn');
+  const donCloseBtn = document.getElementById('donCloseBtn');
+  let donOverlayVisible = false;
+  let lastNearDon = false;
+
   // === Persistent Identity (localStorage) ===
   function getSavedAccount() {
     try {
@@ -655,6 +664,32 @@
       if (ev.birdId === myId) {
         SoundEngine.missionFailed();
         showAnnouncement('MISSION FAILED: ' + ev.title, '#ff6b6b', 2000);
+      }
+    }
+
+    // === PIGEON MAFIA DON EVENTS ===
+    if (ev.type === 'don_job_rotated') {
+      addEventMessage('🎩 The Don has new work. Visit Don Featherstone for a contract.', '#ffd700');
+    }
+    if (ev.type === 'don_mission_accepted') {
+      if (ev.birdId === myId) {
+        showAnnouncement(`🎩 CONTRACT: ${ev.title}`, '#ffd700', 2500);
+        addEventMessage(`🎩 ${ev.birdName} took a contract from The Don: "${ev.title}"`, '#ffd700');
+      }
+    }
+    if (ev.type === 'don_mission_complete') {
+      if (ev.birdId === myId) {
+        screenShake(6, 400);
+        showAnnouncement(`🎩 CONTRACT DONE! +${ev.coinReward}c +${ev.xpReward} XP`, '#ffd700', 3500);
+        if (ev.titleUnlocked) {
+          setTimeout(() => showAnnouncement(`🎖 NEW RANK: [${ev.titleUnlocked}]`, '#cc88ff', 3000), 2000);
+        }
+      }
+      addEventMessage(`🎩 ${ev.birdName} completed The Don's contract: "${ev.title}" (REP: ${ev.newRep})`, '#ffd700');
+    }
+    if (ev.type === 'don_mission_failed') {
+      if (ev.birdId === myId) {
+        showAnnouncement(`🎩 CONTRACT EXPIRED: ${ev.title}`, '#ff6b6b', 2000);
       }
     }
 
@@ -1574,6 +1609,14 @@
         toggleBlackMarketShop();
       }
     }
+    // Don overlay toggle
+    if (e.key.toLowerCase() === 'm') {
+      if (donOverlayVisible) {
+        hideDonOverlay();
+      } else if (gameState && gameState.nearDon) {
+        showDonOverlay();
+      }
+    }
     // Arena enter
     if (e.key.toLowerCase() === 'e') {
       if (gameState && gameState.arena && lastNearArena &&
@@ -1961,6 +2004,17 @@
     missionBoardClose.addEventListener('touchstart', (e) => { e.preventDefault(); hideMissionBoard(); }, { passive: false });
   }
 
+  // Don overlay buttons
+  if (donAcceptBtn) {
+    donAcceptBtn.addEventListener('click', () => {
+      if (socket && joined) socket.emit('action', { type: 'don_accept' });
+      hideDonOverlay();
+    });
+  }
+  if (donCloseBtn) {
+    donCloseBtn.addEventListener('click', hideDonOverlay);
+  }
+
   // Black Market close button
   const bmShopCloseEl = document.getElementById('bmShopClose');
   if (bmShopCloseEl) {
@@ -2214,6 +2268,29 @@
     if (!s.nearDateCenter && flockLobbyVisible) {
       flockLobbyVisible = false;
       flockLobby.style.display = 'none';
+    }
+
+    // Pigeon Mafia Don proximity
+    if (gameState.nearDon && !lastNearDon) {
+      donProximityPrompt.style.display = 'block';
+    }
+    if (!gameState.nearDon && lastNearDon) {
+      donProximityPrompt.style.display = 'none';
+      if (donOverlayVisible) hideDonOverlay();
+    }
+    lastNearDon = !!gameState.nearDon;
+
+    // Update Don overlay if open
+    if (donOverlayVisible) renderDonOverlay();
+
+    // Don mission HUD
+    if (gameState.donMission) {
+      const dm = gameState.donMission;
+      const timeLeftS = Math.ceil((dm.timeLeft || 0) / 1000);
+      donMissionHud.style.display = 'block';
+      donMissionHud.textContent = `🎩 ${dm.title}: ${dm.progress}/${dm.target} (${timeLeftS}s)`;
+    } else {
+      donMissionHud.style.display = 'none';
     }
 
     // Active mission HUD
@@ -3917,6 +3994,31 @@
       }
     }
 
+    // The Pigeon Mafia Don — permanent NPC at his corner
+    {
+      const DON_WORLD_X = 1300, DON_WORLD_Y = 2380;
+      const donSx = DON_WORLD_X - camera.x + camera.screenW / 2;
+      const donSy = DON_WORLD_Y - camera.y + camera.screenH / 2;
+      if (donSx > -margin - 50 && donSx < camera.screenW + margin + 50 && donSy > -margin - 50 && donSy < camera.screenH + margin + 50) {
+        Sprites.drawDon(ctx, donSx, donSy, now / 1000);
+        // Label above the Don
+        ctx.save();
+        ctx.font = 'bold 11px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#ffd700';
+        ctx.shadowColor = '#000';
+        ctx.shadowBlur = 4;
+        ctx.fillText('🎩 DON FEATHERSTONE', donSx, donSy - 52);
+        // Show press hint only when player is near
+        if (gameState.self && gameState.nearDon) {
+          ctx.fillStyle = '#ff88ff';
+          ctx.font = 'bold 10px monospace';
+          ctx.fillText('[M] Meet The Don', donSx, donSy - 40);
+        }
+        ctx.restore();
+      }
+    }
+
     // Black Market NPC (night-only shady alley shop)
     if (gameState.blackMarket) {
       const bm = gameState.blackMarket;
@@ -3976,7 +4078,7 @@
             ctx.globalAlpha = 0.5;
           }
           Sprites.drawBird(ctx, sx, sy, b.rotation, b.type, b.wingPhase, isPlayer, b.birdColor || null);
-          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer);
+          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null);
           if (b.cloaked || b.inNest) {
             ctx.globalAlpha = 1;
           }
@@ -4138,6 +4240,22 @@
 
     // Minimap (now includes activeEvent and cat)
     Renderer.drawMinimap(minimapCtx, worldData, gameState.birds, selfBird, gameState.activeEvent, gameState.cat, gameState.janitor, gameState.territories, gameState.bankHeist, gameState.graffiti);
+
+    // Don Featherstone on minimap — permanent gold 🎩 dot
+    if (worldData) {
+      const mw = minimapCtx.canvas.width;
+      const mh = minimapCtx.canvas.height;
+      const DON_WORLD_X = 1300, DON_WORLD_Y = 2380;
+      const dmx = DON_WORLD_X * mw / worldData.width;
+      const dmy = DON_WORLD_Y * mh / worldData.height;
+      minimapCtx.fillStyle = '#ffd700';
+      minimapCtx.beginPath();
+      minimapCtx.arc(dmx, dmy, 3, 0, Math.PI * 2);
+      minimapCtx.fill();
+      minimapCtx.font = 'bold 7px sans-serif';
+      minimapCtx.textAlign = 'center';
+      minimapCtx.fillText('🎩', dmx, dmy - 4);
+    }
 
     // Race checkpoints on minimap
     if (worldData && worldData.raceCheckpoints) {
@@ -4495,6 +4613,58 @@
     bmShopOpen = false;
     const el = document.getElementById('blackMarketShop');
     if (el) el.style.display = 'none';
+  }
+
+  // ============================================================
+  // PIGEON MAFIA DON OVERLAY
+  // ============================================================
+  function showDonOverlay() {
+    if (!gameState || !gameState.nearDon) return;
+    donOverlayVisible = true;
+    donOverlay.style.display = 'block';
+    // Stop movement while talking to Don
+    for (const k in keys) keys[k] = false;
+    syncInput();
+    renderDonOverlay();
+  }
+
+  function hideDonOverlay() {
+    donOverlayVisible = false;
+    donOverlay.style.display = 'none';
+  }
+
+  function renderDonOverlay() {
+    if (!gameState) return;
+    const rep = gameState.mafiaRep || 0;
+    const title = gameState.mafiaTitle;
+    const repBadge = document.getElementById('donRepBadge');
+    const titleStr = title ? `[${title}]` : '[Civilian]';
+    repBadge.textContent = `🎖 REP: ${rep} — ${titleStr}`;
+
+    const hasMission = !!(gameState.donMission);
+    const hasJob = !!(gameState.donCurrentJob);
+
+    document.getElementById('donActiveMission').style.display = hasMission ? 'block' : 'none';
+    document.getElementById('donAcceptBtn').style.display = (!hasMission && hasJob) ? 'inline-block' : 'none';
+    document.getElementById('donNoJob').style.display = (!hasJob) ? 'block' : 'none';
+    document.getElementById('donJobCard').style.display = hasJob ? 'block' : 'none';
+
+    if (hasJob) {
+      const job = gameState.donCurrentJob;
+      document.getElementById('donJobTitle').textContent = job.title;
+      document.getElementById('donJobDesc').textContent = job.desc;
+      document.getElementById('donJobRewards').textContent =
+        `💰 ${job.coinReward}c  +${job.xpReward} XP  +1 REP`;
+    }
+
+    if (hasMission) {
+      const dm = gameState.donMission;
+      document.getElementById('donActiveTitle').textContent = dm.title;
+      const timeLeftS = Math.ceil((dm.timeLeft || 0) / 1000);
+      const pct = dm.target > 0 ? Math.min(100, Math.round(dm.progress / dm.target * 100)) : 0;
+      document.getElementById('donActiveProgress').textContent =
+        `Progress: ${dm.progress}/${dm.target} (${pct}%) — ${timeLeftS}s left`;
+    }
   }
 
   function renderBmShop() {

@@ -213,6 +213,37 @@
   <!-- Bank Heist escape HUD (shows when escape phase active) -->
   <div id="bankEscapeHud" style="display:none"></div>
 
+  <!-- Pigeon Mafia Don overlay -->
+  <div id="donOverlay" style="display:none">
+    <div class="don-header">🎩 DON FEATHERSTONE</div>
+    <div class="don-tagline">"A bird of your talents... I have a proposition."</div>
+    <div id="donRepBadge" class="don-rep"></div>
+    <div id="donJobCard" class="don-job-card">
+      <div id="donJobTitle" class="don-job-title"></div>
+      <div id="donJobDesc" class="don-job-desc"></div>
+      <div id="donJobRewards" class="don-job-rewards"></div>
+    </div>
+    <div id="donActiveMission" class="don-active" style="display:none">
+      <div class="don-active-label">ACTIVE CONTRACT</div>
+      <div id="donActiveTitle" class="don-active-title"></div>
+      <div id="donActiveProgress"></div>
+    </div>
+    <div id="donNoJob" class="don-no-job" style="display:none">The Don has no work for you right now. Come back soon.</div>
+    <div style="display:flex;gap:10px;margin-top:12px;">
+      <button id="donAcceptBtn" class="don-btn" style="display:none">✅ ACCEPT THE JOB</button>
+      <button id="donCloseBtn" class="don-close">LEAVE  [M]</button>
+    </div>
+  </div>
+
+  <!-- Don proximity prompt -->
+  <div id="donProximityPrompt" style="display:none">🎩 Press <kbd>M</kbd> to meet The Don</div>
+
+  <!-- Active Don mission HUD -->
+  <div id="donMissionHud" style="display:none;position:fixed;top:108px;left:50%;transform:translateX(-50%);
+    background:rgba(10,4,20,0.92);color:#ffd700;font:bold 11px 'Courier New',monospace;
+    padding:5px 14px;border-radius:14px;border:1.5px solid #ffd700;pointer-events:none;z-index:62;
+    text-align:center;white-space:nowrap;"></div>
+
   <!-- Race Betting Panel (shown to non-racers during open/countdown) -->
   <div id="raceBettingPanel" style="display:none;position:fixed;top:80px;right:14px;
     background:rgba(8,4,20,0.96);color:#ffd700;font:bold 12px 'Courier New',monospace;

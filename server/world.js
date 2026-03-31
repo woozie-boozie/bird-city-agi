@@ -319,6 +319,9 @@ const EGG_NEST_ZONES = [
   { id: 'nest_docks',       label: 'NEST', x: 1480, y: 2750, r: 55 },
 ];
 
+// The Pigeon Mafia Don — permanent NPC in the south docks alley
+const DON_POS = { x: 1300, y: 2380 };
+
 // Egg Scramble: pool of spawn positions for golden eggs (spread across map, avoiding roads/buildings)
 const EGG_SPAWN_POOL = [
   { x: 480,  y: 580  },
@@ -340,5 +343,6 @@ module.exports = {
   TERRITORY_ZONES, ARENA, RADIO_TOWER, RACE_CHECKPOINTS,
   MANHOLES, SEWER_LOOT_POSITIONS,
   EGG_NEST_ZONES, EGG_SPAWN_POOL,
+  DON_POS,
   getXPForLevel, getLevelFromXP, getBirdTypeForLevel,
 };

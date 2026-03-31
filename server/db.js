@@ -60,6 +60,7 @@ const db = {
       owned_skills: data.owned_skills,
       equipped_skills: data.equipped_skills,
       bird_color: data.bird_color,
+      mafia_rep: data.mafia_rep || 0,
       last_seen: Math.floor(Date.now() / 1000),
     };
     await birdsCol.doc(id).set(docData, { merge: true });
