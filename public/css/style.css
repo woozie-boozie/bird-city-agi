@@ -1489,6 +1489,29 @@ html, body {
   to   { box-shadow: 0 0 20px rgba(255, 100, 0, 1.0); }
 }
 
+/* Predator danger HUD */
+#predatorHud {
+  position: fixed;
+  top: 56px;
+  left: 10px;
+  background: rgba(0,0,0,0.8);
+  border: 2px solid rgba(255,60,0,0.8);
+  border-radius: 10px;
+  padding: 5px 12px;
+  color: #ff5500;
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  font-weight: bold;
+  pointer-events: none;
+  z-index: 50;
+  white-space: nowrap;
+  animation: predatorPulse 0.6s ease-in-out infinite alternate;
+}
+@keyframes predatorPulse {
+  from { box-shadow: 0 0 6px rgba(255,60,0,0.5); }
+  to   { box-shadow: 0 0 20px rgba(255,60,0,1.0); }
+}
+
 /* ============================================================
    BLACK MARKET SHOP
    ============================================================ */

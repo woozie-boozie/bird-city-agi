@@ -36,6 +36,7 @@ app.get('/api/world', (req, res) => {
     raceCheckpoints: world.RACE_CHECKPOINTS,
     manholes: world.MANHOLES,
     territoryZones: world.TERRITORY_ZONES,
+    predatorTerritories: world.PREDATOR_TERRITORIES,
   });
 });
 

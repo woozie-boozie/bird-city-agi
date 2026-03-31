@@ -334,6 +334,29 @@ const EGG_SPAWN_POOL = [
   { x: 2050, y: 2620 },
 ];
 
+// Predator Territories — hawk and mega cat live here permanently
+// Players get a 3-second warning on entry; 3 hits from the predator kills you
+const PREDATOR_TERRITORIES = {
+  hawk: {
+    id: 'hawk_zone',
+    name: "Hawk's Nest",
+    // Far northeast strip east of the last vertical road (x:2540) — cliffside sky territory
+    x: 2610, y: 50, w: 360, h: 790,
+    spawnX: 2790, spawnY: 380,
+    warningColor: '#ff5500',
+    label: '⚠️ HAWK TERRITORY',
+  },
+  cat: {
+    id: 'cat_zone',
+    name: 'Cat Alley',
+    // Bottom-left waterfront corner — dark industrial docks back alley
+    x: 50, y: 2610, w: 600, h: 340,
+    spawnX: 300, spawnY: 2760,
+    warningColor: '#cc44ff',
+    label: '⚠️ CAT TERRITORY',
+  },
+};
+
 module.exports = {
   WORLD_WIDTH, WORLD_HEIGHT,
   BUILDINGS, TREES, PARK, CAFE_TABLES, ROADS, CARS, LAUNDRY,
@@ -344,5 +367,6 @@ module.exports = {
   MANHOLES, SEWER_LOOT_POSITIONS,
   EGG_NEST_ZONES, EGG_SPAWN_POOL,
   DON_POS,
+  PREDATOR_TERRITORIES,
   getXPForLevel, getLevelFromXP, getBirdTypeForLevel,
 };

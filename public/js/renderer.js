@@ -1823,4 +1823,130 @@ window.Renderer = {
     }
     minimapCtx.globalAlpha = 1;
   },
+
+  // Draw predator territory danger zones and warning signs on the main canvas
+  drawPredatorTerritories(ctx, camera, worldData, territoryPredators, now) {
+    if (!worldData || !worldData.predatorTerritories) return;
+    const t = now / 1000;
+
+    const zones = [
+      { key: 'hawk', def: worldData.predatorTerritories.hawk, color: '#ff5500', label: "⚠️ HAWK'S NEST", icon: '🦅' },
+      { key: 'cat',  def: worldData.predatorTerritories.cat,  color: '#cc44ff', label: '⚠️ CAT ALLEY',    icon: '🐱' },
+    ];
+
+    for (const { key, def, color, label, icon } of zones) {
+      const pred = territoryPredators ? territoryPredators[key] : null;
+      const alive = pred !== null;
+
+      const sx = def.x - camera.x + camera.screenW / 2;
+      const sy = def.y - camera.y + camera.screenH / 2;
+      const sw = def.w;
+      const sh = def.h;
+
+      // Skip if entirely off-screen
+      if (sx + sw < -50 || sy + sh < -50 || sx > camera.screenW + 50 || sy > camera.screenH + 50) continue;
+
+      ctx.save();
+
+      // Danger zone fill — pulsing red-tinted overlay
+      const pulse = 0.04 + 0.02 * Math.sin(t * 2.5);
+      ctx.globalAlpha = alive ? pulse : 0.04;
+      ctx.fillStyle = alive ? color : '#888888';
+      ctx.fillRect(sx, sy, sw, sh);
+
+      // Border — dashed danger stripe
+      ctx.globalAlpha = alive ? (0.5 + 0.2 * Math.sin(t * 3)) : 0.2;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([10, 8]);
+      ctx.strokeRect(sx + 1, sy + 1, sw - 2, sh - 2);
+      ctx.setLineDash([]);
+
+      ctx.globalAlpha = 1;
+
+      // Warning label at zone top
+      const cx = sx + sw / 2;
+      const labelY = sy + 28;
+
+      ctx.font = 'bold 13px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      // Shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.fillText(label, cx + 1, labelY + 1);
+      // Label
+      ctx.fillStyle = alive ? color : '#888';
+      ctx.fillText(label, cx, labelY);
+
+      // Sub-label
+      if (alive) {
+        ctx.font = '10px monospace';
+        ctx.fillStyle = 'rgba(255,255,255,0.5)';
+        ctx.fillText('ENTER AT YOUR OWN RISK', cx, labelY + 16);
+      } else {
+        ctx.font = '10px monospace';
+        ctx.fillStyle = 'rgba(150,150,150,0.6)';
+        ctx.fillText('TERRITORY CLEAR — respawning...', cx, labelY + 16);
+      }
+
+      // HP bar if predator is alive and in hunting state
+      if (pred && pred.state === 'hunting') {
+        const barW = Math.min(120, sw - 20);
+        const barX = cx - barW / 2;
+        const barY = sy + sh - 20;
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillRect(barX - 1, barY - 1, barW + 2, 8);
+        const hpFrac = pred.hp / pred.maxHp;
+        ctx.fillStyle = hpFrac > 0.5 ? '#ff4400' : '#ff0000';
+        ctx.fillRect(barX, barY, barW * hpFrac, 6);
+        ctx.font = '9px monospace';
+        ctx.fillStyle = '#ffdddd';
+        ctx.fillText(`${icon} HP: ${pred.hp}/${pred.maxHp}`, cx, barY - 7);
+      }
+
+      ctx.restore();
+    }
+  },
+
+  // Draw predator territory zones on the minimap
+  drawPredatorTerritoriesOnMinimap(minimapCtx, worldData, territoryPredators) {
+    if (!worldData || !worldData.predatorTerritories) return;
+    const mw = minimapCtx.canvas.width;
+    const mh = minimapCtx.canvas.height;
+    const sx = mw / worldData.width;
+    const sy = mh / worldData.height;
+
+    const zones = [
+      { key: 'hawk', def: worldData.predatorTerritories.hawk, color: '#ff5500' },
+      { key: 'cat',  def: worldData.predatorTerritories.cat,  color: '#cc44ff' },
+    ];
+
+    for (const { key, def, color } of zones) {
+      const pred = territoryPredators ? territoryPredators[key] : null;
+      const alive = pred !== null;
+
+      // Draw zone border on minimap
+      minimapCtx.globalAlpha = alive ? 0.5 : 0.2;
+      minimapCtx.strokeStyle = color;
+      minimapCtx.lineWidth = 1;
+      minimapCtx.setLineDash([3, 3]);
+      minimapCtx.strokeRect(def.x * sx, def.y * sy, def.w * sx, def.h * sy);
+      minimapCtx.setLineDash([]);
+      minimapCtx.globalAlpha = 1;
+
+      // Draw predator dot
+      if (pred) {
+        const pdx = pred.x * sx;
+        const pdy = pred.y * sy;
+        const pulse = 0.7 + 0.3 * Math.sin(Date.now() / 400);
+        minimapCtx.globalAlpha = pred.state === 'hunting' ? pulse : 0.8;
+        minimapCtx.fillStyle = color;
+        minimapCtx.beginPath();
+        minimapCtx.arc(pdx, pdy, pred.state === 'hunting' ? 4 : 2.5, 0, Math.PI * 2);
+        minimapCtx.fill();
+        minimapCtx.globalAlpha = 1;
+      }
+    }
+  },
 };

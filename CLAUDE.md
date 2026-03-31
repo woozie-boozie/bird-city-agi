@@ -673,10 +673,42 @@ Bird City now has a permanent criminal underworld. Don Featherstone — a distin
 
 **Creative intent**: The Don adds NARRATIVE to the chaos. The regular mission board is functional but feels mechanical — the Don is a CHARACTER you visit. Seeing [Made Bird] or [Capo] above a bird's name tells you that player has a criminal history and is grinding the underworld path. The 5 mission types hit different systems — poop combat, wanted level evasion, graffiti turf war, heist cooperation, car bombing — creating a progression track that touches every part of Bird City. A full "Don" tier (50 rep) is a meaningful prestige milestone. Pure PROGRESSION + DISCOVERY energy, with CARNAGE undertones.
 
+**Session 23 — 2026-03-31: Predator Territory System — Fixed The #1 Fun-Killer**
+Finally addressed the BOSS/PREDATOR BEHAVIOR RULE that has been in the Rules section since the start. MEGA_CAT and MEGA_HAWK no longer randomly spawn and chase birds endlessly. They now have permanent home territories that make encounters intentional, fair, and dramatically more fun.
+
+**The New System:**
+- **Hawk's Nest**: Permanent zone in the far northeast corner of the map (x:2610-2970, y:50-840) — the eastern cliffside sky above the Mall district. The hawk patrols its airspace.
+- **Cat Alley**: Permanent zone in the bottom-left waterfront (x:50-650, y:2610-2950) — a dark industrial docks back alley. The mega cat prowls its territory.
+- Both zones render with pulsing danger overlays (orange for hawk, purple for cat), dashed warning borders, and zone labels ("⚠️ HAWK'S NEST", "⚠️ CAT ALLEY")
+
+**Warning System (3-second grace period):**
+- The moment a player enters a predator territory: warning event fires → "⚠️ HAWK TERRITORY — LEAVE NOW or face the predator!" announcement
+- If player stays for 3+ seconds: predator switches to HUNTING state, locks onto the player
+- If player flees the zone while being hunted: predator immediately returns to patrol — no endless chase across the whole map
+
+**Clean Duel (resolves in 15-30 seconds):**
+- Player has 3 lives (hit points). Heart HUD shows ❤️❤️❤️ → ❤️❤️🖤 → ❤️🖤🖤
+- Each predator hit: -25% food, 1.5s stun, combo streak wiped
+- On 3rd hit: bird teleports to city center, loses 35% coins and 70% food
+- Counter: poop on the predator = 15 HP damage (4 hits to kill). Mega poop = 45 HP (2 hits)
+- **Predator killed**: +300 XP, +200 coins for the killer, city-wide announcement, 3-minute respawn
+
+**Eagle Overlord unchanged** — still a roaming raid boss, just made less frequent (10-15 min instead of 5-8 min) since it's now the only roaming boss.
+
+**Visual & HUD:**
+- Territory zones visible on minimap as colored bordered rectangles with predator dot
+- Predator sprites render at 2× scale with colored glow — orange for hawk, purple for cat
+- HP bar shown above predator only when in HUNTING state (patrol is passive)
+- "Predator Danger HUD" (below wanted level HUD): shows ❤️ hearts + "POOP BACK or FLEE!" when being hunted
+- Floating damage numbers on poop hits
+
+**Creative intent**: This COMPLETELY changes the dynamic from "random encounter that never ends" to "deliberate risk-reward zone." The hawk territory is a visible part of the map that players can see on the minimap and choose to explore for big rewards. The 3-second warning means accidental entries are safe — only intentional stays lead to combat. The 3-hit kill and 4-poop-kill means encounters last 15-30 seconds maximum, not 1+ minutes. A player who kills the hawk gets 300 XP + 200 coins and a city-wide callout — worth risking the duel. The territories also add natural map landmarks: "don't fly into the northeast corner" becomes part of the city's geography. Pure DISCOVERY + CARNAGE energy, and crucially: **the #1 fun-killer is now fixed**.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
 - ~~Pigeon mafia questline~~ (DONE Session 22)
+- ~~Boss/predator glitch fix — territory-based predators with 3-hit duels~~ (DONE Session 23)
 - Eagle Overlord rare drop: "Eagle Feather" cosmetic badge
 **Session 20 — 2026-03-30: Territory Control System (Parallel Session)**
 Built the Territory Control System on top of the existing upstream code:

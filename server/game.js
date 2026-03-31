@@ -49,9 +49,17 @@ class GameEngine {
     this.chaosEventNPCs = new Map();  // extra NPCs spawned by chaos events
     this.chaosEventFoods = new Map(); // golden rain foods
 
-    // === BOSS BATTLES ===
-    this.boss = null;                 // { type, x, y, hp, maxHp, speed, rotation, spawnedAt, lastAttack }
-    this.bossSpawnTimer = Date.now() + this._randomRange(300000, 480000); // 5-8 min
+    // === BOSS BATTLES (Eagle Overlord only — MEGA_CAT/MEGA_HAWK now have fixed territories) ===
+    this.boss = null;
+    this.bossSpawnTimer = Date.now() + this._randomRange(600000, 900000); // Eagle only: 10-15 min
+
+    // === TERRITORY PREDATORS — hawk and cat live in fixed home zones, never wander the city ===
+    this.territoryPredators = {
+      hawk: { type: 'MEGA_HAWK', x: world.PREDATOR_TERRITORIES.hawk.spawnX, y: world.PREDATOR_TERRITORIES.hawk.spawnY, hp: 60, maxHp: 60, rotation: 0, state: 'patrol', wanderAngle: Math.random() * Math.PI * 2, wanderTimer: 0, targetBirdId: null, lastAttack: 0, respawnTimer: 0 },
+      cat:  { type: 'MEGA_CAT',  x: world.PREDATOR_TERRITORIES.cat.spawnX,  y: world.PREDATOR_TERRITORIES.cat.spawnY,  hp: 60, maxHp: 60, rotation: 0, state: 'patrol', wanderAngle: Math.random() * Math.PI * 2, wanderTimer: 0, targetBirdId: null, lastAttack: 0, respawnTimer: 0 },
+    };
+    this.predatorWarnings = new Map(); // birdId -> { hawk: timestampOrNull, cat: timestampOrNull }
+    this.predatorHitCounts = new Map(); // birdId -> { hawk: 0, cat: 0 }
 
     // === WANTED SYSTEM ===
     this.heatScores = new Map();      // birdId -> heat number (0-250+)
@@ -729,7 +737,10 @@ class GameEngine {
     this._updateChaosMeter(dt, now);
     this._updateChaosEvent(dt, now);
 
-    // === Boss Battles ===
+    // === Territory Predators (hawk + cat in fixed home zones) ===
+    this._updateTerritoryPredators(dt, now);
+
+    // === Boss Battles (Eagle Overlord only) ===
     this._updateBoss(dt, now);
 
     // === Wanted System ===
@@ -1931,6 +1942,32 @@ class GameEngine {
         xpGain = cop.type === 'swat' ? 80 : 50;
         bird.coins += cop.type === 'swat' ? 25 : 15;
         this.events.push({ type: 'cop_pooped', birdId: bird.id, birdName: bird.name, copType: cop.type, x: cop.x, y: cop.y });
+      } else if (hit.target === 'territory_predator' && hit.predator) {
+        // Poop hit a territory predator (hawk or cat in their home zone)
+        const { predKey, predator } = hit;
+        const dmg = isMegaPoop ? 45 : 15;
+        predator.hp -= dmg;
+        xpGain = isMegaPoop ? 60 : 25;
+        bird.coins += 5;
+        this.events.push({ type: 'predator_poop_hit', predType: predKey, birdId: bird.id, x: predator.x, y: predator.y, hp: Math.max(0, Math.ceil(predator.hp)), maxHp: predator.maxHp, dmg });
+        if (predator.hp <= 0 && predator.state !== 'dead') {
+          predator.state = 'dead';
+          predator.respawnTimer = now + 180000; // 3 min cooldown
+          predator.targetBirdId = null;
+          // Big reward for the killing shot
+          bird.xp += 300;
+          bird.coins += 200;
+          const newLevel = world.getLevelFromXP(bird.xp);
+          if (newLevel !== bird.level) {
+            bird.level = newLevel;
+            bird.type = world.getBirdTypeForLevel(newLevel);
+            this.events.push({ type: 'evolve', birdId: bird.id, name: bird.name, birdType: bird.type });
+          }
+          this.events.push({ type: 'predator_defeated', predType: predKey, birdId: bird.id, birdName: bird.name, x: predator.x, y: predator.y });
+          // Clear all warnings and hit counts for this predator
+          for (const warnings of this.predatorWarnings.values()) warnings[predKey] = null;
+          for (const counts of this.predatorHitCounts.values()) counts[predKey] = 0;
+        }
       } else if (hit.target === 'arena_fighter' && hit.fighter) {
         // Arena PvP damage! One hit = one arena HP lost
         const fighter = hit.fighter;
@@ -2367,6 +2404,18 @@ class GameEngine {
       if (Math.sqrt(dx * dx + dy * dy) < hitRadius + 28) {
         if (!isMegaPoop) return { target: 'eagle_overlord' };
         allHits.push({ target: 'eagle_overlord' });
+      }
+    }
+
+    // Check territory predators (hawk and cat in their fixed home zones)
+    for (const [predKey, predator] of Object.entries(this.territoryPredators)) {
+      if (predator.state === 'dead') continue;
+      const pdx = poop.x - predator.x;
+      const pdy = poop.y - predator.y;
+      const hitDist = hitRadius + (predKey === 'hawk' ? 14 : 18);
+      if (Math.sqrt(pdx * pdx + pdy * pdy) < hitDist) {
+        if (!isMegaPoop) return { target: 'territory_predator', predKey, predator };
+        allHits.push({ target: 'territory_predator', predKey, predator });
       }
     }
 
@@ -3451,6 +3500,28 @@ class GameEngine {
       lobbyBirds: lobbyBirds,
       chaosMeter: Math.floor(this.chaosMeter),
       boss: bossState,
+      territoryPredators: {
+        hawk: this.territoryPredators.hawk.state !== 'dead' ? {
+          type: 'MEGA_HAWK', x: this.territoryPredators.hawk.x, y: this.territoryPredators.hawk.y,
+          rotation: this.territoryPredators.hawk.rotation, hp: Math.ceil(this.territoryPredators.hawk.hp),
+          maxHp: this.territoryPredators.hawk.maxHp, state: this.territoryPredators.hawk.state,
+        } : null,
+        cat: this.territoryPredators.cat.state !== 'dead' ? {
+          type: 'MEGA_CAT', x: this.territoryPredators.cat.x, y: this.territoryPredators.cat.y,
+          rotation: this.territoryPredators.cat.rotation, hp: Math.ceil(this.territoryPredators.cat.hp),
+          maxHp: this.territoryPredators.cat.maxHp, state: this.territoryPredators.cat.state,
+        } : null,
+      },
+      myPredatorWarnings: (() => {
+        const w = this.predatorWarnings.get(bird.id);
+        const h = this.predatorHitCounts.get(bird.id);
+        return {
+          hawk: w ? w.hawk : null,
+          cat: w ? w.cat : null,
+          hawkHits: h ? h.hawk : 0,
+          catHits: h ? h.cat : 0,
+        };
+      })(),
       wantedBirdId: this.wantedBirdId,
       foodTruck: foodTruckState,
       raccoons: nearbyRaccoons,
@@ -4672,53 +4743,183 @@ class GameEngine {
       }
       this.events.push({ type: 'boss_defeated', bossType: boss.type, x: boss.x, y: boss.y });
       this.boss = null;
-      this.bossSpawnTimer = now + this._randomRange(300000, 480000);
+      this.bossSpawnTimer = now + this._randomRange(600000, 900000); // Eagle: 10-15 min cooldown
       return;
     }
   }
 
+  // ============================================================
+  // TERRITORY PREDATORS — hawk and mega cat in permanent home zones
+  // ============================================================
+  _updateTerritoryPredators(dt, now) {
+    const WARNING_GRACE = 3000; // ms before predator attacks after warning
+
+    for (const [predKey, predator] of Object.entries(this.territoryPredators)) {
+      const zone = world.PREDATOR_TERRITORIES[predKey];
+
+      // --- Respawn dead predators after cooldown ---
+      if (predator.state === 'dead') {
+        if (now >= predator.respawnTimer) {
+          predator.x = zone.spawnX;
+          predator.y = zone.spawnY;
+          predator.hp = predator.maxHp;
+          predator.state = 'patrol';
+          predator.targetBirdId = null;
+          predator.wanderAngle = Math.random() * Math.PI * 2;
+          predator.wanderTimer = 0;
+          this.events.push({ type: 'predator_respawned', predType: predKey, x: predator.x, y: predator.y, zoneName: zone.name });
+        }
+        continue;
+      }
+
+      // --- Find birds inside this territory ---
+      const birdsInZone = [];
+      for (const bird of this.birds.values()) {
+        if (bird.x >= zone.x && bird.x <= zone.x + zone.w &&
+            bird.y >= zone.y && bird.y <= zone.y + zone.h) {
+          birdsInZone.push(bird);
+        }
+      }
+
+      // --- Clear warnings for birds who left the zone ---
+      for (const [birdId, warnings] of this.predatorWarnings.entries()) {
+        if (!birdsInZone.some(b => b.id === birdId) && warnings[predKey]) {
+          warnings[predKey] = null;
+          if (predator.targetBirdId === birdId) {
+            predator.targetBirdId = null;
+            predator.state = 'patrol';
+          }
+        }
+      }
+
+      // --- Issue first-entry warnings ---
+      for (const bird of birdsInZone) {
+        if (!this.predatorWarnings.has(bird.id)) {
+          this.predatorWarnings.set(bird.id, { hawk: null, cat: null });
+        }
+        const warnings = this.predatorWarnings.get(bird.id);
+        if (!warnings[predKey]) {
+          warnings[predKey] = now;
+          this.events.push({ type: 'territory_warning', predType: predKey, birdId: bird.id, zoneName: zone.name, label: zone.label });
+        }
+      }
+
+      // --- Switch to hunting if a warned bird has lingered long enough ---
+      if (predator.state === 'patrol') {
+        for (const bird of birdsInZone) {
+          const warnings = this.predatorWarnings.get(bird.id);
+          if (warnings && warnings[predKey] && (now - warnings[predKey]) >= WARNING_GRACE) {
+            predator.state = 'hunting';
+            predator.targetBirdId = bird.id;
+            this.events.push({ type: 'predator_hunting', predType: predKey, birdId: bird.id, birdName: bird.name, x: predator.x, y: predator.y });
+            break;
+          }
+        }
+      }
+
+      // --- Movement ---
+      const huntSpeed = predKey === 'hawk' ? 260 : 150;
+      const patrolSpeed = predKey === 'hawk' ? 90 : 65;
+
+      if (predator.state === 'hunting' && predator.targetBirdId) {
+        const target = this.birds.get(predator.targetBirdId);
+        // Abandon hunt if target left the zone or disconnected
+        if (!target || target.x < zone.x || target.x > zone.x + zone.w ||
+            target.y < zone.y || target.y > zone.y + zone.h) {
+          predator.targetBirdId = null;
+          predator.state = 'patrol';
+        } else {
+          const dx = target.x - predator.x;
+          const dy = target.y - predator.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist > 1) {
+            predator.x += (dx / dist) * huntSpeed * dt;
+            predator.y += (dy / dist) * huntSpeed * dt;
+            predator.rotation = Math.atan2(dy, dx);
+          }
+
+          // Attack on contact
+          if (dist < 42 && now - predator.lastAttack > 2000) {
+            predator.lastAttack = now;
+
+            if (!this.predatorHitCounts.has(target.id)) {
+              this.predatorHitCounts.set(target.id, { hawk: 0, cat: 0 });
+            }
+            const hits = this.predatorHitCounts.get(target.id);
+            hits[predKey]++;
+
+            target.food = Math.max(0, Math.floor(target.food * 0.75));
+            target.stunnedUntil = now + 1500;
+            target.comboCount = 0;
+            target.comboExpiresAt = 0;
+
+            this.events.push({ type: 'predator_attack', predType: predKey, birdId: target.id, hitCount: hits[predKey], maxHits: 3, x: predator.x, y: predator.y });
+
+            if (hits[predKey] >= 3) {
+              // Bird killed — respawn at city center with penalties
+              const coinLoss = Math.floor(target.coins * 0.35);
+              target.coins = Math.max(0, target.coins - coinLoss);
+              target.food = Math.max(3, Math.floor(target.food * 0.3));
+              target.x = world.WORLD_WIDTH / 2 + (Math.random() - 0.5) * 300;
+              target.y = world.WORLD_HEIGHT / 2 + (Math.random() - 0.5) * 300;
+              target.stunnedUntil = now + 3000;
+
+              this.events.push({ type: 'predator_killed_bird', predType: predKey, birdId: target.id, birdName: target.name, coinLoss, x: predator.x, y: predator.y });
+
+              this.predatorHitCounts.delete(target.id);
+              this.predatorWarnings.delete(target.id);
+              predator.targetBirdId = null;
+              predator.state = 'patrol';
+            }
+          }
+        }
+      } else {
+        // Patrol: wander randomly within territory
+        predator.wanderTimer -= dt;
+        if (predator.wanderTimer <= 0) {
+          predator.wanderAngle = Math.random() * Math.PI * 2;
+          predator.wanderTimer = 1.5 + Math.random() * 2.5;
+        }
+        predator.x += Math.cos(predator.wanderAngle) * patrolSpeed * dt;
+        predator.y += Math.sin(predator.wanderAngle) * patrolSpeed * dt;
+        predator.rotation = predator.wanderAngle;
+
+        // Bounce off territory walls
+        if (predator.x < zone.x + 20 || predator.x > zone.x + zone.w - 20) {
+          predator.wanderAngle = Math.PI - predator.wanderAngle;
+          predator.x = Math.max(zone.x + 20, Math.min(zone.x + zone.w - 20, predator.x));
+        }
+        if (predator.y < zone.y + 20 || predator.y > zone.y + zone.h - 20) {
+          predator.wanderAngle = -predator.wanderAngle;
+          predator.y = Math.max(zone.y + 20, Math.min(zone.y + zone.h - 20, predator.y));
+        }
+      }
+    }
+  }
+
   _spawnBoss(now) {
-    // Eagle Overlord: 25% chance; otherwise 50/50 between existing bosses
-    const roll = Math.random();
-    const type = roll < 0.25 ? 'EAGLE_OVERLORD' : (roll < 0.625 ? 'MEGA_CAT' : 'MEGA_HAWK');
-
-    if (type === 'EAGLE_OVERLORD') {
-      // Spawn from a random map edge and swoop inward
-      const edge = Math.floor(Math.random() * 4);
-      let ex, ey;
-      if (edge === 0)      { ex = 80; ey = 80 + Math.random() * (world.WORLD_HEIGHT - 160); }
-      else if (edge === 1) { ex = world.WORLD_WIDTH - 80; ey = 80 + Math.random() * (world.WORLD_HEIGHT - 160); }
-      else if (edge === 2) { ex = 80 + Math.random() * (world.WORLD_WIDTH - 160); ey = 80; }
-      else                 { ex = 80 + Math.random() * (world.WORLD_WIDTH - 160); ey = world.WORLD_HEIGHT - 80; }
-      this.boss = {
-        type: 'EAGLE_OVERLORD',
-        x: ex, y: ey,
-        hp: 300, maxHp: 300,
-        speed: 185,
-        rotation: 0, spawnedAt: now, lastAttack: 0,
-        swoopAngle: Math.atan2(world.WORLD_HEIGHT / 2 - ey, world.WORLD_WIDTH / 2 - ex),
-        swoopPhase: Math.random() * Math.PI * 2,
-        snatched: null,
-        escapeTime: now + 90000,
-        damageByBird: new Map(),
-      };
-      this.events.push({ type: 'boss_spawn', bossType: 'EAGLE_OVERLORD', x: ex, y: ey });
-      console.log(`[GameEngine] 🦅 EAGLE OVERLORD SPAWNED at edge ${edge}`);
-      return;
-    }
-
-    const roads = world.ROADS;
-    const road = roads[Math.floor(Math.random() * roads.length)];
-    const x = road.x + Math.random() * road.w;
-    const y = road.y + Math.random() * road.h;
-
-    if (type === 'MEGA_CAT') {
-      this.boss = { type, x, y, hp: 100, maxHp: 100, speed: 120, rotation: 0, spawnedAt: now, lastAttack: 0 };
-    } else {
-      this.boss = { type, x, y, hp: 80, maxHp: 80, speed: 250, rotation: 0, spawnedAt: now, lastAttack: 0 };
-    }
-    this.events.push({ type: 'boss_spawn', bossType: type, x, y });
-    console.log(`[GameEngine] BOSS SPAWNED: ${type} at ${Math.round(x)}, ${Math.round(y)}`);
+    // Only Eagle Overlord spawns as a roaming raid boss now.
+    // MEGA_CAT and MEGA_HAWK have permanent fixed territories (see _updateTerritoryPredators).
+    const edge = Math.floor(Math.random() * 4);
+    let ex, ey;
+    if (edge === 0)      { ex = 80; ey = 80 + Math.random() * (world.WORLD_HEIGHT - 160); }
+    else if (edge === 1) { ex = world.WORLD_WIDTH - 80; ey = 80 + Math.random() * (world.WORLD_HEIGHT - 160); }
+    else if (edge === 2) { ex = 80 + Math.random() * (world.WORLD_WIDTH - 160); ey = 80; }
+    else                 { ex = 80 + Math.random() * (world.WORLD_WIDTH - 160); ey = world.WORLD_HEIGHT - 80; }
+    this.boss = {
+      type: 'EAGLE_OVERLORD',
+      x: ex, y: ey,
+      hp: 300, maxHp: 300,
+      speed: 185,
+      rotation: 0, spawnedAt: now, lastAttack: 0,
+      swoopAngle: Math.atan2(world.WORLD_HEIGHT / 2 - ey, world.WORLD_WIDTH / 2 - ex),
+      swoopPhase: Math.random() * Math.PI * 2,
+      snatched: null,
+      escapeTime: now + 90000,
+      damageByBird: new Map(),
+    };
+    this.events.push({ type: 'boss_spawn', bossType: 'EAGLE_OVERLORD', x: ex, y: ey });
+    console.log(`[GameEngine] 🦅 EAGLE OVERLORD SPAWNED at edge ${edge}`);
   }
 
   // ============================================================

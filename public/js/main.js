@@ -60,6 +60,7 @@
   const soundToggle = document.getElementById('soundToggle');
   const wantedHud = document.getElementById('wantedHud');
   const comboHud = document.getElementById('comboHud');
+  const predatorHud = document.getElementById('predatorHud');
 
   // === Pigeon Mafia Don ===
   const donOverlay = document.getElementById('donOverlay');
@@ -797,6 +798,61 @@
         if (ev.rewards.length > 3) rewardMsg += '...';
       }
       addEventMessage(rewardMsg, '#ffd700');
+    }
+
+    // === TERRITORY PREDATOR EVENTS ===
+    if (ev.type === 'territory_warning') {
+      if (ev.birdId === myId) {
+        const icon = ev.predType === 'hawk' ? '🦅' : '🐱';
+        const color = ev.predType === 'hawk' ? '#ff5500' : '#cc44ff';
+        showAnnouncement(icon + ' ' + ev.label + ' — LEAVE NOW or face the predator!', color, 3500);
+        effects.push({ type: 'screen_shake', intensity: 5, duration: 400, time: now });
+      }
+    }
+    if (ev.type === 'predator_hunting') {
+      const icon = ev.predType === 'hawk' ? '🦅' : '🐱';
+      const color = ev.predType === 'hawk' ? '#ff5500' : '#cc44ff';
+      if (ev.birdId === myId) {
+        showAnnouncement(icon + ' THE PREDATOR IS HUNTING YOU! POOP IT OR RUN!', color, 4000);
+        effects.push({ type: 'screen_shake', intensity: 10, duration: 600, time: now });
+      } else {
+        addEventMessage(icon + ' Predator locked onto ' + ev.birdName + '!', color);
+      }
+    }
+    if (ev.type === 'predator_attack') {
+      const icon = ev.predType === 'hawk' ? '🦅' : '🐱';
+      const color = ev.predType === 'hawk' ? '#ff5500' : '#cc44ff';
+      if (ev.birdId === myId) {
+        SoundEngine.stunned && SoundEngine.stunned();
+        showAnnouncement(icon + ' HIT ' + ev.hitCount + '/' + ev.maxHits + '! POOP BACK!', color, 2000);
+        effects.push({ type: 'screen_shake', intensity: 8, duration: 400, time: now });
+      }
+      effects.push({ type: 'text', x: ev.x, y: ev.y - 20, time: now, duration: 1500, text: icon + ' HIT ' + ev.hitCount + '/' + ev.maxHits, color, size: 16 });
+    }
+    if (ev.type === 'predator_poop_hit') {
+      const color = ev.predType === 'hawk' ? '#ff5500' : '#cc44ff';
+      effects.push({ type: 'text', x: ev.x, y: ev.y - 25, time: now, duration: 1200, text: '−' + ev.dmg + ' HP! (' + ev.hp + '/' + ev.maxHp + ')', color, size: 14 });
+    }
+    if (ev.type === 'predator_defeated') {
+      const icon = ev.predType === 'hawk' ? '🦅' : '🐱';
+      const color = ev.predType === 'hawk' ? '#ff8800' : '#cc44ff';
+      effects.push({ type: 'screen_shake', intensity: 14, duration: 900, time: now });
+      showAnnouncement(icon + ' PREDATOR DEFEATED! +300 XP +200 Coins!', '#ffd700', 5000);
+      addEventMessage(icon + ' ' + ev.birdName + ' slayed the territory predator!', '#ffd700');
+    }
+    if (ev.type === 'predator_killed_bird') {
+      const icon = ev.predType === 'hawk' ? '🦅' : '🐱';
+      const color = ev.predType === 'hawk' ? '#ff5500' : '#cc44ff';
+      if (ev.birdId === myId) {
+        effects.push({ type: 'screen_shake', intensity: 18, duration: 1000, time: now });
+        showAnnouncement(icon + ' YOU WERE KILLED! Lost ' + ev.coinLoss + 'c — respawning...', '#ff0000', 5000);
+      } else {
+        addEventMessage(icon + ' Predator killed ' + ev.birdName + '! (−' + ev.coinLoss + 'c)', color);
+      }
+    }
+    if (ev.type === 'predator_respawned') {
+      const icon = ev.predType === 'hawk' ? '🦅' : '🐱';
+      addEventMessage(icon + ' The predator has returned to ' + ev.zoneName + '...', '#888');
     }
 
     // === WANTED EVENTS ===
@@ -2124,6 +2180,29 @@
         const copText = copCount > 0 ? ' 🚔' + copCount : '';
         wantedHud.textContent = '🚨 ' + stars + ' ' + labels[wLevel] + copText;
       }
+    }
+
+    // Predator Danger HUD
+    if (predatorHud && gameState.self && gameState.myPredatorWarnings) {
+      const w = gameState.myPredatorWarnings;
+      const hawkHits = w.hawkHits || 0;
+      const catHits = w.catHits || 0;
+      const pred = gameState.territoryPredators;
+      const inHawkZone = w.hawk !== null && pred && pred.hawk && pred.hawk.state === 'hunting';
+      const inCatZone = w.cat !== null && pred && pred.cat && pred.cat.state === 'hunting';
+      if (inHawkZone || inCatZone) {
+        predatorHud.style.display = 'block';
+        const icon = inHawkZone ? '🦅' : '🐱';
+        const hits = inHawkZone ? hawkHits : catHits;
+        const hearts = '❤️'.repeat(Math.max(0, 3 - hits)) + '🖤'.repeat(hits);
+        predatorHud.textContent = icon + ' DANGER ' + hearts + ' — POOP BACK or FLEE!';
+        predatorHud.style.borderColor = inHawkZone ? 'rgba(255,85,0,0.9)' : 'rgba(204,68,255,0.9)';
+        predatorHud.style.color = inHawkZone ? '#ff5500' : '#cc44ff';
+      } else {
+        predatorHud.style.display = 'none';
+      }
+    } else if (predatorHud) {
+      predatorHud.style.display = 'none';
     }
 
     // Combo Streak HUD
@@ -3761,6 +3840,11 @@
       Renderer.drawTerritories(ctx, camera, gameState.territories, myTeamId);
     }
 
+    // Predator territory danger zones (hawk + cat)
+    if (worldData && worldData.predatorTerritories) {
+      Renderer.drawPredatorTerritories(ctx, camera, worldData, gameState.territoryPredators || null, now);
+    }
+
     // Egg nest delivery zones (always visible when scramble is active)
     if (gameState.eggScramble && gameState.eggNestZones) {
       Renderer.drawEggNestZones(ctx, camera, gameState.eggNestZones, now / 1000);
@@ -3948,6 +4032,46 @@
           ctx.textAlign = 'center';
           ctx.fillStyle = '#ff0000';
           ctx.fillText(boss.type, sx, sy - 52);
+        }
+      }
+    }
+
+    // Territory predators (hawk and cat in their fixed home zones)
+    if (gameState.territoryPredators) {
+      const predDefs = worldData && worldData.predatorTerritories ? worldData.predatorTerritories : {};
+      const predColors = { hawk: '#ff5500', cat: '#cc44ff' };
+      for (const [predKey, pred] of Object.entries(gameState.territoryPredators)) {
+        if (!pred) continue;
+        const sx = pred.x - camera.x + camera.screenW / 2;
+        const sy = pred.y - camera.y + camera.screenH / 2;
+        if (sx < -margin - 60 || sx > camera.screenW + margin + 60 || sy < -margin - 60 || sy > camera.screenH + margin + 60) continue;
+
+        const col = predColors[predKey] || '#ff0000';
+        ctx.save();
+        ctx.shadowColor = col;
+        ctx.shadowBlur = pred.state === 'hunting' ? 30 : 15;
+        ctx.translate(sx, sy);
+        ctx.scale(2, 2);
+        if (pred.type === 'MEGA_CAT') {
+          Sprites.drawCat(ctx, 0, 0, pred.rotation);
+        } else {
+          Sprites.drawHawk(ctx, 0, 0, pred.rotation);
+        }
+        ctx.restore();
+
+        // HP bar (only in hunting state)
+        if (pred.state === 'hunting') {
+          Sprites.drawBossHP(ctx, sx, sy - 44, pred.hp, pred.maxHp);
+          ctx.font = 'bold 11px Courier New';
+          ctx.textAlign = 'center';
+          ctx.fillStyle = col;
+          ctx.fillText(predKey === 'hawk' ? '🦅 HAWK' : '🐱 MEGA CAT', sx, sy - 56);
+        } else {
+          // Patrol label
+          ctx.font = 'bold 10px Courier New';
+          ctx.textAlign = 'center';
+          ctx.fillStyle = 'rgba(255,255,255,0.5)';
+          ctx.fillText(predKey === 'hawk' ? '🦅 PATROLLING' : '🐱 PATROLLING', sx, sy - 36);
         }
       }
     }
@@ -4270,6 +4394,11 @@
     // Golden egg scramble on minimap
     if (gameState.eggScramble || gameState.eggNestZones) {
       Renderer.drawEggScrambleOnMinimap(minimapCtx, worldData, gameState.eggScramble || null, gameState.eggNestZones || null);
+    }
+
+    // Territory predators on minimap
+    if (worldData && worldData.predatorTerritories) {
+      Renderer.drawPredatorTerritoriesOnMinimap(minimapCtx, worldData, gameState.territoryPredators || null);
     }
 
     // Draw beacons on minimap
