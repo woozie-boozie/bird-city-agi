@@ -763,13 +763,40 @@ The single biggest missing piece for player retention is now live. Every UTC day
 
 **Creative intent**: Retention is the game's weakest pillar. CARNAGE CITY has sessions of chaos but no reason to come back tomorrow specifically. Daily challenges fix this completely. "What are today's challenges?" becomes the first question every player asks. The streak system turns daily play into a game-within-a-game — players who maintain a 7+ day streak get 50% more XP from every challenge, creating a meaningful mechanical advantage. The seeded-by-date pool means all players share the same 3 challenges — Twitter/Discord moments: "Today's Heist Crew + Egg Runner combo is ROUGH" create social buzz. Challenges touch every system (sewer, racing, graffiti, heists, combat) so players explore content they might not have touched. Pure PROGRESSION + DISCOVERY + RETENTION energy.
 
+**Session 25 — 2026-03-31: Hit Contract System — Player-Placed Bounties via The Don**
+The most SOCIAL feature yet — you can now pay The Don to put a 💀 hit on any rival bird. First bounty hunter to poop them 3 times claims the reward. Pure crime-underworld drama.
+
+**How it works:**
+- Visit Don Featherstone (press M) — new "PLACE A HIT" section appears at the bottom of his overlay
+- Lists all online birds sorted by coin wealth (richest targets first)
+- Cost: 100 coins. Reward scales with your Mafia Rep (base 250c + 4c × rep level)
+- The hit is announced city-wide: "💀 HIT PLACED on [target]! Bounty: 250c — 3 poop hits to claim"
+- **Hit detection**: any bird (except the contractor themselves) can poop the target 3 times to collect the bounty
+- Progress announced after each hit: "🎯 [hitman] scored a hit on [target] (2/3)"
+- On fulfillment: hitman earns ~370c (reward + XP coins), +1 Mafia Rep. Target loses 15% of their coins (capped at 120c) and their combo streak is wiped
+- If nobody fulfills within 5 minutes: hit expires, contractor gets 50c partial refund
+
+**Visual system:**
+- Marked birds get a pulsing red crosshair reticle (4 crosshair lines + circle) visible to all nearby players
+- Bounty amount and hit progress shown above the reticle: "💀 250c (1/3)"
+- On minimap: targeted birds show as pulsing red dots instead of white dots — trackable from anywhere
+- Personal warning HUD for targeted birds: "💀 BOUNTY: 250c — Xm Xs" as a red pulsing pill in active buffs area
+- Full personal announcements for both hitman ("🎯 HIT! 2/3 — keep going!") and target ("💀 HIT 2/3 — RUN!")
+
+**Creative intent**: The city's most powerful social drama machine. Griefed by a high-combo player? Drop 100c and paint a target on their back — let the whole server hunt them. Rich birds are the natural targets (richest sorted first in the Don overlay). The 3-hit requirement means a single unlucky poop won't ruin someone's day, but a coordinated hunt is very real. The target knowing a hit is on them (warning HUD + minimap glow) creates the chase dynamic. The contractor being anonymous adds mystery — "who put the hit out on me?!" (The Don never reveals). Stacks with the wanted system: a bird being hunted by cops AND having a bounty on them is pure CARNAGE. Pure SOCIAL + CARNAGE energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
 - ~~Pigeon mafia questline~~ (DONE Session 22)
 - ~~Boss/predator glitch fix — territory-based predators with 3-hit duels~~ (DONE Session 23)
 - ~~Daily Challenges + Streak System~~ (DONE Session 24)
-- Eagle Overlord rare drop: "Eagle Feather" cosmetic badge
+- ~~Hit Contract System — player-placed bounties via The Don~~ (DONE Session 25)
+- Eagle Overlord rare drop: "Eagle Feather" cosmetic badge (persistent cosmetic, visible on nametag)
+- **Bird Gangs** — persistent named gangs with custom colors/tags, gang treasury, gang turf wars (distinct from ephemeral flocks)
+- **Kingpin System** — richest bird in city gets a crown + is visible on everyone's minimap; killing them gives big reward
+- Race power-ups: speed boost gates on the circuit that any racer can fly through
+- Owl enforcer in park at night (no-poop zone, alerts NPCs)
 **Session 20 — 2026-03-30: Territory Control System (Parallel Session)**
 Built the Territory Control System on top of the existing upstream code:
 - 6 named districts (Nest Side, Mall, Park, Cafe Quarter, Downtown, The Docks) — including a Docks zone added to upstream's 5

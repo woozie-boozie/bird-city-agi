@@ -403,14 +403,26 @@ window.Renderer = {
     if (birds) {
       for (const b of birds) {
         if (b.id === (selfBird && selfBird.id)) continue;
-        if (selfFlockId && b.flockId === selfFlockId) {
+        if (b.hitBounty) {
+          // Hit contract target: pulsing red dot
+          const pulse = Math.sin(Date.now() * 0.012) * 0.4 + 0.6;
+          minimapCtx.globalAlpha = pulse;
+          minimapCtx.fillStyle = '#ff2222';
+          minimapCtx.beginPath();
+          minimapCtx.arc(b.x * sx, b.y * sy, 3.5, 0, Math.PI * 2);
+          minimapCtx.fill();
+          minimapCtx.globalAlpha = 1;
+        } else if (selfFlockId && b.flockId === selfFlockId) {
           minimapCtx.fillStyle = '#4ade80'; // green for flock mates
+          minimapCtx.beginPath();
+          minimapCtx.arc(b.x * sx, b.y * sy, 2, 0, Math.PI * 2);
+          minimapCtx.fill();
         } else {
           minimapCtx.fillStyle = '#fff';
+          minimapCtx.beginPath();
+          minimapCtx.arc(b.x * sx, b.y * sy, 2, 0, Math.PI * 2);
+          minimapCtx.fill();
         }
-        minimapCtx.beginPath();
-        minimapCtx.arc(b.x * sx, b.y * sy, 2, 0, Math.PI * 2);
-        minimapCtx.fill();
       }
     }
 

@@ -700,6 +700,42 @@
       }
     }
 
+    // === HIT CONTRACT EVENTS ===
+    if (ev.type === 'hit_placed') {
+      screenShake(5, 300);
+      addEventMessage(`💀 HIT PLACED on ${ev.targetName}! Bounty: ${ev.reward}c — 3 poop hits to claim`, '#ff4444');
+      if (gameState && gameState.self && gameState.self.id === ev.targetId) {
+        showAnnouncement(`💀 A HIT HAS BEEN PLACED ON YOU! Bounty: ${ev.reward}c`, '#ff2222', 5000);
+      }
+    }
+    if (ev.type === 'hit_progress') {
+      addEventMessage(`🎯 ${ev.hitmanName} scored a hit on ${ev.targetName} (${ev.count}/${ev.needed})`, '#ff8844');
+      if (gameState && gameState.self) {
+        if (gameState.self.id === ev.hitmanId) {
+          showAnnouncement(`🎯 HIT! ${ev.count}/${ev.needed} — keep going!`, '#ff8844', 2000);
+        } else if (gameState.self.id === ev.targetId) {
+          showAnnouncement(`💀 HIT ${ev.count}/${ev.needed} — RUN!`, '#ff2222', 2000);
+        }
+      }
+    }
+    if (ev.type === 'hit_complete') {
+      screenShake(10, 600);
+      addEventMessage(`💀 HIT COMPLETE! ${ev.hitmanName} took out ${ev.targetName} — earned ${ev.coinReward}c!`, '#ff4444');
+      if (gameState && gameState.self) {
+        if (gameState.self.id === ev.hitmanId) {
+          showAnnouncement(`💀 CONTRACT FULFILLED! +${ev.coinReward}c +120 XP +1 REP`, '#ff4444', 4000);
+        } else if (gameState.self.id === ev.targetId) {
+          showAnnouncement(`💀 YOU WERE TAKEN OUT! −${ev.taxAmount}c`, '#ff2222', 3500);
+        }
+      }
+    }
+    if (ev.type === 'hit_expired') {
+      addEventMessage(`⌛ Hit on ${ev.targetName} expired — no takers (50c refunded to contractor)`, '#888888');
+      if (gameState && gameState.self && gameState.self.name === ev.contractorName) {
+        showAnnouncement(`⌛ YOUR HIT ON ${ev.targetName} EXPIRED — 50c refunded`, '#888888', 2500);
+      }
+    }
+
     // === DAILY CHALLENGE EVENTS ===
     if (ev.type === 'daily_challenge_complete') {
       if (ev.birdId === myId) {
@@ -4305,6 +4341,39 @@
             ctx.stroke();
           }
 
+          // Hit contract target — red crosshair reticle + bounty label
+          if (b.hitBounty) {
+            const pulse = Math.sin(now * 0.009) * 0.35 + 0.65;
+            const r2 = 28 + Math.sin(now * 0.006) * 4;
+            ctx.save();
+            ctx.strokeStyle = `rgba(255, 30, 30, ${pulse})`;
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.arc(sx, sy, r2, 0, Math.PI * 2);
+            ctx.stroke();
+            // Cross-hair lines
+            ctx.strokeStyle = `rgba(255, 60, 60, ${pulse * 0.8})`;
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(sx - r2 - 6, sy);
+            ctx.lineTo(sx - r2 + 6, sy);
+            ctx.moveTo(sx + r2 - 6, sy);
+            ctx.lineTo(sx + r2 + 6, sy);
+            ctx.moveTo(sx, sy - r2 - 6);
+            ctx.lineTo(sx, sy - r2 + 6);
+            ctx.moveTo(sx, sy + r2 - 6);
+            ctx.lineTo(sx, sy + r2 + 6);
+            ctx.stroke();
+            // Bounty label
+            ctx.font = 'bold 9px Courier New';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = `rgba(255, 80, 80, ${pulse})`;
+            const hitsLeft = b.hitBounty.hitsNeeded - b.hitBounty.myHits;
+            ctx.fillText(`💀 ${b.hitBounty.reward}c  (${b.hitBounty.myHits}/${b.hitBounty.hitsNeeded})`, sx, sy - 46);
+            ctx.restore();
+          }
+
           // Arena fighter HP hearts (shown above fighter during fight/countdown)
           if (gameState.arena && gameState.arena.fighters && gameState.arena.state === 'fighting') {
             const arenaFighter = gameState.arena.fighters.find(function(f) { return f.id === b.id; });
@@ -4847,6 +4916,63 @@
       document.getElementById('donActiveProgress').textContent =
         `Progress: ${dm.progress}/${dm.target} (${pct}%) — ${timeLeftS}s left`;
     }
+
+    // === PLACE A HIT SECTION ===
+    let hitSectionEl = document.getElementById('donHitSection');
+    if (!hitSectionEl) {
+      hitSectionEl = document.createElement('div');
+      hitSectionEl.id = 'donHitSection';
+      // Insert before close button row
+      const closeRow = document.querySelector('#donOverlay > div:last-child');
+      if (closeRow) donOverlay.insertBefore(hitSectionEl, closeRow);
+      else donOverlay.appendChild(hitSectionEl);
+    }
+
+    const myCoins = gameState.self ? gameState.self.coins || 0 : 0;
+    const onlineBirds = gameState.onlineBirdsForHit;
+    const canAffordHit = myCoins >= 100;
+
+    let hitHtml = `<div style="margin-top:12px;border-top:1px solid #440000;padding-top:10px;">`;
+    hitHtml += `<div style="color:#ff4444;font-size:11px;font-weight:bold;margin-bottom:6px;">💀 PLACE A HIT — 100c</div>`;
+    hitHtml += `<div style="color:#cc8888;font-size:9px;margin-bottom:8px;">3 poop hits to claim bounty. Pays ${Math.max(250, 250 + (gameState.mafiaRep||0)*4)}c+</div>`;
+
+    if (!onlineBirds || onlineBirds.length === 0) {
+      hitHtml += `<div style="color:#555;font-size:10px;font-style:italic;">No other birds online to mark.</div>`;
+    } else if (!canAffordHit) {
+      hitHtml += `<div style="color:#664444;font-size:10px;font-style:italic;">Need 100c to place a hit.</div>`;
+    } else {
+      hitHtml += `<div style="max-height:100px;overflow-y:auto;">`;
+      for (const b of onlineBirds) {
+        if (b.hasActiveHit) {
+          hitHtml += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;opacity:0.5;">`;
+          hitHtml += `<span style="color:#ff6666;font-size:10px;">🎯 ${b.name}</span>`;
+          hitHtml += `<span style="color:#ff4444;font-size:9px;">MARKED</span>`;
+          hitHtml += `</div>`;
+        } else {
+          hitHtml += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">`;
+          hitHtml += `<span style="color:#ddaaaa;font-size:10px;">${b.name} (${b.coins}c)</span>`;
+          hitHtml += `<button class="don-hit-btn" data-id="${b.id}" data-name="${b.name}"`;
+          hitHtml += ` style="background:#660000;color:#ff8888;border:1px solid #aa2222;border-radius:4px;font-size:9px;padding:2px 6px;cursor:pointer;">`;
+          hitHtml += `HIT −100c</button>`;
+          hitHtml += `</div>`;
+        }
+      }
+      hitHtml += `</div>`;
+    }
+    hitHtml += `</div>`;
+    hitSectionEl.innerHTML = hitHtml;
+
+    // Wire up hit buttons
+    hitSectionEl.querySelectorAll('.don-hit-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const targetId = btn.dataset.id;
+        const targetName = btn.dataset.name;
+        if (!targetId || !socket || !joined) return;
+        if (!confirm(`Place a 100c hit on ${targetName}? Bounty hunter earns ~${Math.max(250, 250 + (gameState.mafiaRep||0)*4)}c for 3 hits.`)) return;
+        socket.emit('action', { type: 'place_hit', targetId });
+        hideDonOverlay();
+      });
+    });
   }
 
   function renderBmShop() {
@@ -5013,6 +5139,10 @@
     if (s.hailSlowUntil && s.hailSlowUntil > now) {
       const secs = Math.ceil((s.hailSlowUntil - now) / 1000);
       html += '<div class="bm-buff-pill" style="background:rgba(40,80,140,0.7);border-color:#aaddff;color:#aaddff">🧊 HAIL SLOW — ' + secs + 's</div>';
+    }
+    if (s.myHitBounty) {
+      const secsLeft = Math.max(0, Math.ceil((s.myHitBounty.expiresAt - now) / 1000));
+      html += '<div class="bm-buff-pill" style="background:rgba(80,0,0,0.85);border-color:#ff2222;color:#ff8888;animation:pulseRed 0.8s infinite alternate;">💀 BOUNTY: ' + s.myHitBounty.reward + 'c — ' + Math.floor(secsLeft / 60) + 'm' + (secsLeft % 60) + 's</div>';
     }
 
     el.innerHTML = html;

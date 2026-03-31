@@ -119,6 +119,10 @@ class GameEngine {
     this.donCurrentJob = null;   // current job def on offer
     this.donJobTimer = Date.now() + 8000; // first job in 8s
 
+    // === HIT CONTRACTS (player-placed bounties via The Don) ===
+    this.activeHits = new Map();  // targetBirdId -> { contractorId, contractorName, targetId, targetName, reward, hitProgress: Map(hitmanId->count), hitsNeeded, expiresAt }
+    this._hitCounter = 0;
+
     // === DRUNK PIGEONS (night-only, pickpocketable) ===
     this.drunkPigeons = new Map();    // id -> drunk pigeon state
     this.drunkPigeonSpawnTimer = 0;   // when to try next spawn
@@ -605,6 +609,9 @@ class GameEngine {
     if (action.type === 'don_accept') {
       this._handleDonAccept(bird, now);
     }
+    if (action.type === 'place_hit') {
+      this._handlePlaceHit(bird, action, now);
+    }
 
     // === Black Market ===
     if (action.type === 'blackmarket_buy') {
@@ -770,6 +777,7 @@ class GameEngine {
     this._updateMissions(now);
     this._updateMissionBoard(now);
     this._updateDon(now);
+    this._updateActiveHits(now);
 
     // === Chaos Meter ===
     this._updateChaosMeter(dt, now);
@@ -2031,6 +2039,43 @@ class GameEngine {
             killedById: bird.id, killedByName: bird.name,
           });
         }
+      } else if (hit.target === 'hit_target' && hit.hitContract) {
+        // Bounty hunting — player hit a bird with an active hit contract
+        const hitContract = hit.hitContract;
+        const currentCount = hitContract.hitProgress.get(bird.id) || 0;
+        const newCount = currentCount + 1;
+        hitContract.hitProgress.set(bird.id, newCount);
+        xpGain = 55;
+        bird.coins += 20;
+        this.events.push({
+          type: 'hit_progress',
+          hitmanId: bird.id, hitmanName: bird.name,
+          targetId: hitContract.targetId, targetName: hitContract.targetName,
+          count: newCount, needed: hitContract.hitsNeeded,
+          x: poop.x, y: poop.y,
+        });
+        if (newCount >= hitContract.hitsNeeded) {
+          // Contract fulfilled! Big payout
+          bird.coins += hitContract.reward;
+          xpGain += 120; // let xpGain flow through multipliers (combo, lucky charm, etc.)
+          bird.mafiaRep = (bird.mafiaRep || 0) + 1;
+          // Target loses 15% of their coins as "damage"
+          const targetBird = this.birds.get(hitContract.targetId);
+          const taxAmount = targetBird ? Math.min(Math.floor(targetBird.coins * 0.15), 120) : 0;
+          if (targetBird) {
+            targetBird.coins = Math.max(0, targetBird.coins - taxAmount);
+            targetBird.comboCount = 0; // combo wiped — you got hit
+          }
+          this.activeHits.delete(hitContract.targetId);
+          this.events.push({
+            type: 'hit_complete',
+            hitmanId: bird.id, hitmanName: bird.name,
+            targetId: hitContract.targetId, targetName: hitContract.targetName,
+            reward: hitContract.reward + 120, // coins + xp indication
+            coinReward: hitContract.reward,
+            taxAmount,
+          });
+        }
       }
 
       // Mega poop hits multiple targets
@@ -2495,6 +2540,21 @@ class GameEngine {
         const dy = poop.y - target.y;
         if (Math.sqrt(dx * dx + dy * dy) < hitRadius + 12) {
           return { target: 'arena_fighter', fighterId, fighter };
+        }
+      }
+    }
+
+    // Check hit contract targets (bounty hunting — any bird can hit a marked target)
+    if (!isMegaPoop && this.activeHits.size > 0) {
+      for (const [targetBirdId, hitContract] of this.activeHits) {
+        if (poop.birdId === hitContract.contractorId) continue; // contractor can't be own hitman
+        if (poop.birdId === targetBirdId) continue;             // target can't poop themselves
+        const targetBird = this.birds.get(targetBirdId);
+        if (!targetBird) continue;
+        const dx = poop.x - targetBird.x;
+        const dy = poop.y - targetBird.y;
+        if (Math.sqrt(dx * dx + dy * dy) < hitRadius + 14) {
+          return { target: 'hit_target', hitContract, targetBird };
         }
       }
     }
@@ -3226,6 +3286,11 @@ class GameEngine {
           birdColor: b.birdColor,
           carryingEggId: b.carryingEggId || null,
           mafiaTitle: this._getMafiaTitle(b.mafiaRep || 0),
+          hitBounty: this.activeHits.has(b.id) ? {
+            reward: this.activeHits.get(b.id).reward,
+            myHits: this.activeHits.get(b.id).hitProgress.get(bird.id) || 0,
+            hitsNeeded: this.activeHits.get(b.id).hitsNeeded,
+          } : null,
         });
       }
     }
@@ -3734,6 +3799,12 @@ class GameEngine {
         // Golden Egg Scramble
         carryingEggId: bird.carryingEggId,
         eggTackleImmunityUntil: bird.eggTackleImmunityUntil,
+        // Hit contract: is there an active bounty on this bird?
+        myHitBounty: this.activeHits.has(bird.id) ? {
+          reward: this.activeHits.get(bird.id).reward,
+          contractorName: this.activeHits.get(bird.id).contractorName,
+          expiresAt: this.activeHits.get(bird.id).expiresAt,
+        } : null,
       },
       radioTower: {
         state: this.radioTower.state,
@@ -3778,6 +3849,21 @@ class GameEngine {
         const dx = bird.x - world.DON_POS.x;
         const dy = bird.y - world.DON_POS.y;
         return Math.sqrt(dx * dx + dy * dy) < 110;
+      })(),
+      // Online birds list for hit contract placement (only sent when near Don)
+      onlineBirdsForHit: (() => {
+        const dx = bird.x - world.DON_POS.x;
+        const dy = bird.y - world.DON_POS.y;
+        if (Math.sqrt(dx * dx + dy * dy) > 110 || this.birds.size <= 1) return null;
+        return [...this.birds.values()]
+          .filter(b => b.id !== bird.id)
+          .map(b => ({
+            id: b.id,
+            name: b.name,
+            coins: b.coins,
+            hasActiveHit: this.activeHits.has(b.id),
+          }))
+          .sort((a, b) => b.coins - a.coins);
       })(),
       donMission: bird.donMission ? {
         jobId: bird.donMission.jobId,
@@ -4651,6 +4737,76 @@ class GameEngine {
     this._trackDailyProgress(bird, 'don_contract', 1);
     this._trackDailyProgress(bird, 'coins_earned', coinReward);
     this._saveBird(bird);
+  }
+
+  // ============================================================
+  // HIT CONTRACTS
+  // ============================================================
+  _handlePlaceHit(bird, action, now) {
+    const HIT_COST = 100;
+    const BASE_REWARD = 250;
+
+    // Must be near The Don
+    const ddx = bird.x - world.DON_POS.x;
+    const ddy = bird.y - world.DON_POS.y;
+    if (Math.sqrt(ddx * ddx + ddy * ddy) > 120) return;
+
+    if (bird.coins < HIT_COST) return;
+
+    const targetId = action.targetId;
+    if (!targetId || targetId === bird.id) return;
+
+    const target = this.birds.get(targetId);
+    if (!target) return;
+
+    // Only one active hit per target at a time
+    if (this.activeHits.has(targetId)) return;
+
+    bird.coins -= HIT_COST;
+    const reward = BASE_REWARD + Math.floor((bird.mafiaRep || 0) * 4); // higher rep = bigger bounty
+
+    this.activeHits.set(targetId, {
+      id: ++this._hitCounter,
+      contractorId: bird.id,
+      contractorName: bird.name,
+      targetId,
+      targetName: target.name,
+      reward,
+      hitProgress: new Map(), // hitmanId -> count of hits on target
+      hitsNeeded: 3,
+      expiresAt: now + 300000, // 5 minutes
+    });
+
+    this.events.push({
+      type: 'hit_placed',
+      contractorId: bird.id,
+      contractorName: bird.name,
+      targetId,
+      targetName: target.name,
+      reward,
+    });
+  }
+
+  _updateActiveHits(now) {
+    for (const [targetId, hit] of this.activeHits) {
+      if (now > hit.expiresAt) {
+        // Partial refund to contractor
+        const contractor = this.birds.get(hit.contractorId);
+        if (contractor) contractor.coins += 50;
+        this.events.push({
+          type: 'hit_expired',
+          targetName: hit.targetName,
+          contractorName: hit.contractorName,
+        });
+        this.activeHits.delete(targetId);
+      }
+    }
+    // Remove hits for birds that disconnected
+    for (const [targetId] of this.activeHits) {
+      if (!this.birds.has(targetId)) {
+        this.activeHits.delete(targetId);
+      }
+    }
   }
 
   // ============================================================
