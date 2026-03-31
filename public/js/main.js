@@ -71,6 +71,12 @@
   let donOverlayVisible = false;
   let lastNearDon = false;
 
+  // === Daily Challenges ===
+  const dailyPanel = document.getElementById('dailyPanel');
+  const dailyPanelClose = document.getElementById('dailyPanelClose');
+  const dailyHudIndicator = document.getElementById('dailyHudIndicator');
+  let dailyPanelVisible = false;
+
   // === Persistent Identity (localStorage) ===
   function getSavedAccount() {
     try {
@@ -692,6 +698,28 @@
       if (ev.birdId === myId) {
         showAnnouncement(`🎩 CONTRACT EXPIRED: ${ev.title}`, '#ff6b6b', 2000);
       }
+    }
+
+    // === DAILY CHALLENGE EVENTS ===
+    if (ev.type === 'daily_challenge_complete') {
+      if (ev.birdId === myId) {
+        screenShake(5, 300);
+        showAnnouncement(`📅 DAILY DONE: ${ev.challengeTitle}! +${ev.xp} XP +${ev.coins}c (${ev.completedCount}/${ev.totalCount})`, '#3399ff', 3500);
+        addEventMessage(`📅 ${ev.birdName} completed daily: "${ev.challengeTitle}" (+${ev.xp}XP +${ev.coins}c)`, '#3399ff');
+      } else {
+        addEventMessage(`📅 ${ev.birdName} completed daily: "${ev.challengeTitle}"`, '#5577aa');
+      }
+    }
+    if (ev.type === 'daily_all_complete') {
+      if (ev.birdId === myId) {
+        screenShake(12, 600);
+        showAnnouncement(`🎉 ALL DAILIES COMPLETE! Day ${ev.streak} streak! +${ev.bonusXp} XP +${ev.bonusCoins}c BONUS!`, '#ffd700', 5000);
+      }
+      addEventMessage(`🎉 ${ev.birdName} completed ALL daily challenges! (Day ${ev.streak} streak!)`, '#ffd700');
+    }
+    if (ev.type === 'daily_refresh') {
+      showAnnouncement('📅 NEW DAILY CHALLENGES! Press [J] to view them', '#3399ff', 4000);
+      addEventMessage('📅 Daily challenges have reset! New challenges available — press [J]', '#3399ff');
     }
 
     // === FLOCK EVENTS ===
@@ -1673,6 +1701,14 @@
         showDonOverlay();
       }
     }
+    // Daily Challenges panel
+    if (e.key.toLowerCase() === 'j') {
+      if (dailyPanelVisible) {
+        hideDailyPanel();
+      } else {
+        showDailyPanel();
+      }
+    }
     // Arena enter
     if (e.key.toLowerCase() === 'e') {
       if (gameState && gameState.arena && lastNearArena &&
@@ -2071,6 +2107,18 @@
     donCloseBtn.addEventListener('click', hideDonOverlay);
   }
 
+  // Daily Panel close button
+  if (dailyPanelClose) {
+    dailyPanelClose.addEventListener('click', hideDailyPanel);
+    dailyPanelClose.addEventListener('touchstart', (e) => { e.preventDefault(); hideDailyPanel(); }, { passive: false });
+  }
+  // Daily HUD indicator click → open panel
+  if (dailyHudIndicator) {
+    dailyHudIndicator.addEventListener('click', () => {
+      if (dailyPanelVisible) hideDailyPanel(); else showDailyPanel();
+    });
+  }
+
   // Black Market close button
   const bmShopCloseEl = document.getElementById('bmShopClose');
   if (bmShopCloseEl) {
@@ -2407,6 +2455,11 @@
 
     // Active buffs HUD
     updateActiveBuffsHud();
+
+    // Daily Challenges HUD indicator
+    updateDailyHudIndicator();
+    // Refresh daily panel if open
+    if (dailyPanelVisible) renderDailyPanel();
 
     // Signal Boost HUD
     const sbHud = document.getElementById('signalBoostHud');
@@ -4826,6 +4879,110 @@
         }
       });
     });
+  }
+
+  // ============================================================
+  // DAILY CHALLENGES PANEL
+  // ============================================================
+  function showDailyPanel() {
+    dailyPanelVisible = true;
+    dailyPanel.style.display = 'block';
+    for (const k in keys) keys[k] = false;
+    syncInput();
+    renderDailyPanel();
+  }
+
+  function hideDailyPanel() {
+    dailyPanelVisible = false;
+    dailyPanel.style.display = 'none';
+  }
+
+  function renderDailyPanel() {
+    if (!gameState || !gameState.self) return;
+    const self = gameState.self;
+    const challenges = self.dailyChallenges || [];
+    const streak = self.dailyStreak || 0;
+    const mult = self.dailyStreakMult || 1.0;
+    const completed = self.dailyCompleted || 0;
+
+    // Reset timer: seconds until next UTC midnight
+    const now = new Date();
+    const midnight = new Date();
+    midnight.setUTCHours(24, 0, 0, 0);
+    const secsLeft = Math.floor((midnight - now) / 1000);
+    const h = Math.floor(secsLeft / 3600);
+    const m = Math.floor((secsLeft % 3600) / 60);
+    const timerEl = document.getElementById('dailyResetTimer');
+    if (timerEl) timerEl.textContent = 'Resets in ' + h + 'h ' + m + 'm';
+
+    // Streak badge
+    const streakEl = document.getElementById('dailyStreakBadge');
+    if (streakEl) {
+      if (streak >= 7) {
+        streakEl.innerHTML = '<span style="color:#ff8800;font-size:13px;">🔥 ' + streak + '-Day Streak! — <span style="color:#ffd700;">' + (mult * 100).toFixed(0) + '% rewards</span></span>';
+      } else if (streak >= 2) {
+        streakEl.innerHTML = '<span style="color:#ffaa44;font-size:12px;">🔥 ' + streak + '-Day Streak — ' + (mult * 100).toFixed(0) + '% rewards</span>';
+      } else {
+        streakEl.innerHTML = '<span style="color:#7799cc;font-size:11px;">Start a streak — complete all 3 for 3+ days for bonus rewards!</span>';
+      }
+    }
+
+    // Challenge list
+    const listEl = document.getElementById('dailyChallengeList');
+    if (!listEl) return;
+    let html = '';
+    for (const c of challenges) {
+      const pct = Math.min(1, (c.progress || 0) / c.target);
+      const barW = Math.floor(pct * 100);
+      const done = c.completed;
+      const icon = done ? '✅' : (pct > 0 ? '🔘' : '⬜');
+      const baseColor = done ? '#44cc44' : (pct > 0 ? '#ffd700' : '#7799cc');
+      html += '<div style="margin-bottom:12px;">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;">';
+      html += '<span style="color:' + baseColor + ';font-weight:bold;">' + icon + ' ' + c.title + '</span>';
+      html += '<span style="color:#aaddff;font-size:10px;">' + (c.progress || 0) + '/' + c.target + '</span>';
+      html += '</div>';
+      html += '<div style="font-size:10px;color:#88aacc;margin:2px 0 4px;">' + c.desc + '</div>';
+      html += '<div style="background:#112233;border-radius:4px;height:6px;overflow:hidden;">';
+      html += '<div style="background:' + (done ? '#44cc44' : '#3399ff') + ';width:' + barW + '%;height:100%;transition:width 0.3s;"></div>';
+      html += '</div>';
+      html += '<div style="font-size:10px;color:#88aacc;margin-top:2px;">Reward: ';
+      const xpR = Math.floor(c.reward.xp * mult);
+      const coinsR = Math.floor(c.reward.coins * mult);
+      html += '<span style="color:#44ff88">+' + xpR + ' XP</span>  <span style="color:#ffd700">+' + coinsR + 'c</span>';
+      if (mult > 1.0) html += ' <span style="color:#ff8800">(×' + mult.toFixed(2) + ' streak bonus!)</span>';
+      html += '</div>';
+      html += '</div>';
+    }
+    if (challenges.length === 0) {
+      html = '<div style="color:#7799cc;text-align:center;padding:10px;">Connecting...</div>';
+    }
+    listEl.innerHTML = html;
+
+    // Bonus note
+    const bonusEl = document.getElementById('dailyBonusNote');
+    if (bonusEl) {
+      if (completed >= challenges.length && challenges.length > 0) {
+        bonusEl.innerHTML = '<span style="color:#44ff88;font-size:12px;">🎉 ALL DONE TODAY! +200 XP +100c bonus claimed!</span>';
+      } else {
+        bonusEl.textContent = 'Complete all ' + challenges.length + ' for +200 XP +100c bonus!';
+      }
+    }
+  }
+
+  function updateDailyHudIndicator() {
+    if (!dailyHudIndicator || !joined) return;
+    if (!gameState || !gameState.self) { dailyHudIndicator.style.display = 'none'; return; }
+    const self = gameState.self;
+    const challenges = self.dailyChallenges || [];
+    const completed = self.dailyCompleted || 0;
+    const streak = self.dailyStreak || 0;
+    dailyHudIndicator.style.display = 'block';
+    const allDone = completed >= challenges.length && challenges.length > 0;
+    const streakStr = streak >= 2 ? (' 🔥' + streak) : '';
+    dailyHudIndicator.textContent = '📅 ' + completed + '/' + challenges.length + (allDone ? ' ✓' : '') + streakStr;
+    dailyHudIndicator.style.borderColor = allDone ? '#44cc44' : '#3399ff';
+    dailyHudIndicator.style.color = allDone ? '#44cc44' : '#ffd700';
   }
 
   function updateActiveBuffsHud() {

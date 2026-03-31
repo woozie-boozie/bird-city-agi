@@ -6,6 +6,27 @@ function uid() {
   return Math.random().toString(36).slice(2, 10);
 }
 
+// ============================================================
+// DAILY CHALLENGE POOL — 3 picked each UTC day via seeded random
+// ============================================================
+const DAILY_CHALLENGE_POOL = [
+  { id: 'poop_humans',     title: 'Bombardier',      desc: 'Poop on 15 humans or NPCs',              target: 15,  trackType: 'poop_npc',        reward: { xp: 120, coins: 50  } },
+  { id: 'poop_total',      title: 'Poop Machine',    desc: 'Poop 30 times (any target)',             target: 30,  trackType: 'poop_total',      reward: { xp: 100, coins: 45  } },
+  { id: 'car_bomber',      title: 'Road Rager',      desc: 'Poop on 8 moving cars',                  target: 8,   trackType: 'car_hit',         reward: { xp: 130, coins: 60  } },
+  { id: 'raccoon_stopper', title: 'Thief Stopper',   desc: 'Poop on 3 raccoon thieves mid-steal',    target: 3,   trackType: 'raccoon_hit',     reward: { xp: 140, coins: 65  } },
+  { id: 'cop_stunner',     title: 'Cop Dodger',      desc: 'Stun 3 cop birds with poop',             target: 3,   trackType: 'cop_hit',         reward: { xp: 160, coins: 75  } },
+  { id: 'combo_master',    title: 'Combo King',      desc: 'Reach a 10× combo streak',               target: 1,   trackType: 'combo10',         reward: { xp: 180, coins: 80  } },
+  { id: 'graffiti_artist', title: 'Street Artist',   desc: 'Tag 5 buildings with graffiti',          target: 5,   trackType: 'tags',            reward: { xp: 120, coins: 55  } },
+  { id: 'pickpocket',      title: 'Pickpocket Pro',  desc: 'Pickpocket 4 drunk pigeons',             target: 4,   trackType: 'pickpocket',      reward: { xp: 130, coins: 60  } },
+  { id: 'sewer_explorer',  title: 'Sewer Rat',       desc: 'Collect 3 sewer loot caches underground',target: 3,   trackType: 'sewer_loot',      reward: { xp: 150, coins: 70  } },
+  { id: 'heist_job',       title: 'Heist Crew',      desc: 'Complete a food truck or bank heist',    target: 1,   trackType: 'heist',           reward: { xp: 200, coins: 100 } },
+  { id: 'egg_carrier',     title: 'Egg Runner',      desc: 'Deliver a golden egg to a nest',         target: 1,   trackType: 'egg_delivered',   reward: { xp: 200, coins: 100 } },
+  { id: 'mafia_work',      title: 'Made Bird',       desc: 'Complete a Don Featherstone contract',   target: 1,   trackType: 'don_contract',    reward: { xp: 180, coins: 90  } },
+  { id: 'wanted_survivor', title: 'Most Wanted',     desc: 'Reach Wanted Level 3 and survive 10s',   target: 1,   trackType: 'wanted_survival', reward: { xp: 150, coins: 75  } },
+  { id: 'coin_hoarder',    title: 'Coin Hoarder',    desc: 'Earn 200 coins today',                   target: 200, trackType: 'coins_earned',    reward: { xp: 110, coins: 55  } },
+  { id: 'npc_cryer',       title: 'Tear Collector',  desc: 'Make 3 humans cry with poop',            target: 3,   trackType: 'npc_cry',         reward: { xp: 160, coins: 70  } },
+];
+
 class GameEngine {
   constructor() {
     this.birds = new Map();       // id -> bird state
@@ -197,6 +218,11 @@ class GameEngine {
     this._cachedLeaderboard = [];
     this._refreshLeaderboard();
     this._leaderboardInterval = setInterval(() => this._refreshLeaderboard(), 10000);
+
+    // === DAILY CHALLENGES ===
+    this.dailyChallenges = [];      // 3 current challenge defs for today
+    this.dailyChallengesDate = '';  // 'YYYY-MM-DD' UTC string
+    this._refreshDailyChallengesIfNeeded(); // pick today's 3 challenges on startup
 
     // === DAY/NIGHT CYCLE ===
     // 0.0 = early day, 0.3 = dusk, 0.45 = night, 0.75 = dawn, 1.0 = day again
@@ -436,6 +462,13 @@ class GameEngine {
       // === PIGEON MAFIA DON ===
       mafiaRep: saved ? (saved.mafia_rep || 0) : 0,
       donMission: null,            // { jobId, progress, startedAt, survivalStarted }
+      // === DAILY CHALLENGES ===
+      dailyDate:      saved ? (saved.daily_date || '') : '',
+      dailyProgress:  saved ? this._safeJsonParse(saved.daily_progress, {}) : {},
+      dailyCompleted: saved ? this._safeJsonParse(saved.daily_completed, []) : [],
+      dailyStreak:    saved ? (saved.daily_streak || 0) : 0,
+      dailyStreakDate: saved ? (saved.daily_streak_date || '') : '',
+      dailyCoinEarned: 0,  // transient: coins earned today, reset on new day
     };
 
     // Determine bird type from XP
@@ -657,6 +690,8 @@ class GameEngine {
         bird.donMission.progress++;
         this._checkDonMissionComplete(bird, now);
       }
+      // Daily challenge: graffiti tags
+      this._trackDailyProgress(bird, 'tags', 1);
 
       // Check for street domination (5+ buildings owned by same team)
       const myTeamId = bird.flockId || bird.id;
@@ -698,6 +733,9 @@ class GameEngine {
     const now = Date.now();
     const dt = Math.min((now - this.lastTick) / 1000, 0.1); // cap at 100ms
     this.lastTick = now;
+
+    // Check for UTC midnight daily challenge refresh
+    this._refreshDailyChallengesIfNeeded();
 
     // Update birds
     for (const bird of this.birds.values()) {
@@ -2122,6 +2160,28 @@ class GameEngine {
         }
       }
 
+      // === DAILY CHALLENGE TRACKING (poop-related) ===
+      this._trackDailyProgress(bird, 'poop_total', 1);
+      if (hit.target === 'npc' || hit.target === 'event_npc' || hit.target === 'janitor') {
+        this._trackDailyProgress(bird, 'poop_npc', 1);
+      }
+      if (hit.target === 'moving_car') {
+        this._trackDailyProgress(bird, 'car_hit', 1);
+      }
+      if (hit.target === 'raccoon') {
+        this._trackDailyProgress(bird, 'raccoon_hit', 1);
+      }
+      if (hit.target === 'cop') {
+        this._trackDailyProgress(bird, 'cop_hit', 1);
+      }
+      if (hit.npc && hit.npc.poopedOn >= 3) {
+        this._trackDailyProgress(bird, 'npc_cry', 1);
+      }
+      // Track combo10 milestone
+      if (bird.comboCount === 10) {
+        this._trackDailyProgress(bird, 'combo10', 1);
+      }
+
       // Check level up
       const newLevel = world.getLevelFromXP(bird.xp);
       const newType = world.getBirdTypeForLevel(newLevel);
@@ -2262,6 +2322,8 @@ class GameEngine {
           bird.coins += loot.value;
           bird.xp += Math.floor(loot.value * 0.5);
           this.events.push({ type: 'sewer_loot', birdId: bird.id, name: bird.name, value: loot.value, x: loot.x, y: loot.y });
+          this._trackDailyProgress(bird, 'sewer_loot', 1);
+          this._trackDailyProgress(bird, 'coins_earned', loot.value);
         }
       }
     }
@@ -2907,6 +2969,9 @@ class GameEngine {
               dpId, stolen, remaining: dp.coins,
               x: dp.x, y: dp.y,
             });
+            // Daily challenge tracking
+            this._trackDailyProgress(bird, 'pickpocket', 1);
+            this._trackDailyProgress(bird, 'coins_earned', stolen);
           }
         }
       }
@@ -3723,6 +3788,20 @@ class GameEngine {
       } : null,
       mafiaRep: bird.mafiaRep || 0,
       mafiaTitle: this._getMafiaTitle(bird.mafiaRep || 0),
+      // Daily challenges
+      dailyChallenges: this.dailyChallenges.map(c => ({
+        id: c.id,
+        title: c.title,
+        desc: c.desc,
+        target: c.target,
+        reward: c.reward,
+        progress: (bird.dailyProgress && bird.dailyProgress[c.id]) || 0,
+        completed: (bird.dailyCompleted || []).includes(c.id),
+      })),
+      dailyCompleted: (bird.dailyCompleted || []).length,
+      dailyStreak: bird.dailyStreak || 0,
+      dailyStreakMult: this._getDailyStreakMultiplier(bird.dailyStreak || 0),
+      dailyChallengesDate: this.dailyChallengesDate,
     };
   }
 
@@ -3791,6 +3870,11 @@ class GameEngine {
       equipped_skills: JSON.stringify(bird.equippedSkills || ['poop_barrage']),
       bird_color: bird.birdColor || null,
       mafia_rep: bird.mafiaRep || 0,
+      daily_date: bird.dailyDate || '',
+      daily_progress: JSON.stringify(bird.dailyProgress || {}),
+      daily_completed: JSON.stringify(bird.dailyCompleted || []),
+      daily_streak: bird.dailyStreak || 0,
+      daily_streak_date: bird.dailyStreakDate || '',
     }).catch(e => {
       console.error('[GameEngine] Failed to save bird:', e.message);
     });
@@ -3810,6 +3894,129 @@ class GameEngine {
     clearInterval(this.foodRespawn);
     clearInterval(this._leaderboardInterval);
     this.saveAll();
+  }
+
+  // ============================================================
+  // DAILY CHALLENGES
+  // ============================================================
+
+  _safeJsonParse(str, fallback) {
+    try { return JSON.parse(str); } catch { return fallback; }
+  }
+
+  _getDailyDateString() {
+    return new Date().toISOString().split('T')[0]; // 'YYYY-MM-DD' UTC
+  }
+
+  _refreshDailyChallengesIfNeeded() {
+    const today = this._getDailyDateString();
+    if (this.dailyChallengesDate === today) return;
+    const prev = this.dailyChallengesDate;
+    this.dailyChallengesDate = today;
+
+    // Seeded selection: same 3 challenges for everyone on the same UTC day
+    const seed = parseInt(today.replace(/-/g, ''), 10);
+    const pool = [...DAILY_CHALLENGE_POOL];
+    const selected = [];
+    let s = seed;
+    while (selected.length < 3 && pool.length > 0) {
+      s = Math.abs((s * 1664525 + 1013904223) | 0);
+      const idx = s % pool.length;
+      selected.push(pool.splice(idx, 1)[0]);
+    }
+    this.dailyChallenges = selected;
+
+    if (prev) {
+      // Announce daily reset to all online birds
+      this.events.push({
+        type: 'daily_refresh',
+        challenges: this.dailyChallenges.map(c => ({ id: c.id, title: c.title, desc: c.desc, target: c.target, reward: c.reward })),
+      });
+    }
+  }
+
+  _resetBirdDailyIfNeeded(bird) {
+    const today = this.dailyChallengesDate;
+    if (!today || bird.dailyDate === today) return;
+    // Check streak continuation: did they finish all 3 yesterday?
+    if (bird.dailyDate !== '') {
+      const yesterday = new Date();
+      yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+      const yesterdayStr = yesterday.toISOString().split('T')[0];
+      if (bird.dailyStreakDate === yesterdayStr) {
+        // Streak continues — already incremented on completion
+      } else {
+        // They didn't complete all 3 yesterday, or skipped a day
+        bird.dailyStreak = 0;
+      }
+    }
+    bird.dailyDate = today;
+    bird.dailyProgress = {};
+    bird.dailyCompleted = [];
+    bird.dailyCoinEarned = 0;
+  }
+
+  _trackDailyProgress(bird, trackType, amount) {
+    if (!this.dailyChallengesDate) return;
+    this._resetBirdDailyIfNeeded(bird);
+    for (const challenge of this.dailyChallenges) {
+      if (challenge.trackType !== trackType) continue;
+      if (bird.dailyCompleted.includes(challenge.id)) continue;
+      bird.dailyProgress[challenge.id] = (bird.dailyProgress[challenge.id] || 0) + amount;
+      if (bird.dailyProgress[challenge.id] >= challenge.target) {
+        bird.dailyProgress[challenge.id] = challenge.target;
+        this._completeDailyChallenge(bird, challenge);
+      }
+    }
+  }
+
+  _completeDailyChallenge(bird, challenge) {
+    if (bird.dailyCompleted.includes(challenge.id)) return;
+    bird.dailyCompleted.push(challenge.id);
+
+    const streakMult = this._getDailyStreakMultiplier(bird.dailyStreak);
+    const xpGain  = Math.floor(challenge.reward.xp    * streakMult);
+    const coinsGain = Math.floor(challenge.reward.coins * streakMult);
+    bird.xp    += xpGain;
+    bird.coins += coinsGain;
+
+    this.events.push({
+      type: 'daily_challenge_complete',
+      birdId: bird.id,
+      birdName: bird.name,
+      challengeId: challenge.id,
+      challengeTitle: challenge.title,
+      xp: xpGain,
+      coins: coinsGain,
+      completedCount: bird.dailyCompleted.length,
+      totalCount: this.dailyChallenges.length,
+    });
+
+    if (bird.dailyCompleted.length >= this.dailyChallenges.length) {
+      const bonusXp    = 200;
+      const bonusCoins = 100;
+      bird.xp    += bonusXp;
+      bird.coins += bonusCoins;
+      // Increment streak
+      bird.dailyStreak    = (bird.dailyStreak || 0) + 1;
+      bird.dailyStreakDate = this.dailyChallengesDate;
+      this.events.push({
+        type: 'daily_all_complete',
+        birdId: bird.id,
+        birdName: bird.name,
+        streak: bird.dailyStreak,
+        bonusXp,
+        bonusCoins,
+      });
+      this._saveBird(bird);
+    }
+  }
+
+  _getDailyStreakMultiplier(streak) {
+    if (!streak || streak < 2) return 1.0;
+    if (streak < 4)  return 1.1;
+    if (streak < 7)  return 1.25;
+    return 1.5; // 7+ day streak
   }
 
   // Helper: find which territory zone contains point (x, y)
@@ -4440,6 +4647,9 @@ class GameEngine {
     });
 
     bird.donMission = null;
+    // Daily challenge: Don contract completed
+    this._trackDailyProgress(bird, 'don_contract', 1);
+    this._trackDailyProgress(bird, 'coins_earned', coinReward);
     this._saveBird(bird);
   }
 
@@ -5210,6 +5420,9 @@ class GameEngine {
         wanted.xp += wantedLevel * 15;
         wanted.coins += wantedLevel * 5;
         this.events.push({ type: 'wanted_survival', birdId: wanted.id, level: wantedLevel });
+        // Daily challenge: survive 10s at wanted level 3+
+        this._trackDailyProgress(wanted, 'wanted_survival', 1);
+        this._trackDailyProgress(wanted, 'coins_earned', wantedLevel * 5);
       }
     }
   }
@@ -5587,12 +5800,17 @@ class GameEngine {
       rewards,
     });
 
-    // Don mission progress: heist participant
+    // Don mission progress + daily challenge: heist participant
     for (const birdId of Object.keys(contributions)) {
       const b = this.birds.get(birdId);
-      if (b && b.donMission && b.donMission.jobId === 'don_heist') {
-        b.donMission.progress++;
-        this._checkDonMissionComplete(b, now);
+      if (b) {
+        if (b.donMission && b.donMission.jobId === 'don_heist') {
+          b.donMission.progress++;
+          this._checkDonMissionComplete(b, now);
+        }
+        this._trackDailyProgress(b, 'heist', 1);
+        const heistCoins = rewards.find(r => r.birdId === birdId);
+        if (heistCoins) this._trackDailyProgress(b, 'coins_earned', heistCoins.coins);
       }
     }
 
@@ -6513,6 +6731,15 @@ class GameEngine {
 
     console.log(`[BankHeist] RESOLVED! Escapees: ${escapeCount}/${numContributors}`);
 
+    // Daily challenge: bank heist participants
+    for (const r of rewards) {
+      const b = this.birds.get(r.birdId);
+      if (b) {
+        this._trackDailyProgress(b, 'heist', 1);
+        this._trackDailyProgress(b, 'coins_earned', r.coins);
+      }
+    }
+
     bh.phase = 'cooldown';
     bh.cooldownUntil = now + this._randomRange(480000, 720000);
     bh.escapeVan = null;
@@ -7383,6 +7610,9 @@ class GameEngine {
               xp: reward.xp,
               coins: reward.coins,
             });
+            // Daily challenge: egg delivery
+            this._trackDailyProgress(carrier, 'egg_delivered', 1);
+            this._trackDailyProgress(carrier, 'coins_earned', reward.coins);
             delivered = true;
             break;
           }

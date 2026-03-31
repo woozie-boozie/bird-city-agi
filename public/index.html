@@ -32,7 +32,8 @@
     <button id="joinBtn">FLY IN</button>
     <div class="controls-hint">
       <span>WASD</span> move &nbsp;|&nbsp; <span>SPACE</span> poop &nbsp;|&nbsp; <span>E</span> steal food<br>
-      <span>Q</span> bird sound &nbsp;|&nbsp; <span>R/1/2/3</span> skills &nbsp;|&nbsp; <span>H</span> home &nbsp;|&nbsp; <span>TAB</span> leaderboard
+      <span>Q</span> bird sound &nbsp;|&nbsp; <span>R/1/2/3</span> skills &nbsp;|&nbsp; <span>H</span> home &nbsp;|&nbsp; <span>TAB</span> leaderboard<br>
+      <span>J</span> daily challenges &nbsp;|&nbsp; <span>M</span> mafia don &nbsp;|&nbsp; <span>B</span> black market (night)
     </div>
     <div class="controls-hint-mobile">
       Left joystick to move<br>
@@ -265,6 +266,30 @@
     background:rgba(10,5,20,0.92);color:#ffd700;font:bold 12px 'Courier New',monospace;
     padding:8px 16px;border-radius:14px;border:2px solid #ffd700;pointer-events:none;z-index:70;
     text-align:center;min-width:260px;"></div>
+
+  <!-- Daily Challenges Panel -->
+  <div id="dailyPanel" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+    background:rgba(4,12,28,0.97);color:#aaddff;font:12px 'Courier New',monospace;
+    padding:18px 22px;border-radius:18px;border:2px solid #3399ff;z-index:90;
+    min-width:320px;max-width:420px;box-shadow:0 0 30px rgba(50,120,255,0.4);text-align:left;">
+    <div style="color:#ffd700;font-size:15px;font-weight:bold;text-align:center;margin-bottom:4px;">📅 DAILY CHALLENGES</div>
+    <div id="dailyResetTimer" style="color:#7799cc;font-size:10px;text-align:center;margin-bottom:12px;"></div>
+    <div id="dailyStreakBadge" style="text-align:center;margin-bottom:12px;"></div>
+    <div id="dailyChallengeList"></div>
+    <div id="dailyBonusNote" style="color:#88bbff;font-size:10px;text-align:center;margin-top:10px;padding-top:8px;border-top:1px solid #223355;">
+      Complete all 3 for +200 XP +100 coins bonus!
+    </div>
+    <button id="dailyPanelClose" style="display:block;margin:12px auto 0;background:rgba(30,60,100,0.8);color:#aaddff;
+      border:1px solid #3399ff;padding:6px 22px;border-radius:10px;cursor:pointer;font:bold 12px 'Courier New',monospace;">
+      CLOSE  [J]
+    </button>
+  </div>
+
+  <!-- Daily Challenges HUD indicator (top-right corner) -->
+  <div id="dailyHudIndicator" style="display:none;position:fixed;top:8px;right:160px;
+    background:rgba(4,12,28,0.85);color:#ffd700;font:bold 11px 'Courier New',monospace;
+    padding:4px 10px;border-radius:10px;border:1px solid #3399ff;z-index:65;cursor:pointer;
+    text-align:center;" title="Daily Challenges [J]"></div>
 
   <script src="/socket.io/socket.io.js"></script>
   <script src="/js/sounds.js"></script>

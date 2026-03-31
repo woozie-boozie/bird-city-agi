@@ -704,11 +704,71 @@ Finally addressed the BOSS/PREDATOR BEHAVIOR RULE that has been in the Rules sec
 
 **Creative intent**: This COMPLETELY changes the dynamic from "random encounter that never ends" to "deliberate risk-reward zone." The hawk territory is a visible part of the map that players can see on the minimap and choose to explore for big rewards. The 3-second warning means accidental entries are safe — only intentional stays lead to combat. The 3-hit kill and 4-poop-kill means encounters last 15-30 seconds maximum, not 1+ minutes. A player who kills the hawk gets 300 XP + 200 coins and a city-wide callout — worth risking the duel. The territories also add natural map landmarks: "don't fly into the northeast corner" becomes part of the city's geography. Pure DISCOVERY + CARNAGE energy, and crucially: **the #1 fun-killer is now fixed**.
 
+**Session 24 — 2026-03-31: Daily Challenges + Streak System — The #1 Retention Mechanic**
+The single biggest missing piece for player retention is now live. Every UTC day, 3 fresh challenges are seeded from a 15-challenge pool. Complete all 3 for a bonus. Do it multiple days in a row to build a streak with escalating reward multipliers.
+
+**Daily Challenge Pool (15 types, 3 selected per day via seeded random):**
+- Bombardier: Poop on 15 humans/NPCs
+- Poop Machine: Poop 30 times total
+- Road Rager: Poop on 8 moving cars
+- Thief Stopper: Poop on 3 raccoon thieves mid-steal
+- Cop Dodger: Stun 3 cop birds with poop
+- Combo King: Reach a 10× combo streak
+- Street Artist: Tag 5 buildings with graffiti
+- Pickpocket Pro: Pickpocket 4 drunk pigeons
+- Sewer Rat: Collect 3 sewer loot caches underground
+- Heist Crew: Complete a food truck or bank heist
+- Egg Runner: Deliver a golden egg to a nest
+- Made Bird: Complete a Don Featherstone contract
+- Most Wanted: Reach Wanted Level 3 and survive 10 seconds
+- Coin Hoarder: Earn 200 coins today
+- Tear Collector: Make 3 humans cry with poop
+
+**Streak System (server-side, persistent per bird in Firestore):**
+- Day 1: 1.0× rewards
+- Days 2-3: 1.1× rewards
+- Days 4-6: 1.25× rewards
+- Days 7+: 1.5× rewards — maximum chaos payouts
+- Streak increments when all 3 challenges complete in one UTC day
+- Streak resets if a day is missed (incentive to log in daily)
+- `daily_date`, `daily_progress`, `daily_completed`, `daily_streak`, `daily_streak_date` all persisted to Firestore
+
+**Reward structure:**
+- Each challenge: 100-200 XP + 45-100 coins (scaled by streak multiplier)
+- All 3 complete: bonus +200 XP +100 coins flat
+- Stack with Signal Boost, Lucky Charm, and combo system for enormous payouts
+
+**Visual & UX (`public/js/main.js`, `public/index.html`):**
+- Press [J] to open/close Daily Challenges panel (always available mid-game)
+- Panel shows: 3 challenges with progress bars, desc, reward, and streak bonus
+- Reset countdown timer (hours until next UTC midnight)
+- Streak badge: 🔥 Streak with days count and current multiplier
+- `#dailyHudIndicator`: persistent top-right pill showing "📅 1/3" (clickable to open panel)
+- City-wide event feed on each challenge completion (announces to all players)
+- Big personal announcement + screen shake when all 3 are done
+- Midnight refresh: "NEW DAILY CHALLENGES! Press [J]" banner for all online birds
+- Challenges seeded by date — same 3 for all players each UTC day (fair, predictable, discussable)
+
+**Hooks in `server/game.js`:**
+- Poop hits: npc, car, raccoon, cop, npc_cry, combo10, poop_total
+- Pickpocket: drunk pigeon
+- Sewer loot collection
+- Food truck heist complete
+- Bank heist complete
+- Golden egg delivery
+- Don Featherstone contract complete
+- Wanted survival (10s at level 3+)
+- Graffiti tag applied
+- Coin earnings at all major sources
+
+**Creative intent**: Retention is the game's weakest pillar. CARNAGE CITY has sessions of chaos but no reason to come back tomorrow specifically. Daily challenges fix this completely. "What are today's challenges?" becomes the first question every player asks. The streak system turns daily play into a game-within-a-game — players who maintain a 7+ day streak get 50% more XP from every challenge, creating a meaningful mechanical advantage. The seeded-by-date pool means all players share the same 3 challenges — Twitter/Discord moments: "Today's Heist Crew + Egg Runner combo is ROUGH" create social buzz. Challenges touch every system (sewer, racing, graffiti, heists, combat) so players explore content they might not have touched. Pure PROGRESSION + DISCOVERY + RETENTION energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
 - ~~Pigeon mafia questline~~ (DONE Session 22)
 - ~~Boss/predator glitch fix — territory-based predators with 3-hit duels~~ (DONE Session 23)
+- ~~Daily Challenges + Streak System~~ (DONE Session 24)
 - Eagle Overlord rare drop: "Eagle Feather" cosmetic badge
 **Session 20 — 2026-03-30: Territory Control System (Parallel Session)**
 Built the Territory Control System on top of the existing upstream code:

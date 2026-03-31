@@ -61,6 +61,11 @@ const db = {
       equipped_skills: data.equipped_skills,
       bird_color: data.bird_color,
       mafia_rep: data.mafia_rep || 0,
+      daily_date: data.daily_date || '',
+      daily_progress: data.daily_progress || '{}',
+      daily_completed: data.daily_completed || '[]',
+      daily_streak: data.daily_streak || 0,
+      daily_streak_date: data.daily_streak_date || '',
       last_seen: Math.floor(Date.now() / 1000),
     };
     await birdsCol.doc(id).set(docData, { merge: true });
