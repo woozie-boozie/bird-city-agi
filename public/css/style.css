@@ -1952,3 +1952,8 @@ html, body {
   from { box-shadow: 0 0 6px rgba(255, 0, 0, 0.5); }
   to   { box-shadow: 0 0 18px rgba(255, 0, 0, 0.95); }
 }
+
+@keyframes kingpinGlow {
+  from { box-shadow: 0 0 8px rgba(255, 215, 0, 0.6); text-shadow: 0 0 4px rgba(255,215,0,0.5); }
+  to   { box-shadow: 0 0 22px rgba(255, 215, 0, 1.0); text-shadow: 0 0 12px rgba(255,215,0,0.9); }
+}

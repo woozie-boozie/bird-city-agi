@@ -758,6 +758,62 @@
       addEventMessage('📅 Daily challenges have reset! New challenges available — press [J]', '#3399ff');
     }
 
+    // === KINGPIN EVENTS ===
+    if (ev.type === 'kingpin_crowned') {
+      const selfIsKingpin = ev.birdId === myId;
+      if (selfIsKingpin) {
+        screenShake(10, 700);
+        showAnnouncement(`👑 YOU ARE THE KINGPIN!\n${ev.coins}c makes you the richest bird.\nYou earn tribute — but you are a TARGET!`, '#ffd700', 5000);
+      } else if (ev.oldKingpin) {
+        addEventMessage(`👑 ${ev.birdName} seized the crown from ${ev.oldKingpin}! (${ev.coins}c)`, '#ffd700');
+        showAnnouncement(`👑 NEW KINGPIN: ${ev.birdName}!\nPoop them 3× to steal the crown!`, '#ffd700', 4000);
+      } else {
+        addEventMessage(`👑 ${ev.birdName} has been crowned KINGPIN! (${ev.coins}c)`, '#ffd700');
+        showAnnouncement(`👑 KINGPIN: ${ev.birdName}!\nPoop them 3× to dethrone and loot them!`, '#ffd700', 4000);
+      }
+      effects.push({ type: 'screen_shake', intensity: 6, duration: 400, time: now });
+    }
+    if (ev.type === 'kingpin_dethroned') {
+      if (ev.reason === 'defeated' && ev.deposedByName) {
+        const selfDeposed = ev.deposedByName === (gameState && gameState.self && gameState.self.name);
+        if (selfDeposed) {
+          screenShake(16, 900);
+          showAnnouncement(`💰 YOU DETHRONED ${ev.deposed}!\n+${ev.loot}c LOOTED! +450 XP! +2 MAFIA REP!`, '#ffd700', 5000);
+        } else if (ev.deposed && gameState && gameState.self && ev.deposed === gameState.self.name) {
+          screenShake(14, 800);
+          showAnnouncement(`💀 YOU WERE DETHRONED by ${ev.deposedByName}!\nThey looted ${ev.loot}c from your stash!`, '#ff4444', 4500);
+        } else {
+          showAnnouncement(`👑 ${ev.deposedByName} DETHRONED ${ev.deposed}! (+${ev.loot}c loot)`, '#ff8800', 4000);
+        }
+        addEventMessage(`👑 ${ev.deposedByName} dethroned ${ev.deposed} and looted ${ev.loot}c!`, '#ff8800');
+        effects.push({ type: 'screen_shake', intensity: 10, duration: 600, time: now });
+      } else if (ev.reason === 'disconnected') {
+        addEventMessage(`👑 ${ev.deposed} left the city — throne is vacant!`, '#888');
+      } else if (ev.reason === 'broke') {
+        addEventMessage(`👑 ${ev.deposed} spent their fortune — throne is vacant!`, '#888');
+      }
+    }
+    if (ev.type === 'kingpin_hit') {
+      if (ev.attackerId === myId) {
+        effects.push({ type: 'text', x: ev.x || camera.x, y: (ev.y || camera.y) - 25, time: now, duration: 1500,
+          text: `👑 KINGPIN HIT ${ev.count}/3`, color: '#ffd700', size: 16 });
+        if (ev.count === 2) {
+          showAnnouncement(`💀 ONE MORE HIT to dethrone ${ev.targetName}!`, '#ffd700', 2000);
+        }
+      } else if (ev.count === 2) {
+        addEventMessage(`⚠️ ${ev.attackerName} has hit ${ev.targetName} twice! One more dethrones the Kingpin!`, '#ffaa00');
+      }
+    }
+    if (ev.type === 'kingpin_tribute') {
+      if (ev.birdId === myId) {
+        effects.push({ type: 'xp', x: camera.x, y: camera.y - 30, time: now, duration: 1800,
+          text: `+${ev.amount}c TRIBUTE`, color: '#ffd700' });
+      }
+    }
+    if (ev.type === 'kingpin_topple_shockwave') {
+      effects.push({ type: 'screen_shake', intensity: 14, duration: 800, time: now });
+    }
+
     // === FLOCK EVENTS ===
     if (ev.type === 'flock_invite') {
       if (ev.toId === myId) {
@@ -4341,6 +4397,41 @@
             ctx.stroke();
           }
 
+          // Kingpin crown — gold crown above the richest bird
+          if (b.isKingpin) {
+            const crownPulse = Math.sin(now * 0.004) * 0.25 + 0.75;
+            const crownY = sy - 38;
+            // Outer gold glow ring
+            ctx.save();
+            ctx.globalAlpha = 0.3 * crownPulse;
+            ctx.beginPath();
+            ctx.arc(sx, sy, 28, 0, Math.PI * 2);
+            const crownGlow = ctx.createRadialGradient(sx, sy, 14, sx, sy, 28);
+            crownGlow.addColorStop(0, 'rgba(255,215,0,0)');
+            crownGlow.addColorStop(1, 'rgba(255,215,0,0.5)');
+            ctx.fillStyle = crownGlow;
+            ctx.fill();
+            ctx.restore();
+            // Crown emoji + hit progress label
+            ctx.save();
+            ctx.globalAlpha = crownPulse;
+            ctx.font = 'bold 18px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('👑', sx, crownY);
+            ctx.restore();
+            // Show hit progress if we've hit them
+            if (b.kingpinMyHits > 0) {
+              ctx.save();
+              ctx.font = 'bold 9px Courier New';
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.fillStyle = `rgba(255, 200, 0, ${crownPulse})`;
+              ctx.fillText(`${b.kingpinMyHits}/3`, sx, crownY + 16);
+              ctx.restore();
+            }
+          }
+
           // Hit contract target — red crosshair reticle + bounty label
           if (b.hitBounty) {
             const pulse = Math.sin(now * 0.009) * 0.35 + 0.65;
@@ -4565,6 +4656,34 @@
         minimapCtx.arc(gameState.boss.x * msx, gameState.boss.y * msy, 5, 0, Math.PI * 2);
         minimapCtx.fill();
       }
+    }
+
+    // Draw Kingpin on minimap — large pulsing gold crown
+    if (gameState.kingpin && gameState.kingpin.x !== null && worldData) {
+      const mw = minimapCtx.canvas.width;
+      const mh = minimapCtx.canvas.height;
+      const msx = mw / worldData.width;
+      const msy = mh / worldData.height;
+      const kx = gameState.kingpin.x * msx;
+      const ky = gameState.kingpin.y * msy;
+      const kPulse = Math.sin(performance.now() * 0.005) * 0.3 + 0.7;
+      // Outer glow
+      minimapCtx.globalAlpha = 0.35 * kPulse;
+      minimapCtx.fillStyle = '#ffd700';
+      minimapCtx.beginPath();
+      minimapCtx.arc(kx, ky, 7, 0, Math.PI * 2);
+      minimapCtx.fill();
+      // Inner dot
+      minimapCtx.globalAlpha = 0.9 * kPulse;
+      minimapCtx.fillStyle = '#ffe84d';
+      minimapCtx.beginPath();
+      minimapCtx.arc(kx, ky, 3.5, 0, Math.PI * 2);
+      minimapCtx.fill();
+      minimapCtx.globalAlpha = 1;
+      // Crown emoji label
+      minimapCtx.font = 'bold 8px sans-serif';
+      minimapCtx.textAlign = 'center';
+      minimapCtx.fillText('👑', kx, ky - 6);
     }
 
     // Draw wanted bird on minimap (flashing red skull)
@@ -5143,6 +5262,9 @@
     if (s.myHitBounty) {
       const secsLeft = Math.max(0, Math.ceil((s.myHitBounty.expiresAt - now) / 1000));
       html += '<div class="bm-buff-pill" style="background:rgba(80,0,0,0.85);border-color:#ff2222;color:#ff8888;animation:pulseRed 0.8s infinite alternate;">💀 BOUNTY: ' + s.myHitBounty.reward + 'c — ' + Math.floor(secsLeft / 60) + 'm' + (secsLeft % 60) + 's</div>';
+    }
+    if (s.isKingpin) {
+      html += '<div class="bm-buff-pill" style="background:rgba(100,80,0,0.9);border-color:#ffd700;color:#ffd700;animation:kingpinGlow 1.2s ease-in-out infinite alternate;font-weight:bold;">👑 KINGPIN — You earn tribute! Stay rich!</div>';
     }
 
     el.innerHTML = html;

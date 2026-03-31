@@ -228,6 +228,12 @@ class GameEngine {
     this.dailyChallengesDate = '';  // 'YYYY-MM-DD' UTC string
     this._refreshDailyChallengesIfNeeded(); // pick today's 3 challenges on startup
 
+    // === KINGPIN SYSTEM ===
+    // Richest bird online wears the crown. Visible on everyone's minimap.
+    // 3 poop hits from the same attacker = dethrone. Big reward for the hitman.
+    this.kingpin = null; // { birdId, birdName, coins, crownedAt, hitCount: Map(hitterId->count), lastPassiveReward }
+    this.kingpinCheckTimer = 0;
+
     // === DAY/NIGHT CYCLE ===
     // 0.0 = early day, 0.3 = dusk, 0.45 = night, 0.75 = dawn, 1.0 = day again
     // Full cycle = 20 real-time minutes
@@ -844,6 +850,9 @@ class GameEngine {
 
     // === Golden Egg Scramble ===
     this._updateEggScramble(dt, now);
+
+    // === Kingpin System ===
+    this._updateKingpin(now);
   }
 
   // ============================================================
@@ -2227,6 +2236,20 @@ class GameEngine {
         this._trackDailyProgress(bird, 'combo10', 1);
       }
 
+      // === KINGPIN HIT TRACKING — secondary check, doesn't replace primary hit ===
+      // Any poop that lands near the kingpin counts as a hit, on top of any other target
+      if (this.kingpin && bird.id !== this.kingpin.birdId) {
+        const kBird = this.birds.get(this.kingpin.birdId);
+        if (kBird && !kBird.inSewer) {
+          const kdx = poop.x - kBird.x;
+          const kdy = poop.y - kBird.y;
+          const kHitRadius = isMegaPoop ? 88 : 34; // (60+28) vs (20+14)
+          if (Math.sqrt(kdx * kdx + kdy * kdy) < kHitRadius) {
+            this._handleKingpinHit(bird, now);
+          }
+        }
+      }
+
       // Check level up
       const newLevel = world.getLevelFromXP(bird.xp);
       const newType = world.getBirdTypeForLevel(newLevel);
@@ -3291,6 +3314,8 @@ class GameEngine {
             myHits: this.activeHits.get(b.id).hitProgress.get(bird.id) || 0,
             hitsNeeded: this.activeHits.get(b.id).hitsNeeded,
           } : null,
+          isKingpin: this.kingpin ? this.kingpin.birdId === b.id : false,
+          kingpinMyHits: (this.kingpin && this.kingpin.birdId === b.id) ? (this.kingpin.hitCount.get(bird.id) || 0) : 0,
         });
       }
     }
@@ -3805,7 +3830,22 @@ class GameEngine {
           contractorName: this.activeHits.get(bird.id).contractorName,
           expiresAt: this.activeHits.get(bird.id).expiresAt,
         } : null,
+        // Kingpin: are YOU the kingpin?
+        isKingpin: this.kingpin ? this.kingpin.birdId === bird.id : false,
       },
+      // Kingpin state (global — for minimap and visual targeting)
+      kingpin: this.kingpin ? (() => {
+        const kBird = this.birds.get(this.kingpin.birdId);
+        return {
+          birdId: this.kingpin.birdId,
+          birdName: this.kingpin.birdName,
+          coins: this.kingpin.coins,
+          crownedAt: this.kingpin.crownedAt,
+          myHits: this.kingpin.hitCount.get(bird.id) || 0,
+          x: kBird ? kBird.x : null,
+          y: kBird ? kBird.y : null,
+        };
+      })() : null,
       radioTower: {
         state: this.radioTower.state,
         ownerId: this.radioTower.ownerId,
@@ -7823,6 +7863,168 @@ class GameEngine {
         delivered: e.delivered,
       })),
     };
+  }
+
+  // ============================================================
+  // KINGPIN SYSTEM
+  // ============================================================
+
+  _updateKingpin(now) {
+    // Check every 5 seconds
+    if (now - this.kingpinCheckTimer < 5000) return;
+    this.kingpinCheckTimer = now;
+
+    // Find richest online bird — minimum 200 coins to be crowned
+    let richestBird = null;
+    let richestCoins = 199; // threshold
+    for (const b of this.birds.values()) {
+      if (b.inNest) continue; // AFK birds can't be crowned
+      if (b.coins > richestCoins) {
+        richestCoins = b.coins;
+        richestBird = b;
+      }
+    }
+
+    // If current kingpin is no longer online, clear them
+    if (this.kingpin && !this.birds.has(this.kingpin.birdId)) {
+      const oldName = this.kingpin.birdName;
+      this.kingpin = null;
+      this.events.push({ type: 'kingpin_dethroned', deposed: oldName, deposedByName: null, loot: 0, reason: 'disconnected' });
+    }
+
+    // Crown new kingpin (or update coins on existing)
+    if (richestBird) {
+      if (!this.kingpin) {
+        // New kingpin!
+        this.kingpin = {
+          birdId: richestBird.id,
+          birdName: richestBird.name,
+          coins: richestBird.coins,
+          crownedAt: now,
+          hitCount: new Map(),
+          lastPassiveReward: now,
+        };
+        this.events.push({
+          type: 'kingpin_crowned',
+          birdId: richestBird.id,
+          birdName: richestBird.name,
+          coins: richestBird.coins,
+        });
+      } else if (this.kingpin.birdId !== richestBird.id) {
+        // Richer bird is now online — crown passes automatically (bloodless transfer)
+        const oldName = this.kingpin.birdName;
+        this.kingpin = {
+          birdId: richestBird.id,
+          birdName: richestBird.name,
+          coins: richestBird.coins,
+          crownedAt: now,
+          hitCount: new Map(),
+          lastPassiveReward: now,
+        };
+        this.events.push({
+          type: 'kingpin_crowned',
+          birdId: richestBird.id,
+          birdName: richestBird.name,
+          coins: richestBird.coins,
+          oldKingpin: oldName,
+        });
+      } else {
+        // Same kingpin — update their coin count
+        this.kingpin.coins = richestBird.coins;
+      }
+    } else if (this.kingpin) {
+      // Nobody is rich enough — throne goes vacant
+      const oldName = this.kingpin.birdName;
+      this.kingpin = null;
+      this.events.push({ type: 'kingpin_dethroned', deposed: oldName, deposedByName: null, loot: 0, reason: 'broke' });
+    }
+
+    // Passive income: Kingpin earns 20 coins every 30 seconds as "city tribute"
+    if (this.kingpin) {
+      const kBird = this.birds.get(this.kingpin.birdId);
+      if (kBird && now - this.kingpin.lastPassiveReward >= 30000) {
+        kBird.coins += 20;
+        this.kingpin.coins = kBird.coins;
+        this.kingpin.lastPassiveReward = now;
+        this.events.push({
+          type: 'kingpin_tribute',
+          birdId: kBird.id,
+          birdName: kBird.name,
+          amount: 20,
+        });
+      }
+    }
+  }
+
+  _handleKingpinHit(attacker, now) {
+    if (!this.kingpin) return;
+    // Can't hit yourself as kingpin
+    if (attacker.id === this.kingpin.birdId) return;
+
+    const count = (this.kingpin.hitCount.get(attacker.id) || 0) + 1;
+    this.kingpin.hitCount.set(attacker.id, count);
+
+    // Small bonus for hitting the kingpin
+    attacker.xp += 35;
+    attacker.coins += 10;
+
+    this.events.push({
+      type: 'kingpin_hit',
+      attackerId: attacker.id,
+      attackerName: attacker.name,
+      targetName: this.kingpin.birdName,
+      count,
+      hitsNeeded: 3,
+    });
+
+    if (count >= 3) {
+      this._dethroneKingpin(attacker, now);
+    }
+  }
+
+  _dethroneKingpin(attacker, now) {
+    if (!this.kingpin) return;
+
+    const kBird = this.birds.get(this.kingpin.birdId);
+    let lootAmount = 0;
+
+    if (kBird) {
+      lootAmount = Math.min(600, Math.max(80, Math.floor(kBird.coins * 0.28)));
+      kBird.coins = Math.max(0, kBird.coins - lootAmount);
+      kBird.comboCount = 0;   // combo shattered
+      kBird.stunnedUntil = now + 2500; // brief stun
+    }
+
+    attacker.coins += lootAmount;
+    attacker.xp += 450;
+    attacker.mafiaRep = (attacker.mafiaRep || 0) + 2; // KINGPIN SLAYER earns mafia rep
+
+    const dethroned = { birdId: this.kingpin.birdId, birdName: this.kingpin.birdName };
+    this.kingpin = null;
+
+    // Level check for attacker
+    const newLevel = world.getLevelFromXP(attacker.xp);
+    if (newLevel !== attacker.level) {
+      attacker.level = newLevel;
+      attacker.type = world.getBirdTypeForLevel(newLevel);
+      this.events.push({ type: 'evolve', birdId: attacker.id, name: attacker.name, birdType: attacker.type });
+    }
+
+    this.events.push({
+      type: 'kingpin_dethroned',
+      deposed: dethroned.birdName,
+      deposedById: attacker.id,
+      deposedByName: attacker.name,
+      loot: lootAmount,
+      reason: 'defeated',
+    });
+
+    // Trigger screen shake for all players via a shockwave event
+    this.events.push({ type: 'kingpin_topple_shockwave', x: kBird ? kBird.x : 1500, y: kBird ? kBird.y : 1500 });
+
+    // Immediately check for new kingpin
+    this.kingpinCheckTimer = 0;
+    this._updateKingpin(now);
   }
 
 }

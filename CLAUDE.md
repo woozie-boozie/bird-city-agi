@@ -785,6 +785,37 @@ The most SOCIAL feature yet — you can now pay The Don to put a 💀 hit on any
 
 **Creative intent**: The city's most powerful social drama machine. Griefed by a high-combo player? Drop 100c and paint a target on their back — let the whole server hunt them. Rich birds are the natural targets (richest sorted first in the Don overlay). The 3-hit requirement means a single unlucky poop won't ruin someone's day, but a coordinated hunt is very real. The target knowing a hit is on them (warning HUD + minimap glow) creates the chase dynamic. The contractor being anonymous adds mystery — "who put the hit out on me?!" (The Don never reveals). Stacks with the wanted system: a bird being hunted by cops AND having a bounty on them is pure CARNAGE. Pure SOCIAL + CARNAGE energy.
 
+**Session 26 — 2026-03-31: Kingpin System — Wear the Crown, Paint a Target**
+The richest bird online is now the Kingpin — crowned with 👑, visible on everyone's minimap, and a hunted target. Pure social chaos: the richer you get, the more dangerous you become.
+
+**Kingpin mechanics (`server/game.js`):**
+- Server checks every 5 seconds for the richest online bird with >200 coins — they become Kingpin
+- Crown passes automatically if a richer bird logs on (bloodless transfer) or current Kingpin gets dethroned
+- **Passive tribute**: Kingpin earns +20 coins every 30 seconds — city pays tribute to its richest ruler (gets richer → bigger target)
+- **3-hit dethronement**: Any bird can poop the Kingpin 3 times to dethrone them. On dethronement:
+  - Attacker earns: +450 XP, +28% of Kingpin's coins (80-600c), +2 Mafia Rep — "KINGPIN SLAYER" bonus
+  - Kingpin loses: 28% of their coins, combo streak wiped, brief 2.5s stun
+  - City-wide announcement + screen shake for everyone
+- Each kingpin hit gives the attacker +35 XP and +10 coins for the attempt
+- If Kingpin disconnects or falls below 200 coins: throne goes vacant with event feed notice
+- **Secondary hit detection**: Kingpin hits are tracked ON TOP of regular poop targets — pooping an NPC in front of the Kingpin still counts as a Kingpin hit
+
+**Visual system (`public/js/main.js`):**
+- 👑 crown emoji pulses above the Kingpin bird (18px, pulsing opacity)
+- Gold radial glow aura around the Kingpin bird
+- Hit progress shown above crown if you've hit them: `1/3`, `2/3`
+- Minimap: large pulsing gold dot + 👑 emoji at Kingpin's real-time world position (trackable from anywhere)
+- Active buffs HUD: gold pulsing "👑 KINGPIN — You earn tribute! Stay rich!" pill when you wear the crown
+
+**Events & announcements:**
+- `kingpin_crowned`: city-wide "NEW KINGPIN: [Name]!" announcement + screen shake
+- `kingpin_dethroned` (defeated): massive announcement for dethroner + target + loot amount
+- `kingpin_dethroned` (disconnected/broke): quiet event feed note
+- `kingpin_hit` at 2/3: city-wide warning "ONE MORE HIT to dethrone [Name]!"
+- `kingpin_tribute`: subtle floating "+20c TRIBUTE" for the Kingpin
+
+**Creative intent**: The single most powerful social pressure mechanic added yet. Getting rich in Bird City now means you're wearing a crown AND a target. The Kingpin is ALWAYS on the minimap — players can track them across the entire map and plan hunts. The 3-hit requirement means it takes real effort (can't one-shot the crown), but it's doable — and the 28% coin loot means attacking a 600-coin Kingpin nets you ~168c plus XP plus Mafia Rep. The passive tribute makes holding the crown worthwhile (you get richer faster) but also makes you richer (bigger loot for the attacker). Pure SOCIAL + CARNAGE + SPECTACLE energy — and every existing coin-earning system now has a second layer of consequence.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -792,11 +823,13 @@ The most SOCIAL feature yet — you can now pay The Don to put a 💀 hit on any
 - ~~Boss/predator glitch fix — territory-based predators with 3-hit duels~~ (DONE Session 23)
 - ~~Daily Challenges + Streak System~~ (DONE Session 24)
 - ~~Hit Contract System — player-placed bounties via The Don~~ (DONE Session 25)
+- ~~Kingpin System — richest bird gets a crown + visible on minimap; killing them gives big reward~~ (DONE Session 26)
 - Eagle Overlord rare drop: "Eagle Feather" cosmetic badge (persistent cosmetic, visible on nametag)
 - **Bird Gangs** — persistent named gangs with custom colors/tags, gang treasury, gang turf wars (distinct from ephemeral flocks)
-- **Kingpin System** — richest bird in city gets a crown + is visible on everyone's minimap; killing them gives big reward
 - Race power-ups: speed boost gates on the circuit that any racer can fly through
 - Owl enforcer in park at night (no-poop zone, alerts NPCs)
+- **Pigeonhole Slots** — a literal casino in the city. Put in coins, pull the lever. 3-slot jackpot with bird-themed symbols
+- **Bounty Board** — public board showing top-5 richest birds and current Kingpin; clicking a name places coins on them being dethroned (collective betting pool)
 **Session 20 — 2026-03-30: Territory Control System (Parallel Session)**
 Built the Territory Control System on top of the existing upstream code:
 - 6 named districts (Nest Side, Mall, Park, Cafe Quarter, Downtown, The Docks) — including a Docks zone added to upstream's 5
