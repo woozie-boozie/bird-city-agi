@@ -373,6 +373,119 @@
     </button>
   </div>
 
+  <!-- Gang HQ Overlay -->
+  <div id="gangHqOverlay" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+    background:rgba(8,4,18,0.97);color:#ff6633;font:12px 'Courier New',monospace;
+    padding:18px 22px;border-radius:18px;border:2px solid #ff4400;z-index:90;
+    min-width:340px;max-width:460px;box-shadow:0 0 30px rgba(255,80,0,0.4);text-align:left;">
+
+    <!-- Header -->
+    <div id="gangHqHeader" style="text-align:center;margin-bottom:14px;">
+      <div style="font-size:17px;font-weight:bold;">🔥 GANG HQ</div>
+      <div id="gangHqSubtitle" style="font-size:10px;color:#cc5522;margin-top:2px;"></div>
+    </div>
+
+    <!-- No gang: creation form -->
+    <div id="gangCreateSection" style="display:none;">
+      <div style="color:#ffaa66;font-size:11px;margin-bottom:10px;">Found your own criminal empire. Cost: 200 coins.</div>
+      <div style="margin-bottom:8px;">
+        <label style="color:#ff9955;font-size:10px;">3-LETTER TAG (uppercase)</label><br>
+        <input id="gangTagInput" type="text" maxlength="3" placeholder="e.g. MOB"
+          style="background:rgba(40,10,0,0.8);color:#ffcc99;border:1px solid #ff4400;
+          border-radius:6px;padding:5px 8px;font:bold 14px 'Courier New',monospace;
+          width:70px;text-transform:uppercase;margin-top:4px;letter-spacing:4px;">
+      </div>
+      <div style="margin-bottom:12px;">
+        <label style="color:#ff9955;font-size:10px;">GANG NAME</label><br>
+        <input id="gangNameInput" type="text" maxlength="30" placeholder="e.g. The Crow Cartel"
+          style="background:rgba(40,10,0,0.8);color:#ffcc99;border:1px solid #ff4400;
+          border-radius:6px;padding:5px 10px;font:bold 12px 'Courier New',monospace;
+          width:220px;margin-top:4px;">
+      </div>
+      <div style="margin-bottom:10px;font-size:10px;color:#cc7755;">Pick your gang color:</div>
+      <div id="gangColorPicker" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;"></div>
+      <button id="gangCreateBtn" style="background:linear-gradient(135deg,#880000,#cc2200);
+        color:#fff;border:2px solid #ff4400;padding:8px 22px;border-radius:12px;
+        font:bold 12px 'Courier New',monospace;cursor:pointer;width:100%;">
+        ⚡ FOUND THE GANG (200c)
+      </button>
+    </div>
+
+    <!-- In a gang: HQ panel -->
+    <div id="gangInfoSection" style="display:none;">
+      <!-- Gang identity badge -->
+      <div id="gangBadge" style="text-align:center;margin-bottom:12px;"></div>
+
+      <!-- Treasury -->
+      <div style="background:rgba(40,10,0,0.6);border:1px solid #ff4400;border-radius:10px;padding:8px 12px;margin-bottom:10px;">
+        <div style="color:#ffaa44;font-size:10px;font-weight:bold;">💰 GANG TREASURY</div>
+        <div id="gangTreasury" style="font-size:16px;font-weight:bold;color:#ffd700;margin:4px 0;"></div>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <input id="gangDepositInput" type="number" min="1" max="9999" placeholder="Amount"
+            style="background:rgba(40,10,0,0.8);color:#ffcc99;border:1px solid #cc3300;
+            border-radius:6px;padding:4px 8px;font:11px 'Courier New',monospace;width:80px;">
+          <button id="gangDepositBtn" style="background:rgba(100,30,0,0.8);color:#ffaa44;
+            border:1px solid #cc3300;border-radius:8px;padding:4px 10px;cursor:pointer;
+            font:10px 'Courier New',monospace;">DEPOSIT</button>
+          <button id="gangDistributeBtn" style="background:rgba(80,40,0,0.8);color:#ffd700;
+            border:1px solid #cc8800;border-radius:8px;padding:4px 10px;cursor:pointer;
+            font:10px 'Courier New',monospace;display:none;">PAY OUT</button>
+        </div>
+      </div>
+
+      <!-- Members list -->
+      <div style="background:rgba(30,8,0,0.6);border:1px solid #552200;border-radius:10px;padding:8px 12px;margin-bottom:10px;">
+        <div style="color:#ff8844;font-size:10px;font-weight:bold;margin-bottom:6px;">👥 MEMBERS</div>
+        <div id="gangMemberList" style="max-height:120px;overflow-y:auto;"></div>
+      </div>
+
+      <!-- Gang War section -->
+      <div id="gangWarSection" style="background:rgba(40,0,0,0.7);border:1px solid #880000;border-radius:10px;padding:8px 12px;margin-bottom:10px;">
+        <div style="color:#ff3333;font-size:10px;font-weight:bold;margin-bottom:6px;">⚔️ GANG WAR</div>
+        <div id="gangWarStatus"></div>
+        <div id="gangDeclareWarSection" style="display:none;">
+          <div style="font-size:10px;color:#cc5555;margin-bottom:6px;">Declare war on a rival gang (10 min):</div>
+          <div id="gangRivalList"></div>
+        </div>
+      </div>
+
+      <!-- Invite section (leader only) -->
+      <div id="gangInviteSection" style="display:none;margin-bottom:10px;">
+        <div style="color:#ff9944;font-size:10px;font-weight:bold;margin-bottom:6px;">📨 INVITE NEARBY BIRD</div>
+        <div id="gangInviteList"></div>
+      </div>
+
+      <!-- Leave button -->
+      <button id="gangLeaveBtn" style="background:rgba(60,10,10,0.7);color:#cc4444;
+        border:1px solid #662222;border-radius:8px;padding:5px 14px;cursor:pointer;
+        font:10px 'Courier New',monospace;margin-right:8px;">LEAVE GANG</button>
+    </div>
+
+    <!-- Pending invite section -->
+    <div id="gangInvitePendingSection" style="display:none;background:rgba(20,10,0,0.8);
+      border:1px solid #cc4400;border-radius:10px;padding:10px 14px;margin-bottom:12px;">
+      <div style="font-size:11px;color:#ffaa66;margin-bottom:8px;" id="gangInvitePendingText"></div>
+      <div style="display:flex;gap:8px;">
+        <button id="gangAcceptInviteBtn" style="background:rgba(0,80,0,0.8);color:#66ff66;
+          border:1px solid #00aa00;border-radius:8px;padding:5px 14px;cursor:pointer;
+          font:bold 11px 'Courier New',monospace;">JOIN</button>
+        <button id="gangDeclineInviteBtn" style="background:rgba(80,0,0,0.8);color:#ff6666;
+          border:1px solid #aa0000;border-radius:8px;padding:5px 14px;cursor:pointer;
+          font:11px 'Courier New',monospace;">DECLINE</button>
+      </div>
+    </div>
+
+    <button id="gangHqClose" style="display:block;margin:4px auto 0;background:rgba(40,10,0,0.6);
+      color:#cc6633;border:1px solid #663322;padding:5px 22px;border-radius:10px;
+      cursor:pointer;font:11px 'Courier New',monospace;">CLOSE  [F]</button>
+  </div>
+
+  <!-- Gang War announcement HUD (brief top-center flash) -->
+  <div id="gangWarHud" style="display:none;position:fixed;top:50px;left:50%;transform:translateX(-50%);
+    background:rgba(40,0,0,0.94);color:#ff3333;font:bold 12px 'Courier New',monospace;
+    padding:6px 18px;border-radius:14px;border:2px solid #ff0000;pointer-events:none;z-index:85;
+    text-align:center;text-shadow:0 0 8px #ff0000;"></div>
+
   <script src="/socket.io/socket.io.js"></script>
   <script src="/js/sounds.js"></script>
   <script src="/js/sprites.js"></script>

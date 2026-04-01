@@ -27,6 +27,7 @@ const firestore = admin.firestore();
 
 const birdsCol = firestore.collection('birds');
 const poopsCol = firestore.collection('poops');
+const gangsCol = firestore.collection('gangs');
 
 const db = {
   /**
@@ -66,6 +67,11 @@ const db = {
       daily_completed: data.daily_completed || '[]',
       daily_streak: data.daily_streak || 0,
       daily_streak_date: data.daily_streak_date || '',
+      gang_id: data.gang_id || null,
+      gang_name: data.gang_name || null,
+      gang_tag: data.gang_tag || null,
+      gang_color: data.gang_color || null,
+      gang_role: data.gang_role || null,
       last_seen: Math.floor(Date.now() / 1000),
     };
     await birdsCol.doc(id).set(docData, { merge: true });
@@ -101,6 +107,41 @@ const db = {
    */
   async deletePoop(id) {
     await poopsCol.doc(id).delete();
+  },
+
+  /**
+   * Gang CRUD — persistent named criminal gangs.
+   */
+  async getGang(id) {
+    const doc = await gangsCol.doc(id).get();
+    if (!doc.exists) return null;
+    return { id: doc.id, ...doc.data() };
+  },
+
+  async upsertGang(data) {
+    await gangsCol.doc(data.id).set({
+      name: data.name,
+      tag: data.tag,
+      color: data.color,
+      leader_id: data.leaderId,
+      leader_name: data.leaderName,
+      treasury: data.treasury || 0,
+      member_names: data.memberNames || {},
+      created_at: data.createdAt || Date.now(),
+    }, { merge: true });
+  },
+
+  async getAllGangs() {
+    const snapshot = await gangsCol.get();
+    const gangs = [];
+    snapshot.forEach(doc => {
+      gangs.push({ id: doc.id, ...doc.data() });
+    });
+    return gangs;
+  },
+
+  async deleteGang(id) {
+    await gangsCol.doc(id).delete();
   },
 
   /**

@@ -58,6 +58,13 @@ class GameEngine {
     this.flocks = new Map();          // flockId -> { id, name, leaderId, members: Set<birdId>, createdAt }
     this.flockInvites = new Map();    // targetBirdId -> { fromId, toId, flockId, flockName, expiresAt }
 
+    // === Bird Gangs (persistent criminal crews) ===
+    this.gangs = new Map();           // gangId -> { id, name, tag, color, leaderId, leaderName, treasury, members: Set, memberNames: Map, warWithGangId, warEndsAt, warKills, warEnemyKills, createdAt }
+    this.gangInvites = new Map();     // targetBirdId -> { fromId, fromName, gangId, gangName, gangTag, gangColor, expiresAt }
+    this.gangWarHits = new Map();     // `${attackerBirdId}_${targetBirdId}` -> hit count (tracks 3-poop kills during war)
+    this.GANG_COLORS = ['#ff3333', '#ff8800', '#ffcc00', '#33cc55', '#3399ff', '#cc44ff', '#ff44aa', '#00ccdd'];
+    this._loadGangs();
+
     // === Missions ===
     this.missionBoard = [];           // array of 3 mission defs on the board
     this.activeMissions = new Map();  // birdId -> { missionId, def, progress, startedAt, participants: Set<birdId> }
@@ -493,6 +500,12 @@ class GameEngine {
       dailyStreak:    saved ? (saved.daily_streak || 0) : 0,
       dailyStreakDate: saved ? (saved.daily_streak_date || '') : '',
       dailyCoinEarned: 0,  // transient: coins earned today, reset on new day
+      // === BIRD GANGS (persistent criminal crews) ===
+      gangId:   saved ? (saved.gang_id   || null) : null,
+      gangName: saved ? (saved.gang_name || null) : null,
+      gangTag:  saved ? (saved.gang_tag  || null) : null,
+      gangColor:saved ? (saved.gang_color|| null) : null,
+      gangRole: saved ? (saved.gang_role || null) : null,  // 'leader' | 'member'
     };
 
     // Determine bird type from XP
@@ -501,6 +514,18 @@ class GameEngine {
     bird.level = level;
 
     this.birds.set(id, bird);
+
+    // Register with gang if bird has one
+    if (bird.gangId) {
+      const gang = this.gangs.get(bird.gangId);
+      if (gang) {
+        gang.members.add(bird.id);
+        gang.memberNames.set(bird.id, bird.name);
+      } else {
+        // Gang no longer exists — clear the bird's gang data
+        bird.gangId = null; bird.gangName = null; bird.gangTag = null; bird.gangColor = null; bird.gangRole = null;
+      }
+    }
 
     this.events.push({ type: 'join', birdId: id, name: bird.name, birdType: bird.type });
 
@@ -516,6 +541,11 @@ class GameEngine {
       // Clean up flock membership
       if (bird.flockId) {
         this._handleFlockLeave(bird);
+      }
+      // Clean up gang membership (keep in memberNames for offline display)
+      if (bird.gangId) {
+        const gang = this.gangs.get(bird.gangId);
+        if (gang) gang.members.delete(bird.id);
       }
       // Clean up active mission
       if (bird.activeMission) {
@@ -618,6 +648,32 @@ class GameEngine {
     }
     if (action.type === 'flock_leave') {
       this._handleFlockLeave(bird);
+    }
+
+    // === Gang actions ===
+    if (action.type === 'gang_create') {
+      this._handleGangCreate(bird, action.tag, action.name, now);
+    }
+    if (action.type === 'gang_invite') {
+      this._handleGangInvite(bird, action.targetId, now);
+    }
+    if (action.type === 'gang_accept') {
+      this._handleGangAccept(bird, now);
+    }
+    if (action.type === 'gang_decline') {
+      this.gangInvites.delete(bird.id);
+    }
+    if (action.type === 'gang_leave') {
+      this._handleGangLeave(bird);
+    }
+    if (action.type === 'gang_deposit') {
+      this._handleGangDeposit(bird, action.amount, now);
+    }
+    if (action.type === 'gang_declare_war') {
+      this._handleGangDeclareWar(bird, action.rivalGangId, now);
+    }
+    if (action.type === 'gang_distribute') {
+      this._handleGangDistribute(bird, now);
     }
 
     // === Mission actions ===
@@ -797,6 +853,9 @@ class GameEngine {
 
     // === Flocks ===
     this._cleanupFlockInvites(now);
+
+    // === Gang Wars ===
+    this._tickGangWars(now);
 
     // === Missions ===
     this._updateMissions(now);
@@ -2269,6 +2328,24 @@ class GameEngine {
         }
       }
 
+      // Gang War: check if poop landed near a rival gang member
+      if (bird.gangId && !isMegaPoop) {
+        const myGang = this.gangs.get(bird.gangId);
+        if (myGang && myGang.warWithGangId && now < myGang.warEndsAt) {
+          for (const [targetId, targetBird] of this.birds) {
+            if (targetId === bird.id) continue;
+            if (targetBird.gangId !== myGang.warWithGangId) continue;
+            if (targetBird.inSewer) continue;
+            const gdx = poop.x - targetBird.x;
+            const gdy = poop.y - targetBird.y;
+            if (Math.sqrt(gdx * gdx + gdy * gdy) < 34) {
+              this._handleGangWarHit(bird, targetBird, now);
+              break;
+            }
+          }
+        }
+      }
+
       // Check level up
       const newLevel = world.getLevelFromXP(bird.xp);
       const newType = world.getBirdTypeForLevel(newLevel);
@@ -3148,15 +3225,17 @@ class GameEngine {
 
     for (const zone of this.territories.values()) {
       // --- Count birds inside this zone by team ---
-      const teamCounts = new Map(); // teamId -> { count, name, isFlock }
+      const teamCounts = new Map(); // teamId -> { count, name, isFlock, color }
       for (const bird of this.birds.values()) {
         if (bird.x >= zone.x && bird.x <= zone.x + zone.w &&
             bird.y >= zone.y && bird.y <= zone.y + zone.h) {
-          const teamId = bird.flockId || ('solo_' + bird.id);
-          const teamName = bird.flockName || bird.name;
-          const isFlock = !!bird.flockId;
+          // Gang takes priority: gang members fight as their gang, not flock or solo
+          const teamId = bird.gangId || bird.flockId || ('solo_' + bird.id);
+          const teamName = bird.gangId ? `[${bird.gangTag}] ${bird.gangName}` : (bird.flockName || bird.name);
+          const isFlock = !!(bird.gangId || bird.flockId);
+          const teamColor = bird.gangId ? bird.gangColor : null;
           if (!teamCounts.has(teamId)) {
-            teamCounts.set(teamId, { count: 0, name: teamName, isFlock });
+            teamCounts.set(teamId, { count: 0, name: teamName, isFlock, color: teamColor });
           }
           teamCounts.get(teamId).count++;
         }
@@ -3184,7 +3263,7 @@ class GameEngine {
             zone.captureProgress = 1;
             zone.ownerTeamId = dominantTeamId;
             zone.ownerName = dominantName;
-            zone.ownerColor = this._teamColor(dominantTeamId);
+            zone.ownerColor = teamCounts.get(dominantTeamId)?.color || this._teamColor(dominantTeamId);
             zone.lastRewardAt = now;
             zone.lastContestAlert = 0;
             this.events.push({
@@ -3237,7 +3316,7 @@ class GameEngine {
           zone.lastRewardAt = now;
           let rewarded = 0;
           for (const bird of this.birds.values()) {
-            const teamId = bird.flockId || ('solo_' + bird.id);
+            const teamId = bird.gangId || bird.flockId || ('solo_' + bird.id);
             if (teamId === zone.ownerTeamId &&
                 bird.x >= zone.x && bird.x <= zone.x + zone.w &&
                 bird.y >= zone.y && bird.y <= zone.y + zone.h) {
@@ -3328,6 +3407,9 @@ class GameEngine {
           birdColor: b.birdColor,
           carryingEggId: b.carryingEggId || null,
           mafiaTitle: this._getMafiaTitle(b.mafiaRep || 0),
+          gangId: b.gangId || null,
+          gangTag: b.gangTag || null,
+          gangColor: b.gangColor || null,
           hitBounty: this.activeHits.has(b.id) ? {
             reward: this.activeHits.get(b.id).reward,
             myHits: this.activeHits.get(b.id).hitProgress.get(bird.id) || 0,
@@ -3851,6 +3933,12 @@ class GameEngine {
         } : null,
         // Kingpin: are YOU the kingpin?
         isKingpin: this.kingpin ? this.kingpin.birdId === bird.id : false,
+        // Gang
+        gangId: bird.gangId,
+        gangName: bird.gangName,
+        gangTag: bird.gangTag,
+        gangColor: bird.gangColor,
+        gangRole: bird.gangRole,
       },
       // Kingpin state (global — for minimap and visual targeting)
       kingpin: this.kingpin ? (() => {
@@ -3954,6 +4042,61 @@ class GameEngine {
         const cdy = bird.y - this.CASINO_POS.y;
         return Math.sqrt(cdx * cdx + cdy * cdy) < this.CASINO_POS.radius;
       })(),
+      // Gang state
+      myGang: (() => {
+        if (!bird.gangId) return null;
+        const gang = this.gangs.get(bird.gangId);
+        if (!gang) return null;
+        const memberList = [];
+        for (const [memberId, memberName] of gang.memberNames) {
+          memberList.push({
+            id: memberId,
+            name: memberName,
+            online: gang.members.has(memberId),
+            isLeader: memberId === gang.leaderId,
+          });
+        }
+        const enemyGang = gang.warWithGangId ? this.gangs.get(gang.warWithGangId) : null;
+        return {
+          id: gang.id,
+          name: gang.name,
+          tag: gang.tag,
+          color: gang.color,
+          leaderId: gang.leaderId,
+          leaderName: gang.leaderName,
+          treasury: gang.treasury,
+          members: memberList,
+          onlineCount: gang.members.size,
+          warWithGangId: gang.warWithGangId,
+          warWithGangName: enemyGang ? enemyGang.name : null,
+          warWithGangTag: enemyGang ? enemyGang.tag : null,
+          warEndsAt: gang.warEndsAt,
+          warKills: gang.warKills,
+          warEnemyKills: gang.warEnemyKills,
+        };
+      })(),
+      gangInvite: (() => {
+        const inv = this.gangInvites.get(bird.id);
+        if (!inv || inv.expiresAt < now) return null;
+        return {
+          fromId: inv.fromId,
+          fromName: inv.fromName,
+          gangId: inv.gangId,
+          gangName: inv.gangName,
+          gangTag: inv.gangTag,
+          gangColor: inv.gangColor,
+        };
+      })(),
+      // All known gangs (for declaring war — pick a rival)
+      allGangs: (() => {
+        const list = [];
+        for (const g of this.gangs.values()) {
+          if (g.id === bird.gangId) continue;
+          list.push({ id: g.id, name: g.name, tag: g.tag, color: g.color, onlineCount: g.members.size });
+        }
+        return list;
+      })(),
+      gangColors: this.GANG_COLORS,
     };
   }
 
@@ -4027,6 +4170,11 @@ class GameEngine {
       daily_completed: JSON.stringify(bird.dailyCompleted || []),
       daily_streak: bird.dailyStreak || 0,
       daily_streak_date: bird.dailyStreakDate || '',
+      gang_id: bird.gangId || null,
+      gang_name: bird.gangName || null,
+      gang_tag: bird.gangTag || null,
+      gang_color: bird.gangColor || null,
+      gang_role: bird.gangRole || null,
     }).catch(e => {
       console.error('[GameEngine] Failed to save bird:', e.message);
     });
@@ -4524,6 +4672,390 @@ class GameEngine {
     for (const [targetId, invite] of this.flockInvites) {
       if (invite.expiresAt < now) {
         this.flockInvites.delete(targetId);
+      }
+    }
+  }
+
+  // ============================================================
+  // BIRD GANGS — persistent criminal crews
+  // ============================================================
+
+  async _loadGangs() {
+    try {
+      const allGangs = await firestoreDb.getAllGangs();
+      for (const g of allGangs) {
+        this.gangs.set(g.id, {
+          id: g.id,
+          name: g.name,
+          tag: g.tag,
+          color: g.color,
+          leaderId: g.leader_id,
+          leaderName: g.leader_name,
+          treasury: g.treasury || 0,
+          members: new Set(),           // rebuilt as birds join
+          memberNames: new Map(Object.entries(g.member_names || {})),
+          warWithGangId: null,
+          warEndsAt: 0,
+          warKills: 0,
+          warEnemyKills: 0,
+          createdAt: g.created_at || 0,
+        });
+      }
+      console.log(`[GameEngine] Loaded ${this.gangs.size} gangs from Firestore`);
+    } catch (e) {
+      console.log('[GameEngine] No gangs to load:', e.message);
+    }
+  }
+
+  _saveGang(gang) {
+    const memberNamesObj = {};
+    for (const [id, name] of gang.memberNames) {
+      memberNamesObj[id] = name;
+    }
+    firestoreDb.upsertGang({
+      id: gang.id,
+      name: gang.name,
+      tag: gang.tag,
+      color: gang.color,
+      leaderId: gang.leaderId,
+      leaderName: gang.leaderName,
+      treasury: gang.treasury,
+      memberNames: memberNamesObj,
+      createdAt: gang.createdAt,
+    }).catch(e => console.error('[GameEngine] Failed to save gang:', e.message));
+  }
+
+  _handleGangCreate(bird, tag, name, now) {
+    if (bird.gangId) return; // already in a gang
+    if (bird.coins < 200) return; // not enough coins
+
+    // Validate tag: exactly 3 uppercase letters
+    if (!tag || !/^[A-Z]{3}$/.test(tag)) return;
+    // Validate name: 3-30 chars, no offensive content (basic)
+    const cleanName = (name || '').trim().slice(0, 30);
+    if (cleanName.length < 3) return;
+    // Check tag uniqueness
+    for (const g of this.gangs.values()) {
+      if (g.tag === tag) {
+        this.events.push({ type: 'gang_error', birdId: bird.id, msg: `[${tag}] is already taken.` });
+        return;
+      }
+    }
+
+    // Pick color based on gang count
+    const color = this.GANG_COLORS[this.gangs.size % this.GANG_COLORS.length];
+
+    bird.coins -= 200;
+    const gangId = 'gang_' + uid();
+    const gang = {
+      id: gangId,
+      name: cleanName,
+      tag: tag,
+      color: color,
+      leaderId: bird.id,
+      leaderName: bird.name,
+      treasury: 0,
+      members: new Set([bird.id]),
+      memberNames: new Map([[bird.id, bird.name]]),
+      warWithGangId: null,
+      warEndsAt: 0,
+      warKills: 0,
+      warEnemyKills: 0,
+      createdAt: now,
+    };
+    this.gangs.set(gangId, gang);
+
+    bird.gangId = gangId;
+    bird.gangName = cleanName;
+    bird.gangTag = tag;
+    bird.gangColor = color;
+    bird.gangRole = 'leader';
+
+    this._saveBird(bird);
+    this._saveGang(gang);
+
+    this.events.push({
+      type: 'gang_created',
+      birdId: bird.id, birdName: bird.name,
+      gangId, gangName: cleanName, gangTag: tag, gangColor: color,
+    });
+  }
+
+  _handleGangInvite(bird, targetId, now) {
+    if (!bird.gangId) return;
+    if (bird.gangRole !== 'leader') return; // only leaders can invite
+    const gang = this.gangs.get(bird.gangId);
+    if (!gang) return;
+    if (gang.members.size >= 20) return; // max 20 members
+
+    const target = this.birds.get(targetId);
+    if (!target) return;
+    if (target.gangId) {
+      this.events.push({ type: 'gang_error', birdId: bird.id, msg: `${target.name} is already in a gang.` });
+      return;
+    }
+
+    // Proximity check (150px)
+    const dx = target.x - bird.x;
+    const dy = target.y - bird.y;
+    if (Math.sqrt(dx * dx + dy * dy) > 150) return;
+
+    this.gangInvites.set(targetId, {
+      fromId: bird.id,
+      fromName: bird.name,
+      gangId: gang.id,
+      gangName: gang.name,
+      gangTag: gang.tag,
+      gangColor: gang.color,
+      expiresAt: now + 20000,
+    });
+    this.events.push({
+      type: 'gang_invite',
+      fromId: bird.id, fromName: bird.name,
+      toId: targetId,
+      gangName: gang.name, gangTag: gang.tag, gangColor: gang.color,
+    });
+  }
+
+  _handleGangAccept(bird, now) {
+    const invite = this.gangInvites.get(bird.id);
+    if (!invite || invite.expiresAt < now) {
+      this.gangInvites.delete(bird.id);
+      return;
+    }
+    if (bird.gangId) {
+      this.gangInvites.delete(bird.id);
+      return;
+    }
+    const gang = this.gangs.get(invite.gangId);
+    if (!gang || gang.members.size >= 20) {
+      this.gangInvites.delete(bird.id);
+      return;
+    }
+
+    gang.members.add(bird.id);
+    gang.memberNames.set(bird.id, bird.name);
+
+    bird.gangId = gang.id;
+    bird.gangName = gang.name;
+    bird.gangTag = gang.tag;
+    bird.gangColor = gang.color;
+    bird.gangRole = 'member';
+
+    this.gangInvites.delete(bird.id);
+    this._saveBird(bird);
+    this._saveGang(gang);
+
+    this.events.push({
+      type: 'gang_joined',
+      birdId: bird.id, birdName: bird.name,
+      gangId: gang.id, gangName: gang.name, gangTag: gang.tag,
+    });
+  }
+
+  _handleGangLeave(bird) {
+    if (!bird.gangId) return;
+    const gang = this.gangs.get(bird.gangId);
+    if (gang) {
+      gang.members.delete(bird.id);
+      gang.memberNames.delete(bird.id);
+      // Leadership transfer or disband
+      if (gang.leaderId === bird.id) {
+        if (gang.memberNames.size === 0) {
+          // Disband — no members left
+          this.gangs.delete(gang.id);
+          firestoreDb.deleteGang(gang.id).catch(() => {});
+          this.events.push({ type: 'gang_disbanded', gangName: gang.name, gangTag: gang.tag });
+        } else {
+          // Transfer leadership to first remaining member
+          const newLeaderId = gang.memberNames.keys().next().value;
+          gang.leaderId = newLeaderId;
+          gang.leaderName = gang.memberNames.get(newLeaderId);
+          this._saveGang(gang);
+          // Update new leader's role if online
+          const newLeader = this.birds.get(newLeaderId);
+          if (newLeader) {
+            newLeader.gangRole = 'leader';
+            this._saveBird(newLeader);
+          }
+        }
+      } else {
+        this._saveGang(gang);
+      }
+    }
+    bird.gangId = null;
+    bird.gangName = null;
+    bird.gangTag = null;
+    bird.gangColor = null;
+    bird.gangRole = null;
+    this._saveBird(bird);
+  }
+
+  _handleGangDeposit(bird, amount, now) {
+    if (!bird.gangId) return;
+    const gang = this.gangs.get(bird.gangId);
+    if (!gang) return;
+    const amt = Math.floor(Math.min(amount, bird.coins, 5000));
+    if (amt <= 0) return;
+    bird.coins -= amt;
+    gang.treasury += amt;
+    this._saveBird(bird);
+    this._saveGang(gang);
+    this.events.push({
+      type: 'gang_deposit',
+      birdId: bird.id, birdName: bird.name,
+      gangTag: gang.tag, gangName: gang.name,
+      amount: amt, treasury: gang.treasury,
+    });
+  }
+
+  _handleGangDeclareWar(bird, rivalGangId, now) {
+    if (!bird.gangId || bird.gangRole !== 'leader') return;
+    const myGang = this.gangs.get(bird.gangId);
+    if (!myGang) return;
+    if (myGang.warWithGangId) {
+      this.events.push({ type: 'gang_error', birdId: bird.id, msg: 'You are already at war!' });
+      return;
+    }
+    const rivalGang = this.gangs.get(rivalGangId);
+    if (!rivalGang) return;
+    if (rivalGang.members.size === 0) {
+      this.events.push({ type: 'gang_error', birdId: bird.id, msg: 'Rival gang has no online members.' });
+      return;
+    }
+
+    const WAR_DURATION = 10 * 60 * 1000; // 10 minutes
+    myGang.warWithGangId = rivalGangId;
+    myGang.warEndsAt = now + WAR_DURATION;
+    myGang.warKills = 0;
+    myGang.warEnemyKills = 0;
+
+    rivalGang.warWithGangId = bird.gangId;
+    rivalGang.warEndsAt = now + WAR_DURATION;
+    rivalGang.warKills = 0;
+    rivalGang.warEnemyKills = 0;
+
+    // Clear existing gang war hits
+    for (const key of [...this.gangWarHits.keys()]) {
+      this.gangWarHits.delete(key);
+    }
+
+    this.events.push({
+      type: 'gang_war_declared',
+      gang1Id: bird.gangId, gang1Name: myGang.name, gang1Tag: myGang.tag, gang1Color: myGang.color,
+      gang2Id: rivalGangId, gang2Name: rivalGang.name, gang2Tag: rivalGang.tag, gang2Color: rivalGang.color,
+      endsAt: myGang.warEndsAt,
+    });
+  }
+
+  _handleGangDistribute(bird, now) {
+    if (!bird.gangId || bird.gangRole !== 'leader') return;
+    const gang = this.gangs.get(bird.gangId);
+    if (!gang || gang.treasury <= 0) return;
+
+    const onlineMembers = [...gang.members].map(id => this.birds.get(id)).filter(Boolean);
+    if (onlineMembers.length === 0) return;
+
+    const perMember = Math.floor(gang.treasury / onlineMembers.length);
+    if (perMember <= 0) return;
+
+    const totalPaid = perMember * onlineMembers.length;
+    gang.treasury -= totalPaid;
+
+    for (const member of onlineMembers) {
+      member.coins += perMember;
+      this._saveBird(member);
+    }
+    this._saveGang(gang);
+
+    this.events.push({
+      type: 'gang_treasury_distributed',
+      gangTag: gang.tag, gangName: gang.name,
+      perMember, memberCount: onlineMembers.length, total: totalPaid,
+    });
+  }
+
+  _handleGangWarHit(attacker, target, now) {
+    if (!attacker.gangId || !target.gangId) return;
+    const hitKey = `${attacker.id}_${target.id}`;
+    const count = (this.gangWarHits.get(hitKey) || 0) + 1;
+    this.gangWarHits.set(hitKey, count);
+
+    this.events.push({
+      type: 'gang_war_hit',
+      attackerId: attacker.id, attackerName: attacker.name, attackerTag: attacker.gangTag,
+      targetId: target.id, targetName: target.name, targetTag: target.gangTag,
+      hits: count, hitsNeeded: 3,
+    });
+
+    if (count >= 3) {
+      // KILL!
+      this.gangWarHits.delete(hitKey);
+
+      const loot = Math.min(Math.floor(target.coins * 0.18), 150);
+      target.coins = Math.max(0, target.coins - loot);
+      attacker.coins += loot + 80;
+      attacker.xp += 150;
+      target.comboCount = 0;
+      target.stunnedUntil = now + 2000;
+
+      const myGang = this.gangs.get(attacker.gangId);
+      const enemyGang = this.gangs.get(target.gangId);
+      if (myGang) myGang.warKills = (myGang.warKills || 0) + 1;
+      if (enemyGang) enemyGang.warEnemyKills = (enemyGang.warEnemyKills || 0) + 1;
+
+      this.events.push({
+        type: 'gang_war_kill',
+        attackerId: attacker.id, attackerName: attacker.name, attackerGangTag: attacker.gangTag, attackerGangColor: attacker.gangColor,
+        targetId: target.id, targetName: target.name, targetGangTag: target.gangTag,
+        loot,
+      });
+    }
+  }
+
+  _tickGangWars(now) {
+    for (const gang of this.gangs.values()) {
+      if (gang.warWithGangId && now >= gang.warEndsAt) {
+        const rivalGang = this.gangs.get(gang.warWithGangId);
+        // Determine winner
+        const myKills = gang.warKills || 0;
+        const enemyKills = gang.warEnemyKills || 0;
+        let winnerId = null, loserId = null;
+        if (myKills > enemyKills) {
+          winnerId = gang.id; loserId = gang.warWithGangId;
+        } else if (enemyKills > myKills) {
+          winnerId = gang.warWithGangId; loserId = gang.id;
+        }
+        const winner = winnerId ? this.gangs.get(winnerId) : null;
+        const loser  = loserId  ? this.gangs.get(loserId)  : null;
+
+        // Victory bonus from loser treasury (20%)
+        if (winner && loser && loser.treasury > 0) {
+          const loot = Math.floor(loser.treasury * 0.2);
+          loser.treasury -= loot;
+          winner.treasury += loot;
+          this._saveGang(winner);
+          this._saveGang(loser);
+        }
+
+        this.events.push({
+          type: 'gang_war_ended',
+          gang1Id: gang.id, gang1Name: gang.name, gang1Tag: gang.tag, gang1Kills: myKills,
+          gang2Id: gang.warWithGangId, gang2Name: rivalGang ? rivalGang.name : '???', gang2Tag: rivalGang ? rivalGang.tag : '???', gang2Kills: enemyKills,
+          winnerId, winnerName: winner ? winner.name : null, winnerTag: winner ? winner.tag : null,
+        });
+
+        // Clear war state on both gangs
+        gang.warWithGangId = null;
+        gang.warEndsAt = 0;
+        gang.warKills = 0;
+        gang.warEnemyKills = 0;
+        if (rivalGang) {
+          rivalGang.warWithGangId = null;
+          rivalGang.warEndsAt = 0;
+          rivalGang.warKills = 0;
+          rivalGang.warEnemyKills = 0;
+        }
       }
     }
   }

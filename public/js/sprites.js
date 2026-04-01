@@ -106,19 +106,40 @@ window.Sprites = {
   },
 
   // === NAME TAG ===
-  drawNameTag(ctx, x, y, name, level, type, isPlayer, mafiaTitle) {
+  drawNameTag(ctx, x, y, name, level, type, isPlayer, mafiaTitle, gangTag, gangColor) {
     const text = `${name} [Lv.${level}]`;
     ctx.font = 'bold 11px Courier New';
     ctx.textAlign = 'center';
 
-    // Mafia title badge above the name tag
+    let offsetY = 0; // stack badges upward
+
+    // Gang tag badge — topmost
+    if (gangTag) {
+      const gColor = gangColor || '#ff6633';
+      ctx.font = 'bold 10px Courier New';
+      const gtw = ctx.measureText(`[${gangTag}]`).width + 10;
+      ctx.fillStyle = 'rgba(20,0,0,0.85)';
+      ctx.fillRect(x - gtw / 2, y - 52 - offsetY, gtw, 13);
+      ctx.strokeStyle = gColor;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x - gtw / 2, y - 52 - offsetY, gtw, 13);
+      ctx.fillStyle = gColor;
+      ctx.shadowColor = gColor;
+      ctx.shadowBlur = 4;
+      ctx.fillText(`[${gangTag}]`, x, y - 42 - offsetY);
+      ctx.shadowBlur = 0;
+      ctx.font = 'bold 11px Courier New';
+      offsetY += 14;
+    }
+
+    // Mafia title badge
     if (mafiaTitle) {
       ctx.font = 'bold 10px Courier New';
       const tw = ctx.measureText(`🎩 ${mafiaTitle}`).width + 8;
       ctx.fillStyle = 'rgba(80, 50, 0, 0.85)';
-      ctx.fillRect(x - tw / 2, y - 40, tw, 13);
+      ctx.fillRect(x - tw / 2, y - 40 - offsetY, tw, 13);
       ctx.fillStyle = '#ffd700';
-      ctx.fillText(`🎩 ${mafiaTitle}`, x, y - 30);
+      ctx.fillText(`🎩 ${mafiaTitle}`, x, y - 30 - offsetY);
       ctx.font = 'bold 11px Courier New';
     }
 

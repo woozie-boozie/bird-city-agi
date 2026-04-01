@@ -77,6 +77,13 @@
   const dailyHudIndicator = document.getElementById('dailyHudIndicator');
   let dailyPanelVisible = false;
 
+  // === Bird Gangs ===
+  const gangHqOverlay = document.getElementById('gangHqOverlay');
+  const gangHqClose = document.getElementById('gangHqClose');
+  const gangWarHud = document.getElementById('gangWarHud');
+  let gangHqVisible = false;
+  let gangSelectedColor = null;
+
   // === Pigeonhole Slots Casino ===
   const casinoOverlay = document.getElementById('casinoOverlay');
   const casinoProximityPrompt = document.getElementById('casinoProximityPrompt');
@@ -833,6 +840,60 @@
     }
     if (ev.type === 'flock_joined') {
       addEventMessage(ev.birdName + ' joined ' + ev.flockName + '!', '#4ade80');
+    }
+
+    // === GANG EVENTS ===
+    if (ev.type === 'gang_created') {
+      addEventMessage(`🔥 [${ev.gangTag}] ${ev.gangName} founded by ${ev.birdName}!`, ev.gangColor || '#ff6633');
+      if (ev.birdId === myId) {
+        showAnnouncement(`🔥 [${ev.gangTag}] ${ev.gangName} IS BORN!`, ev.gangColor || '#ff6633', 3500);
+      }
+    }
+    if (ev.type === 'gang_joined') {
+      addEventMessage(`${ev.birdName} joined [${ev.gangTag}] ${ev.gangName}!`, '#ff9966');
+    }
+    if (ev.type === 'gang_disbanded') {
+      addEventMessage(`[${ev.gangTag}] ${ev.gangName} has disbanded.`, '#888');
+    }
+    if (ev.type === 'gang_deposit') {
+      if (ev.birdId === myId) {
+        addEventMessage(`💰 You deposited ${ev.amount}c into [${ev.gangTag}] treasury (${ev.treasury}c total)`, '#ffd700');
+      }
+    }
+    if (ev.type === 'gang_treasury_distributed') {
+      addEventMessage(`💸 [${ev.gangTag}] ${ev.gangName} distributed ${ev.perMember}c to ${ev.memberCount} members!`, '#ffd700');
+    }
+    if (ev.type === 'gang_war_declared') {
+      SoundEngine.bossSpawn();
+      showAnnouncement(`⚔️ GANG WAR! [${ev.gang1Tag}] vs [${ev.gang2Tag}] — 10 MINUTES!`, '#ff3333', 5000);
+      addEventMessage(`⚔️ [${ev.gang1Tag}] ${ev.gang1Name} declared war on [${ev.gang2Tag}] ${ev.gang2Name}!`, '#ff3333');
+      effects.push({ type: 'screen_shake', intensity: 8, duration: 600, time: now });
+      showGangWarHud(`⚔️ [${ev.gang1Tag}] vs [${ev.gang2Tag}] — GANG WAR!`, 6000);
+    }
+    if (ev.type === 'gang_war_hit') {
+      if (ev.targetId === myId) {
+        addEventMessage(`🎯 [${ev.attackerTag}] ${ev.attackerName} hit you! (${ev.hits}/3)`, '#ff4444');
+      }
+      if (ev.attackerId === myId) {
+        addEventMessage(`🎯 Hit [${ev.targetTag}] ${ev.targetName}! (${ev.hits}/3)`, '#ff9944');
+      }
+    }
+    if (ev.type === 'gang_war_kill') {
+      SoundEngine.coinPickup && SoundEngine.coinPickup();
+      showAnnouncement(`💀 [${ev.attackerGangTag}] ${ev.attackerName} SMOKED [${ev.targetGangTag}] ${ev.targetName}! (+${ev.loot}c)`, ev.attackerGangColor || '#ff3333', 4000);
+      addEventMessage(`💀 [${ev.attackerGangTag}] ${ev.attackerName} ELIMINATED [${ev.targetGangTag}] ${ev.targetName} (+${ev.loot}c loot)`, '#ff4444');
+      effects.push({ type: 'screen_shake', intensity: 6, duration: 400, time: now });
+    }
+    if (ev.type === 'gang_war_ended') {
+      const winMsg = ev.winnerName ? `[${ev.winnerTag}] ${ev.winnerName} WINS the war! (${Math.max(ev.gang1Kills, ev.gang2Kills)}-${Math.min(ev.gang1Kills, ev.gang2Kills)} kills)` : `War ended in a DRAW!`;
+      showAnnouncement(`⚔️ WAR OVER! ${winMsg}`, '#ff8800', 5000);
+      addEventMessage(`⚔️ Gang war ended! ${winMsg}`, '#ff8800');
+      showGangWarHud(`⚔️ WAR OVER — ${winMsg}`, 7000);
+    }
+    if (ev.type === 'gang_error') {
+      if (ev.birdId === myId) {
+        addEventMessage(`⚠️ ${ev.msg}`, '#ff8844');
+      }
     }
 
     // === CHAOS EVENTS ===
@@ -1827,6 +1888,14 @@
         showDonOverlay();
       }
     }
+    // Gang HQ toggle
+    if (e.key.toLowerCase() === 'f') {
+      if (gangHqVisible) {
+        hideGangHq();
+      } else {
+        showGangHq();
+      }
+    }
     // Daily Challenges panel
     if (e.key.toLowerCase() === 'j') {
       if (dailyPanelVisible) {
@@ -2555,6 +2624,9 @@
     }
     lastNearCasino = nearCas;
     if (casinoOverlayVisible) updateCasinoDisplay();
+
+    // Gang HQ — update when open
+    if (gangHqVisible) renderGangHq();
 
     // Don mission HUD
     if (gameState.donMission) {
@@ -4406,7 +4478,7 @@
             ctx.globalAlpha = 0.5;
           }
           Sprites.drawBird(ctx, sx, sy, b.rotation, b.type, b.wingPhase, isPlayer, b.birdColor || null);
-          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null);
+          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null);
           if (b.cloaked || b.inNest) {
             ctx.globalAlpha = 1;
           }
@@ -5749,6 +5821,232 @@
   if (casinoCloseBtn) {
     casinoCloseBtn.addEventListener('click', () => hideCasinoOverlay());
   }
+
+  // ============================================================
+  // BIRD GANGS — HQ OVERLAY
+  // ============================================================
+  function showGangHq() {
+    gangHqVisible = true;
+    gangHqOverlay.style.display = 'block';
+    for (const k in keys) keys[k] = false;
+    syncInput();
+    renderGangHq();
+    // Init color picker
+    _initGangColorPicker();
+    // Wire up buttons
+    _wireGangHqButtons();
+  }
+
+  function hideGangHq() {
+    gangHqVisible = false;
+    gangHqOverlay.style.display = 'none';
+  }
+
+  function showGangWarHud(msg, durationMs) {
+    gangWarHud.textContent = msg;
+    gangWarHud.style.display = 'block';
+    clearTimeout(gangWarHud._timer);
+    gangWarHud._timer = setTimeout(() => { gangWarHud.style.display = 'none'; }, durationMs || 5000);
+  }
+
+  function _initGangColorPicker() {
+    const picker = document.getElementById('gangColorPicker');
+    if (!picker || picker._initialized) return;
+    picker._initialized = true;
+    const colors = (gameState && gameState.gangColors) ? gameState.gangColors :
+      ['#ff3333','#ff8800','#ffcc00','#33cc55','#3399ff','#cc44ff','#ff44aa','#00ccdd'];
+    gangSelectedColor = colors[0];
+    colors.forEach(c => {
+      const swatch = document.createElement('div');
+      swatch.style.cssText = `width:24px;height:24px;border-radius:50%;background:${c};cursor:pointer;border:2px solid ${c === gangSelectedColor ? '#fff' : 'transparent'};`;
+      swatch.addEventListener('click', () => {
+        gangSelectedColor = c;
+        picker.querySelectorAll('div').forEach(s => { s.style.border = '2px solid transparent'; });
+        swatch.style.border = '2px solid #fff';
+      });
+      picker.appendChild(swatch);
+    });
+  }
+
+  function _wireGangHqButtons() {
+    // Create gang
+    const createBtn = document.getElementById('gangCreateBtn');
+    if (createBtn && !createBtn._wired) {
+      createBtn._wired = true;
+      createBtn.addEventListener('click', () => {
+        const tag = (document.getElementById('gangTagInput').value || '').toUpperCase().trim();
+        const name = (document.getElementById('gangNameInput').value || '').trim();
+        socket.emit('action', { type: 'gang_create', tag, name });
+      });
+    }
+    // Deposit
+    const depositBtn = document.getElementById('gangDepositBtn');
+    if (depositBtn && !depositBtn._wired) {
+      depositBtn._wired = true;
+      depositBtn.addEventListener('click', () => {
+        const amount = parseInt(document.getElementById('gangDepositInput').value) || 0;
+        if (amount > 0) socket.emit('action', { type: 'gang_deposit', amount });
+      });
+    }
+    // Distribute (leader only)
+    const distBtn = document.getElementById('gangDistributeBtn');
+    if (distBtn && !distBtn._wired) {
+      distBtn._wired = true;
+      distBtn.addEventListener('click', () => {
+        if (confirm('Distribute gang treasury equally to all online members?')) {
+          socket.emit('action', { type: 'gang_distribute' });
+        }
+      });
+    }
+    // Leave
+    const leaveBtn = document.getElementById('gangLeaveBtn');
+    if (leaveBtn && !leaveBtn._wired) {
+      leaveBtn._wired = true;
+      leaveBtn.addEventListener('click', () => {
+        if (confirm('Leave your gang?')) {
+          socket.emit('action', { type: 'gang_leave' });
+        }
+      });
+    }
+    // Close
+    if (gangHqClose && !gangHqClose._wired) {
+      gangHqClose._wired = true;
+      gangHqClose.addEventListener('click', hideGangHq);
+    }
+    // Accept/decline gang invite
+    const acceptInvite = document.getElementById('gangAcceptInviteBtn');
+    if (acceptInvite && !acceptInvite._wired) {
+      acceptInvite._wired = true;
+      acceptInvite.addEventListener('click', () => {
+        socket.emit('action', { type: 'gang_accept' });
+      });
+    }
+    const declineInvite = document.getElementById('gangDeclineInviteBtn');
+    if (declineInvite && !declineInvite._wired) {
+      declineInvite._wired = true;
+      declineInvite.addEventListener('click', () => {
+        socket.emit('action', { type: 'gang_decline' });
+      });
+    }
+  }
+
+  function renderGangHq() {
+    if (!gameState) return;
+    const self = gameState.self;
+    const myGang = gameState.myGang;
+    const gangInvite = gameState.gangInvite;
+
+    const createSection = document.getElementById('gangCreateSection');
+    const infoSection = document.getElementById('gangInfoSection');
+    const invitePending = document.getElementById('gangInvitePendingSection');
+
+    if (!createSection || !infoSection) return;
+
+    // Subtitle
+    const subtitle = document.getElementById('gangHqSubtitle');
+    if (subtitle) subtitle.textContent = self && self.gangId ? `[${self.gangTag}] ${self.gangName}` : 'No gang. Start a criminal empire.';
+
+    // Pending gang invite
+    if (gangInvite) {
+      invitePending.style.display = 'block';
+      const txt = document.getElementById('gangInvitePendingText');
+      if (txt) txt.innerHTML = `<span style="color:${gangInvite.gangColor || '#ff9944'}">[${gangInvite.gangTag}] ${gangInvite.gangName}</span> wants you to join their crew! (from <b>${gangInvite.fromName}</b>)`;
+    } else {
+      invitePending.style.display = 'none';
+    }
+
+    if (!self || !self.gangId) {
+      // Show creation form
+      createSection.style.display = 'block';
+      infoSection.style.display = 'none';
+    } else if (myGang) {
+      // Show gang info
+      createSection.style.display = 'none';
+      infoSection.style.display = 'block';
+
+      // Gang badge
+      const badge = document.getElementById('gangBadge');
+      if (badge) {
+        badge.innerHTML = `<span style="color:${myGang.color};font-size:22px;font-weight:bold;text-shadow:0 0 10px ${myGang.color};">[${myGang.tag}]</span> <span style="color:#ffcc99;font-size:14px;">${myGang.name}</span><br><span style="font-size:10px;color:#cc8866;">${myGang.onlineCount} online · Leader: ${myGang.leaderName}</span>`;
+      }
+
+      // Treasury
+      const treasury = document.getElementById('gangTreasury');
+      if (treasury) treasury.textContent = `${myGang.treasury}c`;
+      const distBtn = document.getElementById('gangDistributeBtn');
+      if (distBtn) distBtn.style.display = (self.gangRole === 'leader' && myGang.treasury > 0) ? 'inline-block' : 'none';
+
+      // Member list
+      const memberList = document.getElementById('gangMemberList');
+      if (memberList && myGang.members) {
+        memberList.innerHTML = myGang.members.map(m => {
+          const onlineDot = m.online ? `<span style="color:#44ff44;">●</span>` : `<span style="color:#444;">●</span>`;
+          const leaderBadge = m.isLeader ? ` <span style="color:#ffd700;font-size:9px;">LEADER</span>` : '';
+          return `<div style="margin:2px 0;font-size:10px;">${onlineDot} ${m.name}${leaderBadge}</div>`;
+        }).join('');
+      }
+
+      // Gang war status
+      const warStatus = document.getElementById('gangWarStatus');
+      const declareSection = document.getElementById('gangDeclareWarSection');
+      if (warStatus) {
+        if (myGang.warWithGangId) {
+          const timeLeft = Math.max(0, Math.ceil((myGang.warEndsAt - Date.now()) / 1000));
+          const mins = Math.floor(timeLeft / 60);
+          const secs = timeLeft % 60;
+          warStatus.innerHTML = `<div style="color:#ff3333;font-size:11px;">⚔️ AT WAR WITH [${myGang.warWithGangTag}] ${myGang.warWithGangName}</div><div style="color:#ffaa44;font-size:10px;margin-top:4px;">KILLS: ${myGang.warKills} — ENEMY: ${myGang.warEnemyKills} — TIME: ${mins}m${secs}s</div>`;
+          if (declareSection) declareSection.style.display = 'none';
+        } else {
+          warStatus.innerHTML = `<div style="color:#884444;font-size:10px;">No active war. 3 poop hits on an enemy kills them (+150 XP +80c).</div>`;
+          if (declareSection) {
+            if (self.gangRole === 'leader') {
+              declareSection.style.display = 'block';
+              const rivalList = document.getElementById('gangRivalList');
+              if (rivalList && gameState.allGangs) {
+                rivalList.innerHTML = gameState.allGangs.length === 0 ? '<div style="color:#666;font-size:10px;">No other gangs exist yet.</div>' :
+                  gameState.allGangs.map(g => `
+                    <div style="display:flex;align-items:center;gap:8px;margin:3px 0;">
+                      <span style="color:${g.color};font-weight:bold;">[${g.tag}]</span>
+                      <span style="color:#cc8866;font-size:10px;">${g.name} (${g.onlineCount} online)</span>
+                      <button onclick="window._gangDeclareWar('${g.id}')" style="background:rgba(80,0,0,0.8);color:#ff4444;border:1px solid #880000;border-radius:6px;padding:2px 8px;cursor:pointer;font:10px 'Courier New',monospace;">⚔️ WAR</button>
+                    </div>`).join('');
+              }
+            } else {
+              declareSection.style.display = 'none';
+            }
+          }
+        }
+      }
+
+      // Invite section (leader only)
+      const inviteSection = document.getElementById('gangInviteSection');
+      if (inviteSection) {
+        if (self.gangRole === 'leader' && gameState) {
+          inviteSection.style.display = 'block';
+          const inviteList = document.getElementById('gangInviteList');
+          if (inviteList) {
+            const nearbyBirds = (gameState.birds || []).filter(b => b.id !== self.id && !b.gangId);
+            inviteList.innerHTML = nearbyBirds.length === 0 ? '<div style="color:#666;font-size:10px;">No non-gang birds nearby.</div>' :
+              nearbyBirds.map(b => `
+                <div style="display:flex;align-items:center;gap:8px;margin:3px 0;">
+                  <span style="color:#ffaa66;font-size:10px;">${b.name}</span>
+                  <button onclick="window._gangInvite('${b.id}')" style="background:rgba(80,40,0,0.8);color:#ff9944;border:1px solid #885500;border-radius:6px;padding:2px 8px;cursor:pointer;font:10px 'Courier New',monospace;">INVITE</button>
+                </div>`).join('');
+          }
+        } else {
+          inviteSection.style.display = 'none';
+        }
+      }
+    }
+  }
+
+  // Global helpers for inline onclick in gang HQ
+  window._gangDeclareWar = function(rivalGangId) {
+    socket.emit('action', { type: 'gang_declare_war', rivalGangId });
+  };
+  window._gangInvite = function(targetId) {
+    socket.emit('action', { type: 'gang_invite', targetId });
+  };
 
   // ============================================================
   // INIT

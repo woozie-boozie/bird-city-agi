@@ -840,6 +840,51 @@ Bird City now has a proper casino. A neon-lit gambling den sits in the mid-right
 
 **Creative intent**: Bird City's richest birds now have somewhere to BLOW their coins. The Kingpin tribute just gave you 20c passive income — now you can take it to the casino and try to triple-up. The progressive jackpot creates a city-wide incentive: when the jackpot hits 4000c+ and someone wins it, the announcement is a moment everyone remembers. Triple 💩 giving a free Mega Poop creates a beautiful synergy — your gambling winnings become a combat power-up. The 2-second cooldown prevents spam but keeps it snappy. Pure DISCOVERY + CARNAGE + SPECTACLE energy. The city now has a vice district.
 
+**Session 28 — 2026-04-01: Bird Gangs — Persistent Criminal Crews**
+The most SOCIAL system yet. Named gangs with custom 3-letter tags, color identity, shared treasury, and gang wars — distinct from ephemeral flocks. Gangs persist across sessions (saved to Firestore), so your crew is always your crew.
+
+**Gang Creation:**
+- Press [F] to open Gang HQ (new global hotkey)
+- Choose a 3-letter TAG (must be unique) + gang name + color — costs 200 coins
+- Gang tag immediately shows above your bird's name: `[MOB]`, `[CCC]`, `[SKY]` etc. in gang color with glow
+
+**Gang Membership:**
+- Leaders can invite nearby birds (within 150px) from the Gang HQ invite list
+- Invites expire in 20 seconds — accept/decline popup in the Gang HQ panel
+- Max 20 members per gang (flock max is 6 — gangs are bigger, persistent crews)
+- Joining a gang: your tag shows permanently, even after server restarts
+
+**Gang Treasury (shared economy):**
+- Deposit any amount of coins into the shared gang treasury (Gang HQ → DEPOSIT)
+- Leaders can "PAY OUT" — distributes treasury equally to all online members
+- Treasury survives server restarts (persisted to Firestore)
+
+**Gang Territory:**
+- When gang members hold a territory zone, it captures under the gang identity (not flock/solo)
+- Territory owner shown as "[TAG] GangName" in gang color — city-wide gang geography
+
+**Gang War System:**
+- Leaders can declare war on any other gang with online members (Gang HQ → War section)
+- War duration: 10 minutes
+- During war: poop on a rival gang member 3 times → KILL → +150 XP +80c +18% of their coins (max 150c)
+- Kills tracked and shown in real-time in Gang HQ war panel
+- When war ends: winner (more kills) loots 20% of loser's treasury
+- City-wide announcements for: war start (screen shake), each kill, war end
+
+**Visual System:**
+- `[TAG]` badge in gang color with glow rendered above every gang member's nametag (above mafia title)
+- Territory zones show "[TAG] GangName" in gang color when owned by a gang
+- `#gangWarHud` flash banner for war declarations and results
+
+**Gang HQ Overlay ([F] key):**
+- Shows: gang identity badge, treasury balance, member list (online/offline dots), war status with live timer + kill counts, invite list (leader only), declare war list (leader only)
+- Create form: tag input (auto-uppercased) + name + color swatch picker
+- Clean close button and [F] hotkey to dismiss
+
+**Events:** `gang_created`, `gang_joined`, `gang_disbanded`, `gang_deposit`, `gang_treasury_distributed`, `gang_war_declared`, `gang_war_hit`, `gang_war_kill`, `gang_war_ended` — all push to event feed with city-wide visibility
+
+**Creative intent**: This completes the "persistent social layer" that was always missing. Flocks are ephemeral sessions — gangs are who you ARE. Two gangs that fight over territory or the Kingpin crown can now formalize the rivalry with a declared war. The 3-letter tag on your nametag is a permanent identity signal. "Oh, that bird is [CCC] — don't mess with them." The treasury creates a shared incentive: gang members doing heists, racing, and contract work all funnel loot upward into the collective pot. Gang wars create the most intense 10 minutes in the game — everyone knows who's fighting, the minimap shows gang territory flipping, and kill announcements are city-wide. Pure SOCIAL + CARNAGE + PROGRESSION energy — the city now has criminal empires.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -850,7 +895,7 @@ Bird City now has a proper casino. A neon-lit gambling den sits in the mid-right
 - ~~Kingpin System — richest bird gets a crown + visible on minimap; killing them gives big reward~~ (DONE Session 26)
 - ~~Pigeonhole Slots — casino with progressive jackpot and bird-themed symbols~~ (DONE Session 27)
 - Eagle Overlord rare drop: "Eagle Feather" cosmetic badge (persistent cosmetic, visible on nametag)
-- **Bird Gangs** — persistent named gangs with custom colors/tags, gang treasury, gang turf wars (distinct from ephemeral flocks)
+- ~~**Bird Gangs** — persistent named gangs with custom colors/tags, gang treasury, gang turf wars~~ (DONE Session 28)
 - Race power-ups: speed boost gates on the circuit that any racer can fly through
 - Owl enforcer in park at night (no-poop zone, alerts NPCs)
 - **Bounty Board** — public board showing top-5 richest birds and current Kingpin; clicking a name places coins on them being dethroned (collective betting pool)
