@@ -210,6 +210,7 @@ class GameEngine {
       raceEndsAt: null,   // max race time (3 min)
       winners: [],        // ordered finishers: [{ birdId, name, time }]
       finishedAt: null,   // when results were shown (idle cooldown)
+      boostGateCooldowns: new Map(), // `${gateId}_${birdId}` -> expiresAt timestamp
     };
     this.pigeonRaceTimer = Date.now() + this._randomRange(300000, 480000); // 5-8 min to first race
     this.RACE_ENTRY_FEE = 25;
@@ -218,6 +219,7 @@ class GameEngine {
     this.RACE_COUNTDOWN_MS = 5000;  // 5s countdown
     this.RACE_MAX_DURATION = 180000; // 3 min max race time
     this.RACE_CHECKPOINTS = world.RACE_CHECKPOINTS;
+    this.RACE_BOOST_GATES = world.RACE_BOOST_GATES;
 
     // === UNDERGROUND SEWER SYSTEM ===
     this.sewerRats = new Map();     // id -> sewer rat state
@@ -494,6 +496,8 @@ class GameEngine {
       comboExpiresAt: 0,    // timestamp when combo resets if no new hit
       // === WEATHER EFFECTS ===
       hailSlowUntil: 0,     // timestamp when hail slow wears off
+      // === RACE POWER-UPS ===
+      raceBoostUntil: 0,    // timestamp when race boost gate speed buff wears off
       // === GOLDEN EGG SCRAMBLE ===
       carryingEggId: null,         // id of the golden egg this bird is carrying, or null
       eggTackleImmunityUntil: 0,   // timestamp until tackle immunity (after being robbed)
@@ -1860,6 +1864,11 @@ class GameEngine {
     // Hailstorm: ice chunks slow birds
     if (bird.hailSlowUntil > now) {
       maxSpeed *= 0.5;
+    }
+
+    // Race boost gate: lightning speed burst
+    if (bird.raceBoostUntil > now) {
+      maxSpeed *= 1.7;
     }
 
     // Egg carrying: precious cargo slows you down
@@ -3888,6 +3897,19 @@ class GameEngine {
                 finishPosition: r.finishPosition,
               })).sort((a, b) => b.progress - a.progress)
             : null,
+          // Which boost gates are on per-bird cooldown for THIS bird specifically?
+          myGateCooldowns: race.state === 'racing'
+            ? (() => {
+                const cooldowns = {};
+                for (const gate of this.RACE_BOOST_GATES) {
+                  const key = `${gate.id}_${bird.id}`;
+                  if ((race.boostGateCooldowns.get(key) || 0) > now) {
+                    cooldowns[gate.id] = true;
+                  }
+                }
+                return cooldowns;
+              })()
+            : {},
         };
       })(),
       self: {
@@ -3941,6 +3963,8 @@ class GameEngine {
         comboExpiresAt: bird.comboExpiresAt,
         // Weather debuffs
         hailSlowUntil: bird.hailSlowUntil,
+        // Race boost gate
+        raceBoostUntil: bird.raceBoostUntil,
         // Golden Egg Scramble
         carryingEggId: bird.carryingEggId,
         eggTackleImmunityUntil: bird.eggTackleImmunityUntil,
@@ -8085,6 +8109,30 @@ class GameEngine {
         }
       }
 
+      // ── BOOST GATE detection (available to ALL birds during a race) ─────
+      // Prune expired cooldowns to keep the map tidy
+      for (const [key, exp] of race.boostGateCooldowns) {
+        if (exp <= now) race.boostGateCooldowns.delete(key);
+      }
+      for (const gate of this.RACE_BOOST_GATES) {
+        for (const b of this.birds.values()) {
+          const cooldownKey = `${gate.id}_${b.id}`;
+          if ((race.boostGateCooldowns.get(cooldownKey) || 0) > now) continue;
+          const dx = b.x - gate.x;
+          const dy = b.y - gate.y;
+          if (dx * dx + dy * dy <= 45 * 45) {
+            b.raceBoostUntil = now + 2500;
+            race.boostGateCooldowns.set(cooldownKey, now + 18000); // 18s per-bird cooldown
+            this.events.push({
+              type: 'race_boost_gate',
+              birdId: b.id,
+              birdName: b.name,
+              gateId: gate.id,
+            });
+          }
+        }
+      }
+
       // Time limit expired
       if (now >= race.raceEndsAt) {
         this._endPigeonRace(now, true);
@@ -8105,6 +8153,7 @@ class GameEngine {
         race.countdownUntil = null;
         race.raceStartAt = null;
         race.raceEndsAt = null;
+        race.boostGateCooldowns.clear();
         this.pigeonRaceTimer = now + this._randomRange(480000, 720000); // 8-12 min
       }
     }

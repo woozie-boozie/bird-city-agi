@@ -34,6 +34,7 @@ app.get('/api/world', (req, res) => {
     arena: world.ARENA,
     radioTowerPos: world.RADIO_TOWER,
     raceCheckpoints: world.RACE_CHECKPOINTS,
+    raceBoostGates: world.RACE_BOOST_GATES,
     manholes: world.MANHOLES,
     territoryZones: world.TERRITORY_ZONES,
     predatorTerritories: world.PREDATOR_TERRITORIES,

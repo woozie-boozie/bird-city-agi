@@ -1437,6 +1437,16 @@
         addEventMessage('🏁 ' + medal + ' ' + ev.birdName + ' crossed the FINISH LINE! (' + timeStr + ')', '#ffd700');
       }
     }
+    if (ev.type === 'race_boost_gate') {
+      if (ev.birdId === selfId) {
+        // Big personal flash + floating text
+        effects.push({ type: 'screen_shake', time: performance.now(), duration: 180, intensity: 4 });
+        effects.push({ type: 'flash', time: performance.now(), duration: 350, color: 'rgba(255,255,50,0.4)' });
+        effects.push({ type: 'text', x: gameState.self ? gameState.self.x : 0, y: gameState.self ? gameState.self.y - 30 : 0, text: '⚡ BOOST!', color: '#ffff44', size: 18, time: performance.now(), duration: 1200 });
+      } else {
+        addEventMessage('⚡ ' + ev.birdName + ' hit a BOOST gate!', '#ffff44');
+      }
+    }
     if (ev.type === 'race_cancelled') {
       addEventMessage('🏁 Race cancelled — not enough racers', '#888');
     }
@@ -4509,6 +4519,13 @@
       Renderer.drawRaceTrack(ctx, camera, worldData.raceCheckpoints, gameState.pigeonRace || null, now);
     }
 
+    // Race boost gates — visible during open/countdown/racing phases
+    if (worldData && worldData.raceBoostGates && gameState.pigeonRace) {
+      const raceActive = ['open', 'countdown', 'racing'].includes(gameState.pigeonRace.state);
+      const myCooldowns = (gameState.pigeonRace && gameState.pigeonRace.myGateCooldowns) || {};
+      Renderer.drawBoostGates(ctx, camera, worldData.raceBoostGates, myCooldowns, raceActive, now);
+    }
+
     // Birds
     if (gameState.birds) {
       for (const bird of gameState.birds) {
@@ -4774,6 +4791,12 @@
     // Race checkpoints on minimap
     if (worldData && worldData.raceCheckpoints) {
       Renderer.drawRaceOnMinimap(minimapCtx, worldData, worldData.raceCheckpoints, gameState.pigeonRace || null);
+    }
+
+    // Race boost gates on minimap (shown during active races)
+    if (worldData && worldData.raceBoostGates && gameState.pigeonRace) {
+      const raceActive = ['open', 'countdown', 'racing'].includes(gameState.pigeonRace.state);
+      Renderer.drawBoostGatesOnMinimap(minimapCtx, worldData, worldData.raceBoostGates, raceActive, now);
     }
 
     // Manholes on minimap
@@ -5063,6 +5086,21 @@
         ctx.fill();
         ctx.globalAlpha = 1;
         ctx.restore();
+      }
+    }
+
+    // Full-screen color flash (boost gate, etc.)
+    for (const fx of effects) {
+      if (fx.type === 'flash') {
+        const age = now - fx.time;
+        if (age < fx.duration) {
+          const fadeFactor = 1 - age / fx.duration;
+          // Parse alpha from rgba string and apply fade
+          ctx.fillStyle = fx.color || 'rgba(255,255,255,0.3)';
+          ctx.globalAlpha = fadeFactor;
+          ctx.fillRect(0, 0, camera.screenW, camera.screenH);
+          ctx.globalAlpha = 1;
+        }
       }
     }
 
@@ -5445,6 +5483,10 @@
     if (s.hailSlowUntil && s.hailSlowUntil > now) {
       const secs = Math.ceil((s.hailSlowUntil - now) / 1000);
       html += '<div class="bm-buff-pill" style="background:rgba(40,80,140,0.7);border-color:#aaddff;color:#aaddff">🧊 HAIL SLOW — ' + secs + 's</div>';
+    }
+    if (s.raceBoostUntil && s.raceBoostUntil > now) {
+      const secs = Math.max(0, Math.ceil((s.raceBoostUntil - now) / 1000));
+      html += '<div class="bm-buff-pill" style="background:rgba(100,90,0,0.85);border-color:#ffff44;color:#ffff44;animation:kingpinGlow 0.4s ease-in-out infinite alternate;">⚡ BOOST ×1.7 — ' + secs + 's</div>';
     }
     if (s.myHitBounty) {
       const secsLeft = Math.max(0, Math.ceil((s.myHitBounty.expiresAt - now) / 1000));

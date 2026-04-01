@@ -910,6 +910,31 @@ The most SOCIAL system yet. Named gangs with custom 3-letter tags, color identit
 
 **Creative intent**: This completes the "persistent social layer" that was always missing. Flocks are ephemeral sessions — gangs are who you ARE. Two gangs that fight over territory or the Kingpin crown can now formalize the rivalry with a declared war. The 3-letter tag on your nametag is a permanent identity signal. "Oh, that bird is [CCC] — don't mess with them." The treasury creates a shared incentive: gang members doing heists, racing, and contract work all funnel loot upward into the collective pot. Gang wars create the most intense 10 minutes in the game — everyone knows who's fighting, the minimap shows gang territory flipping, and kill announcements are city-wide. Pure SOCIAL + CARNAGE + PROGRESSION energy — the city now has criminal empires.
 
+**Session 30 — 2026-04-01: Race Boost Gates — Lightning Arches on the Circuit**
+Transformed the Pigeon Racing Track from a pure speed contest into a CARNAGE RACE with 5 electromagnetic boost gates placed strategically between every checkpoint pair on the circuit.
+
+**The Boost Gates:**
+- 5 gates placed one per leg: START→CP1 (northeast run), CP1→CP2 (east side), CP2→CP3 (bottom), CP3→CP4 (west side), CP4→FINISH (southeast home stretch)
+- Fly within 45px of any gate during a race → instant **+70% speed for 2.5 seconds**
+- 18-second per-bird cooldown prevents farming the same gate in one lap — one clean use per gate per lap
+- Available to ALL birds during a race (racers AND spectators / bystanders)
+
+**Visual System (`public/js/renderer.js`):**
+- Two glowing gold vertical posts connected by an animated electric arc at the top
+- Arc is a double-strand zigzag that shimmers at independent frequencies — genuinely looks electrical
+- Yellow/gold pulsing radial glow behind the gate, intensity tied to the pulse phase
+- When on YOUR cooldown: gate dims to 25% opacity with "⚡ USED" label so you know to find the next one
+- Available gates show "⚡ BOOST" label and full glow
+- Minimap: tiny yellow dots at gate positions, pulsing when race is active
+
+**Client feedback (`public/js/main.js`):**
+- On gate hit: full-screen yellow flash (fades over 350ms) + mini screen shake
+- "⚡ BOOST!" floating text over the player's sprite
+- Active buffs HUD: pulsing yellow "⚡ BOOST ×1.7 — Xs" pill while the speed buff is active
+- Other players get an event feed message when a racer hits a gate
+
+**Creative intent**: Racing was fun but pure — fastest bird wins. Now there's tactical depth. Do you take the optimal route between checkpoints OR deviate to hit the boost gate? A bird who perfectly chains all 5 gates in a lap gets massive time advantage. Two rival racers neck-and-neck on the final stretch, one hits the gate and pulls away — that's a moment. The 18-second cooldown means you can use each gate exactly once per ~1-minute lap, so every gate hit is a deliberate choice. Pure CARNAGE + SPECTACLE energy. Racing is now legitimately chaotic.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -921,7 +946,7 @@ The most SOCIAL system yet. Named gangs with custom 3-letter tags, color identit
 - ~~Pigeonhole Slots — casino with progressive jackpot and bird-themed symbols~~ (DONE Session 27)
 - Eagle Overlord rare drop: "Eagle Feather" cosmetic badge (persistent cosmetic, visible on nametag)
 - ~~**Bird Gangs** — persistent named gangs with custom colors/tags, gang treasury, gang turf wars~~ (DONE Session 28)
-- Race power-ups: speed boost gates on the circuit that any racer can fly through
+- ~~Race power-ups: speed boost gates on the circuit that any racer can fly through~~ (DONE Session 30)
 - Owl enforcer in park at night (no-poop zone, alerts NPCs)
 - **Bounty Board** — public board showing top-5 richest birds and current Kingpin; clicking a name places coins on them being dethroned (collective betting pool)
 - **Weather Betting** — bet on the next weather type before it spawns (integrates race betting panel logic)
@@ -941,7 +966,7 @@ Built the Territory Control System on top of the existing upstream code:
 - Bioluminescent park pond at night (glowing water effect)
 - Hot day weather: food spoils faster, birds need water puddles
 - Birds can shelter under awnings/trees during storms (mechanic: reduced hail hit radius if near cover)
-- Race power-ups: speed boost gates on the track that any bird can fly through
+- ~~Race power-ups: speed boost gates on the track~~ (DONE Session 30)
 - ~~Weather combos: fog (low visibility) + hailstorm~~ (DONE Session 18)
 - ~~Race betting system (spectators bet coins on a racer from anywhere on the map)~~ (DONE Session 17)
 - ~~Pigeon Racing Track — 5-checkpoint race, fastest bird wins the pot~~ (DONE Session 16)

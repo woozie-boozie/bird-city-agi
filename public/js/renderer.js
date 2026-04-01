@@ -1565,6 +1565,118 @@ window.Renderer = {
     minimapCtx.restore();
   },
 
+  // Draw race boost gates — glowing lightning arches placed between checkpoints
+  drawBoostGates(ctx, camera, boostGates, myCooldowns, raceActive, now) {
+    if (!boostGates || !raceActive) return;
+
+    for (const gate of boostGates) {
+      const sx = gate.x - camera.x + camera.screenW / 2;
+      const sy = gate.y - camera.y + camera.screenH / 2;
+      if (sx < -80 || sx > camera.screenW + 80 || sy < -80 || sy > camera.screenH + 80) continue;
+
+      const onCooldown = myCooldowns && myCooldowns[gate.id];
+      const pulse = Math.sin(now * 0.005 + gate.id * 1.1) * 0.5 + 0.5;
+      const arcPulse = Math.sin(now * 0.012 + gate.id * 0.7) * 0.5 + 0.5;
+      const halfW = 30; // half distance between posts
+      const postH = 50;
+
+      ctx.save();
+      ctx.globalAlpha = onCooldown ? 0.25 : (0.75 + pulse * 0.25);
+
+      // Glow behind the gate arch
+      if (!onCooldown) {
+        const grad = ctx.createRadialGradient(sx, sy, 2, sx, sy, halfW + 16);
+        grad.addColorStop(0, 'rgba(255, 240, 50, 0.35)');
+        grad.addColorStop(1, 'rgba(255, 200, 0, 0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.ellipse(sx, sy, halfW + 16, postH * 0.75, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Left post
+      ctx.shadowColor = onCooldown ? '#888800' : '#ffff44';
+      ctx.shadowBlur = onCooldown ? 4 : (8 + pulse * 8);
+      ctx.fillStyle = onCooldown ? '#555500' : '#ffcc00';
+      ctx.fillRect(sx - halfW - 5, sy - postH * 0.5, 10, postH);
+      // Post top cap
+      ctx.beginPath();
+      ctx.arc(sx - halfW, sy - postH * 0.5, 5, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Right post
+      ctx.fillRect(sx + halfW - 5, sy - postH * 0.5, 10, postH);
+      ctx.beginPath();
+      ctx.arc(sx + halfW, sy - postH * 0.5, 5, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Horizontal connecting bar at top
+      ctx.fillRect(sx - halfW - 5, sy - postH * 0.5 - 5, halfW * 2 + 10, 5);
+
+      // Animated electric arc between the posts
+      if (!onCooldown) {
+        const arcY = sy - postH * 0.5 - 3; // top of arch
+        const segments = 8;
+        const segW = (halfW * 2) / segments;
+
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.5 + arcPulse;
+        ctx.shadowColor = '#aaffff';
+        ctx.shadowBlur = 6;
+        ctx.globalAlpha = 0.6 + arcPulse * 0.4;
+        ctx.beginPath();
+        for (let i = 0; i <= segments; i++) {
+          const px = sx - halfW + i * segW;
+          const offset = (i === 0 || i === segments) ? 0 : (Math.sin(now * 0.015 + i * 1.57 + gate.id) * 8);
+          if (i === 0) ctx.moveTo(px, arcY + offset);
+          else ctx.lineTo(px, arcY + offset);
+        }
+        ctx.stroke();
+
+        // Second arc strand (offset in time for shimmer)
+        ctx.strokeStyle = '#ffff88';
+        ctx.lineWidth = 1;
+        ctx.globalAlpha = 0.4;
+        ctx.beginPath();
+        for (let i = 0; i <= segments; i++) {
+          const px = sx - halfW + i * segW;
+          const offset = (i === 0 || i === segments) ? 0 : (Math.sin(now * 0.013 + i * 2.1 + gate.id + 1.5) * 6);
+          if (i === 0) ctx.moveTo(px, arcY + offset);
+          else ctx.lineTo(px, arcY + offset);
+        }
+        ctx.stroke();
+      }
+
+      // Label
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = onCooldown ? 0.3 : 1;
+      ctx.font = 'bold 11px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = onCooldown ? '#888800' : '#ffff44';
+      ctx.fillText(onCooldown ? '⚡ USED' : '⚡ BOOST', sx, sy + postH * 0.5 + 14);
+
+      ctx.restore();
+    }
+  },
+
+  // Draw boost gate dots on minimap
+  drawBoostGatesOnMinimap(minimapCtx, worldData, boostGates, raceActive, now) {
+    if (!boostGates || !raceActive) return;
+    const mw = 100 / worldData.width;
+    const mh = 100 / worldData.height;
+    const pulse = Math.sin(now * 0.005) * 0.3 + 0.7;
+    minimapCtx.globalAlpha = pulse * 0.8;
+    minimapCtx.fillStyle = '#ffff44';
+    for (const gate of boostGates) {
+      const gx = gate.x * mw;
+      const gy = gate.y * mh;
+      minimapCtx.beginPath();
+      minimapCtx.arc(gx, gy, 1.5, 0, Math.PI * 2);
+      minimapCtx.fill();
+    }
+    minimapCtx.globalAlpha = 1;
+  },
+
   // Draw manhole covers on the surface map
   drawManholes(ctx, camera, manholes, nearManholeId, inSewer) {
     if (!manholes) return;

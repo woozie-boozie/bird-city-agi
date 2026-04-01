@@ -292,6 +292,17 @@ const RACE_CHECKPOINTS = [
   { x: 350,  y: 480,  label: 'CP 4',  r: 85 },
 ];
 
+// Race boost gates — placed on each leg of the circuit between checkpoints.
+// Flying through a gate grants +70% speed for 2.5 seconds (18s per-bird cooldown).
+// Route: START(1200,1200)→CP1(2350,600)→CP2(2500,2480)→CP3(350,2480)→CP4(350,480)→FINISH
+const RACE_BOOST_GATES = [
+  { id: 0, x: 1780, y: 870  },  // START → CP1  (northeast run)
+  { id: 1, x: 2450, y: 1540 },  // CP1  → CP2  (east side going south)
+  { id: 2, x: 1420, y: 2480 },  // CP2  → CP3  (bottom run going west)
+  { id: 3, x: 350,  y: 1480 },  // CP3  → CP4  (west side going north)
+  { id: 4, x: 790,  y: 840  },  // CP4  → START (heading southeast)
+];
+
 const MANHOLES = [
   { id: 'mh1', x: 400,  y: 855,  label: 'Residential' },
   { id: 'mh2', x: 1050, y: 855,  label: 'Park Entrance' },
@@ -404,7 +415,7 @@ module.exports = {
   MOVING_CARS, EVENT_LOCATIONS, POWERUP_TYPES,
   NPC_TYPES, BIRD_TYPES, DATE_CENTER,
   SKILL_CATALOG, BIRD_COLORS, STREET_LAMPS,
-  TERRITORY_ZONES, ARENA, RADIO_TOWER, RACE_CHECKPOINTS,
+  TERRITORY_ZONES, ARENA, RADIO_TOWER, RACE_CHECKPOINTS, RACE_BOOST_GATES,
   MANHOLES, SEWER_LOOT_POSITIONS,
   EGG_NEST_ZONES, EGG_SPAWN_POOL,
   DON_POS, CASINO_POS,
