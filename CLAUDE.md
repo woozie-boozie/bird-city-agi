@@ -816,6 +816,30 @@ The richest bird online is now the Kingpin — crowned with 👑, visible on eve
 
 **Creative intent**: The single most powerful social pressure mechanic added yet. Getting rich in Bird City now means you're wearing a crown AND a target. The Kingpin is ALWAYS on the minimap — players can track them across the entire map and plan hunts. The 3-hit requirement means it takes real effort (can't one-shot the crown), but it's doable — and the 28% coin loot means attacking a 600-coin Kingpin nets you ~168c plus XP plus Mafia Rep. The passive tribute makes holding the crown worthwhile (you get richer faster) but also makes you richer (bigger loot for the attacker). Pure SOCIAL + CARNAGE + SPECTACLE energy — and every existing coin-earning system now has a second layer of consequence.
 
+**Session 27 — 2026-04-01: Pigeonhole Slots Casino — Gambling Den in the City**
+Bird City now has a proper casino. A neon-lit gambling den sits in the mid-right corridor of the city (x:2100, y:1200), visible on the minimap as a pulsing magenta 🎰 dot. Fly within 120px and press [C] to gamble your coins.
+
+**The Slot Machine (server-authoritative):**
+- Fixed 30c bet per spin. 2-second cooldown between spins.
+- 6 bird-themed symbols with weighted probability: 🐦(35%) 💩(25%) 🍗(20%) ⭐(12%) 💎(6%) 👑(2%)
+- **3-of-a-kind payouts**: 👑 JACKPOT, 💎 250c, ⭐ 90c, 🍗 60c, 💩 45c + FREE MEGA POOP 💣, 🐦 36c
+- **2x crown or diamond**: 15c consolation prize
+- **Progressive jackpot**: starts at 500c, grows +5c from every losing spin, caps at 5000c. Resets to 500c after a win.
+- **Special effect**: Triple 💩 awards a free Mega Poop bomb on top of the coin payout
+- Jackpot is a city-wide announcement with screen shake for all players
+
+**Visual & UX:**
+- Neon casino building drawn on the map: magenta glow, "PIGEONHOLE SLOTS" sign, 🎰🎰🎰 slot machine icons on facade, flickering neon, live jackpot display in gold, pulsing "OPEN 24/7" sign
+- Proximity glow when player is near; "[C] to play" label appears
+- Full overlay UI: 3 animated reels that spin randomly until result snaps them into place with a pop
+- Reels stagger-stop one at a time (0ms, 200ms, 400ms) for drama
+- Result message in color-coded text: gold for jackpot, magenta for big win, green for win, red for loss
+- Payout table as a collapsible details element in the overlay
+- Live coin display + live jackpot display update after every spin
+- Minimap: pulsing magenta 🎰 dot always visible at casino location
+
+**Creative intent**: Bird City's richest birds now have somewhere to BLOW their coins. The Kingpin tribute just gave you 20c passive income — now you can take it to the casino and try to triple-up. The progressive jackpot creates a city-wide incentive: when the jackpot hits 4000c+ and someone wins it, the announcement is a moment everyone remembers. Triple 💩 giving a free Mega Poop creates a beautiful synergy — your gambling winnings become a combat power-up. The 2-second cooldown prevents spam but keeps it snappy. Pure DISCOVERY + CARNAGE + SPECTACLE energy. The city now has a vice district.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -824,12 +848,14 @@ The richest bird online is now the Kingpin — crowned with 👑, visible on eve
 - ~~Daily Challenges + Streak System~~ (DONE Session 24)
 - ~~Hit Contract System — player-placed bounties via The Don~~ (DONE Session 25)
 - ~~Kingpin System — richest bird gets a crown + visible on minimap; killing them gives big reward~~ (DONE Session 26)
+- ~~Pigeonhole Slots — casino with progressive jackpot and bird-themed symbols~~ (DONE Session 27)
 - Eagle Overlord rare drop: "Eagle Feather" cosmetic badge (persistent cosmetic, visible on nametag)
 - **Bird Gangs** — persistent named gangs with custom colors/tags, gang treasury, gang turf wars (distinct from ephemeral flocks)
 - Race power-ups: speed boost gates on the circuit that any racer can fly through
 - Owl enforcer in park at night (no-poop zone, alerts NPCs)
-- **Pigeonhole Slots** — a literal casino in the city. Put in coins, pull the lever. 3-slot jackpot with bird-themed symbols
 - **Bounty Board** — public board showing top-5 richest birds and current Kingpin; clicking a name places coins on them being dethroned (collective betting pool)
+- **Weather Betting** — bet on the next weather type before it spawns (integrates race betting panel logic)
+- **Bird Tattoo Parlor** — cosmetic shop where you spend coins for permanent emoji tags under your name
 **Session 20 — 2026-03-30: Territory Control System (Parallel Session)**
 Built the Territory Control System on top of the existing upstream code:
 - 6 named districts (Nest Side, Mall, Park, Cafe Quarter, Downtown, The Docks) — including a Docks zone added to upstream's 5

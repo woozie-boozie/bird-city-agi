@@ -1921,6 +1921,134 @@ window.Renderer = {
     }
   },
 
+  // Draw the Pigeonhole Slots Casino building
+  drawCasino(ctx, camera, casinoPos, jackpot, nearCasino, now) {
+    if (!casinoPos) return;
+    const cx = casinoPos.x - camera.x + camera.screenW / 2;
+    const cy = casinoPos.y - camera.y + camera.screenH / 2;
+    const t = now / 1000;
+
+    // Neon flicker (fast oscillation)
+    const flicker = 0.85 + 0.15 * Math.sin(t * 12.7) * Math.cos(t * 7.3);
+    const pulse = 0.6 + 0.4 * Math.sin(t * 2.5);
+
+    ctx.save();
+
+    // Building shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fillRect(cx - 68 + 5, cy - 88 + 5, 136, 110);
+
+    // Main building body
+    ctx.fillStyle = '#1a0025';
+    ctx.fillRect(cx - 68, cy - 88, 136, 110);
+
+    // Building border (neon magenta)
+    ctx.strokeStyle = `rgba(255,68,255,${flicker})`;
+    ctx.lineWidth = 2.5;
+    ctx.strokeRect(cx - 68, cy - 88, 136, 110);
+
+    // Outer neon glow
+    ctx.shadowColor = '#ff44ff';
+    ctx.shadowBlur = 18 * flicker;
+    ctx.strokeStyle = `rgba(255,100,255,${0.4 * flicker})`;
+    ctx.lineWidth = 8;
+    ctx.strokeRect(cx - 68, cy - 88, 136, 110);
+    ctx.shadowBlur = 0;
+
+    // Sign background
+    ctx.fillStyle = '#2a0035';
+    ctx.fillRect(cx - 60, cy - 82, 120, 30);
+    ctx.strokeStyle = `rgba(255,68,255,${flicker})`;
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(cx - 60, cy - 82, 120, 30);
+
+    // Sign text
+    ctx.shadowColor = '#ff44ff';
+    ctx.shadowBlur = 10 * flicker;
+    ctx.fillStyle = `rgba(255,180,255,${flicker})`;
+    ctx.font = 'bold 9px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('PIGEONHOLE SLOTS', cx, cy - 61);
+
+    // Slot machine icons on facade (3 mini slot faces)
+    const slotEmojis = ['🎰', '🎰', '🎰'];
+    ctx.font = '16px serif';
+    ctx.shadowBlur = 6 * flicker;
+    ctx.shadowColor = '#ff88ff';
+    for (let i = 0; i < 3; i++) {
+      ctx.fillText(slotEmojis[i], cx - 36 + i * 36, cy - 30);
+    }
+    ctx.shadowBlur = 0;
+
+    // Flashing neon "OPEN 24/7" sign at bottom
+    const signAlpha = 0.5 + 0.5 * Math.sin(t * 3);
+    ctx.fillStyle = `rgba(255,220,0,${signAlpha})`;
+    ctx.font = 'bold 8px monospace';
+    ctx.fillText('OPEN 24/7', cx, cy - 4);
+
+    // Jackpot display (gold crown at bottom of building)
+    ctx.font = 'bold 8px monospace';
+    ctx.fillStyle = `rgba(255,215,0,${0.8 + 0.2 * pulse})`;
+    ctx.shadowColor = '#ffd700';
+    ctx.shadowBlur = 6 * pulse;
+    ctx.fillText(`👑 ${jackpot}c`, cx, cy + 16);
+    ctx.shadowBlur = 0;
+
+    // Neon entrance arch at the base
+    ctx.strokeStyle = `rgba(255,68,255,${flicker})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy + 22, 20, Math.PI, 0);
+    ctx.stroke();
+
+    // Pulsing pink aura when player is near
+    if (nearCasino) {
+      ctx.globalAlpha = 0.15 * pulse;
+      ctx.fillStyle = '#ff44ff';
+      ctx.beginPath();
+      ctx.arc(cx, cy - 33, 80, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    // Label
+    ctx.font = '9px monospace';
+    ctx.fillStyle = `rgba(255,140,255,${0.6 + 0.4 * flicker})`;
+    ctx.fillText('🎰 Casino', cx, cy + 34);
+    if (nearCasino) {
+      ctx.font = 'bold 9px monospace';
+      ctx.fillStyle = '#ff88ff';
+      ctx.fillText('[C] to play', cx, cy + 46);
+    }
+
+    ctx.restore();
+  },
+
+  // Draw casino dot on minimap
+  drawCasinoOnMinimap(minimapCtx, worldData, jackpot) {
+    if (!worldData || !worldData.casinoPos) return;
+    const mw = minimapCtx.canvas.width;
+    const mh = minimapCtx.canvas.height;
+    const sx = mw / worldData.width;
+    const sy = mh / worldData.height;
+    const cx = worldData.casinoPos.x * sx;
+    const cy = worldData.casinoPos.y * sy;
+    const pulse = 0.7 + 0.3 * Math.sin(Date.now() / 300);
+
+    minimapCtx.save();
+    minimapCtx.globalAlpha = pulse;
+    minimapCtx.fillStyle = '#ff44ff';
+    minimapCtx.beginPath();
+    minimapCtx.arc(cx, cy, 3, 0, Math.PI * 2);
+    minimapCtx.fill();
+    minimapCtx.globalAlpha = 1;
+    minimapCtx.font = '7px sans-serif';
+    minimapCtx.fillStyle = '#ff88ff';
+    minimapCtx.textAlign = 'center';
+    minimapCtx.fillText('🎰', cx, cy - 4);
+    minimapCtx.restore();
+  },
+
   // Draw predator territory zones on the minimap
   drawPredatorTerritoriesOnMinimap(minimapCtx, worldData, territoryPredators) {
     if (!worldData || !worldData.predatorTerritories) return;

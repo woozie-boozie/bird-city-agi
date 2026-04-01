@@ -37,6 +37,7 @@ app.get('/api/world', (req, res) => {
     manholes: world.MANHOLES,
     territoryZones: world.TERRITORY_ZONES,
     predatorTerritories: world.PREDATOR_TERRITORIES,
+    casinoPos: world.CASINO_POS,
   });
 });
 

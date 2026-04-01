@@ -33,7 +33,7 @@
     <div class="controls-hint">
       <span>WASD</span> move &nbsp;|&nbsp; <span>SPACE</span> poop &nbsp;|&nbsp; <span>E</span> steal food<br>
       <span>Q</span> bird sound &nbsp;|&nbsp; <span>R/1/2/3</span> skills &nbsp;|&nbsp; <span>H</span> home &nbsp;|&nbsp; <span>TAB</span> leaderboard<br>
-      <span>J</span> daily challenges &nbsp;|&nbsp; <span>M</span> mafia don &nbsp;|&nbsp; <span>B</span> black market (night)
+      <span>J</span> daily challenges &nbsp;|&nbsp; <span>M</span> mafia don &nbsp;|&nbsp; <span>B</span> black market (night) &nbsp;|&nbsp; <span>C</span> casino
     </div>
     <div class="controls-hint-mobile">
       Left joystick to move<br>
@@ -290,6 +290,88 @@
     background:rgba(4,12,28,0.85);color:#ffd700;font:bold 11px 'Courier New',monospace;
     padding:4px 10px;border-radius:10px;border:1px solid #3399ff;z-index:65;cursor:pointer;
     text-align:center;" title="Daily Challenges [J]"></div>
+
+  <!-- Casino proximity prompt -->
+  <div id="casinoProximityPrompt" style="display:none;position:fixed;bottom:90px;left:50%;transform:translateX(-50%);
+    background:rgba(20,0,30,0.92);color:#ff44ff;font:bold 13px 'Courier New',monospace;
+    padding:8px 20px;border-radius:18px;border:2px solid #ff44ff;pointer-events:none;z-index:70;
+    text-align:center;text-shadow:0 0 10px #ff44ff;white-space:nowrap;">
+    🎰 Press <kbd style="background:#3a003a;border:1px solid #ff44ff;padding:1px 5px;border-radius:4px;">C</kbd> to enter PIGEONHOLE SLOTS
+  </div>
+
+  <!-- Pigeonhole Slots Casino Overlay -->
+  <div id="casinoOverlay" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+    background:rgba(10,0,20,0.97);color:#ff44ff;font:bold 13px 'Courier New',monospace;
+    padding:20px 28px;border-radius:20px;border:2px solid #ff44ff;z-index:95;
+    min-width:340px;max-width:420px;text-align:center;
+    box-shadow:0 0 40px rgba(255,68,255,0.5),0 0 80px rgba(255,68,255,0.2);">
+    <div style="font-size:20px;font-weight:bold;color:#ff88ff;margin-bottom:2px;text-shadow:0 0 12px #ff44ff;">
+      🎰 PIGEONHOLE SLOTS 🎰
+    </div>
+    <div style="font-size:10px;color:#cc66cc;margin-bottom:14px;">30c per spin · Progressive jackpot</div>
+
+    <!-- Jackpot display -->
+    <div id="casinoJackpotDisplay" style="background:rgba(60,0,60,0.8);border:1px solid #ff44ff;
+      border-radius:10px;padding:6px 14px;margin-bottom:14px;font-size:12px;color:#ffd700;
+      text-shadow:0 0 8px #ffd700;">
+      👑 JACKPOT: <span id="casinoJackpotVal">500</span>c
+    </div>
+
+    <!-- Reels -->
+    <div style="display:flex;justify-content:center;gap:10px;margin-bottom:14px;">
+      <div class="casino-reel" id="casinoReel0" style="width:72px;height:72px;font-size:42px;
+        background:rgba(40,0,50,0.9);border:2px solid #ff44ff;border-radius:12px;
+        display:flex;align-items:center;justify-content:center;
+        box-shadow:0 0 12px rgba(255,68,255,0.4);line-height:1;">🐦</div>
+      <div class="casino-reel" id="casinoReel1" style="width:72px;height:72px;font-size:42px;
+        background:rgba(40,0,50,0.9);border:2px solid #ff44ff;border-radius:12px;
+        display:flex;align-items:center;justify-content:center;
+        box-shadow:0 0 12px rgba(255,68,255,0.4);line-height:1;">🐦</div>
+      <div class="casino-reel" id="casinoReel2" style="width:72px;height:72px;font-size:42px;
+        background:rgba(40,0,50,0.9);border:2px solid #ff44ff;border-radius:12px;
+        display:flex;align-items:center;justify-content:center;
+        box-shadow:0 0 12px rgba(255,68,255,0.4);line-height:1;">🐦</div>
+    </div>
+
+    <!-- Result message -->
+    <div id="casinoResultMsg" style="min-height:28px;font-size:14px;margin-bottom:12px;
+      color:#ffdd44;text-shadow:0 0 8px #ffaa00;transition:opacity 0.3s;"></div>
+
+    <!-- Paytable toggle -->
+    <details style="margin-bottom:12px;text-align:left;font-size:10px;color:#cc88cc;">
+      <summary style="cursor:pointer;color:#ff88ff;margin-bottom:6px;">📋 Payout Table</summary>
+      <div style="line-height:1.8;">
+        👑👑👑 JACKPOT (progressive!)<br>
+        💎💎💎 → 250c<br>
+        ⭐⭐⭐ → 90c<br>
+        🍗🍗🍗 → 60c<br>
+        💩💩💩 → 45c + FREE MEGA POOP 💣<br>
+        🐦🐦🐦 → 36c<br>
+        👑👑 or 💎💎 → 15c consolation<br>
+        anything else → lose 30c
+      </div>
+    </details>
+
+    <!-- Spin button -->
+    <button id="casinoSpinBtn" style="background:linear-gradient(135deg,#880088,#cc00cc);
+      color:#fff;border:2px solid #ff44ff;padding:10px 32px;border-radius:14px;
+      font:bold 14px 'Courier New',monospace;cursor:pointer;width:100%;margin-bottom:8px;
+      box-shadow:0 0 16px rgba(255,68,255,0.5);text-shadow:0 0 6px #fff;
+      transition:transform 0.1s,box-shadow 0.1s;">
+      🎰 SPIN! (30c)
+    </button>
+
+    <!-- Coins display -->
+    <div id="casinoCoinsDisplay" style="font-size:11px;color:#cc88cc;margin-bottom:10px;">
+      💰 Your coins: <span id="casinoCoinVal">0</span>c
+    </div>
+
+    <button id="casinoCloseBtn" style="background:rgba(60,0,60,0.5);color:#cc88cc;
+      border:1px solid #884488;padding:5px 20px;border-radius:10px;cursor:pointer;
+      font:11px 'Courier New',monospace;">
+      LEAVE  [C]
+    </button>
+  </div>
 
   <script src="/socket.io/socket.io.js"></script>
   <script src="/js/sounds.js"></script>

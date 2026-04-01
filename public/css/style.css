@@ -1957,3 +1957,30 @@ html, body {
   from { box-shadow: 0 0 8px rgba(255, 215, 0, 0.6); text-shadow: 0 0 4px rgba(255,215,0,0.5); }
   to   { box-shadow: 0 0 22px rgba(255, 215, 0, 1.0); text-shadow: 0 0 12px rgba(255,215,0,0.9); }
 }
+
+/* ============================================
+   PIGEONHOLE SLOTS CASINO
+   ============================================ */
+.casino-reel {
+  transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+  cursor: default;
+  select: none;
+}
+
+@keyframes casinoNeonPulse {
+  from { box-shadow: 0 0 10px rgba(255, 68, 255, 0.4), 0 0 40px rgba(255, 68, 255, 0.1); }
+  to   { box-shadow: 0 0 25px rgba(255, 68, 255, 0.8), 0 0 60px rgba(255, 68, 255, 0.3); }
+}
+
+#casinoOverlay {
+  animation: casinoNeonPulse 1.5s ease-in-out infinite alternate;
+}
+
+#casinoSpinBtn:hover:not(:disabled) {
+  transform: scale(1.03);
+  box-shadow: 0 0 24px rgba(255, 68, 255, 0.8);
+}
+
+#casinoSpinBtn:active:not(:disabled) {
+  transform: scale(0.97);
+}

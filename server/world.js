@@ -357,6 +357,10 @@ const PREDATOR_TERRITORIES = {
   },
 };
 
+// Pigeonhole Slots Casino — neon-lit gambling den in the mid-right corridor
+// Placed between the mall (top-right) and downtown, accessible from the road grid
+const CASINO_POS = { x: 2100, y: 1200, radius: 120 };
+
 module.exports = {
   WORLD_WIDTH, WORLD_HEIGHT,
   BUILDINGS, TREES, PARK, CAFE_TABLES, ROADS, CARS, LAUNDRY,
@@ -366,7 +370,7 @@ module.exports = {
   TERRITORY_ZONES, ARENA, RADIO_TOWER, RACE_CHECKPOINTS,
   MANHOLES, SEWER_LOOT_POSITIONS,
   EGG_NEST_ZONES, EGG_SPAWN_POOL,
-  DON_POS,
+  DON_POS, CASINO_POS,
   PREDATOR_TERRITORIES,
   getXPForLevel, getLevelFromXP, getBirdTypeForLevel,
 };

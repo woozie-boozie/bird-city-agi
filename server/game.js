@@ -234,6 +234,20 @@ class GameEngine {
     this.kingpin = null; // { birdId, birdName, coins, crownedAt, hitCount: Map(hitterId->count), lastPassiveReward }
     this.kingpinCheckTimer = 0;
 
+    // === PIGEONHOLE SLOTS CASINO ===
+    this.slotsJackpot = 500;   // progressive jackpot — grows 5c per losing spin
+    this.CASINO_POS = world.CASINO_POS;
+    this.SLOTS_BET = 30;
+    this.SLOTS_SYMBOLS = [
+      { id: 'bird',    emoji: '🐦', weight: 35 },
+      { id: 'poop',    emoji: '💩', weight: 25 },
+      { id: 'food',    emoji: '🍗', weight: 20 },
+      { id: 'star',    emoji: '⭐', weight: 12 },
+      { id: 'diamond', emoji: '💎', weight: 6  },
+      { id: 'crown',   emoji: '👑', weight: 2  },
+    ];
+    this.SLOTS_TOTAL_WEIGHT = this.SLOTS_SYMBOLS.reduce((s, sym) => s + sym.weight, 0);
+
     // === DAY/NIGHT CYCLE ===
     // 0.0 = early day, 0.3 = dusk, 0.45 = night, 0.75 = dawn, 1.0 = day again
     // Full cycle = 20 real-time minutes
@@ -622,6 +636,11 @@ class GameEngine {
     // === Black Market ===
     if (action.type === 'blackmarket_buy') {
       this._handleBlackMarketBuy(bird, action.itemId, now);
+    }
+
+    // === Pigeonhole Slots Casino ===
+    if (action.type === 'slots_spin') {
+      this._handleSlotsSpin(bird, now);
     }
 
     // === The Arena ===
@@ -3928,6 +3947,13 @@ class GameEngine {
       dailyStreak: bird.dailyStreak || 0,
       dailyStreakMult: this._getDailyStreakMultiplier(bird.dailyStreak || 0),
       dailyChallengesDate: this.dailyChallengesDate,
+      // Pigeonhole Slots Casino
+      slotsJackpot: this.slotsJackpot,
+      nearCasino: (() => {
+        const cdx = bird.x - this.CASINO_POS.x;
+        const cdy = bird.y - this.CASINO_POS.y;
+        return Math.sqrt(cdx * cdx + cdy * cdy) < this.CASINO_POS.radius;
+      })(),
     };
   }
 
@@ -5058,6 +5084,123 @@ class GameEngine {
 
     this.events.push({ type: 'blackmarket_purchased', birdId: bird.id, itemId, itemName: item.name, cost: item.cost, emoji: item.emoji });
     console.log(`[GameEngine] 🐀 ${bird.name} bought ${item.name} for ${item.cost}c`);
+  }
+
+  // ============================================================
+  // PIGEONHOLE SLOTS CASINO
+  // ============================================================
+  _handleSlotsSpin(bird, now) {
+    const BET = this.SLOTS_BET;
+
+    // Cooldown — 2 seconds between spins per bird
+    if (bird.lastSlotsSpin && now - bird.lastSlotsSpin < 2000) return;
+
+    // Proximity check
+    const dx = bird.x - this.CASINO_POS.x;
+    const dy = bird.y - this.CASINO_POS.y;
+    if (Math.sqrt(dx * dx + dy * dy) > this.CASINO_POS.radius) {
+      this.events.push({ type: 'slots_fail', birdId: bird.id, reason: 'Fly closer to the casino!' });
+      return;
+    }
+
+    // Funds check
+    if (bird.coins < BET) {
+      this.events.push({ type: 'slots_fail', birdId: bird.id, reason: `Need ${BET}c to spin. You're broke!` });
+      return;
+    }
+
+    bird.lastSlotsSpin = now;
+    bird.coins -= BET;
+
+    // Spin the reels — weighted random
+    const spinReel = () => {
+      let r = Math.random() * this.SLOTS_TOTAL_WEIGHT;
+      for (const sym of this.SLOTS_SYMBOLS) {
+        r -= sym.weight;
+        if (r <= 0) return sym;
+      }
+      return this.SLOTS_SYMBOLS[this.SLOTS_SYMBOLS.length - 1];
+    };
+
+    const reels = [spinReel(), spinReel(), spinReel()];
+    const ids = reels.map(r => r.id);
+
+    let payout = 0;
+    let resultType = 'lose';
+    let specialEffect = null;
+    let announcement = null;
+
+    // Check 3-of-a-kind
+    if (ids[0] === ids[1] && ids[1] === ids[2]) {
+      const sym = ids[0];
+      switch (sym) {
+        case 'crown':
+          payout = this.slotsJackpot;
+          this.slotsJackpot = 500; // jackpot resets
+          resultType = 'jackpot';
+          announcement = { type: 'slots_jackpot', name: bird.name, payout };
+          break;
+        case 'diamond':
+          payout = 250;
+          resultType = 'big_win';
+          break;
+        case 'star':
+          payout = 90;
+          resultType = 'win';
+          break;
+        case 'food':
+          payout = 60;
+          resultType = 'win';
+          break;
+        case 'poop':
+          payout = 45;
+          resultType = 'win';
+          specialEffect = 'mega_poop';
+          bird.bmMegaPoops = (bird.bmMegaPoops || 0) + 1;
+          break;
+        case 'bird':
+          payout = 36;
+          resultType = 'small_win';
+          break;
+      }
+    } else {
+      // Check for 2-of-a-kind with high-value symbols — partial consolation
+      const counts = {};
+      for (const id of ids) counts[id] = (counts[id] || 0) + 1;
+      for (const [id, count] of Object.entries(counts)) {
+        if (count >= 2 && (id === 'crown' || id === 'diamond')) {
+          payout = 15;
+          resultType = 'small_win';
+          break;
+        }
+      }
+    }
+
+    bird.coins += payout;
+
+    // Jackpot grows from every losing spin
+    if (resultType === 'lose') {
+      this.slotsJackpot = Math.min(5000, this.slotsJackpot + 5);
+    }
+
+    // Small XP for participating
+    bird.xp += 5;
+
+    if (announcement) {
+      this.events.push(announcement);
+    }
+
+    this.events.push({
+      type: 'slots_result',
+      birdId: bird.id,
+      reels: reels.map(r => r.emoji),
+      payout,
+      resultType,
+      specialEffect,
+      jackpot: this.slotsJackpot,
+    });
+
+    console.log(`[Casino] 🎰 ${bird.name} spun [${reels.map(r => r.emoji).join('')}] → ${resultType} +${payout}c (jackpot now ${this.slotsJackpot}c)`);
   }
 
   // ============================================================

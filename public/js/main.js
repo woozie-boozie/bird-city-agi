@@ -77,6 +77,17 @@
   const dailyHudIndicator = document.getElementById('dailyHudIndicator');
   let dailyPanelVisible = false;
 
+  // === Pigeonhole Slots Casino ===
+  const casinoOverlay = document.getElementById('casinoOverlay');
+  const casinoProximityPrompt = document.getElementById('casinoProximityPrompt');
+  const casinoSpinBtn = document.getElementById('casinoSpinBtn');
+  const casinoCloseBtn = document.getElementById('casinoCloseBtn');
+  let casinoOverlayVisible = false;
+  let lastNearCasino = false;
+  let casinoSpinning = false;
+  let casinoSpinInterval = null;
+  const CASINO_REEL_SYMBOLS = ['🐦', '💩', '🍗', '⭐', '💎', '👑'];
+
   // === Persistent Identity (localStorage) ===
   function getSavedAccount() {
     try {
@@ -1196,6 +1207,29 @@
       }
     }
 
+    // === PIGEONHOLE SLOTS CASINO EVENTS ===
+    if (ev.type === 'slots_result') {
+      if (ev.birdId === myId) {
+        onSlotsResult(ev);
+      }
+    }
+    if (ev.type === 'slots_fail') {
+      if (ev.birdId === myId) {
+        const msg = document.getElementById('casinoResultMsg');
+        if (msg) { msg.style.color = '#ff4444'; msg.textContent = '❌ ' + ev.reason; }
+        const spinBtn = document.getElementById('casinoSpinBtn');
+        if (spinBtn) { spinBtn.disabled = false; spinBtn.style.opacity = '1'; }
+        casinoSpinning = false;
+        if (casinoSpinInterval) { clearInterval(casinoSpinInterval); casinoSpinInterval = null; }
+      }
+    }
+    if (ev.type === 'slots_jackpot') {
+      // City-wide jackpot announcement!
+      showAnnouncement(`👑 JACKPOT!! ${ev.name} won ${ev.payout}c from the CASINO!!`, '#ffd700', 5000);
+      addEventMessage(`🎰 JACKPOT! ${ev.name} hit the jackpot for ${ev.payout}c!!!`, '#ffd700');
+      effects.push({ type: 'screen_shake', intensity: 25, duration: 1500, time: performance.now() });
+    }
+
     // === THE ARENA — PvP EVENTS ===
     if (ev.type === 'arena_enter') {
       if (ev.birdId === myId) {
@@ -1799,6 +1833,14 @@
         hideDailyPanel();
       } else {
         showDailyPanel();
+      }
+    }
+    // Casino toggle
+    if (e.key.toLowerCase() === 'c') {
+      if (casinoOverlayVisible) {
+        hideCasinoOverlay();
+      } else if (gameState && lastNearCasino) {
+        showCasinoOverlay();
       }
     }
     // Arena enter
@@ -2501,6 +2543,18 @@
 
     // Update Don overlay if open
     if (donOverlayVisible) renderDonOverlay();
+
+    // Casino proximity
+    const nearCas = !!gameState.nearCasino;
+    if (nearCas && !lastNearCasino) {
+      casinoProximityPrompt.style.display = 'block';
+    }
+    if (!nearCas && lastNearCasino) {
+      casinoProximityPrompt.style.display = 'none';
+      if (casinoOverlayVisible) hideCasinoOverlay();
+    }
+    lastNearCasino = nearCas;
+    if (casinoOverlayVisible) updateCasinoDisplay();
 
     // Don mission HUD
     if (gameState.donMission) {
@@ -4327,6 +4381,11 @@
       Renderer.drawRadioTower(ctx, camera, gameState.radioTower, now);
     }
 
+    // Pigeonhole Slots Casino
+    if (worldData && worldData.casinoPos) {
+      Renderer.drawCasino(ctx, camera, worldData.casinoPos, gameState.slotsJackpot || 500, !!gameState.nearCasino, now);
+    }
+
     // Pigeon Race track checkpoints
     if (worldData && worldData.raceCheckpoints) {
       Renderer.drawRaceTrack(ctx, camera, worldData.raceCheckpoints, gameState.pigeonRace || null, now);
@@ -4612,6 +4671,11 @@
     // Territory predators on minimap
     if (worldData && worldData.predatorTerritories) {
       Renderer.drawPredatorTerritoriesOnMinimap(minimapCtx, worldData, gameState.territoryPredators || null);
+    }
+
+    // Casino on minimap
+    if (worldData && worldData.casinoPos) {
+      Renderer.drawCasinoOnMinimap(minimapCtx, worldData, gameState.slotsJackpot || 500);
     }
 
     // Draw beacons on minimap
@@ -5556,6 +5620,134 @@
 
     // Close button
     addTapListener('birdHomeClose', closeBirdHome);
+  }
+
+  // ============================================================
+  // PIGEONHOLE SLOTS CASINO
+  // ============================================================
+  function showCasinoOverlay() {
+    casinoOverlayVisible = true;
+    casinoOverlay.style.display = 'block';
+    for (const k in keys) keys[k] = false;
+    syncInput();
+    updateCasinoDisplay();
+  }
+
+  function hideCasinoOverlay() {
+    casinoOverlayVisible = false;
+    casinoOverlay.style.display = 'none';
+    if (casinoSpinInterval) { clearInterval(casinoSpinInterval); casinoSpinInterval = null; }
+    casinoSpinning = false;
+  }
+
+  function updateCasinoDisplay() {
+    if (!gameState || !gameState.self) return;
+    const el = document.getElementById('casinoCoinVal');
+    if (el) el.textContent = gameState.self.coins || 0;
+    const jackpotEl = document.getElementById('casinoJackpotVal');
+    if (jackpotEl && gameState.slotsJackpot !== undefined) jackpotEl.textContent = gameState.slotsJackpot;
+  }
+
+  function startCasinoSpin() {
+    if (casinoSpinning) return;
+    if (!gameState || !gameState.self || gameState.self.coins < 30) {
+      const msg = document.getElementById('casinoResultMsg');
+      if (msg) { msg.style.color = '#ff4444'; msg.textContent = '💸 Not enough coins! Need 30c'; }
+      return;
+    }
+    casinoSpinning = true;
+    const spinBtn = document.getElementById('casinoSpinBtn');
+    if (spinBtn) { spinBtn.disabled = true; spinBtn.style.opacity = '0.5'; }
+    const resultMsg = document.getElementById('casinoResultMsg');
+    if (resultMsg) resultMsg.textContent = '';
+
+    // Animate reels spinning
+    let spinCount = 0;
+    casinoSpinInterval = setInterval(() => {
+      for (let i = 0; i < 3; i++) {
+        const reel = document.getElementById('casinoReel' + i);
+        if (reel) reel.textContent = CASINO_REEL_SYMBOLS[Math.floor(Math.random() * CASINO_REEL_SYMBOLS.length)];
+      }
+      spinCount++;
+      if (spinCount > 30) {
+        clearInterval(casinoSpinInterval);
+        casinoSpinInterval = null;
+      }
+    }, 60);
+
+    socket.emit('action', { type: 'slots_spin' });
+  }
+
+  function onSlotsResult(ev) {
+    // Stop spin animation and snap to result
+    if (casinoSpinInterval) { clearInterval(casinoSpinInterval); casinoSpinInterval = null; }
+    casinoSpinning = false;
+
+    // Stagger the reel stops for drama (reel 0 stops first, then 1, then 2)
+    const reels = ev.reels;
+    setTimeout(() => {
+      const r0 = document.getElementById('casinoReel0');
+      if (r0) { r0.textContent = reels[0]; r0.style.transform = 'scale(1.2)'; setTimeout(() => { r0.style.transform = ''; }, 200); }
+    }, 0);
+    setTimeout(() => {
+      const r1 = document.getElementById('casinoReel1');
+      if (r1) { r1.textContent = reels[1]; r1.style.transform = 'scale(1.2)'; setTimeout(() => { r1.style.transform = ''; }, 200); }
+    }, 200);
+    setTimeout(() => {
+      const r2 = document.getElementById('casinoReel2');
+      if (r2) { r2.textContent = reels[2]; r2.style.transform = 'scale(1.2)'; setTimeout(() => { r2.style.transform = ''; }, 200); }
+
+      // Show result after all reels stop
+      setTimeout(() => {
+        const msg = document.getElementById('casinoResultMsg');
+        if (msg) {
+          const nowMs = performance.now();
+          switch (ev.resultType) {
+            case 'jackpot':
+              msg.style.color = '#ffd700';
+              msg.textContent = `👑 JACKPOT!! +${ev.payout}c!!!!`;
+              effects.push({ type: 'screen_shake', intensity: 20, duration: 1200, time: nowMs });
+              break;
+            case 'big_win':
+              msg.style.color = '#ff88ff';
+              msg.textContent = `💎 BIG WIN! +${ev.payout}c!`;
+              effects.push({ type: 'screen_shake', intensity: 8, duration: 500, time: nowMs });
+              break;
+            case 'win':
+              msg.style.color = '#44ff88';
+              msg.textContent = ev.specialEffect === 'mega_poop'
+                ? `💩 TRIPLE POOP! +${ev.payout}c + FREE MEGA POOP 💣`
+                : `✨ WIN! +${ev.payout}c`;
+              break;
+            case 'small_win':
+              msg.style.color = '#aaffaa';
+              msg.textContent = `😅 Small win: +${ev.payout}c`;
+              break;
+            default:
+              msg.style.color = '#ff6666';
+              msg.textContent = `💸 No luck... lost 30c`;
+          }
+        }
+
+        // Update jackpot display
+        const jackpotEl = document.getElementById('casinoJackpotVal');
+        if (jackpotEl && ev.jackpot !== undefined) jackpotEl.textContent = ev.jackpot;
+
+        // Re-enable spin button
+        const spinBtn = document.getElementById('casinoSpinBtn');
+        if (spinBtn) { spinBtn.disabled = false; spinBtn.style.opacity = '1'; }
+
+        updateCasinoDisplay();
+      }, 300);
+    }, 400);
+  }
+
+  // Casino button listeners (set up once during init, checked below)
+  if (casinoSpinBtn) {
+    casinoSpinBtn.addEventListener('click', () => startCasinoSpin());
+  }
+  if (casinoCloseBtn) {
+    casinoCloseBtn.addEventListener('click', () => hideCasinoOverlay());
   }
 
   // ============================================================
