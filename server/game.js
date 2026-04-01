@@ -241,6 +241,13 @@ class GameEngine {
     this.kingpin = null; // { birdId, birdName, coins, crownedAt, hitCount: Map(hitterId->count), lastPassiveReward }
     this.kingpinCheckTimer = 0;
 
+    // === BIRD TATTOO PARLOR ===
+    this.TATTOO_PARLOR_POS = world.TATTOO_PARLOR_POS;
+    this.TATTOO_CATALOG = world.TATTOO_CATALOG;
+    // Build quick lookup: id → tattoo
+    this.TATTOO_MAP = {};
+    for (const t of this.TATTOO_CATALOG) this.TATTOO_MAP[t.id] = t;
+
     // === PIGEONHOLE SLOTS CASINO ===
     this.slotsJackpot = 500;   // progressive jackpot — grows 5c per losing spin
     this.CASINO_POS = world.CASINO_POS;
@@ -506,6 +513,9 @@ class GameEngine {
       gangTag:  saved ? (saved.gang_tag  || null) : null,
       gangColor:saved ? (saved.gang_color|| null) : null,
       gangRole: saved ? (saved.gang_role || null) : null,  // 'leader' | 'member'
+      // === BIRD TATTOO PARLOR ===
+      tattoosOwned:    saved ? this._safeJsonParse(saved.tattoos_owned, []) : [],
+      tattoosEquipped: saved ? this._safeJsonParse(saved.tattoos_equipped, []) : [],
     };
 
     // Determine bird type from XP
@@ -697,6 +707,14 @@ class GameEngine {
     // === Pigeonhole Slots Casino ===
     if (action.type === 'slots_spin') {
       this._handleSlotsSpin(bird, now);
+    }
+
+    // === Bird Tattoo Parlor ===
+    if (action.type === 'buy_tattoo') {
+      this._handleBuyTattoo(bird, action.tattooId, now);
+    }
+    if (action.type === 'equip_tattoo') {
+      this._handleEquipTattoo(bird, action.tattooId, now);
     }
 
     // === The Arena ===
@@ -3417,6 +3435,7 @@ class GameEngine {
           } : null,
           isKingpin: this.kingpin ? this.kingpin.birdId === b.id : false,
           kingpinMyHits: (this.kingpin && this.kingpin.birdId === b.id) ? (this.kingpin.hitCount.get(bird.id) || 0) : 0,
+          tattoosEquipped: b.tattoosEquipped || [],
         });
       }
     }
@@ -4042,6 +4061,14 @@ class GameEngine {
         const cdy = bird.y - this.CASINO_POS.y;
         return Math.sqrt(cdx * cdx + cdy * cdy) < this.CASINO_POS.radius;
       })(),
+      // Bird Tattoo Parlor
+      tattoosOwned: bird.tattoosOwned || [],
+      tattoosEquipped: bird.tattoosEquipped || [],
+      nearTattooParlor: (() => {
+        const tdx = bird.x - this.TATTOO_PARLOR_POS.x;
+        const tdy = bird.y - this.TATTOO_PARLOR_POS.y;
+        return Math.sqrt(tdx * tdx + tdy * tdy) < this.TATTOO_PARLOR_POS.radius;
+      })(),
       // Gang state
       myGang: (() => {
         if (!bird.gangId) return null;
@@ -4175,6 +4202,8 @@ class GameEngine {
       gang_tag: bird.gangTag || null,
       gang_color: bird.gangColor || null,
       gang_role: bird.gangRole || null,
+      tattoos_owned: JSON.stringify(bird.tattoosOwned || []),
+      tattoos_equipped: JSON.stringify(bird.tattoosEquipped || []),
     }).catch(e => {
       console.error('[GameEngine] Failed to save bird:', e.message);
     });
@@ -5733,6 +5762,77 @@ class GameEngine {
     });
 
     console.log(`[Casino] 🎰 ${bird.name} spun [${reels.map(r => r.emoji).join('')}] → ${resultType} +${payout}c (jackpot now ${this.slotsJackpot}c)`);
+  }
+
+  // ============================================================
+  // BIRD TATTOO PARLOR
+  // ============================================================
+
+  _handleBuyTattoo(bird, tattooId, now) {
+    const tattoo = this.TATTOO_MAP[tattooId];
+    if (!tattoo) {
+      this.events.push({ type: 'tattoo_error', birdId: bird.id, msg: 'Unknown tattoo.' });
+      return;
+    }
+    if ((bird.tattoosOwned || []).includes(tattooId)) {
+      this.events.push({ type: 'tattoo_error', birdId: bird.id, msg: 'Already owned.' });
+      return;
+    }
+    // Proximity check
+    const pdx = bird.x - this.TATTOO_PARLOR_POS.x;
+    const pdy = bird.y - this.TATTOO_PARLOR_POS.y;
+    if (Math.sqrt(pdx * pdx + pdy * pdy) > this.TATTOO_PARLOR_POS.radius) {
+      this.events.push({ type: 'tattoo_error', birdId: bird.id, msg: 'Too far from parlor.' });
+      return;
+    }
+    if (bird.coins < tattoo.cost) {
+      this.events.push({ type: 'tattoo_error', birdId: bird.id, msg: 'Not enough coins.' });
+      return;
+    }
+    bird.coins -= tattoo.cost;
+    if (!bird.tattoosOwned) bird.tattoosOwned = [];
+    bird.tattoosOwned.push(tattooId);
+    this._saveBird(bird);
+    this.events.push({
+      type: 'tattoo_bought',
+      birdId: bird.id,
+      tattooId,
+      emoji: tattoo.emoji,
+      name: tattoo.name,
+      cost: tattoo.cost,
+      tattoosOwned: bird.tattoosOwned,
+      tattoosEquipped: bird.tattoosEquipped || [],
+      coins: bird.coins,
+    });
+    console.log(`[Tattoo] 🎨 ${bird.name} bought tattoo: ${tattoo.emoji} ${tattoo.name}`);
+  }
+
+  _handleEquipTattoo(bird, tattooId, now) {
+    if (!(bird.tattoosOwned || []).includes(tattooId)) {
+      this.events.push({ type: 'tattoo_error', birdId: bird.id, msg: 'Tattoo not owned.' });
+      return;
+    }
+    if (!bird.tattoosEquipped) bird.tattoosEquipped = [];
+    const idx = bird.tattoosEquipped.indexOf(tattooId);
+    if (idx !== -1) {
+      // Unequip
+      bird.tattoosEquipped.splice(idx, 1);
+    } else {
+      // Equip — max 3 slots
+      if (bird.tattoosEquipped.length >= 3) {
+        // Replace oldest (first in array) with the new one
+        bird.tattoosEquipped.shift();
+      }
+      bird.tattoosEquipped.push(tattooId);
+    }
+    this._saveBird(bird);
+    this.events.push({
+      type: 'tattoo_equipped',
+      birdId: bird.id,
+      tattooId,
+      tattoosEquipped: bird.tattoosEquipped,
+      tattoosOwned: bird.tattoosOwned,
+    });
   }
 
   // ============================================================

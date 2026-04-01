@@ -2049,6 +2049,138 @@ window.Renderer = {
     minimapCtx.restore();
   },
 
+  // ── Bird Tattoo Parlor ──────────────────────────────────────
+  drawTattooParlor(ctx, camera, parlorPos, nearParlor, now) {
+    if (!parlorPos) return;
+    const px = parlorPos.x - camera.x + camera.screenW / 2;
+    const py = parlorPos.y - camera.y + camera.screenH / 2;
+    const t = now / 1000;
+
+    const pulse = 0.65 + 0.35 * Math.sin(t * 2.2);
+    const flicker = 0.8 + 0.2 * Math.sin(t * 8.4) * Math.cos(t * 5.1);
+
+    ctx.save();
+
+    // Drop shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillRect(px - 52 + 4, py - 72 + 4, 104, 90);
+
+    // Main building body — deep indigo/purple
+    ctx.fillStyle = '#1a0035';
+    ctx.fillRect(px - 52, py - 72, 104, 90);
+
+    // Building border — neon pink/purple
+    ctx.shadowColor = '#ff44cc';
+    ctx.shadowBlur = 14 * flicker;
+    ctx.strokeStyle = `rgba(255,68,200,${flicker})`;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(px - 52, py - 72, 104, 90);
+    ctx.shadowBlur = 0;
+
+    // Candy-stripe barbershop pole (left side)
+    const poleX = px - 44;
+    const poleTop = py - 66;
+    const poleH = 78;
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(poleX - 4, poleTop, 8, poleH);
+    // Animated red/blue stripes rotating down the pole
+    const stripeH = 10;
+    const offset = (t * 22) % (stripeH * 2);
+    const colors = ['#ff2244', '#4488ff'];
+    for (let i = -2; i < poleH / stripeH + 2; i++) {
+      const sy2 = poleTop + i * stripeH * 2 + offset;
+      ctx.fillStyle = colors[i & 1] || colors[0];
+      ctx.fillRect(poleX - 4, Math.max(poleTop, sy2), 8, Math.min(stripeH, poleTop + poleH - Math.max(poleTop, sy2)));
+      ctx.fillStyle = colors[(i + 1) & 1] || colors[1];
+      ctx.fillRect(poleX - 4, Math.max(poleTop, sy2 + stripeH), 8, Math.min(stripeH, poleTop + poleH - Math.max(poleTop, sy2 + stripeH)));
+    }
+    // Pole cap
+    ctx.fillStyle = '#ccc';
+    ctx.beginPath();
+    ctx.arc(poleX, poleTop, 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Neon sign background
+    ctx.fillStyle = '#250040';
+    ctx.fillRect(px - 40, py - 66, 88, 20);
+    ctx.strokeStyle = `rgba(255,100,220,${flicker})`;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(px - 40, py - 66, 88, 20);
+
+    // Sign text
+    ctx.shadowColor = '#ff44cc';
+    ctx.shadowBlur = 8 * flicker;
+    ctx.fillStyle = `rgba(255,160,255,${flicker})`;
+    ctx.font = 'bold 7px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('TATTOO PARLOR', px, py - 52);
+    ctx.shadowBlur = 0;
+
+    // Decorative tattoo emojis on building face
+    ctx.font = '12px serif';
+    const decoEmojis = ['💀', '🔥', '💎'];
+    ctx.shadowBlur = 5 * pulse;
+    ctx.shadowColor = '#ff88ff';
+    for (let i = 0; i < 3; i++) {
+      ctx.fillText(decoEmojis[i], px - 24 + i * 24, py - 28);
+    }
+    ctx.shadowBlur = 0;
+
+    // Pulsing "OPEN" sign
+    const openAlpha = 0.5 + 0.5 * Math.sin(t * 3.1);
+    ctx.fillStyle = `rgba(100,255,100,${openAlpha})`;
+    ctx.font = 'bold 7px monospace';
+    ctx.fillText('● OPEN', px, py - 10);
+
+    // Proximity aura + prompt
+    if (nearParlor) {
+      ctx.globalAlpha = 0.12 * pulse;
+      ctx.fillStyle = '#ff44cc';
+      ctx.beginPath();
+      ctx.arc(px, py - 27, 80, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+
+      ctx.font = 'bold 9px monospace';
+      ctx.fillStyle = '#ff88ff';
+      ctx.shadowColor = '#ff44cc';
+      ctx.shadowBlur = 6;
+      ctx.fillText('[P] Tattoo Parlor', px, py + 26);
+      ctx.shadowBlur = 0;
+    } else {
+      ctx.font = '8px monospace';
+      ctx.fillStyle = 'rgba(200,100,200,0.7)';
+      ctx.fillText('🎨 Tattoo Parlor', px, py + 22);
+    }
+
+    ctx.restore();
+  },
+
+  drawTattooParlourOnMinimap(minimapCtx, worldData) {
+    if (!worldData || !worldData.tattooParlor) return;
+    const pos = worldData.tattooParlor.pos;
+    const mw = minimapCtx.canvas.width;
+    const mh = minimapCtx.canvas.height;
+    const sx = mw / worldData.width;
+    const sy = mh / worldData.height;
+    const px = pos.x * sx;
+    const py = pos.y * sy;
+    const pulse = 0.7 + 0.3 * Math.sin(Date.now() / 400);
+
+    minimapCtx.save();
+    minimapCtx.globalAlpha = pulse;
+    minimapCtx.fillStyle = '#ff44cc';
+    minimapCtx.beginPath();
+    minimapCtx.arc(px, py, 3, 0, Math.PI * 2);
+    minimapCtx.fill();
+    minimapCtx.globalAlpha = 1;
+    minimapCtx.font = '7px sans-serif';
+    minimapCtx.fillStyle = '#ff88ff';
+    minimapCtx.textAlign = 'center';
+    minimapCtx.fillText('🎨', px, py - 4);
+    minimapCtx.restore();
+  },
+
   // Draw predator territory zones on the minimap
   drawPredatorTerritoriesOnMinimap(minimapCtx, worldData, territoryPredators) {
     if (!worldData || !worldData.predatorTerritories) return;

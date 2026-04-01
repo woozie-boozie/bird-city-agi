@@ -106,7 +106,7 @@ window.Sprites = {
   },
 
   // === NAME TAG ===
-  drawNameTag(ctx, x, y, name, level, type, isPlayer, mafiaTitle, gangTag, gangColor) {
+  drawNameTag(ctx, x, y, name, level, type, isPlayer, mafiaTitle, gangTag, gangColor, tattoosEquipped) {
     const text = `${name} [Lv.${level}]`;
     ctx.font = 'bold 11px Courier New';
     ctx.textAlign = 'center';
@@ -152,6 +152,19 @@ window.Sprites = {
     // Text
     ctx.fillStyle = isPlayer ? '#1a1a2e' : '#fff';
     ctx.fillText(text, x, y - 14);
+
+    // Tattoo strip — rendered below the name pill
+    if (tattoosEquipped && tattoosEquipped.length > 0) {
+      ctx.font = '11px serif';
+      ctx.textAlign = 'center';
+      const tatStr = tattoosEquipped.join(' ');
+      const tw = ctx.measureText(tatStr).width + 6;
+      ctx.fillStyle = isPlayer ? 'rgba(255,200,50,0.55)' : 'rgba(0,0,0,0.5)';
+      ctx.fillRect(x - tw / 2, y - 12, tw, 12);
+      ctx.fillStyle = isPlayer ? '#1a1a2e' : '#eee';
+      ctx.fillText(tatStr, x, y - 3);
+      ctx.font = 'bold 11px Courier New';
+    }
   },
 
   // === POOP ===

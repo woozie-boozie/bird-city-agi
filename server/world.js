@@ -361,6 +361,43 @@ const PREDATOR_TERRITORIES = {
 // Placed between the mall (top-right) and downtown, accessible from the road grid
 const CASINO_POS = { x: 2100, y: 1200, radius: 120 };
 
+// Bird Tattoo Parlor — colorful ink shop in the lower-left Cafe District area
+const TATTOO_PARLOR_POS = { x: 640, y: 1840, radius: 100 };
+
+// Tattoo catalog — 25 permanent emoji tattoos in 5 themed categories
+const TATTOO_CATALOG = [
+  // Crime
+  { id: 'skull',     emoji: '💀', name: 'Skull',       cost: 75,  category: 'Crime'   },
+  { id: 'heat',      emoji: '🔫', name: 'Heat',        cost: 90,  category: 'Crime'   },
+  { id: 'blade',     emoji: '🗡️',  name: 'Blade',       cost: 80,  category: 'Crime'   },
+  { id: 'ninja',     emoji: '🥷', name: 'Ninja',       cost: 120, category: 'Crime'   },
+  { id: 'deadEyes',  emoji: '☠️', name: 'Dead Eyes',   cost: 100, category: 'Crime'   },
+  // Power
+  { id: 'lightning', emoji: '⚡', name: 'Lightning',   cost: 100, category: 'Power'   },
+  { id: 'fire',      emoji: '🔥', name: 'Fire',        cost: 100, category: 'Power'   },
+  { id: 'diamond',   emoji: '💎', name: 'Diamond',     cost: 200, category: 'Power'   },
+  { id: 'crown',     emoji: '👑', name: 'Crown',       cost: 250, category: 'Power'   },
+  { id: 'star',      emoji: '⭐', name: 'Star',        cost: 75,  category: 'Power'   },
+  // Nature
+  { id: 'leaf',      emoji: '🌿', name: 'Leaf',        cost: 50,  category: 'Nature'  },
+  { id: 'wave',      emoji: '🌊', name: 'Wave',        cost: 60,  category: 'Nature'  },
+  { id: 'moon',      emoji: '🌙', name: 'Moon',        cost: 70,  category: 'Nature'  },
+  { id: 'sun',       emoji: '☀️', name: 'Sun',         cost: 65,  category: 'Nature'  },
+  { id: 'butterfly', emoji: '🦋', name: 'Butterfly',   cost: 80,  category: 'Nature'  },
+  // Attitude
+  { id: 'demon',     emoji: '😈', name: 'Demon',       cost: 100, category: 'Attitude'},
+  { id: 'anger',     emoji: '😤', name: 'Anger',       cost: 75,  category: 'Attitude'},
+  { id: 'clown',     emoji: '🤡', name: 'Clown',       cost: 85,  category: 'Attitude'},
+  { id: 'hundred',   emoji: '💯', name: '100',         cost: 60,  category: 'Attitude'},
+  { id: 'hangLoose', emoji: '🤙', name: 'Hang Loose',  cost: 55,  category: 'Attitude'},
+  // Rare
+  { id: 'trophy',    emoji: '🏆', name: 'Trophy',      cost: 300, category: 'Rare'    },
+  { id: 'bullseye',  emoji: '🎯', name: 'Bullseye',    cost: 200, category: 'Rare'    },
+  { id: 'brain',     emoji: '🧠', name: 'Galaxy Brain', cost: 250, category: 'Rare'   },
+  { id: 'eagle',     emoji: '🦅', name: 'Eagle',       cost: 280, category: 'Rare'    },
+  { id: 'alien',     emoji: '👾', name: 'Alien',       cost: 220, category: 'Rare'    },
+];
+
 module.exports = {
   WORLD_WIDTH, WORLD_HEIGHT,
   BUILDINGS, TREES, PARK, CAFE_TABLES, ROADS, CARS, LAUNDRY,
@@ -371,6 +408,7 @@ module.exports = {
   MANHOLES, SEWER_LOOT_POSITIONS,
   EGG_NEST_ZONES, EGG_SPAWN_POOL,
   DON_POS, CASINO_POS,
+  TATTOO_PARLOR_POS, TATTOO_CATALOG,
   PREDATOR_TERRITORIES,
   getXPForLevel, getLevelFromXP, getBirdTypeForLevel,
 };

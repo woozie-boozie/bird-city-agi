@@ -373,6 +373,44 @@
     </button>
   </div>
 
+  <!-- Bird Tattoo Parlor Overlay -->
+  <div id="tattooOverlay" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+    background:rgba(10,0,22,0.97);color:#ff88ff;font:12px 'Courier New',monospace;
+    padding:18px 22px;border-radius:18px;border:2px solid #ff44cc;z-index:95;
+    min-width:340px;max-width:480px;max-height:80vh;overflow-y:auto;
+    box-shadow:0 0 40px rgba(255,68,200,0.5),0 0 80px rgba(255,68,200,0.2);text-align:center;">
+
+    <div style="font-size:18px;font-weight:bold;color:#ff88ff;margin-bottom:2px;text-shadow:0 0 12px #ff44cc;">
+      🎨 TATTOO PARLOR 🎨
+    </div>
+    <div style="font-size:9px;color:#cc66cc;margin-bottom:10px;">Permanent ink — visible to all birds · 3 slots max</div>
+
+    <!-- Coins display -->
+    <div style="font-size:11px;color:#cc88cc;margin-bottom:10px;">
+      💰 Coins: <span id="tattooCoinVal">0</span>c
+    </div>
+
+    <!-- Equipped slots -->
+    <div style="margin-bottom:10px;">
+      <div style="font-size:10px;color:#ff88ff;margin-bottom:6px;letter-spacing:1px;">YOUR INK (click to remove)</div>
+      <div id="tattooEquippedSlots" style="display:flex;justify-content:center;gap:6px;"></div>
+    </div>
+
+    <div style="border-top:1px solid rgba(255,68,200,0.3);padding-top:10px;margin-bottom:8px;
+      font-size:10px;color:#cc66cc;text-align:left;">
+      Buy a tattoo below, then click EQUIP to wear it.
+    </div>
+
+    <!-- Catalog grid -->
+    <div id="tattooCatalogGrid" style="text-align:left;"></div>
+
+    <button id="tattooCloseBtn" style="display:block;margin:12px auto 0;background:rgba(50,0,50,0.6);
+      color:#cc88cc;border:1px solid #884488;padding:5px 20px;border-radius:10px;cursor:pointer;
+      font:11px 'Courier New',monospace;">
+      LEAVE  [P]
+    </button>
+  </div>
+
   <!-- Gang HQ Overlay -->
   <div id="gangHqOverlay" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
     background:rgba(8,4,18,0.97);color:#ff6633;font:12px 'Courier New',monospace;

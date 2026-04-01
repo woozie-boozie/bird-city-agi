@@ -95,6 +95,12 @@
   let casinoSpinInterval = null;
   const CASINO_REEL_SYMBOLS = ['🐦', '💩', '🍗', '⭐', '💎', '👑'];
 
+  // === BIRD TATTOO PARLOR ===
+  const tattooOverlay = document.getElementById('tattooOverlay');
+  const tattooCloseBtn = document.getElementById('tattooCloseBtn');
+  let tattooOverlayVisible = false;
+  let lastNearTattooParlor = false;
+
   // === Persistent Identity (localStorage) ===
   function getSavedAccount() {
     try {
@@ -1291,6 +1297,25 @@
       effects.push({ type: 'screen_shake', intensity: 25, duration: 1500, time: performance.now() });
     }
 
+    // === BIRD TATTOO PARLOR EVENTS ===
+    if (ev.type === 'tattoo_bought') {
+      if (ev.birdId === myId) {
+        showAnnouncement(`🎨 NEW TATTOO: ${ev.emoji} ${ev.name}! (-${ev.cost}c)`, '#ff88ff', 3000);
+        addEventMessage(`🎨 You got inked: ${ev.emoji} ${ev.name}!`, '#ff88ff');
+        if (tattooOverlayVisible) renderTattooOverlay();
+      }
+    }
+    if (ev.type === 'tattoo_equipped') {
+      if (ev.birdId === myId) {
+        if (tattooOverlayVisible) renderTattooOverlay();
+      }
+    }
+    if (ev.type === 'tattoo_error') {
+      if (ev.birdId === myId) {
+        addEventMessage('❌ Tattoo: ' + ev.msg, '#ff4444');
+      }
+    }
+
     // === THE ARENA — PvP EVENTS ===
     if (ev.type === 'arena_enter') {
       if (ev.birdId === myId) {
@@ -1910,6 +1935,14 @@
         hideCasinoOverlay();
       } else if (gameState && lastNearCasino) {
         showCasinoOverlay();
+      }
+    }
+    // Tattoo Parlor toggle
+    if (e.key.toLowerCase() === 'p') {
+      if (tattooOverlayVisible) {
+        hideTattooOverlay();
+      } else if (gameState && lastNearTattooParlor) {
+        showTattooOverlay();
       }
     }
     // Arena enter
@@ -2624,6 +2657,14 @@
     }
     lastNearCasino = nearCas;
     if (casinoOverlayVisible) updateCasinoDisplay();
+
+    // Tattoo Parlor proximity
+    const nearTat = !!gameState.nearTattooParlor;
+    if (nearTat !== lastNearTattooParlor) {
+      if (!nearTat && tattooOverlayVisible) hideTattooOverlay();
+    }
+    lastNearTattooParlor = nearTat;
+    if (tattooOverlayVisible) renderTattooOverlay();
 
     // Gang HQ — update when open
     if (gangHqVisible) renderGangHq();
@@ -4458,6 +4499,11 @@
       Renderer.drawCasino(ctx, camera, worldData.casinoPos, gameState.slotsJackpot || 500, !!gameState.nearCasino, now);
     }
 
+    // Bird Tattoo Parlor
+    if (worldData && worldData.tattooParlor) {
+      Renderer.drawTattooParlor(ctx, camera, worldData.tattooParlor.pos, !!gameState.nearTattooParlor, now);
+    }
+
     // Pigeon Race track checkpoints
     if (worldData && worldData.raceCheckpoints) {
       Renderer.drawRaceTrack(ctx, camera, worldData.raceCheckpoints, gameState.pigeonRace || null, now);
@@ -4478,7 +4524,7 @@
             ctx.globalAlpha = 0.5;
           }
           Sprites.drawBird(ctx, sx, sy, b.rotation, b.type, b.wingPhase, isPlayer, b.birdColor || null);
-          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null);
+          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || []);
           if (b.cloaked || b.inNest) {
             ctx.globalAlpha = 1;
           }
@@ -4748,6 +4794,11 @@
     // Casino on minimap
     if (worldData && worldData.casinoPos) {
       Renderer.drawCasinoOnMinimap(minimapCtx, worldData, gameState.slotsJackpot || 500);
+    }
+
+    // Tattoo Parlor on minimap
+    if (worldData && worldData.tattooParlor) {
+      Renderer.drawTattooParlourOnMinimap(minimapCtx, worldData);
     }
 
     // Draw beacons on minimap
@@ -5820,6 +5871,125 @@
   }
   if (casinoCloseBtn) {
     casinoCloseBtn.addEventListener('click', () => hideCasinoOverlay());
+  }
+
+  // ============================================================
+  // BIRD TATTOO PARLOR — OVERLAY
+  // ============================================================
+  function showTattooOverlay() {
+    tattooOverlayVisible = true;
+    tattooOverlay.style.display = 'block';
+    for (const k in keys) keys[k] = false;
+    syncInput();
+    renderTattooOverlay();
+  }
+
+  function hideTattooOverlay() {
+    tattooOverlayVisible = false;
+    tattooOverlay.style.display = 'none';
+  }
+
+  function renderTattooOverlay() {
+    if (!gameState || !gameState.self || !worldData || !worldData.tattooParlor) return;
+    const catalog = worldData.tattooParlor.catalog || [];
+    const owned = gameState.tattoosOwned || [];
+    const equipped = gameState.tattoosEquipped || [];
+    const coins = gameState.self.coins || 0;
+
+    // Update coin display
+    const coinEl = document.getElementById('tattooCoinVal');
+    if (coinEl) coinEl.textContent = coins;
+
+    // Equipped slots
+    const slotsEl = document.getElementById('tattooEquippedSlots');
+    if (slotsEl) {
+      slotsEl.innerHTML = '';
+      for (let i = 0; i < 3; i++) {
+        const slot = document.createElement('div');
+        slot.style.cssText = 'display:inline-block;width:36px;height:36px;border:2px solid rgba(255,68,200,0.6);border-radius:6px;text-align:center;line-height:36px;font-size:20px;margin:0 4px;background:rgba(30,0,50,0.8);cursor:pointer;';
+        if (equipped[i]) {
+          const t = catalog.find(c => c.id === equipped[i]);
+          slot.textContent = t ? t.emoji : '?';
+          slot.title = `Unequip ${t ? t.name : equipped[i]}`;
+          slot.onclick = () => {
+            if (socket && joined) socket.emit('action', { type: 'equip_tattoo', tattooId: equipped[i] });
+          };
+        } else {
+          slot.textContent = '·';
+          slot.style.opacity = '0.3';
+        }
+        slotsEl.appendChild(slot);
+      }
+    }
+
+    // Catalog grid grouped by category
+    const gridEl = document.getElementById('tattooCatalogGrid');
+    if (!gridEl) return;
+    gridEl.innerHTML = '';
+    const categories = ['Crime', 'Power', 'Nature', 'Attitude', 'Rare'];
+    const catColors = { Crime: '#ff4444', Power: '#ffd700', Nature: '#44ff88', Attitude: '#ff8844', Rare: '#cc44ff' };
+
+    for (const cat of categories) {
+      const items = catalog.filter(t => t.category === cat);
+      if (!items.length) continue;
+
+      const catHeader = document.createElement('div');
+      catHeader.style.cssText = `width:100%;color:${catColors[cat]};font-size:10px;font-weight:bold;margin:6px 0 2px;letter-spacing:1px;text-transform:uppercase;`;
+      catHeader.textContent = cat;
+      gridEl.appendChild(catHeader);
+
+      for (const tattoo of items) {
+        const isOwned = owned.includes(tattoo.id);
+        const isEquipped = equipped.includes(tattoo.id);
+        const canAfford = coins >= tattoo.cost;
+
+        const card = document.createElement('div');
+        card.style.cssText = `display:inline-flex;flex-direction:column;align-items:center;width:60px;margin:3px;padding:6px 4px;border-radius:8px;cursor:pointer;font-size:11px;border:1.5px solid ${isOwned ? catColors[cat] : 'rgba(120,80,150,0.4)'};background:${isOwned ? 'rgba(30,0,50,0.9)' : 'rgba(15,0,25,0.8)'};vertical-align:top;`;
+
+        const emojiSpan = document.createElement('div');
+        emojiSpan.style.cssText = 'font-size:22px;line-height:1;margin-bottom:3px;';
+        emojiSpan.textContent = tattoo.emoji;
+
+        const nameSpan = document.createElement('div');
+        nameSpan.style.cssText = 'color:#ddd;font-size:9px;margin-bottom:3px;white-space:nowrap;';
+        nameSpan.textContent = tattoo.name;
+
+        const actionBtn = document.createElement('button');
+        actionBtn.style.cssText = 'border:none;border-radius:4px;padding:2px 6px;font-size:9px;cursor:pointer;font-weight:bold;';
+        if (!isOwned) {
+          actionBtn.textContent = `${tattoo.cost}c`;
+          actionBtn.style.background = canAfford ? catColors[cat] : '#555';
+          actionBtn.style.color = canAfford ? '#000' : '#888';
+          actionBtn.disabled = !canAfford;
+          actionBtn.onclick = () => {
+            if (socket && joined) socket.emit('action', { type: 'buy_tattoo', tattooId: tattoo.id });
+          };
+        } else if (isEquipped) {
+          actionBtn.textContent = '✓ ON';
+          actionBtn.style.background = catColors[cat];
+          actionBtn.style.color = '#000';
+          actionBtn.onclick = () => {
+            if (socket && joined) socket.emit('action', { type: 'equip_tattoo', tattooId: tattoo.id });
+          };
+        } else {
+          actionBtn.textContent = 'EQUIP';
+          actionBtn.style.background = 'rgba(80,40,100,0.9)';
+          actionBtn.style.color = catColors[cat];
+          actionBtn.onclick = () => {
+            if (socket && joined) socket.emit('action', { type: 'equip_tattoo', tattooId: tattoo.id });
+          };
+        }
+
+        card.appendChild(emojiSpan);
+        card.appendChild(nameSpan);
+        card.appendChild(actionBtn);
+        gridEl.appendChild(card);
+      }
+    }
+  }
+
+  if (tattooCloseBtn) {
+    tattooCloseBtn.addEventListener('click', () => hideTattooOverlay());
   }
 
   // ============================================================

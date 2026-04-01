@@ -840,6 +840,31 @@ Bird City now has a proper casino. A neon-lit gambling den sits in the mid-right
 
 **Creative intent**: Bird City's richest birds now have somewhere to BLOW their coins. The Kingpin tribute just gave you 20c passive income — now you can take it to the casino and try to triple-up. The progressive jackpot creates a city-wide incentive: when the jackpot hits 4000c+ and someone wins it, the announcement is a moment everyone remembers. Triple 💩 giving a free Mega Poop creates a beautiful synergy — your gambling winnings become a combat power-up. The 2-second cooldown prevents spam but keeps it snappy. Pure DISCOVERY + CARNAGE + SPECTACLE energy. The city now has a vice district.
 
+**Session 29 — 2026-04-01: Bird Tattoo Parlor — Permanent Identity Ink**
+A neon-lit ink shop sits in the lower Cafe District (x:640, y:1840). Fly within 100px and press [P] to open the shop. Buy and wear up to 3 permanent emoji tattoos — they display as a small strip below your nametag, visible to every player in the city.
+
+**25 tattoos across 5 categories:**
+- 💀 **Crime** (5 tattoos, 75–120c): Skull, Heat, Blade, Ninja, Dead Eyes — for the career criminal
+- ⚡ **Power** (5 tattoos, 75–250c): Lightning, Fire, Diamond, Crown, Star — for the dominant bird
+- 🌿 **Nature** (5 tattoos, 50–80c): Leaf, Wave, Moon, Sun, Butterfly — for the chill bird
+- 😈 **Attitude** (5 tattoos, 55–100c): Demon, Anger, Clown, 100, Hang Loose — for the unhinged bird
+- 🏆 **Rare** (5 tattoos, 200–300c): Trophy, Bullseye, Galaxy Brain, Eagle, Alien — for the prestige hunter
+
+**How it works:**
+- Buy any tattoo you can afford (one-time cost, permanently yours)
+- Equip up to 3 from your collection — they show as a row of emojis below your name pill
+- Toggle equip/unequip freely with no extra cost
+- A 3-slot "equip panel" at the top of the shop shows your current ink with one-click unequip
+
+**The building:**
+- Animated barbershop pole with rotating red/blue candy stripes (classic icon)
+- Neon "TATTOO PARLOR" sign with flicker effect, pulsing pink/purple glow
+- Three decorative tattoo emojis on the facade: 💀🔥💎
+- Pulsing green "OPEN" indicator
+- Permanent 🎨 dot on minimap
+
+**Creative intent**: The game now has a rich identity layer. Two birds in the same gang can show different tattoos — one with 💀☠️🗡️ looks like a hardened criminal, another with 🌿🌊🌙 looks like a zen wanderer. The Rare category (200–300c) creates aspirational unlocks — when you see someone rocking 🦅 or 🏆 under their name, you know they're loaded. Tattoos also interact beautifully with the gang system: [SKY] gang members with matching 🌊🌙🌿 tattoos create a visual identity that's immediately recognizable. Pure PROGRESSION + DISCOVERY + SOCIAL identity energy.
+
 **Session 28 — 2026-04-01: Bird Gangs — Persistent Criminal Crews**
 The most SOCIAL system yet. Named gangs with custom 3-letter tags, color identity, shared treasury, and gang wars — distinct from ephemeral flocks. Gangs persist across sessions (saved to Firestore), so your crew is always your crew.
 
@@ -900,7 +925,7 @@ The most SOCIAL system yet. Named gangs with custom 3-letter tags, color identit
 - Owl enforcer in park at night (no-poop zone, alerts NPCs)
 - **Bounty Board** — public board showing top-5 richest birds and current Kingpin; clicking a name places coins on them being dethroned (collective betting pool)
 - **Weather Betting** — bet on the next weather type before it spawns (integrates race betting panel logic)
-- **Bird Tattoo Parlor** — cosmetic shop where you spend coins for permanent emoji tags under your name
+- ~~**Bird Tattoo Parlor** — cosmetic shop where you spend coins for permanent emoji tags under your name~~ (DONE Session 29)
 **Session 20 — 2026-03-30: Territory Control System (Parallel Session)**
 Built the Territory Control System on top of the existing upstream code:
 - 6 named districts (Nest Side, Mall, Park, Cafe Quarter, Downtown, The Docks) — including a Docks zone added to upstream's 5
