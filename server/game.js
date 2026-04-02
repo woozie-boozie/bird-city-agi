@@ -138,6 +138,7 @@ class GameEngine {
     this.weather = null;              // { type, intensity, windAngle, windSpeed, endsAt, wormSpawnTimer, lightningTimer }
     this.weatherTimer = Date.now() + this._randomRange(60000, 120000); // 1-2 min to first weather
     this.rainWorms = new Map();       // id -> true (worm food ids spawned during rain)
+    this.weatherBetting = null;       // null or { openUntil, bets: Map(birdId -> { type, amount, name }) }
 
     // === GOLDEN EGG SCRAMBLE ===
     this.eggScramble = null;          // null or { state, startedAt, endsAt, eggs: Map(id->egg), delivered }
@@ -756,6 +757,9 @@ class GameEngine {
     }
     if (action.type === 'race_bet') {
       this._handleRaceBet(bird, action, now);
+    }
+    if (action.type === 'weather_bet') {
+      this._handleWeatherBet(bird, action, now);
     }
 
     // === Graffiti Tagging ===
@@ -2788,8 +2792,22 @@ class GameEngine {
         this.rainWorms.clear();
       }
       this.events.push({ type: 'weather_end', weatherType: oldType });
-      this.weatherTimer = now + this._randomRange(90000, 180000); // 1.5–3 min gap
+      // Open a 30-second betting window before the next weather spawns
+      const betGap = this._randomRange(90000, 180000); // 1.5–3 min gap
+      const BET_WINDOW = 30000; // 30 seconds to place bets
+      this.weatherTimer = now + betGap;
+      // Only open betting if there's enough time (gap > 40s)
+      if (betGap > 40000 && this.birds.size > 0) {
+        this.weatherBetting = { openUntil: now + BET_WINDOW, bets: new Map() };
+        this.events.push({ type: 'weather_bet_window', openUntil: this.weatherBetting.openUntil });
+      }
       return;
+    }
+
+    // Expire betting window if nobody is around
+    if (this.weatherBetting && now >= this.weatherBetting.openUntil) {
+      this.weatherBetting = null;
+      this.events.push({ type: 'weather_bet_expired' });
     }
 
     // Spawn new weather when timer fires
@@ -2840,6 +2858,13 @@ class GameEngine {
 
       this.events.push({ type: 'weather_start', weatherType: type, windAngle, windSpeed, intensity });
       console.log(`[GameEngine] Weather started: ${type} (wind=${Math.round(windSpeed)}, angle=${windAngle.toFixed(2)})`);
+
+      // Resolve any outstanding weather bets
+      if (this.weatherBetting) {
+        this._resolveWeatherBets(type);
+        this.weatherBetting = null;
+      }
+
       return;
     }
 
@@ -3844,6 +3869,16 @@ class GameEngine {
         windSpeed: this.weather.windSpeed,
         endsAt: this.weather.endsAt,
       } : null,
+      weatherBetting: (() => {
+        const wb = this.weatherBetting;
+        if (!wb) return null;
+        const myBet = wb.bets.get(bird.id) || null;
+        const typeAmounts = {};
+        for (const bet of wb.bets.values()) {
+          typeAmounts[bet.type] = (typeAmounts[bet.type] || 0) + bet.amount;
+        }
+        return { openUntil: wb.openUntil, myBet, typeAmounts, totalBets: wb.bets.size };
+      })(),
       territories: Array.from(this.territories.values()).map(z => ({
         id: z.id,
         name: z.name,
@@ -8504,6 +8539,95 @@ class GameEngine {
       amount,
       totalBets: race.bets.size,
     });
+  }
+
+  // ============================================================
+  // WEATHER BETTING
+  // ============================================================
+  _handleWeatherBet(bird, action, now) {
+    const wb = this.weatherBetting;
+    if (!wb || now >= wb.openUntil) {
+      this.events.push({ type: 'weather_bet_fail', birdId: bird.id, reason: 'no_window' });
+      return;
+    }
+    if (wb.bets.has(bird.id)) {
+      this.events.push({ type: 'weather_bet_fail', birdId: bird.id, reason: 'already_bet' });
+      return;
+    }
+    const VALID_TYPES = ['rain', 'wind', 'storm', 'fog', 'hailstorm'];
+    if (!VALID_TYPES.includes(action.betType)) {
+      this.events.push({ type: 'weather_bet_fail', birdId: bird.id, reason: 'invalid_type' });
+      return;
+    }
+    const amount = typeof action.amount === 'number' ? Math.floor(action.amount) : 0;
+    if (amount < 10 || amount > 300) {
+      this.events.push({ type: 'weather_bet_fail', birdId: bird.id, reason: 'invalid_amount' });
+      return;
+    }
+    if (bird.coins < amount) {
+      this.events.push({ type: 'weather_bet_fail', birdId: bird.id, reason: 'no_coins' });
+      return;
+    }
+
+    bird.coins -= amount;
+    wb.bets.set(bird.id, { type: action.betType, amount, name: bird.name });
+
+    // Build typeAmounts for all clients
+    const typeAmounts = {};
+    for (const bet of wb.bets.values()) {
+      typeAmounts[bet.type] = (typeAmounts[bet.type] || 0) + bet.amount;
+    }
+
+    this.events.push({
+      type: 'weather_bet_placed',
+      birdId: bird.id,
+      birdName: bird.name,
+      betType: action.betType,
+      amount,
+      typeAmounts,
+      totalBets: wb.bets.size,
+    });
+  }
+
+  _resolveWeatherBets(actualType) {
+    const wb = this.weatherBetting;
+    if (!wb || wb.bets.size === 0) return;
+
+    const winBets = [...wb.bets.entries()].filter(([, b]) => b.type === actualType);
+    const loseBets = [...wb.bets.entries()].filter(([, b]) => b.type !== actualType);
+    const totalPool = [...wb.bets.values()].reduce((s, b) => s + b.amount, 0);
+
+    const results = [];
+
+    if (winBets.length === 0) {
+      // Nobody guessed right — full refund
+      for (const [bid, bet] of wb.bets) {
+        const b = this.birds.get(bid);
+        if (b) b.coins += bet.amount;
+        results.push({ birdId: bid, birdName: bet.name, betType: bet.type, amount: bet.amount, payout: bet.amount, won: false, refund: true });
+      }
+      this.events.push({ type: 'weather_bet_results', actualType, noWinners: true, totalPool, results });
+      return;
+    }
+
+    const totalWinAmount = winBets.reduce((s, [, b]) => s + b.amount, 0);
+
+    for (const [bid, bet] of winBets) {
+      // Each winner gets proportional share of the full pool (minimum 1.5×)
+      const payout = Math.max(Math.floor(bet.amount * 1.5), Math.floor(totalPool * bet.amount / totalWinAmount));
+      const b = this.birds.get(bid);
+      if (b) {
+        b.coins += payout;
+        b.xp = (b.xp || 0) + 50;
+      }
+      results.push({ birdId: bid, birdName: bet.name, betType: bet.type, amount: bet.amount, payout, won: true });
+    }
+    for (const [bid, bet] of loseBets) {
+      // Losers already had coins deducted
+      results.push({ birdId: bid, birdName: bet.name, betType: bet.type, amount: bet.amount, payout: 0, won: false, refund: false });
+    }
+
+    this.events.push({ type: 'weather_bet_results', actualType, noWinners: false, totalPool, results });
   }
 
   // ============================================================

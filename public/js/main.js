@@ -227,6 +227,10 @@
   const raceBettingPanel = document.getElementById('raceBettingPanel');
   let raceBetAmount = 50; // default bet amount
 
+  // Weather Betting state
+  const weatherBetPanel = document.getElementById('weatherBetPanel');
+  let weatherBetAmount = 30; // default bet amount
+
   // Leaderboard data
   let leaderboardData = [];
   let serverStats = { playersOnline: 0, totalPoops: 0 };
@@ -1587,6 +1591,53 @@
     }
     if (ev.type === 'worms_appeared') {
       addEventMessage('🪱 Worms are wriggling out of the wet ground! Grab them!', '#d46a8a');
+    }
+
+    // === WEATHER BETTING EVENTS ===
+    if (ev.type === 'weather_bet_window') {
+      const secsLeft = Math.ceil((ev.openUntil - Date.now()) / 1000);
+      showAnnouncement('🌤️ WEATHER BET OPEN! What comes next? ' + secsLeft + 's to bet!', '#aaddff', 4000);
+      addEventMessage('🌤️ Forecast betting window open — check the left panel!', '#aaddff');
+    }
+    if (ev.type === 'weather_bet_placed') {
+      const info = WEATHER_BET_INFO && WEATHER_BET_INFO[ev.betType];
+      const emoji = info ? info.emoji : '?';
+      addEventMessage(`🌤️ ${ev.birdName} bet ${ev.amount}c on ${emoji} ${ev.betType}! (${ev.totalBets} bets, pool growing)`, '#88aacc');
+    }
+    if (ev.type === 'weather_bet_fail' && ev.birdId === myId) {
+      const reasons = {
+        no_window: 'No betting window is open right now.',
+        already_bet: 'You already placed your bet!',
+        invalid_type: 'Invalid weather type.',
+        invalid_amount: 'Bet must be 10–300 coins.',
+        no_coins: 'Not enough coins!',
+      };
+      showAnnouncement('❌ ' + (reasons[ev.reason] || 'Bet failed.'), '#ff4444', 2000);
+    }
+    if (ev.type === 'weather_bet_expired') {
+      addEventMessage('🌤️ Forecast betting window closed.', '#7799cc');
+    }
+    if (ev.type === 'weather_bet_results') {
+      const info = WEATHER_BET_INFO && WEATHER_BET_INFO[ev.actualType];
+      const emoji = info ? info.emoji : '?';
+      if (ev.noWinners) {
+        showAnnouncement(emoji + ' ' + ev.actualType.toUpperCase() + ' rolled in! Nobody guessed — full refund!', '#aaddff', 5000);
+        addEventMessage(emoji + ' Weather: ' + ev.actualType + ' — no correct bets. Everyone refunded.', '#aaddff');
+      } else {
+        const winners = ev.results.filter(r => r.won);
+        const winText = winners.map(r => r.birdName + ' (+' + (r.payout - r.amount) + 'c)').join(', ');
+        showAnnouncement(emoji + ' ' + ev.actualType.toUpperCase() + ' was right! Winners: ' + winText, '#44ff88', 6000);
+        for (const r of ev.results) {
+          if (r.won && r.birdId === myId) {
+            showAnnouncement('🎉 YOU WON! +' + (r.payout - r.amount) + 'c profit on your ' + ev.actualType + ' bet!', '#44ff88', 5000);
+            effects.push({ type: 'screen_shake', intensity: 8, duration: 400, time: performance.now() });
+          }
+          if (!r.won && !r.refund && r.birdId === myId) {
+            addEventMessage('💸 Your ' + r.betType + ' bet lost. Better luck next time!', '#ff7777');
+          }
+        }
+        addEventMessage(emoji + ' Weather: ' + ev.actualType + ' — ' + winners.length + ' bettor(s) won! ' + winText, '#44ff88');
+      }
     }
     if (ev.type === 'lightning') {
       // Screen flash + shake
@@ -3410,6 +3461,91 @@
   };
 
   // ============================================================
+  // WEATHER BETTING PANEL — shown between weather events
+  // ============================================================
+  const WEATHER_BET_INFO = {
+    rain:      { emoji: '🌧️', label: 'RAIN',      color: '#66aaff', odds: '32%' },
+    wind:      { emoji: '💨', label: 'WIND',      color: '#aaddff', odds: '26%' },
+    storm:     { emoji: '⛈️', label: 'STORM',     color: '#ffdd44', odds: '15%' },
+    fog:       { emoji: '🌫️', label: 'FOG',       color: '#b8ddc0', odds: '14%' },
+    hailstorm: { emoji: '🌨️', label: 'HAILSTORM', color: '#88ccff', odds: '13%' },
+  };
+
+  function updateWeatherBetPanel(now) {
+    if (!weatherBetPanel) return;
+    const wb = gameState && gameState.weatherBetting;
+    if (!wb) { weatherBetPanel.style.display = 'none'; return; }
+
+    const msLeft = wb.openUntil - now;
+    if (msLeft <= 0) { weatherBetPanel.style.display = 'none'; return; }
+
+    weatherBetPanel.style.display = 'block';
+    const secsLeft = Math.ceil(msLeft / 1000);
+    const myBet = wb.myBet;
+    const typeAmounts = wb.typeAmounts || {};
+    const totalPool = Object.values(typeAmounts).reduce((s, v) => s + v, 0);
+
+    if (myBet) {
+      // Already bet — show confirmation with live pool
+      const info = WEATHER_BET_INFO[myBet.type] || {};
+      const onMyPick = typeAmounts[myBet.type] || myBet.amount;
+      const estPayout = totalPool > 0
+        ? Math.max(Math.floor(myBet.amount * 1.5), Math.floor(totalPool * myBet.amount / onMyPick))
+        : Math.floor(myBet.amount * 1.5);
+      weatherBetPanel.innerHTML =
+        '<div style="color:#aaddff;font-size:12px;margin-bottom:4px;">🌤️ FORECAST BET</div>'
+        + '<div style="color:#44ff88;font-size:11px;margin-bottom:4px;">✅ BET PLACED!</div>'
+        + '<div style="color:#ffd700;font-size:12px;margin-bottom:3px;">'
+        + myBet.amount + 'c on <b>' + (info.emoji || '') + ' ' + (info.label || myBet.type) + '</b></div>'
+        + '<div style="color:#88ff88;font-size:9px;">Pool: ' + totalPool + 'c · Est. win: ~' + estPayout + 'c</div>'
+        + '<div style="color:#7799cc;font-size:9px;margin-top:4px;">Window closes: ' + secsLeft + 's</div>';
+      weatherBetPanel.style.pointerEvents = 'none';
+    } else {
+      // Betting interface — show all 5 weather types
+      const TYPES = ['rain', 'wind', 'storm', 'fog', 'hailstorm'];
+      let html = '<div style="color:#aaddff;font-size:12px;margin-bottom:2px;">🌤️ FORECAST BET</div>'
+        + '<div style="color:#7799cc;font-size:9px;margin-bottom:6px;">What\'s next? · ' + secsLeft + 's · Pool: ' + totalPool + 'c</div>';
+
+      for (const t of TYPES) {
+        const info = WEATHER_BET_INFO[t];
+        const onType = typeAmounts[t] || 0;
+        html += '<div style="margin:2px 0;display:flex;align-items:center;gap:5px;">'
+          + '<button data-wtype="' + t + '" '
+          + 'style="flex:1;background:rgba(20,40,80,0.8);border:1px solid ' + info.color + ';color:' + info.color + ';'
+          + 'font:bold 9px Courier New,monospace;padding:3px 5px;border-radius:6px;cursor:pointer;text-align:left;" '
+          + 'onclick="window._weatherBetClick(this)">'
+          + info.emoji + ' ' + info.label + ' <span style="color:#888;font-size:8px;">(' + info.odds + ')</span>'
+          + '</button>'
+          + '<span style="color:#aaa;font-size:8px;white-space:nowrap;">' + onType + 'c</span>'
+          + '</div>';
+      }
+      html += '<div style="margin-top:7px;display:flex;align-items:center;gap:5px;">'
+        + '<span style="color:#7799cc;font-size:9px;">Bet:</span>'
+        + '<input id="weatherBetInput" type="number" min="10" max="300" value="' + weatherBetAmount + '" '
+        + 'style="width:55px;background:#111;border:1px solid #446688;color:#aaddff;'
+        + 'font:10px Courier New,monospace;padding:2px 4px;border-radius:4px;" />'
+        + '<span style="color:#7799cc;font-size:9px;">c (10–300)</span>'
+        + '</div>'
+        + '<div style="color:#6688aa;font-size:8px;margin-top:3px;">Click weather to bet!</div>';
+      weatherBetPanel.innerHTML = html;
+      weatherBetPanel.style.pointerEvents = 'auto';
+
+      const inp = document.getElementById('weatherBetInput');
+      if (inp) {
+        inp.addEventListener('change', () => { const v = parseInt(inp.value); if (v >= 10 && v <= 300) weatherBetAmount = v; });
+        inp.addEventListener('input',  () => { const v = parseInt(inp.value); if (v >= 10 && v <= 300) weatherBetAmount = v; });
+      }
+    }
+  }
+
+  window._weatherBetClick = function(btn) {
+    const betType = btn.getAttribute('data-wtype');
+    const inp = document.getElementById('weatherBetInput');
+    if (inp) { const v = parseInt(inp.value); if (v >= 10 && v <= 300) weatherBetAmount = v; }
+    socket.emit('action', { type: 'weather_bet', betType, amount: weatherBetAmount });
+  };
+
+  // ============================================================
   // PIGEON RACING UI — proximity prompt + race HUD
   // ============================================================
   // SEWER UI — proximity prompt for manholes
@@ -4845,6 +4981,7 @@
     updateRadioTowerUI(now);
     updateRaceUI();
     updateRaceBettingPanel();
+    updateWeatherBetPanel(now);
     updateSewerUI(now);
 
     // Minimap (now includes activeEvent and cat)

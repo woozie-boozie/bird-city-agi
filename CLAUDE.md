@@ -969,6 +969,34 @@ The most SOCIAL pressure mechanic yet. A grand marble City Hall building (x:1780
 
 **Creative intent**: The Kingpin system already made wealth a target. The Dethronement Pool turns it into a *city-wide conspiracy*. A broke bird who's been getting taxed by the Kingpin can drop 200c in the pool and let the entire city know there's a fat payout waiting. The pool grows until someone collects — if nobody dethrones the current Kingpin for a while, the pool gets enormous. A pool at 3000c means every bird in the city is hunting the crown simultaneously. The Kingpin watches the pool climb on their HUD pill and must choose: keep getting tribute (and keep growing as a target) or blow their coins to drop below 200c and lose the crown voluntarily. Pure SOCIAL + CARNAGE energy — the city now has a collective assassination fund.
 
+**Session 32 — 2026-04-02: Weather Betting — Forecast the Chaos**
+Between every weather event, a 30-second betting window opens. Birds bet on what weather comes next — rain, wind, storm, fog, or hailstorm. Correct guessers split the pool proportionally (minimum 1.5× guaranteed). Wrong guessers lose their coins. The city becomes a meteorology gambling den.
+
+**Betting mechanics (`server/game.js`):**
+- When weather ends: if the cooldown gap is >40s and at least 1 player is online, a 30-second betting window opens automatically
+- Server stores `this.weatherBetting = { openUntil, bets: Map(birdId -> { type, amount, name }) }`
+- `weather_bet` action: validates type, amount (10–300c), sufficient coins, no double-bet, open window
+- When next weather spawns: `_resolveWeatherBets(actualType)` fires before resetting the betting state
+- Pari-mutuel pool: correct bettors share the total pool proportionally (each winner gets their_amount / total_winning_amount × total_pool), minimum 1.5× return guaranteed
+- If nobody guessed right: full refund to all bettors (fair + rare thrill when it happens)
+- `weatherBetting` included in state snapshot: `{ openUntil, myBet, typeAmounts, totalBets }`
+
+**Visual (left-panel UI, `public/js/main.js`, `public/index.html`):**
+- `#weatherBetPanel`: blue-tinted panel on the LEFT side of screen (avoids collision with race betting on the right)
+- Shows all 5 weather types as clickable buttons with their historical probability and current total bet on each type
+- Amount input (10–300c, remembers last value)
+- Once bet placed: panel switches to confirmation mode showing estimated payout from current pool odds
+- Panel auto-hides when no window is open or window expires
+
+**Events & announcements:**
+- `weather_bet_window`: city-wide "🌤️ FORECAST BET OPEN! 30s to bet!" announcement + left-panel appears
+- `weather_bet_placed`: event feed shout-out showing who bet on what (social pressure / herd dynamics)
+- `weather_bet_fail`: personal failure message with clear reason (already_bet, no_coins, etc.)
+- `weather_bet_expired`: quiet event feed note when window closes without weather
+- `weather_bet_results`: big announcement when weather spawns + winner callouts with profit amounts
+
+**Creative intent**: Weather was already chaotic. Now the idle time BETWEEN weather events is exciting too. "Storm" just ended — betting window opens — "I bet on Fog but everyone else is betting Rain" creates instant social tension. The probability hints (32% rain, 13% hailstorm) give info without certainty. A clever meteorologist who reads patterns and bets on hailstorm while everyone bets rain makes 3-4× their money. The city's weather becomes a collective prediction market. Pure SOCIAL + DISCOVERY energy — the chaos is now speculative.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -983,8 +1011,10 @@ The most SOCIAL pressure mechanic yet. A grand marble City Hall building (x:1780
 - ~~Race power-ups: speed boost gates on the circuit that any racer can fly through~~ (DONE Session 30)
 - Owl enforcer in park at night (no-poop zone, alerts NPCs)
 - ~~**Bounty Board** — public board showing top-5 richest birds and current Kingpin; clicking a name places coins on them being dethroned (collective betting pool)~~ (DONE Session 31)
-- **Weather Betting** — bet on the next weather type before it spawns (integrates race betting panel logic)
+- ~~**Weather Betting** — bet on the next weather type before it spawns (integrates race betting panel logic)~~ (DONE Session 32)
 - ~~**Bird Tattoo Parlor** — cosmetic shop where you spend coins for permanent emoji tags under your name~~ (DONE Session 29)
+- **Nest Building** — spend coins to build/upgrade a permanent nest structure anywhere on the map, acts as respawn point and XP shrine for your gang
+- **Bioluminescent park pond** — glowing water effect at night in the park center, attracts rare fish food items and owl enforcer visits
 **Session 20 — 2026-03-30: Territory Control System (Parallel Session)**
 Built the Territory Control System on top of the existing upstream code:
 - 6 named districts (Nest Side, Mall, Park, Cafe Quarter, Downtown, The Docks) — including a Docks zone added to upstream's 5
