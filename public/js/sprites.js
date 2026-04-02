@@ -334,6 +334,38 @@ window.Sprites = {
         ctx.arc(Math.sin(i * 2) * 3, Math.cos(i * 3) * 3, 1.5, 0, Math.PI * 2);
         ctx.fill();
       }
+    } else if (type === 'pond_fish') {
+      // Bioluminescent glowing fish — sacred pond night loot
+      const t = Date.now();
+      const pulse = 0.5 + 0.5 * Math.sin(t * 0.006);
+      // Outer glow aura
+      ctx.fillStyle = `rgba(0, 255, 200, ${pulse * 0.35})`;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 11, 7, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Fish body (teal/cyan shimmer)
+      const gb = Math.floor(180 + pulse * 75);
+      const bb = Math.floor(150 + pulse * 105);
+      ctx.fillStyle = `rgba(0, ${gb}, ${bb}, 0.92)`;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 7, 4, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Tail fin
+      ctx.beginPath();
+      ctx.moveTo(-7, 0);
+      ctx.lineTo(-11, -3 - pulse);
+      ctx.lineTo(-11, 3 + pulse);
+      ctx.closePath();
+      ctx.fill();
+      // Glowing eye
+      ctx.fillStyle = `rgba(255, 255, 255, ${0.7 + pulse * 0.3})`;
+      ctx.beginPath();
+      ctx.arc(4, -1, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#00ffc8';
+      ctx.beginPath();
+      ctx.arc(4, -1, 0.7, 0, Math.PI * 2);
+      ctx.fill();
     } else if (type === 'worm') {
       // Squiggly pink worm — drawn as a winding bezier curve
       const wPulse = Math.sin(Date.now() * 0.004) * 1.5;
@@ -3068,6 +3100,120 @@ window.Sprites = {
       ctx.fillText('🏠 HOME', 0, -34);
       ctx.globalAlpha = 1;
     }
+
+    ctx.restore();
+  },
+
+  // === OWL ENFORCER — night guardian of the Sacred Pond ===
+  drawOwlEnforcer(ctx, x, y, rotation, state, now) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rotation);
+
+    const isAlert = state === 'chasing';
+    const eyeColor = isAlert ? '#ff6600' : '#ffd700';
+    const auraColor = isAlert ? 'rgba(255, 80, 0, 0.2)' : 'rgba(0, 255, 200, 0.15)';
+    const auraPulse = 0.7 + 0.3 * Math.sin(now * (isAlert ? 0.01 : 0.003));
+
+    // Aura glow behind owl
+    ctx.fillStyle = auraColor;
+    ctx.globalAlpha = auraPulse;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 24, 24, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath();
+    ctx.ellipse(2, 4, 12, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Wings (spread out flat — top-down view)
+    ctx.fillStyle = '#7a4f18';
+    ctx.beginPath();
+    ctx.ellipse(-13, 2, 9, 5, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(13, 2, 9, 5, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    // Wing stripes
+    ctx.fillStyle = '#c8a050';
+    ctx.beginPath();
+    ctx.ellipse(-12, 2, 6, 2.5, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(12, 2, 6, 2.5, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Body (rounded, tan/brown)
+    ctx.fillStyle = '#c8a050';
+    ctx.beginPath();
+    ctx.ellipse(0, 2, 8, 11, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Body pattern stripes
+    ctx.fillStyle = 'rgba(100, 60, 10, 0.4)';
+    for (let i = -6; i <= 6; i += 3) {
+      ctx.beginPath();
+      ctx.ellipse(0, i, 7, 1, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Round head
+    ctx.fillStyle = '#d4a860';
+    ctx.beginPath();
+    ctx.arc(0, -10, 9, 0, Math.PI * 2);
+    ctx.fill();
+    // Facial disc (pale ring around face)
+    ctx.fillStyle = 'rgba(255,245,220,0.55)';
+    ctx.beginPath();
+    ctx.arc(0, -10, 7, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Eyes (glowing — the signature feature)
+    ctx.shadowColor = eyeColor;
+    ctx.shadowBlur = isAlert ? 10 : 5;
+    ctx.fillStyle = eyeColor;
+    ctx.beginPath();
+    ctx.arc(-3.5, -10, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(3.5, -10, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    // Pupils
+    ctx.fillStyle = '#111';
+    ctx.beginPath();
+    ctx.arc(-3.5, -10, 1.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(3.5, -10, 1.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Beak
+    ctx.fillStyle = '#d07c20';
+    ctx.beginPath();
+    ctx.moveTo(0, -7.5);
+    ctx.lineTo(-1.8, -5.5);
+    ctx.lineTo(1.8, -5.5);
+    ctx.closePath();
+    ctx.fill();
+
+    // Ear tufts
+    ctx.fillStyle = '#7a4f18';
+    ctx.beginPath();
+    ctx.moveTo(-4, -18); ctx.lineTo(-2, -14); ctx.lineTo(-6, -14); ctx.closePath(); ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(4, -18);  ctx.lineTo(2, -14);  ctx.lineTo(6, -14);  ctx.closePath(); ctx.fill();
+
+    // Label
+    ctx.fillStyle = isAlert ? '#ff8800' : '#00ffc8';
+    ctx.font = 'bold 7px monospace';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = '#000';
+    ctx.shadowBlur = 3;
+    ctx.fillText(isAlert ? '🦉 ALERT!' : '🦉 ENFORCER', 0, -24);
+    ctx.shadowBlur = 0;
 
     ctx.restore();
   },

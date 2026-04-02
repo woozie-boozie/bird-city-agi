@@ -1033,6 +1033,45 @@ Gangs can now plant a permanent physical home base anywhere on the map — a twi
 
 **Creative intent**: This completes the gang system's physical layer. Gangs had tags, colors, territory control, and war — but no permanent PLACE. The nest gives every gang a location that means something: it's where you respawn after a bad hawk encounter, where your crew gathers to bank passive XP, and where enemy raids strike at your power. Raiding a rival's nest is now a legitimate criminal act with big rewards. Two rival gangs fighting over a chokepoint area — one pooping down the other's nest while defenders try to drive off attackers — is a chaotic, cinematic scenario that no system in the game created before. Pure SOCIAL + CARNAGE + PROGRESSION energy.
 
+**Session 34 — 2026-04-02: Bioluminescent Park Pond — Sacred Night Ecosystem**
+The park pond transforms at night into a glowing, magical water feature with its own ecosystem: rare glowing fish to catch, and an Owl Enforcer who punishes noisy behavior.
+
+**Bioluminescent Pond (renderer.js):**
+- At dusk the pond begins shifting from blue to teal/cyan, fading in with darkness intensity
+- Four animated ripple rings expand outward from the pond center — the water breathes
+- 14 sparkle particles orbit the pond edge with independent phase offsets
+- Radial glow halo behind the pond pulses with a soft heartbeat rhythm
+- "✨ SACRED POND" label appears when the glow is at full intensity
+- All visuals fade out at dawn when the bioluminescence retreats
+
+**Glowing Pond Fish (server/game.js + sprites.js):**
+- 3 fish spawn when night begins at randomized positions within the pond ellipse
+- Respawn every 35-55 seconds up to a max of 3 active at once
+- Auto-collect: fly within 40px to catch one — no button press needed
+- Each fish gives: +40 coins, +80 XP, +25 food — premium night loot
+- Custom sprite: animated glowing teal body, pulsing tail fin, luminescent eye
+- Removed cleanly from the foods map at dawn
+
+**Owl Enforcer NPC (server/game.js + sprites.js):**
+- Spawns at night at the pond, patrols 4 waypoints circling the water at 38px/s
+- If any poop lands within 150px of the owl: state switches to 'chasing' — owl pursues the bird at 180px/s for 8 seconds
+- On catching a bird (within 45px): steals 12% of coins (min 8c, max 120c) + breaks combo streak + brief stun
+- **Counter-play**: poop directly ON the owl → stunned for 8 seconds, +50 XP +15c
+- Visual: large round-headed owl with glowing golden eyes that turn orange when alert, ear tufts, wing stripe pattern, "🦉 ENFORCER" label (turns "🦉 ALERT!" when chasing)
+- Eyes glow brighter with a blurred halo in alert mode
+
+**Minimap integration:**
+- Cyan 🦉 pulsing dot at owl position when calm, turns orange when chasing
+
+**Events & announcements:**
+- `owl_appears`: "The Owl Enforcer has arrived at the Sacred Pond. Stay quiet..." city-wide
+- `owl_alert`: personal "OWL ALERT!" announcement when spotted + city-wide shoutout
+- `owl_caught`: personal "OWL CAUGHT YOU! −Xc" + screen shake for the victim
+- `owl_scared`: city-wide callout when a bird poop-stuns the owl
+- `pond_fish_caught`: personal "BIOLUMINESCENT FISH! +40c +80 XP" + floating text
+
+**Creative intent**: The park pond was just decoration — now it's the most beautiful and dangerous spot in the city at night. The core tension: you need to fly near the pond to catch valuable fish, but pooping (your main offense) alerts the owl. High-combo grinders who fire constantly will immediately draw the owl's attention. Do you hold your fire to catch the fish safely, or keep your combo alive and risk getting caught? The bioluminescent visual is also the most striking thing in the game at night — a glowing cyan portal in the middle of the park that rewards players who explore it. Pure DISCOVERY + SPECTACLE + CARNAGE energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -1045,12 +1084,12 @@ Gangs can now plant a permanent physical home base anywhere on the map — a twi
 - Eagle Overlord rare drop: "Eagle Feather" cosmetic badge (persistent cosmetic, visible on nametag)
 - ~~**Bird Gangs** — persistent named gangs with custom colors/tags, gang treasury, gang turf wars~~ (DONE Session 28)
 - ~~Race power-ups: speed boost gates on the circuit that any racer can fly through~~ (DONE Session 30)
-- Owl enforcer in park at night (no-poop zone, alerts NPCs)
+- ~~Owl enforcer in park at night (no-poop zone, alerts NPCs)~~ (DONE Session 34)
 - ~~**Bounty Board** — public board showing top-5 richest birds and current Kingpin; clicking a name places coins on them being dethroned (collective betting pool)~~ (DONE Session 31)
 - ~~**Weather Betting** — bet on the next weather type before it spawns (integrates race betting panel logic)~~ (DONE Session 32)
 - ~~**Bird Tattoo Parlor** — cosmetic shop where you spend coins for permanent emoji tags under your name~~ (DONE Session 29)
 - ~~**Nest Building** — spend coins to build/upgrade a permanent nest structure anywhere on the map, acts as respawn point and XP shrine for your gang~~ (DONE Session 33)
-- **Bioluminescent park pond** — glowing water effect at night in the park center, attracts rare fish food items and owl enforcer visits
+- ~~**Bioluminescent park pond** — glowing water effect at night in the park center, attracts rare fish food items and owl enforcer visits~~ (DONE Session 34)
 **Session 20 — 2026-03-30: Territory Control System (Parallel Session)**
 Built the Territory Control System on top of the existing upstream code:
 - 6 named districts (Nest Side, Mall, Park, Cafe Quarter, Downtown, The Docks) — including a Docks zone added to upstream's 5

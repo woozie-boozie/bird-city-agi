@@ -70,7 +70,7 @@ window.Renderer = {
   },
 
   // Draw park area
-  drawPark(ctx, camera) {
+  drawPark(ctx, camera, dayTime, now) {
     if (!this.worldData) return;
     const p = this.worldData.park;
     const sx = p.x - camera.x + camera.screenW / 2;
@@ -93,11 +93,16 @@ window.Renderer = {
     ctx.beginPath();
     ctx.ellipse(px, py, pond.rx, pond.ry, 0, 0, Math.PI * 2);
     ctx.fill();
-    // Pond shimmer
+    // Pond shimmer (daytime only)
     ctx.fillStyle = 'rgba(150, 200, 255, 0.3)';
     ctx.beginPath();
     ctx.ellipse(px - 10, py - 5, pond.rx * 0.4, pond.ry * 0.3, -0.3, 0, Math.PI * 2);
     ctx.fill();
+
+    // Bioluminescent pond overlay at night
+    if (dayTime !== undefined && now !== undefined) {
+      this.drawBioluminescentPond(ctx, px, py, pond.rx, pond.ry, dayTime, now);
+    }
 
     // Statue
     const st = p.statue;
@@ -105,6 +110,80 @@ window.Renderer = {
       st.x - camera.x + camera.screenW / 2,
       st.y - camera.y + camera.screenH / 2
     );
+  },
+
+  // Bioluminescent pond glow — activates at dusk/night/dawn
+  drawBioluminescentPond(ctx, px, py, rx, ry, dayTime, now) {
+    // Compute glow intensity (mirrors night darkness curve)
+    let glowAlpha = 0;
+    if (dayTime >= 0.30 && dayTime < 0.45) {
+      glowAlpha = (dayTime - 0.30) / 0.15;
+    } else if (dayTime >= 0.45 && dayTime < 0.75) {
+      glowAlpha = 1.0;
+    } else if (dayTime >= 0.75 && dayTime < 0.90) {
+      glowAlpha = 1.0 - (dayTime - 0.75) / 0.15;
+    }
+    if (glowAlpha <= 0.02) return;
+
+    const haloPulse = 0.7 + 0.3 * Math.sin(now * 0.002);
+
+    // Outer radial glow halo
+    const grad = ctx.createRadialGradient(px, py, 0, px, py, rx * 2.8);
+    grad.addColorStop(0, `rgba(0, 255, 200, ${glowAlpha * 0.35 * haloPulse})`);
+    grad.addColorStop(0.45, `rgba(0, 180, 140, ${glowAlpha * 0.18 * haloPulse})`);
+    grad.addColorStop(1, 'rgba(0, 80, 60, 0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.ellipse(px, py, rx * 2.8, rx * 2.8, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Glowing pond surface (teal overlay on top of blue)
+    ctx.save();
+    ctx.globalAlpha = glowAlpha * (0.6 + 0.15 * haloPulse);
+    ctx.fillStyle = `rgba(0, 210, 180, 1)`;
+    ctx.beginPath();
+    ctx.ellipse(px, py, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.restore();
+
+    // Expanding ripple rings from center
+    for (let i = 0; i < 4; i++) {
+      const phase = ((now * 0.0007 + i * 0.25) % 1.0);
+      const ringAlpha = (1 - phase) * 0.55 * glowAlpha;
+      const ringRx = rx * (0.2 + phase * 1.9);
+      const ringRy = ry * (0.2 + phase * 1.9);
+      ctx.strokeStyle = `rgba(0, 255, 200, ${ringAlpha})`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.ellipse(px, py, ringRx, ringRy, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // Sparkle particles floating on the surface
+    for (let i = 0; i < 14; i++) {
+      const angle = (i / 14) * Math.PI * 2 + now * 0.00025;
+      const wobble = Math.sin(now * 0.0018 + i * 1.73) * 18;
+      const spx = px + Math.cos(angle) * (rx * 0.62 + wobble * 0.4);
+      const spy = py + Math.sin(angle) * (ry * 0.55 + wobble * 0.25);
+      const spAlpha = (0.25 + 0.75 * Math.abs(Math.sin(now * 0.0028 + i * 0.9))) * glowAlpha;
+      ctx.fillStyle = `rgba(180, 255, 240, ${spAlpha})`;
+      ctx.beginPath();
+      ctx.arc(spx, spy, 1.5 + Math.sin(now * 0.005 + i) * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // "SACRED POND ✨" label when glowing brightly
+    if (glowAlpha > 0.55) {
+      const labelAlpha = (glowAlpha - 0.55) * 2.2;
+      ctx.fillStyle = `rgba(0, 255, 200, ${Math.min(1, labelAlpha)})`;
+      ctx.font = '8px monospace';
+      ctx.textAlign = 'center';
+      ctx.shadowColor = 'rgba(0, 200, 160, 0.8)';
+      ctx.shadowBlur = 4;
+      ctx.fillText('✨ SACRED POND', px, py + ry + 13);
+      ctx.shadowBlur = 0;
+    }
   },
 
   // Draw buildings

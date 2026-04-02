@@ -288,6 +288,13 @@ class GameEngine {
     this.dayTime = 0.0;
     this.dayPhase = 'day'; // 'day' | 'dusk' | 'night' | 'dawn'
 
+    // === BIOLUMINESCENT POND (night-only) ===
+    // An Owl Enforcer patrols the Sacred Pond at night. Pooping near it alerts the owl.
+    // Glowing pond fish spawn in the water — auto-collect for big coins + XP.
+    this.owlEnforcer = null;          // null or owl state object
+    this.pondFishIds = new Set();     // tracks which food IDs are pond fish
+    this.pondFishRespawnTimer = 0;    // when to try spawning next fish
+
     this.tickRate = 20;           // ticks per second
     this.tickInterval = 1000 / this.tickRate;
     this.lastTick = Date.now();
@@ -945,6 +952,9 @@ class GameEngine {
 
     // === Drunk Pigeons ===
     this._updateDrunkPigeons(dt, now);
+
+    // === Bioluminescent Pond (Owl Enforcer) ===
+    this._updateOwlEnforcer(dt, now);
 
     // === The Godfather Raccoon ===
     this._updateGodfatherRaccoon(dt, now);
@@ -2185,6 +2195,14 @@ class GameEngine {
             killedById: bird.id, killedByName: bird.name,
           });
         }
+      } else if (hit.target === 'owl_enforcer' && this.owlEnforcer) {
+        // Poop hit the Owl Enforcer directly — scares it off temporarily
+        xpGain = 50;
+        bird.coins += 15;
+        this.owlEnforcer.state = 'stunned';
+        this.owlEnforcer.stunnedUntil = now + 8000; // stunned 8s
+        this.owlEnforcer.alertBirdId = null;
+        this.events.push({ type: 'owl_scared', birdId: bird.id, birdName: bird.name, x: this.owlEnforcer.x, y: this.owlEnforcer.y });
       } else if (hit.target === 'hit_target' && hit.hitContract) {
         // Bounty hunting — player hit a bird with an active hit contract
         const hitContract = hit.hitContract;
@@ -2419,6 +2437,19 @@ class GameEngine {
         }
       }
 
+      // Owl Enforcer: poop noise within 150px alerts the owl even if it didn't hit
+      if (this.owlEnforcer && hit.target !== 'owl_enforcer' &&
+          (this.owlEnforcer.state === 'patrol' || this.owlEnforcer.state === 'returning')) {
+        const odx = poop.x - this.owlEnforcer.x;
+        const ody = poop.y - this.owlEnforcer.y;
+        if (Math.sqrt(odx * odx + ody * ody) < 150) {
+          this.owlEnforcer.state = 'chasing';
+          this.owlEnforcer.alertBirdId = bird.id;
+          this.owlEnforcer.chaseTimer = 8.0;
+          this.events.push({ type: 'owl_alert', birdId: bird.id, birdName: bird.name, x: this.owlEnforcer.x, y: this.owlEnforcer.y });
+        }
+      }
+
       // Check level up
       const newLevel = world.getLevelFromXP(bird.xp);
       const newType = world.getBirdTypeForLevel(newLevel);
@@ -2561,6 +2592,37 @@ class GameEngine {
           this.events.push({ type: 'sewer_loot', birdId: bird.id, name: bird.name, value: loot.value, x: loot.x, y: loot.y });
           this._trackDailyProgress(bird, 'sewer_loot', 1);
           this._trackDailyProgress(bird, 'coins_earned', loot.value);
+        }
+      }
+    }
+
+    // === Pond fish auto-collect (night-only, fly near the sacred pond) ===
+    if (!bird.inSewer && this.pondFishIds.size > 0) {
+      for (const fishId of this.pondFishIds) {
+        const fish = this.foods.get(fishId);
+        if (!fish || !fish.active) continue;
+        const fdx = bird.x - fish.x;
+        const fdy = bird.y - fish.y;
+        if (Math.sqrt(fdx * fdx + fdy * fdy) < 40) {
+          fish.active = false;
+          this.pondFishIds.delete(fishId);
+          const coinBonus = 40;
+          const xpBonus = 80;
+          bird.coins += coinBonus;
+          bird.xp += xpBonus;
+          bird.food += 25;
+          this._trackDailyProgress(bird, 'coins_earned', coinBonus);
+          this.events.push({ type: 'pond_fish_caught', birdId: bird.id, name: bird.name, coins: coinBonus, x: fish.x, y: fish.y });
+          const fId = fishId;
+          setTimeout(() => { this.foods.delete(fId); }, 10000);
+          // Check level up from XP
+          const newLvl = world.getLevelFromXP(bird.xp);
+          if (newLvl !== bird.level) {
+            bird.level = newLvl;
+            bird.type = world.getBirdTypeForLevel(newLvl);
+            this.events.push({ type: 'evolve', birdId: bird.id, name: bird.name, birdType: bird.type });
+          }
+          break; // one fish per tick
         }
       }
     }
@@ -2715,6 +2777,16 @@ class GameEngine {
       if (Math.sqrt(pdx * pdx + pdy * pdy) < hitDist) {
         if (!isMegaPoop) return { target: 'territory_predator', predKey, predator };
         allHits.push({ target: 'territory_predator', predKey, predator });
+      }
+    }
+
+    // Check Owl Enforcer (direct hit scares it away temporarily)
+    if (this.owlEnforcer && this.owlEnforcer.state !== 'stunned') {
+      const odx = poop.x - this.owlEnforcer.x;
+      const ody = poop.y - this.owlEnforcer.y;
+      if (Math.sqrt(odx * odx + ody * ody) < hitRadius + 14) {
+        if (!isMegaPoop) return { target: 'owl_enforcer' };
+        allHits.push({ target: 'owl_enforcer' });
       }
     }
 
@@ -3433,6 +3505,124 @@ class GameEngine {
   }
 
   // ============================================================
+  // BIOLUMINESCENT POND — OWL ENFORCER + GLOWING FISH
+  // ============================================================
+  _spawnOwlEnforcer() {
+    this.owlEnforcer = {
+      x: 1160, y: 1100,          // start at right side of pond
+      rotation: 0,
+      hp: 40, maxHp: 40,
+      state: 'patrol',           // 'patrol' | 'chasing' | 'returning' | 'stunned'
+      patrolIndex: 0,
+      alertBirdId: null,
+      chaseTimer: 0,
+      stunnedUntil: 0,
+    };
+  }
+
+  _spawnPondFish() {
+    // 5 possible spawn positions inside the pond ellipse (cx:1050, cy:1100)
+    const FISH_POSITIONS = [
+      { x: 1000, y: 1075 },
+      { x: 1100, y: 1125 },
+      { x: 1050, y: 1090 },
+      { x: 975,  y: 1110 },
+      { x: 1125, y: 1085 },
+    ];
+    for (const pos of FISH_POSITIONS) {
+      // Skip if there's already an active fish very close
+      let occupied = false;
+      for (const fishId of this.pondFishIds) {
+        const f = this.foods.get(fishId);
+        if (!f || !f.active) continue;
+        if (Math.abs(f.x - pos.x) < 30 && Math.abs(f.y - pos.y) < 30) { occupied = true; break; }
+      }
+      if (!occupied) {
+        const id = 'food_pond_fish_' + uid();
+        this.foods.set(id, { id, x: pos.x, y: pos.y, type: 'pond_fish', value: 30, active: true, respawnAt: null });
+        this.pondFishIds.add(id);
+        return; // one at a time
+      }
+    }
+  }
+
+  _updateOwlEnforcer(dt, now) {
+    if (!this.owlEnforcer) return;
+    const owl = this.owlEnforcer;
+
+    // Patrol waypoints circling the pond (cx:1050, cy:1100)
+    const PATROL = [
+      { x: 1170, y: 1100 },
+      { x: 1050, y: 1025 },
+      { x: 930,  y: 1100 },
+      { x: 1050, y: 1180 },
+    ];
+
+    if (owl.state === 'stunned') {
+      if (now >= owl.stunnedUntil) { owl.state = 'patrol'; }
+      return;
+    }
+
+    if (owl.state === 'patrol') {
+      const wp = PATROL[owl.patrolIndex];
+      const dx = wp.x - owl.x, dy = wp.y - owl.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 15) {
+        owl.patrolIndex = (owl.patrolIndex + 1) % PATROL.length;
+      } else {
+        const spd = 38 * dt;
+        owl.x += (dx / dist) * spd;
+        owl.y += (dy / dist) * spd;
+        owl.rotation = Math.atan2(dy, dx);
+      }
+    } else if (owl.state === 'chasing') {
+      owl.chaseTimer -= dt;
+      const target = this.birds.get(owl.alertBirdId);
+      if (!target || owl.chaseTimer <= 0) {
+        owl.state = 'returning';
+        owl.alertBirdId = null;
+      } else {
+        const dx = target.x - owl.x, dy = target.y - owl.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 45) {
+          // Caught! Steal coins, break combo
+          const stolen = Math.min(Math.max(8, Math.floor(target.coins * 0.12)), 120);
+          target.coins = Math.max(0, target.coins - stolen);
+          target.comboCount = 0;
+          target.stunnedUntil = now + 1500; // brief stun
+          this.events.push({ type: 'owl_caught', birdId: target.id, birdName: target.name, stolen, x: owl.x, y: owl.y });
+          owl.state = 'returning';
+          owl.alertBirdId = null;
+          owl.chaseTimer = 0;
+        } else {
+          const spd = 180 * dt;
+          owl.x += (dx / dist) * spd;
+          owl.y += (dy / dist) * spd;
+          owl.rotation = Math.atan2(dy, dx);
+        }
+      }
+    } else if (owl.state === 'returning') {
+      const home = PATROL[0];
+      const dx = home.x - owl.x, dy = home.y - owl.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 20) {
+        owl.state = 'patrol';
+      } else {
+        const spd = 80 * dt;
+        owl.x += (dx / dist) * spd;
+        owl.y += (dy / dist) * spd;
+        owl.rotation = Math.atan2(dy, dx);
+      }
+    }
+
+    // Spawn pond fish on a timer
+    if (now >= this.pondFishRespawnTimer && this.pondFishIds.size < 3) {
+      this._spawnPondFish();
+      this.pondFishRespawnTimer = now + this._randomRange(35000, 55000);
+    }
+  }
+
+  // ============================================================
   // DAY/NIGHT CYCLE
   // ============================================================
   _updateDayNight(dt, now) {
@@ -3463,12 +3653,30 @@ class GameEngine {
       if (newPhase === 'night' && this.cat) {
         this.cat.speed *= 1.4;
       }
+      // At night: Owl Enforcer arrives at the Sacred Pond + initial fish spawn
+      if (newPhase === 'night') {
+        this._spawnOwlEnforcer();
+        // Seed 3 fish right away
+        for (let i = 0; i < 3; i++) this._spawnPondFish();
+        this.pondFishRespawnTimer = Date.now() + 45000;
+        this.events.push({ type: 'owl_appears' });
+      }
       // At dawn: respawn all street foods to celebrate the new day
       if (newPhase === 'dawn') {
         for (const food of this.foods.values()) {
           food.active = true;
           food.respawnAt = null;
         }
+        // Owl departs at dawn
+        if (this.owlEnforcer) {
+          this.owlEnforcer = null;
+          this.events.push({ type: 'owl_leaves' });
+        }
+        // Remove pond fish
+        for (const fishId of this.pondFishIds) {
+          this.foods.delete(fishId);
+        }
+        this.pondFishIds.clear();
       }
     }
   }
@@ -4271,6 +4479,15 @@ class GameEngine {
           rebuildAvailableAt: nest.rebuildAvailableAt,
         };
       })(),
+      // Bioluminescent Pond — Owl Enforcer (night-only)
+      owlEnforcer: this.owlEnforcer ? {
+        x: this.owlEnforcer.x,
+        y: this.owlEnforcer.y,
+        rotation: this.owlEnforcer.rotation,
+        state: this.owlEnforcer.state,
+        hp: this.owlEnforcer.hp,
+        maxHp: this.owlEnforcer.maxHp,
+      } : null,
     };
   }
 

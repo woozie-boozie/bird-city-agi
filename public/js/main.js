@@ -1761,6 +1761,52 @@
       addEventMessage('The drunk pigeons passed out and went home at dawn.', '#aaaaaa');
     }
 
+    // === BIOLUMINESCENT POND — OWL ENFORCER EVENTS ===
+    if (ev.type === 'owl_appears') {
+      showAnnouncement('🦉 The Owl Enforcer guards the Sacred Pond! Stay quiet...', '#00ffc8', 4000);
+      addEventMessage('🦉 The Owl Enforcer has arrived at the Sacred Pond. Pooping nearby will alert it!', '#00ffc8');
+    }
+    if (ev.type === 'owl_leaves') {
+      addEventMessage('🦉 The Owl Enforcer retreats at dawn. The pond is quiet again.', '#aaaaaa');
+    }
+    if (ev.type === 'owl_alert') {
+      const isMe = ev.birdId === myId;
+      if (isMe) {
+        showAnnouncement('🦉 OWL ALERT! The Enforcer is hunting you!', '#ff8800', 3000);
+        effects.push({ type: 'screen_shake', intensity: 6, duration: 350, time: performance.now() });
+      } else {
+        addEventMessage(`🦉 Owl SPOTTED ${ev.birdName} making noise near the Sacred Pond!`, '#ff8800');
+      }
+    }
+    if (ev.type === 'owl_caught') {
+      const isMe = ev.birdId === myId;
+      if (isMe) {
+        showAnnouncement(`🦉 OWL CAUGHT YOU! −${ev.stolen} coins`, '#ff4400', 3000);
+        effects.push({ type: 'screen_shake', intensity: 10, duration: 500, time: performance.now() });
+        effects.push({ type: 'text', x: ev.x, y: ev.y, text: `−${ev.stolen}c 🦉`, color: '#ff4400', size: 14, time: performance.now(), duration: 2000 });
+      } else {
+        addEventMessage(`🦉 Owl caught ${ev.birdName} and seized ${ev.stolen} coins!`, '#ff8800');
+      }
+    }
+    if (ev.type === 'owl_scared') {
+      const isMe = ev.birdId === myId;
+      if (isMe) {
+        showAnnouncement('🦉 YOU SCARED OFF THE OWL! +15c +50 XP', '#00ffc8', 2500);
+        effects.push({ type: 'text', x: ev.x, y: ev.y, text: '🦉 SCARED! +15c', color: '#00ffc8', size: 13, time: performance.now(), duration: 2000 });
+      } else {
+        addEventMessage(`🦉 ${ev.birdName} scared the Owl Enforcer away! (8s stunned)`, '#00ffc8');
+      }
+    }
+    if (ev.type === 'pond_fish_caught') {
+      const isMe = ev.birdId === myId;
+      if (isMe) {
+        showAnnouncement(`✨ BIOLUMINESCENT FISH! +${ev.coins}c +80 XP`, '#00ffc8', 3000);
+        effects.push({ type: 'text', x: ev.x, y: ev.y, text: `+${ev.coins}c ✨`, color: '#00ffc8', size: 14, time: performance.now(), duration: 2200 });
+      } else {
+        addEventMessage(`✨ ${ev.name} caught a glowing pond fish! (+${ev.coins}c)`, '#00ffc8');
+      }
+    }
+
     // === UNDERGROUND SEWER EVENTS ===
     if (ev.type === 'sewer_enter') {
       const isMe = ev.birdId === myId;
@@ -4416,7 +4462,7 @@
     }
 
     Renderer.drawRoads(ctx, camera);
-    Renderer.drawPark(ctx, camera);
+    Renderer.drawPark(ctx, camera, gameState ? gameState.dayTime : undefined, now);
 
     // The Arena (drawn on ground level, below buildings)
     if (worldData && worldData.arena) {
@@ -4680,6 +4726,16 @@
       const gfsy = gf.y - camera.y + camera.screenH / 2;
       if (gfsx > -margin - 80 && gfsx < camera.screenW + margin + 80 && gfsy > -margin - 80 && gfsy < camera.screenH + margin + 80) {
         Sprites.drawGodfatherRaccoon(ctx, gfsx, gfsy, gf.rotation, gf.hp, gf.maxHp, gf.tributeCoins, now);
+      }
+    }
+
+    // Owl Enforcer — night guardian of the Sacred Pond
+    if (gameState.owlEnforcer) {
+      const owl = gameState.owlEnforcer;
+      const owlSx = owl.x - camera.x + camera.screenW / 2;
+      const owlSy = owl.y - camera.y + camera.screenH / 2;
+      if (owlSx > -margin - 50 && owlSx < camera.screenW + margin + 50 && owlSy > -margin - 50 && owlSy < camera.screenH + margin + 50) {
+        Sprites.drawOwlEnforcer(ctx, owlSx, owlSy, owl.rotation, owl.state, now);
       }
     }
 
@@ -5042,6 +5098,23 @@
       minimapCtx.font = 'bold 7px sans-serif';
       minimapCtx.textAlign = 'center';
       minimapCtx.fillText('🎩', dmx, dmy - 4);
+    }
+
+    // Owl Enforcer on minimap — cyan 🦉 dot when active at night
+    if (worldData && gameState.owlEnforcer) {
+      const mw = minimapCtx.canvas.width;
+      const mh = minimapCtx.canvas.height;
+      const owl = gameState.owlEnforcer;
+      const omx = owl.x * mw / worldData.width;
+      const omy = owl.y * mh / worldData.height;
+      const owlPulse = 0.6 + 0.4 * Math.sin(performance.now() * (owl.state === 'chasing' ? 0.01 : 0.003));
+      minimapCtx.fillStyle = owl.state === 'chasing' ? `rgba(255, 120, 0, ${owlPulse})` : `rgba(0, 255, 200, ${owlPulse})`;
+      minimapCtx.beginPath();
+      minimapCtx.arc(omx, omy, 3.5, 0, Math.PI * 2);
+      minimapCtx.fill();
+      minimapCtx.font = 'bold 7px sans-serif';
+      minimapCtx.textAlign = 'center';
+      minimapCtx.fillText('🦉', omx, omy - 4);
     }
 
     // Race checkpoints on minimap
