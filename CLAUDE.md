@@ -997,6 +997,42 @@ Between every weather event, a 30-second betting window opens. Birds bet on what
 
 **Creative intent**: Weather was already chaotic. Now the idle time BETWEEN weather events is exciting too. "Storm" just ended — betting window opens — "I bet on Fog but everyone else is betting Rain" creates instant social tension. The probability hints (32% rain, 13% hailstorm) give info without certainty. A clever meteorologist who reads patterns and bets on hailstorm while everyone bets rain makes 3-4× their money. The city's weather becomes a collective prediction market. Pure SOCIAL + DISCOVERY energy — the chaos is now speculative.
 
+**Session 33 — 2026-04-02: Gang Nest Building — Home Bases for Criminal Empires**
+Gangs can now plant a permanent physical home base anywhere on the map — a twig nest with a colored gang flag, eggs inside, and pulsing aura. The city's geography now has gang turf written in wood and feather.
+
+**Nest mechanics (`server/game.js`, `server/db.js`):**
+- Gang leaders press the "BUILD NEST" button in Gang HQ (costs 400 coins). One nest per gang.
+- Nest placed at the leader's current world position — pick your turf wisely
+- Cannot build in predator territories (Hawk's Nest / Cat Alley)
+- **XP Aura**: every 15s, all gang members within 130px of the nest get +15 XP +5 coins — the city's first permanent passive income structure
+- **Respawn anchor**: when a gang member dies to a predator (hawk/cat), they respawn at their gang nest instead of city center — a massive tactical advantage for territorial play
+- **Raiding**: rival gang birds can poop on an enemy nest (within 35px) to damage it — each poop = 8 HP damage, mega poop = 24 HP. Nest starts at 80 HP
+- **Destruction**: nest destroyed at 0 HP → 8-minute rebuild cooldown + city-wide announcement + +150 XP +80c for the raider
+- All nest data persisted to Firestore (`gang_nests` collection) — survives server restarts
+
+**Visual system (`public/js/sprites.js`, `public/js/renderer.js`):**
+- Custom `drawGangNest()` sprite: layered twig bundle with bezier sticks, mossy bowl center, 2 cream eggs with highlights, flag pole with animated waving triangular flag in gang color bearing the gang's 3-letter tag
+- HP bar appears when nest is damaged (green→orange→red)
+- "🏠 HOME" label pulses above the nest for the owning gang's members
+- Radial aura glow in gang color behind the nest (independent of game aura ticks)
+- Rendered in world space with camera culling for performance
+- **Minimap**: 🏠 emoji dot at nest position in gang color; own nest pulses brighter; destroyed nests show as grey dots
+
+**Gang HQ UI (`public/index.html`, `public/js/main.js`):**
+- New "🏠 GANG NEST" section in Gang HQ overlay (green-tinted, between War and Invite sections)
+- Shows live HP bar, aura/respawn info when alive
+- Shows rebuild countdown when destroyed; BUILD/REBUILD button for leaders
+- All nest-related errors reported in event feed and locally
+
+**Events & announcements:**
+- `nest_built`: city-wide announcement when a gang stakes their claim
+- `nest_hit`: floating damage numbers on the nest when it takes poop hits
+- `nest_destroyed`: massive screen shake + city-wide callout for the raider + reward announcement
+- `nest_respawn`: personal popup "RESPAWNED AT YOUR GANG NEST!" for the revived bird
+- `nest_aura`: personal event feed message when aura ticks (+15 XP +5c)
+
+**Creative intent**: This completes the gang system's physical layer. Gangs had tags, colors, territory control, and war — but no permanent PLACE. The nest gives every gang a location that means something: it's where you respawn after a bad hawk encounter, where your crew gathers to bank passive XP, and where enemy raids strike at your power. Raiding a rival's nest is now a legitimate criminal act with big rewards. Two rival gangs fighting over a chokepoint area — one pooping down the other's nest while defenders try to drive off attackers — is a chaotic, cinematic scenario that no system in the game created before. Pure SOCIAL + CARNAGE + PROGRESSION energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -1013,7 +1049,7 @@ Between every weather event, a 30-second betting window opens. Birds bet on what
 - ~~**Bounty Board** — public board showing top-5 richest birds and current Kingpin; clicking a name places coins on them being dethroned (collective betting pool)~~ (DONE Session 31)
 - ~~**Weather Betting** — bet on the next weather type before it spawns (integrates race betting panel logic)~~ (DONE Session 32)
 - ~~**Bird Tattoo Parlor** — cosmetic shop where you spend coins for permanent emoji tags under your name~~ (DONE Session 29)
-- **Nest Building** — spend coins to build/upgrade a permanent nest structure anywhere on the map, acts as respawn point and XP shrine for your gang
+- ~~**Nest Building** — spend coins to build/upgrade a permanent nest structure anywhere on the map, acts as respawn point and XP shrine for your gang~~ (DONE Session 33)
 - **Bioluminescent park pond** — glowing water effect at night in the park center, attracts rare fish food items and owl enforcer visits
 **Session 20 — 2026-03-30: Territory Control System (Parallel Session)**
 Built the Territory Control System on top of the existing upstream code:

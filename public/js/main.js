@@ -944,6 +944,41 @@
         addEventMessage(`⚠️ ${ev.msg}`, '#ff8844');
       }
     }
+    if (ev.type === 'nest_error') {
+      if (ev.birdId === myId) {
+        addEventMessage(`🏠 ${ev.msg}`, '#ff8844');
+      }
+    }
+    if (ev.type === 'nest_built') {
+      showAnnouncement(`🏠 [${ev.gangTag}] GANG NEST BUILT by ${ev.birdName}!`, ev.gangColor || '#66ff88', 3500);
+      addEventMessage(`🏠 [${ev.gangTag}] ${ev.gangName} built a gang nest!`, ev.gangColor || '#66ff88');
+      effects.push({ type: 'screen_shake', intensity: 5, duration: 400, time: now });
+    }
+    if (ev.type === 'nest_hit') {
+      if (ev.attackerId === myId) {
+        addEventMessage(`🏠 You hit [${ev.gangTag}] nest! (${ev.hp}/${ev.maxHp} HP)`, '#ffaa44');
+      }
+      // Show floating damage numbers near the nest
+      effects.push({ type: 'float_text', text: `-${ev.damage}HP`, x: ev.x, y: ev.y - 20, color: '#ff4444', duration: 900, time: now });
+    }
+    if (ev.type === 'nest_destroyed') {
+      SoundEngine.bossSpawn && SoundEngine.bossSpawn();
+      showAnnouncement(`💥 [${ev.gangTag}] NEST DESTROYED by ${ev.attackerName}! (+150 XP +80c)`, '#ff4444', 5000);
+      addEventMessage(`💥 [${ev.attackerName}] RAIDED [${ev.gangTag}] ${ev.gangName}'s nest! (+150 XP)`, '#ff4444');
+      effects.push({ type: 'screen_shake', intensity: 12, duration: 700, time: now });
+    }
+    if (ev.type === 'nest_respawn') {
+      if (ev.birdId === myId) {
+        showAnnouncement('🏠 RESPAWNED AT YOUR GANG NEST!', '#66ff88', 2500);
+      }
+    }
+    if (ev.type === 'nest_aura') {
+      for (const r of ev.rewards || []) {
+        if (r.birdId === myId) {
+          addEventMessage(`🏠 Gang nest aura: +15 XP +5c`, ev.gangColor || '#66ff88');
+        }
+      }
+    }
 
     // === CHAOS EVENTS ===
     if (ev.type === 'chaos_event') {
@@ -4728,6 +4763,12 @@
       Renderer.drawCityHall(ctx, camera, worldData.cityHallPos, poolAmount, !!gameState.nearCityHall, now);
     }
 
+    // Gang Nests
+    if (gameState.gangNests && gameState.gangNests.length > 0) {
+      const selfGangId = gameState.self && gameState.self.gangId;
+      Renderer.drawGangNests(ctx, camera, gameState.gangNests, selfGangId, now);
+    }
+
     // Pigeon Race track checkpoints
     if (worldData && worldData.raceCheckpoints) {
       Renderer.drawRaceTrack(ctx, camera, worldData.raceCheckpoints, gameState.pigeonRace || null, now);
@@ -5043,6 +5084,12 @@
     if (worldData && worldData.cityHallPos) {
       const poolAmount = (gameState.dethronementPool && gameState.dethronementPool.total) || 0;
       Renderer.drawCityHallOnMinimap(minimapCtx, worldData, poolAmount);
+    }
+
+    // Gang Nests on minimap
+    if (gameState.gangNests && gameState.gangNests.length > 0 && worldData) {
+      const selfGangId = gameState.self && gameState.self.gangId;
+      Renderer.drawGangNestsOnMinimap(minimapCtx, worldData, gameState.gangNests, selfGangId, now);
     }
 
     // Draw beacons on minimap
@@ -6448,6 +6495,14 @@
         }
       });
     }
+    // Build nest
+    const nestBuildBtn = document.getElementById('gangNestBuildBtn');
+    if (nestBuildBtn && !nestBuildBtn._wired) {
+      nestBuildBtn._wired = true;
+      nestBuildBtn.addEventListener('click', () => {
+        socket.emit('action', { type: 'nest_build' });
+      });
+    }
     // Close
     if (gangHqClose && !gangHqClose._wired) {
       gangHqClose._wired = true;
@@ -6555,6 +6610,43 @@
               declareSection.style.display = 'none';
             }
           }
+        }
+      }
+
+      // Nest section
+      const nestStatus = document.getElementById('gangNestStatus');
+      const nestBuildBtn = document.getElementById('gangNestBuildBtn');
+      const nestInfo = gameState.myNestStatus;
+      if (nestStatus && nestBuildBtn) {
+        if (!nestInfo || !nestInfo.exists) {
+          // No nest yet
+          nestStatus.innerHTML = `<span style="color:#99cc99;">No nest. Build one to set your gang's respawn point and XP shrine.</span>`;
+          if (self.gangRole === 'leader') {
+            nestBuildBtn.style.display = 'inline-block';
+            nestBuildBtn.textContent = `🪺 BUILD NEST (400c)${self.coins < 400 ? ' — NEED MORE COINS' : ''}`;
+            nestBuildBtn.disabled = self.coins < 400;
+          } else {
+            nestBuildBtn.style.display = 'none';
+          }
+        } else if (!nestInfo.alive) {
+          // Destroyed nest
+          const rebuildInSecs = nestInfo.rebuildAvailableAt ? Math.max(0, Math.ceil((nestInfo.rebuildAvailableAt - Date.now()) / 1000)) : 0;
+          nestStatus.innerHTML = rebuildInSecs > 0
+            ? `<span style="color:#ff6644;">💥 Nest destroyed! Rebuild in ${rebuildInSecs}s.</span>`
+            : `<span style="color:#ffaa44;">💥 Nest destroyed! Ready to rebuild.</span>`;
+          if (self.gangRole === 'leader' && rebuildInSecs === 0) {
+            nestBuildBtn.style.display = 'inline-block';
+            nestBuildBtn.textContent = `🪺 REBUILD NEST (400c)`;
+            nestBuildBtn.disabled = self.coins < 400;
+          } else {
+            nestBuildBtn.style.display = 'none';
+          }
+        } else {
+          // Alive nest
+          const hpPct = Math.floor((nestInfo.hp / nestInfo.maxHp) * 100);
+          const hpColor = hpPct > 60 ? '#66ff88' : hpPct > 30 ? '#ffaa44' : '#ff4444';
+          nestStatus.innerHTML = `<span style="color:${hpColor};">HP: ${nestInfo.hp}/${nestInfo.maxHp}</span> <span style="color:#99cc99;font-size:9px;">· Nearby members get +15 XP +5c every 15s · Acts as respawn point</span>`;
+          nestBuildBtn.style.display = 'none';
         }
       }
 

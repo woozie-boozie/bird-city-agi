@@ -2517,4 +2517,68 @@ window.Renderer = {
       }
     }
   },
+
+  /**
+   * Draw all gang nests in world space.
+   * nests: array from gameState.gangNests
+   */
+  drawGangNests(ctx, camera, nests, selfGangId, now) {
+    if (!nests || nests.length === 0) return;
+    for (const nest of nests) {
+      if (!nest.alive) continue;
+      const sx = nest.x - camera.x;
+      const sy = nest.y - camera.y;
+      // Only draw nests within a reasonable view range
+      if (sx < -120 || sx > (camera.screenW || 1400) + 120 || sy < -120 || sy > (camera.screenH || 900) + 120) continue;
+      Sprites.drawGangNest(ctx, sx, sy, nest.gangColor, nest.gangTag, nest.hp, nest.maxHp, nest.isMyNest, now);
+    }
+  },
+
+  /**
+   * Draw gang nests on the minimap.
+   */
+  drawGangNestsOnMinimap(minimapCtx, worldData, nests, selfGangId, now) {
+    if (!nests || nests.length === 0 || !worldData) return;
+    const mw = minimapCtx.canvas.width;
+    const mh = minimapCtx.canvas.height;
+    const sx = mw / worldData.width;
+    const sy = mh / worldData.height;
+    const t = now / 1000;
+
+    for (const nest of nests) {
+      const px = nest.x * sx;
+      const py = nest.y * sy;
+
+      if (nest.alive) {
+        const pulse = 0.7 + 0.3 * Math.sin(t * 2.5);
+        // Outer glow for own nest
+        if (nest.isMyNest) {
+          minimapCtx.globalAlpha = 0.3 * pulse;
+          minimapCtx.fillStyle = nest.gangColor;
+          minimapCtx.beginPath();
+          minimapCtx.arc(px, py, 6, 0, Math.PI * 2);
+          minimapCtx.fill();
+        }
+        // Nest dot
+        minimapCtx.globalAlpha = nest.isMyNest ? pulse : 0.85;
+        minimapCtx.fillStyle = nest.gangColor;
+        minimapCtx.beginPath();
+        minimapCtx.arc(px, py, nest.isMyNest ? 4 : 3, 0, Math.PI * 2);
+        minimapCtx.fill();
+        minimapCtx.globalAlpha = 1;
+        // House emoji label
+        minimapCtx.font = '7px sans-serif';
+        minimapCtx.textAlign = 'center';
+        minimapCtx.fillText('🏠', px, py - 4);
+      } else {
+        // Destroyed nest — grey X
+        minimapCtx.globalAlpha = 0.4;
+        minimapCtx.fillStyle = '#666';
+        minimapCtx.beginPath();
+        minimapCtx.arc(px, py, 2.5, 0, Math.PI * 2);
+        minimapCtx.fill();
+        minimapCtx.globalAlpha = 1;
+      }
+    }
+  },
 };

@@ -28,6 +28,7 @@ const firestore = admin.firestore();
 const birdsCol = firestore.collection('birds');
 const poopsCol = firestore.collection('poops');
 const gangsCol = firestore.collection('gangs');
+const nestsCol = firestore.collection('gang_nests');
 
 const db = {
   /**
@@ -144,6 +145,53 @@ const db = {
 
   async deleteGang(id) {
     await gangsCol.doc(id).delete();
+  },
+
+  /**
+   * Gang Nest CRUD — one nest per gang, persists across restarts.
+   */
+  async upsertGangNest(data) {
+    await nestsCol.doc(data.gangId).set({
+      gang_id: data.gangId,
+      gang_tag: data.gangTag,
+      gang_color: data.gangColor,
+      owner_id: data.ownerId,
+      owner_name: data.ownerName,
+      x: data.x,
+      y: data.y,
+      hp: data.hp,
+      max_hp: data.maxHp,
+      built_at: data.builtAt,
+      destroyed_at: data.destroyedAt || null,
+      rebuild_available_at: data.rebuildAvailableAt || null,
+    }, { merge: true });
+  },
+
+  async getAllGangNests() {
+    const snapshot = await nestsCol.get();
+    const nests = [];
+    snapshot.forEach(doc => {
+      const d = doc.data();
+      nests.push({
+        gangId: d.gang_id,
+        gangTag: d.gang_tag,
+        gangColor: d.gang_color,
+        ownerId: d.owner_id,
+        ownerName: d.owner_name,
+        x: d.x,
+        y: d.y,
+        hp: d.hp,
+        maxHp: d.max_hp,
+        builtAt: d.built_at,
+        destroyedAt: d.destroyed_at || null,
+        rebuildAvailableAt: d.rebuild_available_at || null,
+      });
+    });
+    return nests;
+  },
+
+  async deleteGangNest(gangId) {
+    await nestsCol.doc(gangId).delete();
   },
 
   /**

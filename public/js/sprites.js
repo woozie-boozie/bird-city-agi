@@ -2919,4 +2919,156 @@ window.Sprites = {
 
     ctx.restore();
   },
+
+  /**
+   * Draw a gang nest structure at (x, y) in world space (after camera transform).
+   * gangColor: the gang's color, gangTag: 3-letter tag, hp/maxHp for damage bar.
+   * isMyNest: true to show a warm aura glow.
+   */
+  drawGangNest(ctx, x, y, gangColor, gangTag, hp, maxHp, isMyNest, now) {
+    const t = now / 1000;
+    ctx.save();
+    ctx.translate(x, y);
+
+    // Aura glow behind nest (warm for own, neutral for others)
+    const auraAlpha = 0.15 + 0.1 * Math.sin(t * 2);
+    ctx.globalAlpha = auraAlpha;
+    const auraGrad = ctx.createRadialGradient(0, 0, 4, 0, 0, 36);
+    auraGrad.addColorStop(0, gangColor);
+    auraGrad.addColorStop(1, 'transparent');
+    ctx.fillStyle = auraGrad;
+    ctx.beginPath();
+    ctx.arc(0, 0, 36, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // Ground shadow
+    ctx.globalAlpha = 0.25;
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.ellipse(0, 14, 22, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // Twig bundle — layered curved sticks
+    const twigColor = '#6b3a1e';
+    const twigDark = '#3d1f0a';
+    // Bottom twig layer
+    for (let i = 0; i < 8; i++) {
+      const angle = (i / 8) * Math.PI * 2;
+      const tx1 = Math.cos(angle) * 20;
+      const ty1 = Math.sin(angle) * 10 + 6;
+      const tx2 = Math.cos(angle + 0.4) * 14;
+      const ty2 = Math.sin(angle + 0.4) * 7 + 4;
+      ctx.strokeStyle = i % 2 === 0 ? twigColor : twigDark;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(tx1, ty1);
+      ctx.quadraticCurveTo(tx1 * 0.4, ty1 * 0.4, tx2, ty2);
+      ctx.stroke();
+    }
+    // Inner twig rim (the nest bowl)
+    ctx.strokeStyle = twigDark;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.ellipse(0, 4, 14, 8, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Nest bowl interior (dark mossy center)
+    const bowlGrad = ctx.createRadialGradient(0, 4, 2, 0, 4, 13);
+    bowlGrad.addColorStop(0, '#1a2a0a');
+    bowlGrad.addColorStop(1, '#2d1806');
+    ctx.fillStyle = bowlGrad;
+    ctx.beginPath();
+    ctx.ellipse(0, 4, 13, 7.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Eggs inside the nest (2 eggs, cream-white with tinted shell)
+    const eggPositions = [[-4, 4], [4, 3]];
+    for (const [ex, ey] of eggPositions) {
+      // Egg shadow
+      ctx.globalAlpha = 0.3;
+      ctx.fillStyle = '#000';
+      ctx.beginPath();
+      ctx.ellipse(ex + 1, ey + 2.5, 4, 2.5, 0.3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      // Egg body
+      ctx.fillStyle = '#f0e8d0';
+      ctx.beginPath();
+      ctx.ellipse(ex, ey, 4.5, 5.5, 0.2, 0, Math.PI * 2);
+      ctx.fill();
+      // Egg highlight
+      ctx.globalAlpha = 0.6;
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.ellipse(ex - 1.5, ey - 2, 1.5, 1, -0.3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    // Flag pole (right side of nest)
+    ctx.strokeStyle = '#8b6914';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(12, 8);
+    ctx.lineTo(12, -22);
+    ctx.stroke();
+
+    // Flag (triangular, gang color)
+    const flagWave = Math.sin(t * 3) * 2;
+    ctx.fillStyle = gangColor;
+    ctx.globalAlpha = 0.9;
+    ctx.beginPath();
+    ctx.moveTo(12, -22);
+    ctx.lineTo(12 + 14 + flagWave, -18 + flagWave * 0.5);
+    ctx.lineTo(12, -14);
+    ctx.closePath();
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    // Flag outline
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.lineWidth = 0.5;
+    ctx.stroke();
+
+    // Gang tag on flag
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 5px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(gangTag, 18 + flagWave * 0.3, -18);
+
+    // HP bar (only when damaged)
+    if (hp < maxHp) {
+      const barW = 34;
+      const barX = -barW / 2;
+      const barY = -30;
+      // Background
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.fillRect(barX - 1, barY - 1, barW + 2, 5);
+      // HP fill (green to red)
+      const pct = hp / maxHp;
+      const barColor = pct > 0.5 ? '#44cc44' : pct > 0.25 ? '#ffaa00' : '#ff3333';
+      ctx.fillStyle = barColor;
+      ctx.fillRect(barX, barY, Math.ceil(barW * pct), 3);
+      // HP label
+      ctx.fillStyle = '#fff';
+      ctx.font = '5px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${hp}/${maxHp}`, 0, barY - 5);
+    }
+
+    // "YOUR NEST" indicator for own gang's nest
+    if (isMyNest) {
+      const pulse = 0.7 + 0.3 * Math.sin(t * 2.5);
+      ctx.globalAlpha = pulse;
+      ctx.fillStyle = gangColor;
+      ctx.font = 'bold 7px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('🏠 HOME', 0, -34);
+      ctx.globalAlpha = 1;
+    }
+
+    ctx.restore();
+  },
 };

@@ -65,6 +65,12 @@ class GameEngine {
     this.GANG_COLORS = ['#ff3333', '#ff8800', '#ffcc00', '#33cc55', '#3399ff', '#cc44ff', '#ff44aa', '#00ccdd'];
     this._loadGangs();
 
+    // === GANG NESTS (persistent gang home bases) ===
+    // One nest per gang — placed by the leader, acts as respawn point and XP shrine.
+    // Rival gangs can destroy it by pooping on it (80 HP). 8-min rebuild cooldown.
+    this.gangNests = new Map();       // gangId -> { gangId, gangTag, gangColor, ownerId, ownerName, x, y, hp, maxHp, auraLastAt, builtAt, destroyedAt, rebuildAvailableAt }
+    this._loadGangNests();
+
     // === Missions ===
     this.missionBoard = [];           // array of 3 mission defs on the board
     this.activeMissions = new Map();  // birdId -> { missionId, def, progress, startedAt, participants: Set<birdId> }
@@ -701,6 +707,9 @@ class GameEngine {
     if (action.type === 'gang_distribute') {
       this._handleGangDistribute(bird, now);
     }
+    if (action.type === 'nest_build') {
+      this._handleNestBuild(bird, now);
+    }
 
     // === Mission actions ===
     if (action.type === 'accept_mission') {
@@ -898,6 +907,9 @@ class GameEngine {
 
     // === Gang Wars ===
     this._tickGangWars(now);
+
+    // === Gang Nests ===
+    this._tickGangNests(now);
 
     // === Missions ===
     this._updateMissions(now);
@@ -2389,6 +2401,20 @@ class GameEngine {
               this._handleGangWarHit(bird, targetBird, now);
               break;
             }
+          }
+        }
+      }
+
+      // Gang Nest Raid: check if poop landed near a rival gang's nest
+      if (bird.gangId) {
+        for (const [nestGangId, nest] of this.gangNests) {
+          if (nestGangId === bird.gangId) continue; // can't damage own nest
+          if (nest.destroyedAt !== null) continue;  // already destroyed
+          const ndx = poop.x - nest.x;
+          const ndy = poop.y - nest.y;
+          if (Math.sqrt(ndx * ndx + ndy * ndy) < 35) {
+            this._handleNestPoopHit(bird, nest, isMegaPoop, now);
+            break;
           }
         }
       }
@@ -4211,6 +4237,40 @@ class GameEngine {
         return list;
       })(),
       gangColors: this.GANG_COLORS,
+      // Gang Nests — all alive nests visible city-wide (on minimap and world)
+      gangNests: (() => {
+        const nests = [];
+        for (const nest of this.gangNests.values()) {
+          nests.push({
+            gangId: nest.gangId,
+            gangTag: nest.gangTag,
+            gangColor: nest.gangColor,
+            ownerName: nest.ownerName,
+            x: nest.x,
+            y: nest.y,
+            hp: nest.hp,
+            maxHp: nest.maxHp,
+            alive: nest.destroyedAt === null,
+            isMyNest: bird.gangId === nest.gangId,
+            rebuildAvailableAt: nest.rebuildAvailableAt,
+          });
+        }
+        return nests;
+      })(),
+      myNestStatus: (() => {
+        if (!bird.gangId) return null;
+        const nest = this.gangNests.get(bird.gangId);
+        if (!nest) return { exists: false, rebuildAvailableAt: null };
+        return {
+          exists: true,
+          alive: nest.destroyedAt === null,
+          hp: nest.hp,
+          maxHp: nest.maxHp,
+          x: nest.x,
+          y: nest.y,
+          rebuildAvailableAt: nest.rebuildAvailableAt,
+        };
+      })(),
     };
   }
 
@@ -6124,12 +6184,20 @@ class GameEngine {
             this.events.push({ type: 'predator_attack', predType: predKey, birdId: target.id, hitCount: hits[predKey], maxHits: 3, x: predator.x, y: predator.y });
 
             if (hits[predKey] >= 3) {
-              // Bird killed — respawn at city center with penalties
+              // Bird killed — respawn at gang nest (if available) or city center
               const coinLoss = Math.floor(target.coins * 0.35);
               target.coins = Math.max(0, target.coins - coinLoss);
               target.food = Math.max(3, Math.floor(target.food * 0.3));
-              target.x = world.WORLD_WIDTH / 2 + (Math.random() - 0.5) * 300;
-              target.y = world.WORLD_HEIGHT / 2 + (Math.random() - 0.5) * 300;
+              const gangNest = target.gangId ? this.gangNests.get(target.gangId) : null;
+              if (gangNest && gangNest.destroyedAt === null) {
+                // Respawn at gang nest with a small scatter
+                target.x = gangNest.x + (Math.random() - 0.5) * 120;
+                target.y = gangNest.y + (Math.random() - 0.5) * 120;
+                this.events.push({ type: 'nest_respawn', birdId: target.id, birdName: target.name, x: gangNest.x, y: gangNest.y });
+              } else {
+                target.x = world.WORLD_WIDTH / 2 + (Math.random() - 0.5) * 300;
+                target.y = world.WORLD_HEIGHT / 2 + (Math.random() - 0.5) * 300;
+              }
               target.stunnedUntil = now + 3000;
 
               this.events.push({ type: 'predator_killed_bird', predType: predKey, birdId: target.id, birdName: target.name, coinLoss, x: predator.x, y: predator.y });
@@ -9055,6 +9123,208 @@ class GameEngine {
       amount,
       poolTotal: this.dethronementPool.total,
     });
+  }
+
+  // ============================================================
+  // GANG NESTS — persistent home bases for criminal crews
+  // ============================================================
+
+  async _loadGangNests() {
+    try {
+      const allNests = await firestoreDb.getAllGangNests();
+      for (const n of allNests) {
+        this.gangNests.set(n.gangId, {
+          gangId: n.gangId,
+          gangTag: n.gangTag,
+          gangColor: n.gangColor,
+          ownerId: n.ownerId,
+          ownerName: n.ownerName,
+          x: n.x,
+          y: n.y,
+          hp: n.hp,
+          maxHp: n.maxHp,
+          auraLastAt: 0,
+          builtAt: n.builtAt,
+          destroyedAt: n.destroyedAt,
+          rebuildAvailableAt: n.rebuildAvailableAt,
+        });
+      }
+      console.log(`[GameEngine] Loaded ${this.gangNests.size} gang nests from Firestore`);
+    } catch (e) {
+      console.log('[GameEngine] No gang nests to load:', e.message);
+    }
+  }
+
+  _saveGangNest(nest) {
+    firestoreDb.upsertGangNest({
+      gangId: nest.gangId,
+      gangTag: nest.gangTag,
+      gangColor: nest.gangColor,
+      ownerId: nest.ownerId,
+      ownerName: nest.ownerName,
+      x: nest.x,
+      y: nest.y,
+      hp: nest.hp,
+      maxHp: nest.maxHp,
+      builtAt: nest.builtAt,
+      destroyedAt: nest.destroyedAt,
+      rebuildAvailableAt: nest.rebuildAvailableAt,
+    }).catch(e => console.error('[GameEngine] Failed to save nest:', e.message));
+  }
+
+  _handleNestBuild(bird, now) {
+    if (!bird.gangId || bird.gangRole !== 'leader') {
+      this.events.push({ type: 'nest_error', birdId: bird.id, msg: 'Only gang leaders can build a nest.' });
+      return;
+    }
+    if (bird.coins < 400) {
+      this.events.push({ type: 'nest_error', birdId: bird.id, msg: 'You need 400 coins to build a nest.' });
+      return;
+    }
+
+    const existing = this.gangNests.get(bird.gangId);
+    if (existing) {
+      if (existing.destroyedAt === null) {
+        this.events.push({ type: 'nest_error', birdId: bird.id, msg: 'Your gang already has a nest!' });
+        return;
+      }
+      // Destroyed nest — check rebuild cooldown
+      if (existing.rebuildAvailableAt && now < existing.rebuildAvailableAt) {
+        const secsLeft = Math.ceil((existing.rebuildAvailableAt - now) / 1000);
+        this.events.push({ type: 'nest_error', birdId: bird.id, msg: `Rebuild available in ${secsLeft}s. Lay low.` });
+        return;
+      }
+    }
+
+    // Keep nests away from predator territories (so hawk/cat zones stay clean)
+    const hawkZone = world.PREDATOR_TERRITORIES.hawk;
+    const catZone = world.PREDATOR_TERRITORIES.cat;
+    if ((bird.x > hawkZone.x && bird.x < hawkZone.x + hawkZone.w && bird.y > hawkZone.y && bird.y < hawkZone.y + hawkZone.h) ||
+        (bird.x > catZone.x && bird.x < catZone.x + catZone.w && bird.y > catZone.y && bird.y < catZone.y + catZone.h)) {
+      this.events.push({ type: 'nest_error', birdId: bird.id, msg: "Can't build in predator territory!" });
+      return;
+    }
+
+    bird.coins -= 400;
+    const gang = this.gangs.get(bird.gangId);
+    const nest = {
+      gangId: bird.gangId,
+      gangTag: bird.gangTag,
+      gangColor: bird.gangColor,
+      ownerId: bird.id,
+      ownerName: bird.name,
+      x: bird.x,
+      y: bird.y,
+      hp: 80,
+      maxHp: 80,
+      auraLastAt: 0,
+      builtAt: now,
+      destroyedAt: null,
+      rebuildAvailableAt: null,
+    };
+    this.gangNests.set(bird.gangId, nest);
+    this._saveGangNest(nest);
+
+    this.events.push({
+      type: 'nest_built',
+      gangId: bird.gangId,
+      gangTag: bird.gangTag,
+      gangColor: bird.gangColor,
+      gangName: gang ? gang.name : '',
+      birdId: bird.id,
+      birdName: bird.name,
+      x: nest.x,
+      y: nest.y,
+    });
+  }
+
+  _handleNestPoopHit(attacker, nest, isMegaPoop, now) {
+    const damage = isMegaPoop ? 24 : 8;
+    nest.hp = Math.max(0, nest.hp - damage);
+
+    // Small XP reward for raiding
+    const xpGain = isMegaPoop ? 20 : 8;
+    attacker.xp += xpGain;
+    attacker.coins += 4;
+
+    this.events.push({
+      type: 'nest_hit',
+      gangId: nest.gangId,
+      gangTag: nest.gangTag,
+      gangColor: nest.gangColor,
+      attackerId: attacker.id,
+      attackerName: attacker.name,
+      damage,
+      hp: nest.hp,
+      maxHp: nest.maxHp,
+      x: nest.x,
+      y: nest.y,
+    });
+
+    if (nest.hp <= 0) {
+      nest.destroyedAt = now;
+      nest.rebuildAvailableAt = now + 480000; // 8 minute rebuild cooldown
+      this._saveGangNest(nest);
+
+      // Big reward for destroying a nest
+      attacker.xp += 150;
+      attacker.coins += 80;
+      const attackerGang = attacker.gangId ? this.gangs.get(attacker.gangId) : null;
+      const defenderGang = this.gangs.get(nest.gangId);
+
+      this.events.push({
+        type: 'nest_destroyed',
+        gangId: nest.gangId,
+        gangTag: nest.gangTag,
+        gangColor: nest.gangColor,
+        gangName: defenderGang ? defenderGang.name : nest.gangTag,
+        attackerId: attacker.id,
+        attackerName: attacker.name,
+        attackerGangTag: attacker.gangTag || null,
+        attackerGangColor: attacker.gangColor || null,
+        x: nest.x,
+        y: nest.y,
+      });
+    } else {
+      this._saveGangNest(nest);
+    }
+  }
+
+  _tickGangNests(now) {
+    for (const [gangId, nest] of this.gangNests) {
+      if (nest.destroyedAt !== null) continue; // destroyed nests don't aura
+
+      // XP/coin aura: every 15s, reward nearby gang members
+      if (now - nest.auraLastAt > 15000) {
+        nest.auraLastAt = now;
+        const gang = this.gangs.get(gangId);
+        if (!gang) continue;
+        const auraRewards = [];
+        for (const memberId of gang.members) {
+          const member = this.birds.get(memberId);
+          if (!member) continue;
+          if (member.inSewer) continue;
+          const dx = member.x - nest.x;
+          const dy = member.y - nest.y;
+          if (Math.sqrt(dx * dx + dy * dy) < 130) {
+            member.xp += 15;
+            member.coins += 5;
+            auraRewards.push({ birdId: member.id, birdName: member.name });
+          }
+        }
+        if (auraRewards.length > 0) {
+          this.events.push({
+            type: 'nest_aura',
+            gangId,
+            gangTag: nest.gangTag,
+            gangColor: nest.gangColor,
+            x: nest.x,
+            y: nest.y,
+            rewards: auraRewards,
+          });
+        }
+      }
+    }
   }
 
 }
