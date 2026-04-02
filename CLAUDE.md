@@ -1072,6 +1072,46 @@ The park pond transforms at night into a glowing, magical water feature with its
 
 **Creative intent**: The park pond was just decoration — now it's the most beautiful and dangerous spot in the city at night. The core tension: you need to fly near the pond to catch valuable fish, but pooping (your main offense) alerts the owl. High-combo grinders who fire constantly will immediately draw the owl's attention. Do you hold your fire to catch the fish safely, or keep your combo alive and risk getting caught? The bioluminescent visual is also the most striking thing in the game at night — a glowing cyan portal in the middle of the park that rewards players who explore it. Pure DISCOVERY + SPECTACLE + CARNAGE energy.
 
+**Session 35 — 2026-04-02: Heatwave Weather — The City Scorches**
+The sixth weather type arrives: a blistering heatwave that transforms survival from combat into hydration. Birds now have a thirst mechanic during heatwaves, and water puddles become the most valuable things in the city.
+
+**The Heatwave (server/game.js):**
+- 13% spawn probability (replacing the old heatstorm slot) — reshuffled all weather weights
+- Lasts 2.5–4 minutes of intense, scorching heat
+- **Thirst drain**: every 8 seconds, all birds lose 1 food point unless they recently drank
+- **Speed penalty**: birds at <15 food who haven't drunk recently get −15% speed — "dragging their wings in the heat"
+- **Quench mechanic**: `heatQuenchedUntil` timestamp per bird — drinking from a puddle stops drain for 20 seconds
+
+**Water Puddles (special food items):**
+- Up to 6 spawn across 10 fixed city zones (park, downtown, mall, cafe district, residential, docks, etc.) spaced at least 200px apart
+- Spawn every 10–20s until cap is reached — first puddle triggers city-wide "💧 Water puddles appeared!" hint
+- **Auto-collect**: fly within 45px → instant +35 food, +20 XP, quench for 20s
+- When collected: puddle removed from map, heatwave loop immediately queues a replacement in 8s
+- All puddles cleaned up at weather end — no litter left behind
+
+**Weather betting integration:**
+- Heatwave added as the 6th bettable option in the forecast betting panel (🌡️ HEATWAVE, 13% odds)
+- `VALID_TYPES` server validation updated
+
+**Visual system (main.js):**
+- **Orange tint overlay**: baked warm haze at 14% opacity × weather intensity — the city looks like it's baking
+- **Heat haze lines**: 60 semi-transparent horizontal shimmer streaks rising upward across the screen at 12–34px/s each, wobbling left-right with independent sine waves — genuine heat-shimmer aesthetic
+- **Vignette**: orange radial gradient hotter at the screen edges (22% max opacity)
+- **HUD badge**: pulsing 🌡️ HEATWAVE badge in orange-brown (pulses at medium speed like the hailstorm)
+- **THIRSTY debuff pill**: appears in active buffs when heatwave is active AND bird food < 15 — orange with red pulse animation "🌡️ THIRSTY! −15% speed · Drink a puddle!"
+- **QUENCHED buff pill**: appears when `heatQuenchedUntil > now` — blue: "💧 QUENCHED — Xs"
+
+**Puddle sprite (sprites.js):**
+- Custom `water_puddle` food type rendering: layered oval puddle with teal/blue gradient, inner lighter reflection, bright specular highlight, animated ripple ring expanding outward, pulsing glow halo, and a tiny "💧" label above
+
+**Events & announcements:**
+- Start: "🌡️ HEATWAVE! The city is SCORCHING — find water puddles before you shrivel!" (orange, big)
+- First puddle batch: "💧 Water puddles have appeared across the city — drink before you dry out!"
+- On drink: personal "💧 REFRESHED! +35 food — thirst quenched for 20s!" announcement
+- End: "🌡️ The heatwave breaks. Cool relief washes over the city."
+
+**Creative intent**: The weather system had rain (bonus food), wind (navigation challenge), storm (lightning hazard), fog (stealth buff), and hailstorm (combo killer). Heatwave is the first weather that creates a **survival urgency** — your food bar is now actively under attack. Players must split attention between their normal chaos loop and finding puddles across the city. The 20-second quench window means you can't just camp one puddle — you need to move. Low-food birds get the speed penalty RIGHT as they need to dash to water, creating genuine tension. A high-combo bird with a bounty on them hitting thirst at the worst possible moment is peak CARNAGE CITY chaos. Pure DISCOVERY + CARNAGE energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -1103,7 +1143,7 @@ Built the Territory Control System on top of the existing upstream code:
 - Bird gangs with custom colors/tags
 - Owl enforcer in park at night (creates no-poop zone, alerts NPCs)
 - Bioluminescent park pond at night (glowing water effect)
-- Hot day weather: food spoils faster, birds need water puddles
+- ~~Hot day weather: food spoils faster, birds need water puddles~~ (DONE Session 35)
 - Birds can shelter under awnings/trees during storms (mechanic: reduced hail hit radius if near cover)
 - ~~Race power-ups: speed boost gates on the track~~ (DONE Session 30)
 - ~~Weather combos: fog (low visibility) + hailstorm~~ (DONE Session 18)

@@ -1607,6 +1607,7 @@
         storm:     ['⛈️ THUNDERSTORM! Take cover — lightning incoming!', '#ffdd44'],
         fog:       ['🌫️ DENSE FOG rolls in... cops lose your trail in the mist!', '#b8ddc0'],
         hailstorm: ['🌨️ HAILSTORM! Ice chunks will slow anyone they hit!', '#aaddff'],
+        heatwave:  ['🌡️ HEATWAVE! The city is SCORCHING — find water puddles before you shrivel!', '#ff8800'],
       };
       const [msg, color] = msgs[ev.weatherType] || ['Weather changed!', '#fff'];
       showAnnouncement(msg, color, 4000);
@@ -1620,12 +1621,22 @@
         storm:     'The storm has passed.',
         fog:       '🌫️ The fog lifts. Cops can see you again.',
         hailstorm: '🌨️ The hailstorm passes.',
+        heatwave:  '🌡️ The heatwave breaks. Cool relief washes over the city.',
       };
       addEventMessage(endMsgs[ev.weatherType] || 'Weather cleared.', '#aaaaaa');
       weatherState = null;
     }
     if (ev.type === 'worms_appeared') {
       addEventMessage('🪱 Worms are wriggling out of the wet ground! Grab them!', '#d46a8a');
+    }
+    if (ev.type === 'heat_puddles_appeared') {
+      addEventMessage('💧 Water puddles have appeared across the city — drink before you dry out!', '#5599ff');
+    }
+    if (ev.type === 'puddle_drink') {
+      if (ev.birdId === myId) {
+        showAnnouncement('💧 REFRESHED! +35 food — thirst quenched for 20s!', '#44aaff', 2500);
+        addEventMessage('💧 You drank from a puddle! +35 food — no thirst drain for 20s', '#44aaff');
+      }
     }
 
     // === WEATHER BETTING EVENTS ===
@@ -3545,11 +3556,12 @@
   // WEATHER BETTING PANEL — shown between weather events
   // ============================================================
   const WEATHER_BET_INFO = {
-    rain:      { emoji: '🌧️', label: 'RAIN',      color: '#66aaff', odds: '32%' },
-    wind:      { emoji: '💨', label: 'WIND',      color: '#aaddff', odds: '26%' },
-    storm:     { emoji: '⛈️', label: 'STORM',     color: '#ffdd44', odds: '15%' },
-    fog:       { emoji: '🌫️', label: 'FOG',       color: '#b8ddc0', odds: '14%' },
+    rain:      { emoji: '🌧️', label: 'RAIN',      color: '#66aaff', odds: '27%' },
+    wind:      { emoji: '💨', label: 'WIND',      color: '#aaddff', odds: '22%' },
+    storm:     { emoji: '⛈️', label: 'STORM',     color: '#ffdd44', odds: '13%' },
+    fog:       { emoji: '🌫️', label: 'FOG',       color: '#b8ddc0', odds: '12%' },
     hailstorm: { emoji: '🌨️', label: 'HAILSTORM', color: '#88ccff', odds: '13%' },
+    heatwave:  { emoji: '🌡️', label: 'HEATWAVE',  color: '#ff9933', odds: '13%' },
   };
 
   function updateWeatherBetPanel(now) {
@@ -3582,8 +3594,8 @@
         + '<div style="color:#7799cc;font-size:9px;margin-top:4px;">Window closes: ' + secsLeft + 's</div>';
       weatherBetPanel.style.pointerEvents = 'none';
     } else {
-      // Betting interface — show all 5 weather types
-      const TYPES = ['rain', 'wind', 'storm', 'fog', 'hailstorm'];
+      // Betting interface — show all 6 weather types
+      const TYPES = ['rain', 'wind', 'storm', 'fog', 'hailstorm', 'heatwave'];
       let html = '<div style="color:#aaddff;font-size:12px;margin-bottom:2px;">🌤️ FORECAST BET</div>'
         + '<div style="color:#7799cc;font-size:9px;margin-bottom:6px;">What\'s next? · ' + secsLeft + 's · Pool: ' + totalPool + 'c</div>';
 
@@ -4097,6 +4109,26 @@
     }
   }
 
+  // Lazily generated heat-haze line pool (horizontal shimmer streaks rising upward)
+  let _heatHaze = null;
+  function _ensureHeatHaze(sw, sh) {
+    if (_heatHaze && _heatHaze.sw === sw && _heatHaze.sh === sh) return;
+    _heatHaze = { sw, sh, lines: [] };
+    for (let i = 0; i < 60; i++) {
+      _heatHaze.lines.push({
+        x:           Math.random() * sw,
+        y:           Math.random() * sh,
+        len:         10 + Math.random() * 35,
+        speed:       12 + Math.random() * 22,          // upward drift px/s
+        wobble:      Math.random() * Math.PI * 2,
+        wobbleSpeed: 2 + Math.random() * 4,
+        amplitude:   3 + Math.random() * 8,            // horizontal wiggle
+        opacity:     0.04 + Math.random() * 0.07,
+        thickness:   0.5 + Math.random() * 1.0,
+      });
+    }
+  }
+
   // Lazily generated fog wisp pool
   let _fogWisps = null;
   function _ensureFogWisps(sw, sh) {
@@ -4165,6 +4197,46 @@
       grad.addColorStop(0.45, 'rgba(160, 185, 165, ' + (density * 0.55) + ')');
       grad.addColorStop(1.0, 'rgba(148, 175, 155, ' + (density * 0.88) + ')');
       ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, sw, sh);
+      ctx.restore();
+    }
+
+    // === HEATWAVE SHIMMER ===
+    if (weather.type === 'heatwave') {
+      const intensity = weather.intensity;
+      // Baked orange-yellow tint over the entire screen
+      ctx.save();
+      ctx.globalAlpha = intensity * 0.14;
+      ctx.fillStyle = '#ff8800';
+      ctx.fillRect(0, 0, sw, sh);
+      ctx.globalAlpha = 1;
+      ctx.restore();
+
+      // Wavy heat-haze lines rising from the bottom of the screen
+      _ensureHeatHaze(sw, sh);
+      ctx.save();
+      for (const h of _heatHaze.lines) {
+        h.y -= h.speed * dt;                        // rise upward
+        h.wobble += h.wobbleSpeed * dt;
+        if (h.y < -8) { h.y = sh + 4; h.x = Math.random() * sw; } // wrap to bottom
+        const ox = Math.sin(h.wobble) * h.amplitude; // horizontal shimmer
+        ctx.globalAlpha = h.opacity * intensity * (1 - (sh - h.y) / sh * 0.6);
+        ctx.strokeStyle = `rgba(255, 180, 60, ${h.opacity * intensity * 0.6})`;
+        ctx.lineWidth = h.thickness;
+        ctx.beginPath();
+        ctx.moveTo(h.x + ox - h.len / 2, h.y);
+        ctx.lineTo(h.x + ox + h.len / 2, h.y);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+      ctx.restore();
+
+      // Vignette — hotter at the edges (orange radial glow)
+      ctx.save();
+      const vGrad = ctx.createRadialGradient(sw / 2, sh / 2, sw * 0.25, sw / 2, sh / 2, sw * 0.8);
+      vGrad.addColorStop(0, 'rgba(255, 120, 0, 0)');
+      vGrad.addColorStop(1, `rgba(200, 60, 0, ${intensity * 0.22})`);
+      ctx.fillStyle = vGrad;
       ctx.fillRect(0, 0, sw, sh);
       ctx.restore();
     }
@@ -4302,16 +4374,19 @@
       storm: '⛈️ STORM',
       fog: '🌫️ FOG',
       hailstorm: '🌨️ HAIL',
+      heatwave: '🌡️ HEATWAVE',
     };
     const badgeBg = {
       storm: 'rgba(60, 40, 0, 0.75)',
       fog: 'rgba(80, 100, 80, 0.72)',
       hailstorm: 'rgba(20, 50, 90, 0.78)',
+      heatwave: 'rgba(100, 40, 0, 0.80)',
     };
     const badgeColor = {
       storm: '#ffdd44',
       fog: '#c8e8cc',
       hailstorm: '#aaddff',
+      heatwave: '#ffaa44',
     };
     const badge = badges[weather.type];
     if (badge) {
@@ -4321,7 +4396,8 @@
       const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
       const pulse = (weather.type === 'storm' || weather.type === 'hailstorm')
         ? (Math.sin(now * 0.006) * 0.15 + 0.85)
-        : (weather.type === 'fog' ? (Math.sin(now * 0.002) * 0.08 + 0.92) : 1);
+        : (weather.type === 'heatwave' ? (Math.sin(now * 0.004) * 0.18 + 0.82)
+        : (weather.type === 'fog' ? (Math.sin(now * 0.002) * 0.08 + 0.92) : 1));
       ctx.save();
       ctx.globalAlpha = pulse * 0.88;
       ctx.fillStyle = badgeBg[weather.type] || 'rgba(20, 40, 80, 0.65)';
@@ -5824,6 +5900,15 @@
     if (s.hailSlowUntil && s.hailSlowUntil > now) {
       const secs = Math.ceil((s.hailSlowUntil - now) / 1000);
       html += '<div class="bm-buff-pill" style="background:rgba(40,80,140,0.7);border-color:#aaddff;color:#aaddff">🧊 HAIL SLOW — ' + secs + 's</div>';
+    }
+    // Heatwave: show QUENCHED buff when fresh, or THIRSTY debuff when low on food
+    if (weatherState && weatherState.type === 'heatwave') {
+      if (s.heatQuenchedUntil && s.heatQuenchedUntil > now) {
+        const secs = Math.ceil((s.heatQuenchedUntil - now) / 1000);
+        html += '<div class="bm-buff-pill" style="background:rgba(0,60,140,0.85);border-color:#44aaff;color:#88ddff;">💧 QUENCHED — ' + secs + 's</div>';
+      } else if (s.food !== undefined && s.food < 15) {
+        html += '<div class="bm-buff-pill" style="background:rgba(140,50,0,0.85);border-color:#ff7700;color:#ffaa44;animation:pulseRed 0.7s infinite alternate;">🌡️ THIRSTY! −15% speed · Drink a puddle!</div>';
+      }
     }
     if (s.raceBoostUntil && s.raceBoostUntil > now) {
       const secs = Math.max(0, Math.ceil((s.raceBoostUntil - now) / 1000));

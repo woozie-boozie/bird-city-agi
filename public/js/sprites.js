@@ -382,6 +382,43 @@ window.Sprites = {
       ctx.beginPath();
       ctx.arc(7, 0, 2, 0, Math.PI * 2);
       ctx.fill();
+    } else if (type === 'water_puddle') {
+      // Shimmering water puddle — heatwave relief
+      const t = Date.now();
+      const pulse = 0.55 + 0.45 * Math.sin(t * 0.004);
+      const ripple = 0.4 + 0.6 * Math.sin(t * 0.003 + 1.0);
+      // Outer glow halo
+      ctx.fillStyle = `rgba(80, 160, 255, ${pulse * 0.25})`;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 16, 9, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Main puddle body — cornflower blue oval
+      ctx.fillStyle = `rgba(70, 140, 240, ${0.65 + pulse * 0.2})`;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 12, 6.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Inner lighter reflection
+      ctx.fillStyle = `rgba(160, 210, 255, ${0.35 + ripple * 0.3})`;
+      ctx.beginPath();
+      ctx.ellipse(-1, -1, 7, 3.5, -0.3, 0, Math.PI * 2);
+      ctx.fill();
+      // Bright specular highlight
+      ctx.fillStyle = `rgba(220, 240, 255, ${0.5 + pulse * 0.4})`;
+      ctx.beginPath();
+      ctx.ellipse(-3, -2, 3, 1.5, -0.4, 0, Math.PI * 2);
+      ctx.fill();
+      // Ripple ring
+      const rr = 8 + ripple * 4;
+      ctx.strokeStyle = `rgba(100, 180, 255, ${(1 - ripple) * 0.5})`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, rr, rr * 0.55, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      // "💧" label above
+      ctx.font = '9px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(50,120,200,0.85)';
+      ctx.fillText('💧', 0, -10);
     } else if (type === 'cake') {
       // Wedding cake - larger, tiered
       ctx.fillStyle = '#fff';

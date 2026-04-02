@@ -145,6 +145,7 @@ class GameEngine {
     this.weatherTimer = Date.now() + this._randomRange(60000, 120000); // 1-2 min to first weather
     this.rainWorms = new Map();       // id -> true (worm food ids spawned during rain)
     this.weatherBetting = null;       // null or { openUntil, bets: Map(birdId -> { type, amount, name }) }
+    this.heatPuddles = new Map();     // id -> true (water puddle food ids spawned during heatwave)
 
     // === GOLDEN EGG SCRAMBLE ===
     this.eggScramble = null;          // null or { state, startedAt, endsAt, eggs: Map(id->egg), delivered }
@@ -521,6 +522,7 @@ class GameEngine {
       comboExpiresAt: 0,    // timestamp when combo resets if no new hit
       // === WEATHER EFFECTS ===
       hailSlowUntil: 0,     // timestamp when hail slow wears off
+      heatQuenchedUntil: 0, // timestamp: if > now, bird drank recently and won't drain food
       // === RACE POWER-UPS ===
       raceBoostUntil: 0,    // timestamp when race boost gate speed buff wears off
       // === GOLDEN EGG SCRAMBLE ===
@@ -1908,6 +1910,11 @@ class GameEngine {
       maxSpeed *= 0.5;
     }
 
+    // Heatwave: thirsty birds drag their wings (-15% speed when food < 15)
+    if (this.weather && this.weather.type === 'heatwave' && bird.food < 15 && bird.heatQuenchedUntil <= now) {
+      maxSpeed *= 0.85;
+    }
+
     // Race boost gate: lightning speed burst
     if (bird.raceBoostUntil > now) {
       maxSpeed *= 1.7;
@@ -2596,6 +2603,37 @@ class GameEngine {
       }
     }
 
+    // === Water puddle auto-collect (heatwave-only, fly near any puddle) ===
+    if (this.weather && this.weather.type === 'heatwave' && this.heatPuddles.size > 0) {
+      for (const puddleId of this.heatPuddles.keys()) {
+        const puddle = this.foods.get(puddleId);
+        if (!puddle || !puddle.active) continue;
+        const pdx = bird.x - puddle.x;
+        const pdy = bird.y - puddle.y;
+        if (Math.sqrt(pdx * pdx + pdy * pdy) < 45) {
+          puddle.active = false;
+          this.heatPuddles.delete(puddleId);
+          bird.food += 35;
+          bird.xp += 20;
+          bird.heatQuenchedUntil = now + 20000; // quenched for 20s — no thirst drain
+          this._trackDailyProgress(bird, 'puddle_drink', 1);
+          this.events.push({
+            type: 'puddle_drink',
+            birdId: bird.id, name: bird.name,
+            x: puddle.x, y: puddle.y,
+          });
+          // Schedule puddle respawn via heatwave loop (remove after brief delay)
+          const pId = puddleId;
+          setTimeout(() => { this.foods.delete(pId); }, 5000);
+          // Re-queue a new puddle soon so the city doesn't run dry
+          if (this.weather && this.weather.heatPuddleTimer > now + 12000) {
+            this.weather.heatPuddleTimer = now + 8000;
+          }
+          break; // one puddle per tick
+        }
+      }
+    }
+
     // === Pond fish auto-collect (night-only, fly near the sacred pond) ===
     if (!bird.inSewer && this.pondFishIds.size > 0) {
       for (const fishId of this.pondFishIds) {
@@ -2880,6 +2918,7 @@ class GameEngine {
     // Expire current weather
     if (this.weather && now >= this.weather.endsAt) {
       const wasRainy = this.weather.type === 'rain' || this.weather.type === 'storm';
+      const wasHeatwave = this.weather.type === 'heatwave';
       const oldType = this.weather.type;
       this.weather = null;
       // Remove rain worms
@@ -2888,6 +2927,14 @@ class GameEngine {
           this.foods.delete(wormId);
         }
         this.rainWorms.clear();
+      }
+      // Remove heat puddles
+      if (wasHeatwave) {
+        for (const puddleId of this.heatPuddles.keys()) {
+          this.foods.delete(puddleId);
+        }
+        this.heatPuddles.clear();
+        this.events.push({ type: 'heatwave_end' });
       }
       this.events.push({ type: 'weather_end', weatherType: oldType });
       // Open a 30-second betting window before the next weather spawns
@@ -2910,14 +2957,15 @@ class GameEngine {
 
     // Spawn new weather when timer fires
     if (!this.weather && now >= this.weatherTimer) {
-      // Rain most common; fog and hailstorm rarer surprises
+      // Rain most common; heatwave/fog/hailstorm are rarer surprises
       const roll = Math.random();
       let type;
-      if (roll < 0.32) type = 'rain';
-      else if (roll < 0.58) type = 'wind';
-      else if (roll < 0.73) type = 'storm';
-      else if (roll < 0.87) type = 'fog';
-      else type = 'hailstorm';
+      if (roll < 0.27) type = 'rain';
+      else if (roll < 0.49) type = 'wind';
+      else if (roll < 0.62) type = 'storm';
+      else if (roll < 0.74) type = 'fog';
+      else if (roll < 0.87) type = 'hailstorm';
+      else type = 'heatwave';
 
       const windAngle = Math.random() * Math.PI * 2;
       let duration, windSpeed, intensity;
@@ -2937,10 +2985,14 @@ class GameEngine {
         duration = this._randomRange(180000, 300000); // 3–5 min
         windSpeed = 0;
         intensity = 0.75 + Math.random() * 0.25; // 0.75–1.0 fog density
-      } else { // hailstorm
+      } else if (type === 'hailstorm') {
         duration = this._randomRange(60000, 120000); // 1–2 min (intense but brief)
         windSpeed = 40 + Math.random() * 60; // moderate wind + hail
         intensity = 0.8 + Math.random() * 0.2;
+      } else { // heatwave
+        duration = this._randomRange(150000, 240000); // 2.5–4 min of scorching heat
+        windSpeed = 0;
+        intensity = 0.7 + Math.random() * 0.3; // 0.7–1.0 heat intensity
       }
 
       this.weather = {
@@ -2952,6 +3004,8 @@ class GameEngine {
         wormSpawnTimer: now + 5000,
         lightningTimer: now + this._randomRange(6000, 18000),
         hailTimer: now + this._randomRange(2000, 4000), // for hailstorm
+        heatPuddleTimer: now + 8000,   // for heatwave: when to spawn next puddle batch
+        heatThirstTimer: now + 8000,   // for heatwave: when to next drain bird thirst
       };
 
       this.events.push({ type: 'weather_start', weatherType: type, windAngle, windSpeed, intensity });
@@ -3035,6 +3089,69 @@ class GameEngine {
       }
       this.weather.hailTimer = now + this._randomRange(2500, 5000);
     }
+
+    // Heatwave: spawn water puddles + drain bird thirst
+    if (this.weather.type === 'heatwave') {
+      // Spawn puddles periodically up to 6 max
+      if (now >= this.weather.heatPuddleTimer && this.heatPuddles.size < 6) {
+        this._spawnHeatPuddle();
+        this.weather.heatPuddleTimer = now + this._randomRange(10000, 20000);
+        if (this.heatPuddles.size === 1) {
+          this.events.push({ type: 'heat_puddles_appeared' });
+        }
+      }
+      // Thirst drain: every 8 seconds all birds lose 1 food (unless quenched)
+      if (now >= this.weather.heatThirstTimer) {
+        this.weather.heatThirstTimer = now + 8000;
+        for (const b of this.birds.values()) {
+          if (b.heatQuenchedUntil > now) continue; // recently drank — skip
+          if (b.food > 0) {
+            b.food = Math.max(0, b.food - 1);
+            this.events.push({ type: 'heat_thirst_tick', birdId: b.id });
+          }
+        }
+      }
+    }
+  }
+
+  _spawnHeatPuddle() {
+    // Puddle spawn zones — spread across the city near buildings and roads
+    const puddleZones = [
+      { x: 1050, y: 1000 }, // Park south entrance
+      { x: 1900, y: 1180 }, // Downtown center
+      { x: 2350, y: 900  }, // Mall corridor
+      { x: 480,  y: 1720 }, // Cafe District
+      { x: 380,  y: 580  }, // Residential north
+      { x: 1380, y: 2480 }, // South Docks
+      { x: 870,  y: 1580 }, // Midtown West
+      { x: 1720, y: 380  }, // North Quarter
+      { x: 2150, y: 1850 }, // East side
+      { x: 640,  y: 2200 }, // Southwest corner
+    ];
+    // Find a zone that doesn't already have a puddle nearby
+    const occupied = [];
+    for (const pid of this.heatPuddles.keys()) {
+      const f = this.foods.get(pid);
+      if (f) occupied.push({ x: f.x, y: f.y });
+    }
+    const available = puddleZones.filter(z => {
+      return !occupied.some(o => Math.abs(o.x - z.x) < 200 && Math.abs(o.y - z.y) < 200);
+    });
+    if (available.length === 0) return;
+    const pos = available[Math.floor(Math.random() * available.length)];
+    // Add small random offset so puddles don't always appear at the exact same pixel
+    const px = pos.x + (Math.random() - 0.5) * 80;
+    const py = pos.y + (Math.random() - 0.5) * 80;
+    const id = 'food_puddle_' + uid();
+    this.foods.set(id, {
+      id,
+      type: 'water_puddle',
+      x: px, y: py,
+      value: 35,     // hydrating!
+      active: true,
+      respawnAt: 0,  // puddles don't auto-respawn — controlled by weather loop
+    });
+    this.heatPuddles.set(id, true);
   }
 
   _spawnRainWorm() {
@@ -4248,6 +4365,7 @@ class GameEngine {
         comboExpiresAt: bird.comboExpiresAt,
         // Weather debuffs
         hailSlowUntil: bird.hailSlowUntil,
+        heatQuenchedUntil: bird.heatQuenchedUntil,
         // Race boost gate
         raceBoostUntil: bird.raceBoostUntil,
         // Golden Egg Scramble
@@ -8839,7 +8957,7 @@ class GameEngine {
       this.events.push({ type: 'weather_bet_fail', birdId: bird.id, reason: 'already_bet' });
       return;
     }
-    const VALID_TYPES = ['rain', 'wind', 'storm', 'fog', 'hailstorm'];
+    const VALID_TYPES = ['rain', 'wind', 'storm', 'fog', 'hailstorm', 'heatwave'];
     if (!VALID_TYPES.includes(action.betType)) {
       this.events.push({ type: 'weather_bet_fail', birdId: bird.id, reason: 'invalid_type' });
       return;
