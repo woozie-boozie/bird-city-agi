@@ -2293,6 +2293,190 @@ window.Renderer = {
     minimapCtx.restore();
   },
 
+  // ===== CITY HALL =====
+  // Grand civic building — hosts the Dethronement Pool Bounty Board ([V] to open)
+  drawCityHall(ctx, camera, pos, poolAmount, nearCityHall, now) {
+    if (!pos) return;
+    const cx = pos.x - camera.x + camera.screenW / 2;
+    const cy = pos.y - camera.y + camera.screenH / 2;
+    const t = now / 1000;
+    const pulse = 0.6 + 0.4 * Math.sin(t * 1.8);
+    const poolPulse = poolAmount > 0 ? (0.5 + 0.5 * Math.sin(t * 3.5)) : 0;
+
+    ctx.save();
+
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillRect(cx - 72 + 5, cy - 95 + 5, 144, 120);
+
+    // Main building body — marble white/cream
+    const grad = ctx.createLinearGradient(cx - 72, cy - 95, cx + 72, cy + 25);
+    grad.addColorStop(0, '#e8e0d0');
+    grad.addColorStop(1, '#c8c0b0');
+    ctx.fillStyle = grad;
+    ctx.fillRect(cx - 72, cy - 95, 144, 120);
+
+    // Roof / pediment (triangular)
+    ctx.beginPath();
+    ctx.moveTo(cx - 80, cy - 95);
+    ctx.lineTo(cx, cy - 130);
+    ctx.lineTo(cx + 80, cy - 95);
+    ctx.closePath();
+    ctx.fillStyle = '#d8d0c0';
+    ctx.fill();
+    ctx.strokeStyle = '#a09080';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Columns (6 classical columns)
+    ctx.fillStyle = '#f0e8d8';
+    ctx.strokeStyle = '#b0a090';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 6; i++) {
+      const colX = cx - 62 + i * 25;
+      ctx.fillRect(colX - 4, cy - 90, 8, 115);
+      ctx.strokeRect(colX - 4, cy - 90, 8, 115);
+    }
+
+    // Building border
+    ctx.strokeStyle = '#a09080';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(cx - 72, cy - 95, 144, 120);
+
+    // Sign panel at pediment
+    ctx.fillStyle = '#3a2a1a';
+    ctx.fillRect(cx - 48, cy - 110, 96, 16);
+
+    // "CITY HALL" text on pediment
+    ctx.font = 'bold 9px serif';
+    ctx.fillStyle = '#ffd700';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = '#ffd700';
+    ctx.shadowBlur = 4;
+    ctx.fillText('CITY HALL', cx, cy - 99);
+    ctx.shadowBlur = 0;
+
+    // Entrance door (centered, bottom)
+    ctx.fillStyle = '#5a4030';
+    ctx.fillRect(cx - 12, cy - 18, 24, 40);
+    // Door arch
+    ctx.beginPath();
+    ctx.arc(cx, cy - 18, 12, Math.PI, 0);
+    ctx.fillStyle = '#3a2010';
+    ctx.fill();
+
+    // Bounty Pool display — gold glowing amount on the facade
+    if (poolAmount > 0) {
+      // Glowing red/gold background for pool display
+      ctx.save();
+      ctx.shadowColor = '#ff4400';
+      ctx.shadowBlur = 12 * poolPulse;
+      ctx.fillStyle = `rgba(80,20,0,${0.85})`;
+      ctx.fillRect(cx - 44, cy - 75, 88, 22);
+      ctx.strokeStyle = `rgba(255,${Math.floor(100 + 100 * poolPulse)},0,${0.8 + 0.2 * poolPulse})`;
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(cx - 44, cy - 75, 88, 22);
+      ctx.shadowBlur = 0;
+      ctx.font = 'bold 9px monospace';
+      ctx.fillStyle = `rgba(255,${Math.floor(180 + 75 * poolPulse)},0,1)`;
+      ctx.shadowColor = '#ff6600';
+      ctx.shadowBlur = 6 * poolPulse;
+      ctx.fillText(`💀 POOL: ${poolAmount}c`, cx, cy - 59);
+      ctx.restore();
+    } else {
+      // Neutral display when pool is empty
+      ctx.font = '8px monospace';
+      ctx.fillStyle = 'rgba(120,100,80,0.9)';
+      ctx.fillText('BOUNTY BOARD', cx, cy - 62);
+    }
+
+    // Flag on top of pediment — flutters
+    const flagWave = Math.sin(t * 4) * 5;
+    ctx.fillStyle = '#cc2222';
+    ctx.beginPath();
+    ctx.moveTo(cx - 4, cy - 130);
+    ctx.lineTo(cx - 4, cy - 155);
+    ctx.lineTo(cx + 18 + flagWave, cy - 148);
+    ctx.lineTo(cx + 18 + flagWave * 0.6, cy - 142);
+    ctx.lineTo(cx - 4, cy - 135);
+    ctx.closePath();
+    ctx.fill();
+
+    // Flag pole
+    ctx.strokeStyle = '#888';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(cx - 4, cy - 130);
+    ctx.lineTo(cx - 4, cy - 160);
+    ctx.stroke();
+
+    // Proximity glow
+    if (nearCityHall) {
+      ctx.globalAlpha = 0.12 * pulse;
+      ctx.fillStyle = '#ffd700';
+      ctx.beginPath();
+      ctx.arc(cx, cy - 35, 100, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    // Label
+    ctx.font = '9px serif';
+    ctx.fillStyle = 'rgba(200,180,140,0.9)';
+    ctx.fillText('🏛 City Hall', cx, cy + 34);
+    if (nearCityHall) {
+      ctx.font = 'bold 9px monospace';
+      ctx.fillStyle = '#ffd700';
+      ctx.shadowColor = '#ffd700';
+      ctx.shadowBlur = 5;
+      ctx.fillText('[V] Bounty Board', cx, cy + 46);
+      ctx.shadowBlur = 0;
+    }
+
+    ctx.restore();
+  },
+
+  drawCityHallOnMinimap(minimapCtx, worldData, poolAmount) {
+    if (!worldData || !worldData.cityHallPos) return;
+    const pos = worldData.cityHallPos;
+    const mw = minimapCtx.canvas.width;
+    const mh = minimapCtx.canvas.height;
+    const sx = mw / worldData.width;
+    const sy = mh / worldData.height;
+    const px = pos.x * sx;
+    const py = pos.y * sy;
+    const t = Date.now() / 1000;
+    const pulse = 0.6 + 0.4 * Math.sin(t * 2.5);
+
+    minimapCtx.save();
+    if (poolAmount > 0) {
+      // Pool active — glowing red/gold dot
+      minimapCtx.globalAlpha = pulse;
+      minimapCtx.fillStyle = '#ff5500';
+      minimapCtx.beginPath();
+      minimapCtx.arc(px, py, 4, 0, Math.PI * 2);
+      minimapCtx.fill();
+      minimapCtx.globalAlpha = 0.3 * pulse;
+      minimapCtx.fillStyle = '#ff8800';
+      minimapCtx.beginPath();
+      minimapCtx.arc(px, py, 7, 0, Math.PI * 2);
+      minimapCtx.fill();
+    } else {
+      // No pool — static gold dot
+      minimapCtx.globalAlpha = 0.85;
+      minimapCtx.fillStyle = '#ffd700';
+      minimapCtx.beginPath();
+      minimapCtx.arc(px, py, 3, 0, Math.PI * 2);
+      minimapCtx.fill();
+    }
+    minimapCtx.globalAlpha = 1;
+    minimapCtx.font = '7px sans-serif';
+    minimapCtx.fillStyle = '#ffd700';
+    minimapCtx.textAlign = 'center';
+    minimapCtx.fillText('🏛', px, py - 4);
+    minimapCtx.restore();
+  },
+
   // Draw predator territory zones on the minimap
   drawPredatorTerritoriesOnMinimap(minimapCtx, worldData, territoryPredators) {
     if (!worldData || !worldData.predatorTerritories) return;

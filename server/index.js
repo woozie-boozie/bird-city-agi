@@ -40,6 +40,7 @@ app.get('/api/world', (req, res) => {
     predatorTerritories: world.PREDATOR_TERRITORIES,
     casinoPos: world.CASINO_POS,
     tattooParlor: { pos: world.TATTOO_PARLOR_POS, catalog: world.TATTOO_CATALOG },
+    cityHallPos: world.CITY_HALL_POS,
   });
 });
 

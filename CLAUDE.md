@@ -935,6 +935,40 @@ Transformed the Pigeon Racing Track from a pure speed contest into a CARNAGE RAC
 
 **Creative intent**: Racing was fun but pure — fastest bird wins. Now there's tactical depth. Do you take the optimal route between checkpoints OR deviate to hit the boost gate? A bird who perfectly chains all 5 gates in a lap gets massive time advantage. Two rival racers neck-and-neck on the final stretch, one hits the gate and pulls away — that's a moment. The 18-second cooldown means you can use each gate exactly once per ~1-minute lap, so every gate hit is a deliberate choice. Pure CARNAGE + SPECTACLE energy. Racing is now legitimately chaotic.
 
+**Session 31 — 2026-04-02: City Hall + Dethronement Pool — Collective Kingpin Hunt**
+The most SOCIAL pressure mechanic yet. A grand marble City Hall building (x:1780, y:1050) now stands in the central corridor between the Mall and Downtown. Fly near it and press [V] to open the Bounty Board. The crown just got a price tag.
+
+**Dethronement Pool mechanics (`server/game.js`):**
+- Any bird can contribute 10–500 coins to the shared Dethronement Pool (accessible at City Hall, [V])
+- Pool accumulates across Kingpin changes — it doesn't reset when the Kingpin changes, only when paid out
+- You cannot contribute if there's no Kingpin, or if YOU are the Kingpin (can't bounty yourself)
+- When ANY bird lands the 3rd hit to dethrone the Kingpin: they receive the **entire pool** as a cash bonus on top of the regular 28% loot + 450 XP
+- Pool payout also gives bonus XP scaling with pool size (1.5× the pool total in XP)
+- City-wide announcement on contribution (event feed) and explosive announcement on payout
+- Largest single contributor tracked and shown on the board
+
+**City Hall visual (`public/js/renderer.js`):**
+- Grand marble civic building with 6 classical columns, triangular pediment, arched entrance
+- Red flag flies from the pole and flutters with sine wave animation
+- When pool > 0: glowing red/orange "💀 POOL: Xc" display on the facade (pulses urgently)
+- When no pool: subtle grey "BOUNTY BOARD" text
+- Near proximity: gold "[V] Bounty Board" prompt glows below the building
+- Minimap: permanent 🏛 gold dot; glows orange+red pulse when pool is active — trackable from anywhere
+
+**Bounty Board overlay ([V] key):**
+- Shows current Kingpin with their wealth ("Throne Vacant" if nobody has 200c+)
+- Live dethronement pool total — huge orange number with red glow
+- Biggest contributor display + last payout history
+- Contribute form: enter 10–500 coins, click ADD TO POOL — server-authoritative deduction
+- Error messages for invalid contributions (no Kingpin, you're the Kingpin, insufficient funds)
+- Top 5 XP leaderboard for context on who the city's power players are
+
+**Persistent pool HUD pill:**
+- When pool > 0, a "💀 POOL: Xc" pill appears at top-center of screen for all players
+- Reminds everyone the bounty is growing without opening the board
+
+**Creative intent**: The Kingpin system already made wealth a target. The Dethronement Pool turns it into a *city-wide conspiracy*. A broke bird who's been getting taxed by the Kingpin can drop 200c in the pool and let the entire city know there's a fat payout waiting. The pool grows until someone collects — if nobody dethrones the current Kingpin for a while, the pool gets enormous. A pool at 3000c means every bird in the city is hunting the crown simultaneously. The Kingpin watches the pool climb on their HUD pill and must choose: keep getting tribute (and keep growing as a target) or blow their coins to drop below 200c and lose the crown voluntarily. Pure SOCIAL + CARNAGE energy — the city now has a collective assassination fund.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -948,7 +982,7 @@ Transformed the Pigeon Racing Track from a pure speed contest into a CARNAGE RAC
 - ~~**Bird Gangs** — persistent named gangs with custom colors/tags, gang treasury, gang turf wars~~ (DONE Session 28)
 - ~~Race power-ups: speed boost gates on the circuit that any racer can fly through~~ (DONE Session 30)
 - Owl enforcer in park at night (no-poop zone, alerts NPCs)
-- **Bounty Board** — public board showing top-5 richest birds and current Kingpin; clicking a name places coins on them being dethroned (collective betting pool)
+- ~~**Bounty Board** — public board showing top-5 richest birds and current Kingpin; clicking a name places coins on them being dethroned (collective betting pool)~~ (DONE Session 31)
 - **Weather Betting** — bet on the next weather type before it spawns (integrates race betting panel logic)
 - ~~**Bird Tattoo Parlor** — cosmetic shop where you spend coins for permanent emoji tags under your name~~ (DONE Session 29)
 **Session 20 — 2026-03-30: Territory Control System (Parallel Session)**

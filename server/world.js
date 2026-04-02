@@ -375,6 +375,10 @@ const CASINO_POS = { x: 2100, y: 1200, radius: 120 };
 // Bird Tattoo Parlor — colorful ink shop in the lower-left Cafe District area
 const TATTOO_PARLOR_POS = { x: 640, y: 1840, radius: 100 };
 
+// City Hall — grand civic building in the central corridor between Mall and Downtown
+// Hosts the Bounty Board (Dethronement Pool) — [V] to access
+const CITY_HALL_POS = { x: 1780, y: 1050, radius: 110 };
+
 // Tattoo catalog — 25 permanent emoji tattoos in 5 themed categories
 const TATTOO_CATALOG = [
   // Crime
@@ -420,6 +424,7 @@ module.exports = {
   EGG_NEST_ZONES, EGG_SPAWN_POOL,
   DON_POS, CASINO_POS,
   TATTOO_PARLOR_POS, TATTOO_CATALOG,
+  CITY_HALL_POS,
   PREDATOR_TERRITORIES,
   getXPForLevel, getLevelFromXP, getBirdTypeForLevel,
 };

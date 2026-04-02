@@ -524,6 +524,82 @@
     padding:6px 18px;border-radius:14px;border:2px solid #ff0000;pointer-events:none;z-index:85;
     text-align:center;text-shadow:0 0 8px #ff0000;"></div>
 
+  <!-- Bounty Board Overlay (City Hall — press V) -->
+  <div id="bountyBoardOverlay" style="display:none;position:fixed;top:50%;left:50%;
+    transform:translate(-50%,-50%);
+    background:rgba(10,6,2,0.97);color:#ffd700;
+    font:11px 'Courier New',monospace;padding:18px 22px;border-radius:16px;
+    border:2px solid #aa7700;box-shadow:0 0 32px rgba(255,170,0,0.35);
+    z-index:95;min-width:320px;max-width:400px;max-height:80vh;overflow-y:auto;">
+
+    <div style="text-align:center;font:bold 15px serif;color:#ffd700;
+      text-shadow:0 0 10px #ffd700;margin-bottom:4px;letter-spacing:1px;">
+      🏛 CITY HALL — BOUNTY BOARD
+    </div>
+    <div style="text-align:center;color:#aa8833;font:10px monospace;margin-bottom:14px;">
+      Contribute coins to the Dethronement Pool.<br>
+      First bird to dethrone the Kingpin wins it all.
+    </div>
+
+    <!-- Current Kingpin -->
+    <div id="bbKingpinSection" style="background:rgba(80,50,0,0.5);border:1px solid #aa7700;
+      border-radius:10px;padding:10px 14px;margin-bottom:12px;">
+      <div style="font:bold 11px monospace;color:#ffd700;margin-bottom:6px;">👑 CURRENT KINGPIN</div>
+      <div id="bbKingpinInfo" style="color:#ffcc44;font:12px monospace;text-align:center;"></div>
+    </div>
+
+    <!-- Dethronement Pool -->
+    <div id="bbPoolSection" style="background:rgba(60,10,0,0.6);border:1px solid #cc4400;
+      border-radius:10px;padding:10px 14px;margin-bottom:12px;">
+      <div style="font:bold 11px monospace;color:#ff6600;margin-bottom:6px;">💀 DETHRONEMENT POOL</div>
+      <div id="bbPoolTotal" style="text-align:center;font:bold 18px monospace;color:#ff8800;
+        text-shadow:0 0 10px #ff4400;"></div>
+      <div id="bbTopDonor" style="text-align:center;font:9px monospace;color:#aa5500;
+        margin-top:4px;"></div>
+      <div id="bbLastPaidOut" style="text-align:center;font:9px monospace;color:#aa5500;
+        margin-top:2px;"></div>
+      <!-- Contribute form -->
+      <div id="bbContributeForm" style="display:flex;gap:8px;margin-top:10px;align-items:center;">
+        <input id="bbContributeAmount" type="number" min="10" max="500" value="50"
+          style="flex:1;background:rgba(40,20,0,0.8);color:#ffd700;border:1px solid #aa6600;
+          border-radius:6px;padding:4px 8px;font:11px monospace;width:80px;" />
+        <span style="color:#aa7700;font:9px monospace;">c (10–500)</span>
+        <button id="bbContributeBtn"
+          style="background:rgba(120,40,0,0.8);color:#ffcc00;border:1px solid #cc7700;
+          border-radius:8px;padding:5px 12px;cursor:pointer;font:bold 10px monospace;
+          white-space:nowrap;">ADD TO POOL</button>
+      </div>
+      <div id="bbContributeMsg" style="font:9px monospace;color:#ff8844;text-align:center;
+        margin-top:4px;min-height:14px;"></div>
+    </div>
+
+    <!-- Top Birds Leaderboard -->
+    <div style="background:rgba(10,20,40,0.5);border:1px solid #334466;
+      border-radius:10px;padding:10px 14px;margin-bottom:12px;">
+      <div style="font:bold 11px monospace;color:#88aaff;margin-bottom:6px;">🏆 RICHEST BIRDS</div>
+      <div id="bbLeaderboard" style="font:10px monospace;color:#aabbdd;"></div>
+    </div>
+
+    <button id="bbCloseBtn"
+      style="display:block;margin:0 auto;background:rgba(40,20,0,0.8);color:#aa7700;
+      border:1px solid #664400;border-radius:10px;padding:6px 24px;cursor:pointer;
+      font:11px 'Courier New',monospace;">CLOSE  [V]</button>
+  </div>
+
+  <!-- City Hall proximity prompt -->
+  <div id="cityHallPrompt" style="display:none;position:fixed;bottom:120px;left:50%;
+    transform:translateX(-50%);background:rgba(20,12,0,0.9);color:#ffd700;
+    font:bold 12px 'Courier New',monospace;padding:7px 18px;border-radius:14px;
+    border:2px solid #aa7700;pointer-events:none;z-index:70;text-align:center;
+    text-shadow:0 0 8px #ffd700;"></div>
+
+  <!-- Dethronement Pool HUD pill (persistent when pool > 0) -->
+  <div id="poolHudPill" style="display:none;position:fixed;top:52px;left:50%;
+    transform:translateX(-50%);background:rgba(40,10,0,0.9);color:#ff6600;
+    font:bold 10px 'Courier New',monospace;padding:4px 12px;border-radius:12px;
+    border:1.5px solid #cc4400;pointer-events:none;z-index:62;
+    text-align:center;cursor:pointer;"></div>
+
   <script src="/socket.io/socket.io.js"></script>
   <script src="/js/sounds.js"></script>
   <script src="/js/sprites.js"></script>

@@ -243,6 +243,17 @@ class GameEngine {
     this.kingpin = null; // { birdId, birdName, coins, crownedAt, hitCount: Map(hitterId->count), lastPassiveReward }
     this.kingpinCheckTimer = 0;
 
+    // === DETHRONEMENT POOL (City Hall Bounty Board) ===
+    // Any bird can contribute coins to this pool. When the Kingpin is dethroned,
+    // the entire pool goes to the bird who lands the killing 3rd hit.
+    // Pool persists across Kingpin changes — it keeps growing until paid out.
+    this.dethronementPool = {
+      total: 0,
+      topDonor: null,    // { name, amount } — the biggest single contributor
+      lastPaidTo: null,  // { name, amount } — last payout recipient (for history display)
+    };
+    this.CITY_HALL_POS = world.CITY_HALL_POS;
+
     // === BIRD TATTOO PARLOR ===
     this.TATTOO_PARLOR_POS = world.TATTOO_PARLOR_POS;
     this.TATTOO_CATALOG = world.TATTOO_CATALOG;
@@ -711,6 +722,11 @@ class GameEngine {
     // === Pigeonhole Slots Casino ===
     if (action.type === 'slots_spin') {
       this._handleSlotsSpin(bird, now);
+    }
+
+    // === Dethronement Pool (City Hall Bounty Board) ===
+    if (action.type === 'pool_contribute') {
+      this._handlePoolContribute(bird, action.amount, now);
     }
 
     // === Bird Tattoo Parlor ===
@@ -3996,6 +4012,18 @@ class GameEngine {
           y: kBird ? kBird.y : null,
         };
       })() : null,
+      // Dethronement Pool (City Hall Bounty Board)
+      dethronementPool: {
+        total: this.dethronementPool.total,
+        topDonor: this.dethronementPool.topDonor,
+        lastPaidTo: this.dethronementPool.lastPaidTo,
+      },
+      nearCityHall: (() => {
+        const ch = this.CITY_HALL_POS;
+        const dx = bird.x - ch.x;
+        const dy = bird.y - ch.y;
+        return Math.sqrt(dx * dx + dy * dy) < ch.radius;
+      })(),
       radioTower: {
         state: this.radioTower.state,
         ownerId: this.radioTower.ownerId,
@@ -8823,6 +8851,24 @@ class GameEngine {
     attacker.xp += 450;
     attacker.mafiaRep = (attacker.mafiaRep || 0) + 2; // KINGPIN SLAYER earns mafia rep
 
+    // === DETHRONEMENT POOL PAYOUT ===
+    // If the pool has funds, the dethroner gets the entire pool as a bonus!
+    let poolPayout = 0;
+    if (this.dethronementPool.total > 0) {
+      poolPayout = this.dethronementPool.total;
+      attacker.coins += poolPayout;
+      attacker.xp += Math.floor(poolPayout * 1.5); // bonus XP scales with pool size
+      this.dethronementPool.lastPaidTo = { name: attacker.name, amount: poolPayout };
+      this.dethronementPool.total = 0;
+      this.dethronementPool.topDonor = null;
+      this.events.push({
+        type: 'pool_paid_out',
+        winnerName: attacker.name,
+        amount: poolPayout,
+        loot: lootAmount,
+      });
+    }
+
     const dethroned = { birdId: this.kingpin.birdId, birdName: this.kingpin.birdName };
     this.kingpin = null;
 
@@ -8840,6 +8886,7 @@ class GameEngine {
       deposedById: attacker.id,
       deposedByName: attacker.name,
       loot: lootAmount,
+      poolPayout,
       reason: 'defeated',
     });
 
@@ -8849,6 +8896,41 @@ class GameEngine {
     // Immediately check for new kingpin
     this.kingpinCheckTimer = 0;
     this._updateKingpin(now);
+  }
+
+  _handlePoolContribute(bird, amount, now) {
+    // Validate: must be a number, min 10c, max 500c, bird must have enough
+    amount = Math.floor(Number(amount));
+    if (!isFinite(amount) || amount < 10) return;
+    amount = Math.min(amount, 500);
+    if (bird.coins < amount) return;
+
+    // Can't contribute if no Kingpin exists (no target to dethrone)
+    if (!this.kingpin) {
+      this.events.push({ type: 'pool_error', birdId: bird.id, msg: 'No Kingpin on the throne — wait for someone to take the crown!' });
+      return;
+    }
+    // Can't contribute if YOU are the Kingpin
+    if (this.kingpin.birdId === bird.id) {
+      this.events.push({ type: 'pool_error', birdId: bird.id, msg: "You can't put a bounty on yourself!" });
+      return;
+    }
+
+    bird.coins -= amount;
+    this.dethronementPool.total += amount;
+
+    // Track biggest donor
+    if (!this.dethronementPool.topDonor || amount > this.dethronementPool.topDonor.amount) {
+      this.dethronementPool.topDonor = { name: bird.name, amount };
+    }
+
+    this.events.push({
+      type: 'pool_contributed',
+      birdId: bird.id,
+      birdName: bird.name,
+      amount,
+      poolTotal: this.dethronementPool.total,
+    });
   }
 
 }

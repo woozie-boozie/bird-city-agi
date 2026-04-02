@@ -101,6 +101,17 @@
   let tattooOverlayVisible = false;
   let lastNearTattooParlor = false;
 
+  // === CITY HALL BOUNTY BOARD ===
+  const bountyBoardOverlay = document.getElementById('bountyBoardOverlay');
+  const bbCloseBtn = document.getElementById('bbCloseBtn');
+  const bbContributeBtn = document.getElementById('bbContributeBtn');
+  const bbContributeAmount = document.getElementById('bbContributeAmount');
+  const bbContributeMsg = document.getElementById('bbContributeMsg');
+  const poolHudPill = document.getElementById('poolHudPill');
+  const cityHallPrompt = document.getElementById('cityHallPrompt');
+  let bountyBoardVisible = false;
+  let lastNearCityHall = false;
+
   // === Persistent Identity (localStorage) ===
   function getSavedAccount() {
     try {
@@ -800,14 +811,15 @@
     if (ev.type === 'kingpin_dethroned') {
       if (ev.reason === 'defeated' && ev.deposedByName) {
         const selfDeposed = ev.deposedByName === (gameState && gameState.self && gameState.self.name);
+        const poolLine = ev.poolPayout > 0 ? `\n💀 +${ev.poolPayout}c POOL PAYOUT!` : '';
         if (selfDeposed) {
           screenShake(16, 900);
-          showAnnouncement(`💰 YOU DETHRONED ${ev.deposed}!\n+${ev.loot}c LOOTED! +450 XP! +2 MAFIA REP!`, '#ffd700', 5000);
+          showAnnouncement(`💰 YOU DETHRONED ${ev.deposed}!\n+${ev.loot}c LOOTED! +450 XP! +2 MAFIA REP!${poolLine}`, '#ffd700', 5500);
         } else if (ev.deposed && gameState && gameState.self && ev.deposed === gameState.self.name) {
           screenShake(14, 800);
           showAnnouncement(`💀 YOU WERE DETHRONED by ${ev.deposedByName}!\nThey looted ${ev.loot}c from your stash!`, '#ff4444', 4500);
         } else {
-          showAnnouncement(`👑 ${ev.deposedByName} DETHRONED ${ev.deposed}! (+${ev.loot}c loot)`, '#ff8800', 4000);
+          showAnnouncement(`👑 ${ev.deposedByName} DETHRONED ${ev.deposed}! (+${ev.loot}c loot)${poolLine ? '\n' + poolLine.trim() : ''}`, '#ff8800', 4000);
         }
         addEventMessage(`👑 ${ev.deposedByName} dethroned ${ev.deposed} and looted ${ev.loot}c!`, '#ff8800');
         effects.push({ type: 'screen_shake', intensity: 10, duration: 600, time: now });
@@ -815,6 +827,33 @@
         addEventMessage(`👑 ${ev.deposed} left the city — throne is vacant!`, '#888');
       } else if (ev.reason === 'broke') {
         addEventMessage(`👑 ${ev.deposed} spent their fortune — throne is vacant!`, '#888');
+      }
+    }
+
+    // === DETHRONEMENT POOL EVENTS ===
+    if (ev.type === 'pool_contributed') {
+      const isSelf = ev.birdId === myId;
+      if (isSelf) {
+        showAnnouncement(`💀 You added ${ev.amount}c to the Dethronement Pool!\nPool total: ${ev.poolTotal}c`, '#ff6600', 2500);
+      }
+      addEventMessage(`💀 ${ev.birdName} put ${ev.amount}c in the Dethronement Pool! (Total: ${ev.poolTotal}c)`, '#ff8800');
+      updatePoolHudPill(ev.poolTotal);
+    }
+    if (ev.type === 'pool_paid_out') {
+      const isSelf = ev.winnerName === (gameState && gameState.self && gameState.self.name);
+      screenShake(18, 1000);
+      if (isSelf) {
+        showAnnouncement(`💰💀 POOL PAYOUT! +${ev.amount}c\nThe Dethronement Pool was YOURS!`, '#ff6600', 6000);
+      } else {
+        showAnnouncement(`💀 ${ev.winnerName} claimed the DETHRONEMENT POOL!\n${ev.amount}c paid out!`, '#ff6600', 4500);
+      }
+      addEventMessage(`💀 POOL CLAIMED: ${ev.winnerName} earned ${ev.amount}c from the Dethronement Pool!`, '#ff6600');
+      updatePoolHudPill(0);
+    }
+    if (ev.type === 'pool_error') {
+      if (ev.birdId === myId) {
+        const msg = document.getElementById('bbContributeMsg');
+        if (msg) { msg.textContent = ev.msg; setTimeout(() => { msg.textContent = ''; }, 3000); }
       }
     }
     if (ev.type === 'kingpin_hit') {
@@ -1955,6 +1994,14 @@
         showTattooOverlay();
       }
     }
+    // Bounty Board / City Hall toggle
+    if (e.key.toLowerCase() === 'v') {
+      if (bountyBoardVisible) {
+        hideBountyBoard();
+      } else if (gameState && gameState.nearCityHall) {
+        showBountyBoard();
+      }
+    }
     // Arena enter
     if (e.key.toLowerCase() === 'e') {
       if (gameState && gameState.arena && lastNearArena &&
@@ -2675,6 +2722,31 @@
     }
     lastNearTattooParlor = nearTat;
     if (tattooOverlayVisible) renderTattooOverlay();
+
+    // City Hall / Bounty Board proximity
+    const nearCH = !!gameState.nearCityHall;
+    if (nearCH && !lastNearCityHall) {
+      const pool = gameState.dethronementPool || { total: 0 };
+      const poolTxt = pool.total > 0 ? `💀 Pool: ${pool.total}c` : 'No pool yet — start one!';
+      if (cityHallPrompt) {
+        cityHallPrompt.innerHTML = `🏛 CITY HALL — Press [V] to open Bounty Board<br><span style="font:9px monospace;color:#ff8800;">${poolTxt}</span>`;
+        cityHallPrompt.style.display = 'block';
+      }
+    }
+    if (!nearCH && lastNearCityHall) {
+      if (cityHallPrompt) cityHallPrompt.style.display = 'none';
+      if (bountyBoardVisible) hideBountyBoard();
+    }
+    lastNearCityHall = nearCH;
+    if (bountyBoardVisible) renderBountyBoard();
+
+    // Update pool HUD pill and proximity prompt if near
+    const pool = gameState.dethronementPool || { total: 0 };
+    updatePoolHudPill(pool.total);
+    if (nearCH && cityHallPrompt && cityHallPrompt.style.display !== 'none') {
+      const poolTxtLive = pool.total > 0 ? `💀 Pool: ${pool.total}c — dethrone the Kingpin to claim it!` : 'No pool yet — be the first to contribute!';
+      cityHallPrompt.innerHTML = `🏛 CITY HALL — Press [V] to open Bounty Board<br><span style="font:9px monospace;color:#ff8800;">${poolTxtLive}</span>`;
+    }
 
     // Gang HQ — update when open
     if (gangHqVisible) renderGangHq();
@@ -4514,6 +4586,12 @@
       Renderer.drawTattooParlor(ctx, camera, worldData.tattooParlor.pos, !!gameState.nearTattooParlor, now);
     }
 
+    // City Hall + Bounty Board
+    if (worldData && worldData.cityHallPos) {
+      const poolAmount = (gameState.dethronementPool && gameState.dethronementPool.total) || 0;
+      Renderer.drawCityHall(ctx, camera, worldData.cityHallPos, poolAmount, !!gameState.nearCityHall, now);
+    }
+
     // Pigeon Race track checkpoints
     if (worldData && worldData.raceCheckpoints) {
       Renderer.drawRaceTrack(ctx, camera, worldData.raceCheckpoints, gameState.pigeonRace || null, now);
@@ -4822,6 +4900,12 @@
     // Tattoo Parlor on minimap
     if (worldData && worldData.tattooParlor) {
       Renderer.drawTattooParlourOnMinimap(minimapCtx, worldData);
+    }
+
+    // City Hall on minimap
+    if (worldData && worldData.cityHallPos) {
+      const poolAmount = (gameState.dethronementPool && gameState.dethronementPool.total) || 0;
+      Renderer.drawCityHallOnMinimap(minimapCtx, worldData, poolAmount);
     }
 
     // Draw beacons on minimap
@@ -5913,6 +5997,113 @@
   }
   if (casinoCloseBtn) {
     casinoCloseBtn.addEventListener('click', () => hideCasinoOverlay());
+  }
+
+  // ============================================================
+  // CITY HALL — BOUNTY BOARD OVERLAY
+  // ============================================================
+  function showBountyBoard() {
+    bountyBoardVisible = true;
+    bountyBoardOverlay.style.display = 'block';
+    for (const k in keys) keys[k] = false;
+    syncInput();
+    renderBountyBoard();
+  }
+
+  function hideBountyBoard() {
+    bountyBoardVisible = false;
+    bountyBoardOverlay.style.display = 'none';
+  }
+
+  function renderBountyBoard() {
+    if (!gameState) return;
+    const pool = gameState.dethronementPool || { total: 0, topDonor: null, lastPaidTo: null };
+    const kp = gameState.kingpin;
+    const self = gameState.self;
+
+    // Kingpin section
+    const kpInfo = document.getElementById('bbKingpinInfo');
+    if (kpInfo) {
+      if (kp) {
+        const isSelf = self && kp.birdId === self.id;
+        kpInfo.innerHTML = `<span style="font:bold 14px monospace;color:#ffd700;">👑 ${kp.birdName}</span>`
+          + `<br><span style="color:#ffcc44;">${kp.coins}c</span>`
+          + (isSelf ? '<br><span style="color:#ff8800;font:9px monospace;">That\'s you! Others are plotting your downfall...</span>' : '');
+      } else {
+        kpInfo.innerHTML = '<span style="color:#666;font:italic 11px monospace;">Throne is vacant — no Kingpin</span>';
+      }
+    }
+
+    // Pool section
+    const poolTotalEl = document.getElementById('bbPoolTotal');
+    if (poolTotalEl) {
+      poolTotalEl.textContent = pool.total > 0 ? `💀 ${pool.total}c` : '0c — be the first to contribute!';
+    }
+
+    const topDonorEl = document.getElementById('bbTopDonor');
+    if (topDonorEl) {
+      topDonorEl.textContent = pool.topDonor
+        ? `Biggest contributor: ${pool.topDonor.name} (${pool.topDonor.amount}c)`
+        : '';
+    }
+
+    const lastPaidEl = document.getElementById('bbLastPaidOut');
+    if (lastPaidEl) {
+      lastPaidEl.textContent = pool.lastPaidTo
+        ? `Last payout: ${pool.lastPaidTo.name} claimed ${pool.lastPaidTo.amount}c`
+        : '';
+    }
+
+    // Contribute button — disable if no Kingpin or you are Kingpin or insufficient funds
+    const contributeBtn = document.getElementById('bbContributeBtn');
+    const noKingpin = !kp;
+    const isSelf = self && kp && kp.birdId === self.id;
+    if (contributeBtn) {
+      const disabled = noKingpin || isSelf;
+      contributeBtn.disabled = disabled;
+      contributeBtn.style.opacity = disabled ? '0.4' : '1';
+      contributeBtn.style.cursor = disabled ? 'not-allowed' : 'pointer';
+    }
+
+    // Leaderboard — use leaderboardData (XP-based global rankings)
+    const lbEl = document.getElementById('bbLeaderboard');
+    if (lbEl) {
+      const lb = leaderboardData || [];
+      if (lb.length === 0) {
+        lbEl.textContent = 'No data yet';
+      } else {
+        const topFive = lb.slice(0, 5);
+        lbEl.innerHTML = topFive.map((b, i) => {
+          const medals = ['🥇','🥈','🥉','4️⃣','5️⃣'];
+          return `<div style="display:flex;justify-content:space-between;margin-bottom:3px;">
+            <span>${medals[i]} ${b.name}</span>
+            <span style="color:#88aaff;">${b.xp} XP</span>
+          </div>`;
+        }).join('');
+      }
+    }
+  }
+
+  function updatePoolHudPill(total) {
+    if (!poolHudPill) return;
+    if (total > 0) {
+      poolHudPill.style.display = 'block';
+      poolHudPill.textContent = `💀 POOL: ${total}c`;
+    } else {
+      poolHudPill.style.display = 'none';
+    }
+  }
+
+  // Bounty Board button listeners
+  if (bbCloseBtn) {
+    bbCloseBtn.addEventListener('click', () => hideBountyBoard());
+  }
+  if (bbContributeBtn) {
+    bbContributeBtn.addEventListener('click', () => {
+      const raw = parseInt(bbContributeAmount ? bbContributeAmount.value : '50', 10);
+      const amount = isNaN(raw) ? 50 : Math.max(10, Math.min(500, raw));
+      socket.emit('action', { type: 'pool_contribute', amount });
+    });
   }
 
   // ============================================================
