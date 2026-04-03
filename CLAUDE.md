@@ -1171,6 +1171,49 @@ Three interlocking features that complete the prestige system's endgame identity
 
 **Creative intent**: This completes what Prestige was always missing — VISUAL THEATER. Reaching P5 was meaningful but private. Now the whole city knows. Golden poops are a constant flex. The Hall of Legends is a pilgrimage site for new players discovering who's on top. The Eagle Feather needs cooperative skill AND luck — the most exclusive badge in the game. A P5 LEGEND bird with 🪶 and a [MOB] gang tag, raining golden poops while their name glows on the city's marble hall — that's pure SPECTACLE. Pure PROGRESSION + SPECTACLE + DISCOVERY energy.
 
+**Session 38 — 2026-04-03: Mystery Crate Airdrop — City-Wide Scramble Event**
+Every 12–16 minutes, a glowing golden crate drops from the sky at a random city location — announced to all players with a screen shake and countdown arrow. First bird to reach it within 90 seconds claims one of 10 powerful random items.
+
+**10 Mystery Items (weighted random):**
+- 💣 **NUKE POOP** (7%): Next poop fires a 200px blast radius — stuns all nearby birds, deals massive boss damage. One-time use.
+- 🚀 **JET WINGS** (13%): 3.5× speed for 15 seconds with fire aura visual — leaves every other bird in the dust
+- 💸 **COIN CACHE** (18%): Instant 250–450c windfall — most common reward, always feels good
+- 🛡️ **RIOT SHIELD** (11%): Immune to cop arrests AND predator attacks for 12 seconds — total legal immunity
+- ⚡ **LIGHTNING ROD** (8%): Every poop you fire for 20 seconds summons lightning at the target, stunning nearby birds
+- 🧲 **COIN MAGNET** (15%): Pull all coins and food items within 350px for 10 seconds — auto-collect city radius
+- 👻 **GHOST MODE** (11%): Invisible to cops (they wander confused) + partially transparent sprite for 15 seconds
+- 🌪️ **TWISTER BOMB** (7%): Instant effect — blasts all birds within 200px away by 300px (scatters a crowd)
+- 💎 **DIAMOND POOP** (7%): Every poop hit earns triple coins for 20 seconds — pure money run mode
+- 📦 **BROKEN CRATE** (3%): Empty... but here's 75c consolation. Rare troll option.
+
+**The Race Mechanic:**
+- City-wide "📦 MYSTERY CRATE AIRDROP!" announcement with screen shake
+- Golden crate visible in world space: glowing parachute descent, spinning "?" on lid
+- Directional arrow on screen edge points toward crate when it's off-screen
+- Countdown bar at top of screen shows remaining claim time
+- Pulsing "?" dot on minimap at crate location
+- Auto-collected by first bird who flies within 45px — no button press needed
+
+**Visual & HUD:**
+- `drawMysteryCrate()` sprite: parachute with strings, golden chest with lid, spinning ? mark, corner bolts, pulsing halo glow
+- Jet Wings: orange/fire radial glow behind bird when active
+- Riot Shield: pulsing electric blue ring around player
+- Ghost Mode: player rendered at 35% alpha (ghostly)
+- All active buffs appear as color-coded pills in the active buffs HUD
+- Nuke Poop: red pulsing "💣 NUKE POOP — READY!" pill until used
+- City-wide announcement when claimed: "[TAG] PlayerName claimed the crate → 🚀 JET WINGS!"
+
+**Server integration:**
+- Nuke poop: extends isMegaPoop + isNuke flag (tagged for renderer)
+- Diamond Poop: hooks into XP gain section, adds 3× coins per hit on top of normal rewards
+- Lightning Rod: hooks into poop hit processing, fires `lightning` event + stuns nearby birds
+- Riot Shield: blocks cop arrest check + predator attack check
+- Ghost Mode: piggybacks on existing smoke bomb cop-wander logic
+- Coin Magnet: in bird update loop — pulls all nearby active food items as coins every 0.5s
+- Jet Wings: in speed multiplier chain — 3.5× after all other multipliers
+
+**Creative intent**: The mystery crate is a city-wide moment machine. Every 12–16 minutes, everyone drops what they're doing and sprints toward the same spot. A Level 5 Most Wanted bird using Ghost Mode to escape cops, then getting Jet Wings on the next crate and blazing across the city — those moments don't require any scripting, they just emerge. The Twister Bomb scattering a crowd of 4 birds who were racing the crate creates instant drama. The broken crate's 3% troll rate means nobody feels fully safe assuming they'll win big. Pure CARNAGE + DISCOVERY + SPECTACLE energy — a periodic chaos injection that makes every session unpredictable.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -1204,6 +1247,7 @@ Built the Territory Control System on top of the existing upstream code:
 - Owl enforcer in park at night (creates no-poop zone, alerts NPCs)
 - Bioluminescent park pond at night (glowing water effect)
 - ~~Hot day weather: food spoils faster, birds need water puddles~~ (DONE Session 35)
+- ~~Mystery Crate Airdrop — city-wide scramble event, 10 random powerful items~~ (DONE Session 38)
 - Birds can shelter under awnings/trees during storms (mechanic: reduced hail hit radius if near cover)
 - ~~Prestige leaderboard: a wall/board in the city showing top-5 prestige players of all time~~ (DONE Session 37 — Hall of Legends)
 - ~~LEGEND-tier exclusive: ⚜️⚜️⚜️⚜️⚜️ birds can unlock "Prestige Poop" — a special golden poop effect~~ (DONE Session 37)

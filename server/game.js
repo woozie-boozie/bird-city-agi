@@ -312,6 +312,39 @@ class GameEngine {
     this.pondFishIds = new Set();     // tracks which food IDs are pond fish
     this.pondFishRespawnTimer = 0;    // when to try spawning next fish
 
+    // === MYSTERY CRATE AIRDROP ===
+    // Every 12-16 minutes a glowing crate drops at a random city location.
+    // First bird to reach it within 90 seconds claims a powerful random item.
+    this.mysteryCrate = null;  // null or { id, x, y, spawnedAt, expiresAt }
+    this.mysteryCrateTimer = Date.now() + this._randomRange(720000, 960000); // 12-16 min
+    this.MYSTERY_CRATE_SPAWN_LOCATIONS = [
+      { x: 1200, y: 1200 }, // Park center
+      { x: 2200, y: 1100 }, // Mall entrance
+      { x: 2000, y: 580  }, // Downtown plaza
+      { x: 620,  y: 1550 }, // Cafe District
+      { x: 520,  y: 720  }, // Residential
+      { x: 2700, y: 1250 }, // Arena area
+      { x: 1200, y: 580  }, // Radio Tower area
+      { x: 1400, y: 2050 }, // South road
+      { x: 2380, y: 1800 }, // East corridor
+      { x: 380,  y: 1800 }, // West waterfront
+      { x: 1620, y: 380  }, // North plaza
+      { x: 1600, y: 1540 }, // Mid city junction
+    ];
+    this.MYSTERY_CRATE_ITEMS = [
+      { id: 'nuke_poop',     emoji: '💣', name: 'NUKE POOP',     weight: 7,  desc: 'Next poop triggers a 200px blast radius — obliterates everything nearby' },
+      { id: 'jet_wings',     emoji: '🚀', name: 'JET WINGS',     weight: 13, desc: '3.5× speed for 15 seconds — leave everyone behind' },
+      { id: 'coin_cache',    emoji: '💸', name: 'COIN CACHE',    weight: 18, desc: 'Instant windfall of 250–450 coins' },
+      { id: 'riot_shield',   emoji: '🛡️', name: 'RIOT SHIELD',  weight: 11, desc: 'Immune to cops, predators, and poop hits for 12 seconds' },
+      { id: 'lightning_rod', emoji: '⚡', name: 'LIGHTNING ROD', weight: 8,  desc: 'Every poop you fire summons lightning at the target for 20s' },
+      { id: 'coin_magnet',   emoji: '🧲', name: 'COIN MAGNET',   weight: 15, desc: 'Pull all coins and food from 350px for 10 seconds' },
+      { id: 'ghost_mode',    emoji: '👻', name: 'GHOST MODE',    weight: 11, desc: 'Invisible to cops and other birds for 15 seconds' },
+      { id: 'twister_bomb',  emoji: '🌪️', name: 'TWISTER BOMB', weight: 7,  desc: 'Instantly blasts every bird within 200px away by 300px' },
+      { id: 'diamond_poop',  emoji: '💎', name: 'DIAMOND POOP',  weight: 7,  desc: 'Every poop hit earns triple coins for 20 seconds' },
+      { id: 'broken_crate',  emoji: '📦', name: 'BROKEN CRATE',  weight: 3,  desc: 'Empty... but here\'s 75c consolation prize' },
+    ];
+    this.MYSTERY_CRATE_TOTAL_WEIGHT = this.MYSTERY_CRATE_ITEMS.reduce((s, i) => s + i.weight, 0);
+
     this.tickRate = 20;           // ticks per second
     this.tickInterval = 1000 / this.tickRate;
     this.lastTick = Date.now();
@@ -566,6 +599,15 @@ class GameEngine {
       tattoosEquipped: saved ? this._safeJsonParse(saved.tattoos_equipped, []) : [],
       // === EAGLE FEATHER — rare drop from killing Eagle Overlord ===
       eagleFeather: saved ? (saved.eagle_feather || false) : false,
+      // === MYSTERY CRATE active item buffs ===
+      mcJetWingsUntil:     0,
+      mcRiotShieldUntil:   0,
+      mcGhostModeUntil:    0,
+      mcLightningRodUntil: 0,
+      mcMagnetUntil:       0,
+      mcDiamondPoopUntil:  0,
+      mcNukePoop:          false,
+      mcMagnetLastPull:    0,
     };
 
     // Determine bird type from XP
@@ -1026,6 +1068,9 @@ class GameEngine {
 
     // === Kingpin System ===
     this._updateKingpin(now);
+
+    // === Mystery Crate Airdrop ===
+    this._tickMysteryCrate(now);
   }
 
   // ============================================================
@@ -1949,6 +1994,28 @@ class GameEngine {
       maxSpeed *= 1.7;
     }
 
+    // Mystery Crate: Jet Wings — blazing fast
+    if (bird.mcJetWingsUntil > now) {
+      maxSpeed *= 3.5;
+    }
+
+    // Mystery Crate: Coin Magnet — pull nearby food/coins every 0.5s
+    if (bird.mcMagnetUntil > now && now - bird.mcMagnetLastPull > 500) {
+      bird.mcMagnetLastPull = now;
+      const MAGNET_RADIUS = 350;
+      for (const [fId, food] of this.foods) {
+        if (!food.active) continue;
+        const fdx = food.x - bird.x;
+        const fdy = food.y - bird.y;
+        if (Math.sqrt(fdx * fdx + fdy * fdy) < MAGNET_RADIUS) {
+          // Pull food item value as coins instead of food
+          bird.coins += (food.value || 5);
+          food.active = false;
+          food.respawnAt = now + 15000;
+        }
+      }
+    }
+
     // Prestige P3+: reduced poop cooldown (faster firing rate as permanent bonus)
     if (bird.prestige >= 3) {
       poopCooldown = Math.floor(poopCooldown * PRESTIGE_COOLDOWN_MULTS[Math.min(bird.prestige, 5)]);
@@ -2057,13 +2124,19 @@ class GameEngine {
         isLegend: (bird.prestige || 0) >= 5,  // P5 LEGEND birds drop golden poop
       };
 
-      // Check if mega poop (power-up OR black market mega poop)
-      const isMegaPoop = bird.megaPoopReady || bird.bmMegaPoops > 0;
+      // Check if mega poop (power-up OR black market mega poop OR nuke poop crate item)
+      const isNukePoop = bird.mcNukePoop;
+      const isMegaPoop = bird.megaPoopReady || bird.bmMegaPoops > 0 || isNukePoop;
       if (bird.megaPoopReady) {
         bird.megaPoopReady = false;
         bird.powerUp = null; // Consumed
       } else if (bird.bmMegaPoops > 0) {
         bird.bmMegaPoops--;
+      }
+      if (isNukePoop) {
+        bird.mcNukePoop = false;
+        // Tag poop as nuke so client can render it as massive
+        poop.isNuke = true;
       }
 
       // Check what it hit
@@ -2389,6 +2462,30 @@ class GameEngine {
         xpGain = Math.floor(xpGain * PRESTIGE_XP_MULTS[Math.min(bird.prestige, 5)]);
       }
       bird.xp += xpGain;
+
+      // Mystery Crate: Diamond Poop — triple coins per hit instead of normal XP flow
+      if (bird.mcDiamondPoopUntil > now && hit.target !== 'miss') {
+        const bonusCoins = Math.floor(xpGain * 0.4) * 3;  // triple-ish coin bonus
+        bird.coins += bonusCoins;
+        this.events.push({ type: 'mc_diamond_poop', birdId: bird.id, x: poop.x, y: poop.y, coins: bonusCoins });
+      }
+
+      // Mystery Crate: Lightning Rod — summon lightning at hit target
+      if (bird.mcLightningRodUntil > now && hit.target !== 'miss') {
+        this.events.push({ type: 'lightning', x: poop.x, y: poop.y });
+        // Stun birds within 90px of the strike (not the caster)
+        for (const otherBird of this.birds.values()) {
+          if (otherBird.id === bird.id) continue;
+          const ldx = poop.x - otherBird.x;
+          const ldy = poop.y - otherBird.y;
+          if (Math.sqrt(ldx * ldx + ldy * ldy) < 90) {
+            otherBird.stunnedUntil = now + 1800;
+            otherBird.comboCount = 0;
+            otherBird.comboExpiresAt = 0;
+            this.events.push({ type: 'lightning_hit', birdId: otherBird.id, x: otherBird.x, y: otherBird.y });
+          }
+        }
+      }
 
       // Mission progress: poop hits
       if (bird.activeMission) {
@@ -4666,6 +4763,21 @@ class GameEngine {
         const dy = bird.y - this.HALL_OF_LEGENDS_POS.y;
         return Math.sqrt(dx * dx + dy * dy) < this.HALL_OF_LEGENDS_POS.radius;
       })(),
+      // Mystery Crate Airdrop
+      mysteryCrate: this.mysteryCrate ? {
+        x: this.mysteryCrate.x,
+        y: this.mysteryCrate.y,
+        spawnedAt: this.mysteryCrate.spawnedAt,
+        expiresAt: this.mysteryCrate.expiresAt,
+      } : null,
+      // Mystery Crate active item buffs
+      mcJetWingsUntil:     bird.mcJetWingsUntil,
+      mcRiotShieldUntil:   bird.mcRiotShieldUntil,
+      mcGhostModeUntil:    bird.mcGhostModeUntil,
+      mcLightningRodUntil: bird.mcLightningRodUntil,
+      mcMagnetUntil:       bird.mcMagnetUntil,
+      mcDiamondPoopUntil:  bird.mcDiamondPoopUntil,
+      mcNukePoop:          bird.mcNukePoop,
     };
   }
 
@@ -6637,7 +6749,7 @@ class GameEngine {
           }
 
           // Attack on contact
-          if (dist < 42 && now - predator.lastAttack > 2000) {
+          if (dist < 42 && now - predator.lastAttack > 2000 && !(target.mcRiotShieldUntil > now)) {
             predator.lastAttack = now;
 
             if (!this.predatorHitCounts.has(target.id)) {
@@ -7120,8 +7232,8 @@ class GameEngine {
       return;
     }
 
-    // Black Market Smoke Bomb: wanted bird is invisible to cops
-    const smokeActive = wanted.bmSmokeBombUntil > now;
+    // Black Market Smoke Bomb OR Mystery Crate Ghost Mode: wanted bird is invisible to cops
+    const smokeActive = wanted.bmSmokeBombUntil > now || wanted.mcGhostModeUntil > now;
 
     for (const [copId, cop] of this.copBirds) {
 
@@ -7186,7 +7298,8 @@ class GameEngine {
       cop.y = Math.max(10, Math.min(world.WORLD_HEIGHT - 10, cop.y));
 
       // Arrest: cop catches wanted bird (within 18px, bird not already stunned)
-      if (dist < 18 && wanted.stunnedUntil <= now) {
+      // Mystery Crate: Riot Shield blocks arrest entirely
+      if (dist < 18 && wanted.stunnedUntil <= now && !(wanted.mcRiotShieldUntil > now)) {
         const arrestDuration = cop.type === 'swat' ? 4000 : 2500;
         wanted.stunnedUntil = now + arrestDuration;
         // Combo break — busted kills your streak
@@ -9819,6 +9932,144 @@ class GameEngine {
         }
       }
     }
+  }
+
+  // ============================================================
+  // MYSTERY CRATE AIRDROP
+  // ============================================================
+  _tickMysteryCrate(now) {
+    // Spawn new crate if timer is up and no crate active
+    if (!this.mysteryCrate && now >= this.mysteryCrateTimer && this.birds.size > 0) {
+      this._spawnMysteryCrate(now);
+    }
+
+    if (!this.mysteryCrate) return;
+
+    // Check expiry (90-second window)
+    if (now >= this.mysteryCrate.expiresAt) {
+      this.events.push({ type: 'mystery_crate_expired', x: this.mysteryCrate.x, y: this.mysteryCrate.y });
+      this.mysteryCrate = null;
+      this.mysteryCrateTimer = now + this._randomRange(720000, 960000);
+      return;
+    }
+
+    // Auto-collect: first bird within 45px claims the crate
+    for (const bird of this.birds.values()) {
+      if (bird.stunnedUntil > now) continue;
+      if (bird.inSewer) continue;
+      const dx = bird.x - this.mysteryCrate.x;
+      const dy = bird.y - this.mysteryCrate.y;
+      if (Math.sqrt(dx * dx + dy * dy) < 45) {
+        this._claimMysteryCrate(bird, now);
+        return;
+      }
+    }
+  }
+
+  _spawnMysteryCrate(now) {
+    const locations = this.MYSTERY_CRATE_SPAWN_LOCATIONS;
+    const loc = locations[Math.floor(Math.random() * locations.length)];
+    // Small random offset so it's not always the exact same pixel
+    const x = loc.x + (Math.random() - 0.5) * 160;
+    const y = loc.y + (Math.random() - 0.5) * 160;
+    this.mysteryCrate = {
+      id: 'mc_' + uid(),
+      x: Math.max(50, Math.min(world.WORLD_WIDTH - 50, x)),
+      y: Math.max(50, Math.min(world.WORLD_HEIGHT - 50, y)),
+      spawnedAt: now,
+      expiresAt: now + 90000,  // 90 seconds to claim
+    };
+    this.events.push({
+      type: 'mystery_crate_spawn',
+      x: this.mysteryCrate.x,
+      y: this.mysteryCrate.y,
+      expiresAt: this.mysteryCrate.expiresAt,
+    });
+  }
+
+  _claimMysteryCrate(bird, now) {
+    const crate = this.mysteryCrate;
+    this.mysteryCrate = null;
+    this.mysteryCrateTimer = now + this._randomRange(720000, 960000);
+
+    // Pick a random item using weighted probability
+    let roll = Math.random() * this.MYSTERY_CRATE_TOTAL_WEIGHT;
+    let item = this.MYSTERY_CRATE_ITEMS[this.MYSTERY_CRATE_ITEMS.length - 1];
+    for (const candidate of this.MYSTERY_CRATE_ITEMS) {
+      if (roll < candidate.weight) { item = candidate; break; }
+      roll -= candidate.weight;
+    }
+
+    // Apply item effect
+    switch (item.id) {
+      case 'nuke_poop':
+        bird.mcNukePoop = true;
+        break;
+      case 'jet_wings':
+        bird.mcJetWingsUntil = now + 15000;
+        break;
+      case 'coin_cache': {
+        const coins = 250 + Math.floor(Math.random() * 200);
+        bird.coins += coins;
+        this._trackDailyProgress(bird, 'coins_earned', coins);
+        item = { ...item, coinsAwarded: coins };
+        break;
+      }
+      case 'riot_shield':
+        bird.mcRiotShieldUntil = now + 12000;
+        break;
+      case 'lightning_rod':
+        bird.mcLightningRodUntil = now + 20000;
+        break;
+      case 'coin_magnet':
+        bird.mcMagnetUntil = now + 10000;
+        bird.mcMagnetLastPull = 0;
+        break;
+      case 'ghost_mode':
+        bird.mcGhostModeUntil = now + 15000;
+        break;
+      case 'twister_bomb':
+        // Immediate effect: blast all birds within 200px away by 300px
+        for (const other of this.birds.values()) {
+          if (other.id === bird.id) continue;
+          const dx = other.x - bird.x;
+          const dy = other.y - bird.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < 200) {
+            const pushAngle = dist > 1 ? Math.atan2(dy, dx) : Math.random() * Math.PI * 2;
+            other.x = Math.max(50, Math.min(world.WORLD_WIDTH - 50, other.x + Math.cos(pushAngle) * 300));
+            other.y = Math.max(50, Math.min(world.WORLD_HEIGHT - 50, other.y + Math.sin(pushAngle) * 300));
+            other.stunnedUntil = now + 1200;
+            other.comboCount = 0;
+            other.comboExpiresAt = 0;
+          }
+        }
+        break;
+      case 'diamond_poop':
+        bird.mcDiamondPoopUntil = now + 20000;
+        break;
+      case 'broken_crate':
+        bird.coins += 75;
+        this._trackDailyProgress(bird, 'coins_earned', 75);
+        break;
+    }
+
+    this.events.push({
+      type: 'mystery_crate_claimed',
+      birdId: bird.id,
+      birdName: bird.name,
+      birdColor: bird.birdColor,
+      gangTag: bird.gangTag || null,
+      item: {
+        id: item.id,
+        emoji: item.emoji,
+        name: item.name,
+        desc: item.desc,
+        coinsAwarded: item.coinsAwarded,
+      },
+      x: crate.x,
+      y: crate.y,
+    });
   }
 
 }

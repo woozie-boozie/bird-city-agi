@@ -2906,4 +2906,35 @@ window.Renderer = {
     minimapCtx.fillText('🏛', px, py - 4);
     minimapCtx.restore();
   },
+
+  // Mystery Crate — draw in world space
+  drawMysteryCrate(ctx, camera, crate, now) {
+    if (!crate) return;
+    const sx = crate.x - camera.x + camera.screenW / 2;
+    const sy = crate.y - camera.y + camera.screenH / 2;
+    // Off-screen culling with generous margin for parachute
+    if (sx < -60 || sx > camera.screenW + 60 || sy < -80 || sy > camera.screenH + 60) return;
+    Sprites.drawMysteryCrate(ctx, sx, sy, now);
+  },
+
+  // Mystery Crate — pulsing ? dot on minimap
+  drawMysteryCrateOnMinimap(minimapCtx, worldData, crate, now) {
+    if (!crate) return;
+    const scale = minimapCtx.canvas.width / worldData.width;
+    const px = crate.x * scale;
+    const py = crate.y * scale;
+    const pulse = 0.5 + 0.5 * Math.sin(now * 0.006);
+    minimapCtx.save();
+    minimapCtx.shadowColor = '#ffd700';
+    minimapCtx.shadowBlur = 6 + 4 * pulse;
+    minimapCtx.fillStyle = `rgba(255,210,0,${0.8 + 0.2 * pulse})`;
+    minimapCtx.beginPath();
+    minimapCtx.arc(px, py, 4 + pulse * 2, 0, Math.PI * 2);
+    minimapCtx.fill();
+    minimapCtx.shadowBlur = 0;
+    minimapCtx.font = '8px sans-serif';
+    minimapCtx.textAlign = 'center';
+    minimapCtx.fillText('?', px, py + 3);
+    minimapCtx.restore();
+  },
 };

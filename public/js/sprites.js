@@ -3351,4 +3351,98 @@ window.Sprites = {
 
     ctx.restore();
   },
+
+  // Mystery Crate Airdrop — glowing golden chest with spinning "?" and parachute
+  drawMysteryCrate(ctx, x, y, now) {
+    ctx.save();
+    ctx.translate(x, y);
+
+    const pulse = 0.5 + 0.5 * Math.sin(now * 0.004);
+    const spin = (now * 0.002) % (Math.PI * 2);
+
+    // Outer glow halo
+    const grd = ctx.createRadialGradient(0, 0, 4, 0, 0, 28);
+    grd.addColorStop(0, `rgba(255,220,0,${0.45 + 0.25 * pulse})`);
+    grd.addColorStop(1, 'rgba(255,180,0,0)');
+    ctx.fillStyle = grd;
+    ctx.beginPath();
+    ctx.arc(0, 0, 28, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Parachute (simple arc above crate)
+    const chuteSway = Math.sin(now * 0.0015) * 3;
+    ctx.strokeStyle = '#ccaa44';
+    ctx.lineWidth = 1.2;
+    // Chute canopy
+    ctx.fillStyle = `rgba(255,220,80,0.75)`;
+    ctx.beginPath();
+    ctx.arc(chuteSway, -22, 12, Math.PI, 0, false);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(chuteSway, -22, 12, Math.PI, 0, false);
+    ctx.stroke();
+    // Chute strings (3 lines from canopy edge to crate top)
+    ctx.strokeStyle = 'rgba(220,200,80,0.6)';
+    ctx.lineWidth = 0.7;
+    for (let i = -1; i <= 1; i++) {
+      ctx.beginPath();
+      ctx.moveTo(chuteSway + i * 11, -22);
+      ctx.lineTo(i * 5, -8);
+      ctx.stroke();
+    }
+
+    // Crate body
+    ctx.fillStyle = '#c08020';
+    ctx.strokeStyle = '#ffd040';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.roundRect(-11, -8, 22, 16, 3);
+    ctx.fill();
+    ctx.stroke();
+
+    // Crate lid (slightly lighter)
+    ctx.fillStyle = '#e0a030';
+    ctx.beginPath();
+    ctx.roundRect(-11, -10, 22, 5, [3, 3, 0, 0]);
+    ctx.fill();
+    ctx.strokeStyle = '#ffd040';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Metal bands (horizontal)
+    ctx.strokeStyle = '#ffd700';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(-11, -3); ctx.lineTo(11, -3);
+    ctx.stroke();
+
+    // Metal bands (vertical center)
+    ctx.beginPath();
+    ctx.moveTo(0, -10); ctx.lineTo(0, 8);
+    ctx.stroke();
+
+    // Spinning "?" in center
+    ctx.save();
+    ctx.rotate(spin);
+    ctx.fillStyle = `rgba(255,255,100,${0.9 + 0.1 * pulse})`;
+    ctx.font = 'bold 9px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = '#ff8800';
+    ctx.shadowBlur = 6;
+    ctx.fillText('?', 0, 0);
+    ctx.shadowBlur = 0;
+    ctx.restore();
+
+    // Corner bolts
+    ctx.fillStyle = '#ffd700';
+    const bolts = [[-9, -8], [9, -8], [-9, 7], [9, 7]];
+    for (const [bx, by] of bolts) {
+      ctx.beginPath();
+      ctx.arc(bx, by, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+  },
 };

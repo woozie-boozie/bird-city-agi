@@ -999,6 +999,60 @@
       addEventMessage('Chaos event ended.', '#888');
     }
 
+    // === MYSTERY CRATE AIRDROP EVENTS ===
+    if (ev.type === 'mystery_crate_spawn') {
+      showAnnouncement('📦 MYSTERY CRATE AIRDROP! Race to claim it!', '#ffd700', 5000);
+      addEventMessage('📦 A Mystery Crate landed somewhere in the city — first bird there wins!', '#ffd700');
+      effects.push({ type: 'screen_shake', intensity: 6, duration: 500, time: now });
+      // Store crate location so we can draw the direction arrow
+      window._mysteryCrateLocation = { x: ev.x, y: ev.y, spawnedAt: now, expiresAt: ev.expiresAt };
+    }
+    if (ev.type === 'mystery_crate_claimed') {
+      const isMe = ev.birdId === myId;
+      const itemEmoji = ev.item.emoji;
+      const itemName = ev.item.name;
+      if (isMe) {
+        showAnnouncement(`${itemEmoji} YOU GOT: ${itemName}!`, '#ffd700', 5000);
+        addEventMessage(`📦 You claimed the crate and got ${itemEmoji} ${itemName}!`, '#ffd700');
+        effects.push({ type: 'screen_shake', intensity: 10, duration: 600, time: now });
+      } else {
+        const tag = ev.gangTag ? `[${ev.gangTag}] ` : '';
+        addEventMessage(`📦 ${tag}${ev.birdName} claimed the crate → ${itemEmoji} ${itemName}!`, '#ffcc44');
+      }
+      window._mysteryCrateLocation = null;
+      // Coin shower particles for coin_cache
+      if (isMe && ev.item.id === 'coin_cache') {
+        for (let i = 0; i < 12; i++) {
+          effects.push({
+            type: 'coin_particle',
+            x: (camera.screenW / 2) + (Math.random() - 0.5) * 200,
+            y: (camera.screenH / 2) + (Math.random() - 0.5) * 200,
+            vx: (Math.random() - 0.5) * 4,
+            vy: (Math.random() - 3) * 3,
+            time: now,
+            duration: 1400,
+          });
+        }
+      }
+      // Twister: everyone nearby flies to different screen position
+      if (isMe && ev.item.id === 'twister_bomb') {
+        showAnnouncement('🌪️ TWISTER BOMB! Birds scattered!', '#ffaa00', 3000);
+      }
+    }
+    if (ev.type === 'mystery_crate_expired') {
+      addEventMessage('📦 The Mystery Crate disappeared — nobody claimed it!', '#888');
+      window._mysteryCrateLocation = null;
+    }
+    if (ev.type === 'mc_diamond_poop') {
+      if (ev.birdId === myId) {
+        effects.push({
+          type: 'text', x: ev.x, y: ev.y - 24,
+          time: now, duration: 1000,
+          text: '+' + ev.coins + 'c 💎', color: '#aaddff', size: 13,
+        });
+      }
+    }
+
     // === BOSS EVENTS ===
     if (ev.type === 'boss_spawn') {
       SoundEngine.bossSpawn();
@@ -4962,6 +5016,12 @@
       Renderer.drawGangNests(ctx, camera, gameState.gangNests, selfGangId, now);
     }
 
+    // Mystery Crate Airdrop
+    const _mc = gameState.self && gameState.self.mysteryCrate;
+    if (_mc) {
+      Renderer.drawMysteryCrate(ctx, camera, _mc, now);
+    }
+
     // Pigeon Race track checkpoints
     if (worldData && worldData.raceCheckpoints) {
       Renderer.drawRaceTrack(ctx, camera, worldData.raceCheckpoints, gameState.pigeonRace || null, now);
@@ -4982,17 +5042,45 @@
         const sy = b.y - camera.y + camera.screenH / 2;
         if (sx > -margin && sx < camera.screenW + margin && sy > -margin && sy < camera.screenH + margin) {
           const isPlayer = b.id === myId;
-          // Cloaked birds: render at low alpha (ghost outline for others, more visible for self)
-          if (b.cloaked) {
+          const selfNow = Date.now();
+          const selfData = isPlayer && gameState.self ? gameState.self : null;
+
+          // Mystery Crate: Jet Wings — fire aura behind the bird
+          if (selfData && selfData.mcJetWingsUntil > selfNow) {
+            const firePulse = 0.6 + 0.4 * Math.sin(selfNow * 0.015);
+            const fireGrd = ctx.createRadialGradient(sx - Math.cos(b.rotation) * 18, sy - Math.sin(b.rotation) * 18, 2, sx - Math.cos(b.rotation) * 18, sy - Math.sin(b.rotation) * 18, 22);
+            fireGrd.addColorStop(0, `rgba(255,160,0,${0.75 * firePulse})`);
+            fireGrd.addColorStop(0.5, `rgba(255,60,0,${0.45 * firePulse})`);
+            fireGrd.addColorStop(1, 'rgba(255,0,0,0)');
+            ctx.fillStyle = fireGrd;
+            ctx.beginPath();
+            ctx.arc(sx - Math.cos(b.rotation) * 18, sy - Math.sin(b.rotation) * 18, 22, 0, Math.PI * 2);
+            ctx.fill();
+          }
+
+          // Mystery Crate: Ghost Mode — partially transparent self-bird
+          if (selfData && selfData.mcGhostModeUntil > selfNow) {
+            ctx.globalAlpha = 0.35;
+          } else if (b.cloaked) {
+            // Cloaked birds: render at low alpha (ghost outline for others, more visible for self)
             ctx.globalAlpha = isPlayer ? 0.4 : 0.15;
           } else if (b.inNest) {
             ctx.globalAlpha = 0.5;
           }
-          Sprites.drawBird(ctx, sx, sy, b.rotation, b.type, b.wingPhase, isPlayer, b.birdColor || null);
-          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0, b.eagleFeather || false);
-          if (b.cloaked || b.inNest) {
-            ctx.globalAlpha = 1;
+
+          // Mystery Crate: Riot Shield — electric blue ring
+          if (selfData && selfData.mcRiotShieldUntil > selfNow) {
+            const shieldPulse = 0.6 + 0.4 * Math.sin(selfNow * 0.01);
+            ctx.strokeStyle = `rgba(80,180,255,${shieldPulse})`;
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(sx, sy, 26 + shieldPulse * 4, 0, Math.PI * 2);
+            ctx.stroke();
           }
+
+          Sprites.drawBird(ctx, sx, sy, b.rotation, b.type, b.wingPhase, isPlayer, b.birdColor || null);
+          ctx.globalAlpha = 1; // Always reset after bird draw
+          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0, b.eagleFeather || false);
 
           // Sleeping ZZZ for nesting birds
           if (b.inNest) {
@@ -5197,6 +5285,75 @@
       }
     }
 
+    // Mystery Crate — direction arrow (compass pointing toward crate when off-screen or far away)
+    if (gameState.self && gameState.self.mysteryCrate) {
+      const crate = gameState.self.mysteryCrate;
+      const cx = crate.x - camera.x + camera.screenW / 2;
+      const cy = crate.y - camera.y + camera.screenH / 2;
+      const timeLeft = Math.max(0, crate.expiresAt - now);
+      const onScreen = cx > 20 && cx < camera.screenW - 20 && cy > 20 && cy < camera.screenH - 20;
+      // Always show HUD countdown bar
+      const total = 90000;
+      const frac = timeLeft / total;
+      const barW = 140, barH = 12;
+      const barX = camera.screenW / 2 - barW / 2;
+      const barY = 82;
+      const pulse = 0.7 + 0.3 * Math.sin(now * 0.005);
+      ctx.save();
+      ctx.globalAlpha = 0.88;
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.beginPath();
+      ctx.roundRect(barX - 40, barY - 16, barW + 80, barH + 28, 8);
+      ctx.fill();
+      // Icon + label
+      ctx.fillStyle = '#ffd700';
+      ctx.font = 'bold 11px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(`📦 MYSTERY CRATE — ${Math.ceil(timeLeft / 1000)}s`, camera.screenW / 2, barY - 3);
+      // Progress bar background
+      ctx.fillStyle = 'rgba(255,200,0,0.2)';
+      ctx.beginPath();
+      ctx.roundRect(barX, barY + 2, barW, barH, 4);
+      ctx.fill();
+      // Progress bar fill
+      ctx.fillStyle = frac > 0.4 ? '#ffd700' : (frac > 0.2 ? '#ff8800' : '#ff3300');
+      ctx.beginPath();
+      ctx.roundRect(barX, barY + 2, barW * frac, barH, 4);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      // Direction arrow if crate is off-screen
+      if (!onScreen) {
+        const angle = Math.atan2(cy - camera.screenH / 2, cx - camera.screenW / 2);
+        const arrowDist = Math.min(camera.screenW, camera.screenH) / 2 - 50;
+        const ax = camera.screenW / 2 + Math.cos(angle) * arrowDist;
+        const ay = camera.screenH / 2 + Math.sin(angle) * arrowDist;
+        ctx.save();
+        ctx.translate(ax, ay);
+        ctx.rotate(angle);
+        ctx.globalAlpha = 0.85 * pulse;
+        // Arrow body
+        ctx.fillStyle = '#ffd700';
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(20, 0);
+        ctx.lineTo(-10, -10);
+        ctx.lineTo(-5, 0);
+        ctx.lineTo(-10, 10);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        // "?" label on arrow
+        ctx.fillStyle = '#000';
+        ctx.font = 'bold 9px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('?', 4, 0);
+        ctx.restore();
+      }
+      ctx.restore();
+    }
+
     // Announcements (screen-space)
     drawAnnouncements(ctx, now);
 
@@ -5306,6 +5463,11 @@
     if (gameState.gangNests && gameState.gangNests.length > 0 && worldData) {
       const selfGangId = gameState.self && gameState.self.gangId;
       Renderer.drawGangNestsOnMinimap(minimapCtx, worldData, gameState.gangNests, selfGangId, now);
+    }
+
+    // Mystery Crate on minimap
+    if (gameState.self && gameState.self.mysteryCrate && worldData) {
+      Renderer.drawMysteryCrateOnMinimap(minimapCtx, worldData, gameState.self.mysteryCrate, now);
     }
 
     // Draw beacons on minimap
@@ -6022,6 +6184,35 @@
     }
     if (s.isKingpin) {
       html += '<div class="bm-buff-pill" style="background:rgba(100,80,0,0.9);border-color:#ffd700;color:#ffd700;animation:kingpinGlow 1.2s ease-in-out infinite alternate;font-weight:bold;">👑 KINGPIN — You earn tribute! Stay rich!</div>';
+    }
+
+    // === MYSTERY CRATE active buff pills ===
+    if (s.mcJetWingsUntil && s.mcJetWingsUntil > now) {
+      const secs = Math.ceil((s.mcJetWingsUntil - now) / 1000);
+      html += '<div class="bm-buff-pill" style="background:rgba(140,60,0,0.85);border-color:#ff8800;color:#ffcc44;animation:kingpinGlow 0.3s ease-in-out infinite alternate;">🚀 JET WINGS ×3.5 — ' + secs + 's</div>';
+    }
+    if (s.mcRiotShieldUntil && s.mcRiotShieldUntil > now) {
+      const secs = Math.ceil((s.mcRiotShieldUntil - now) / 1000);
+      html += '<div class="bm-buff-pill" style="background:rgba(0,80,160,0.85);border-color:#44aaff;color:#88ccff;">🛡️ RIOT SHIELD — ' + secs + 's</div>';
+    }
+    if (s.mcGhostModeUntil && s.mcGhostModeUntil > now) {
+      const secs = Math.ceil((s.mcGhostModeUntil - now) / 1000);
+      html += '<div class="bm-buff-pill" style="background:rgba(40,0,80,0.85);border-color:#cc88ff;color:#cc88ff;">👻 GHOST MODE — ' + secs + 's</div>';
+    }
+    if (s.mcLightningRodUntil && s.mcLightningRodUntil > now) {
+      const secs = Math.ceil((s.mcLightningRodUntil - now) / 1000);
+      html += '<div class="bm-buff-pill" style="background:rgba(80,80,0,0.85);border-color:#ffff44;color:#ffff44;animation:kingpinGlow 0.4s ease-in-out infinite alternate;">⚡ LIGHTNING ROD — ' + secs + 's</div>';
+    }
+    if (s.mcMagnetUntil && s.mcMagnetUntil > now) {
+      const secs = Math.ceil((s.mcMagnetUntil - now) / 1000);
+      html += '<div class="bm-buff-pill" style="background:rgba(0,60,80,0.85);border-color:#44ddcc;color:#44ddcc;">🧲 COIN MAGNET — ' + secs + 's</div>';
+    }
+    if (s.mcDiamondPoopUntil && s.mcDiamondPoopUntil > now) {
+      const secs = Math.ceil((s.mcDiamondPoopUntil - now) / 1000);
+      html += '<div class="bm-buff-pill" style="background:rgba(0,80,120,0.85);border-color:#88eeff;color:#88eeff;">💎 DIAMOND POOP ×3c — ' + secs + 's</div>';
+    }
+    if (s.mcNukePoop) {
+      html += '<div class="bm-buff-pill" style="background:rgba(120,0,0,0.85);border-color:#ff4422;color:#ff8866;animation:pulseRed 0.5s infinite alternate;font-weight:bold;">💣 NUKE POOP — READY!</div>';
     }
 
     el.innerHTML = html;
