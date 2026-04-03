@@ -363,6 +363,12 @@ class GameEngine {
       { x: 1400, y: 1900 },  // south road
     ];
 
+    // === BIRD CITY GAZETTE ===
+    // Every game day cycle (~20 min), a newspaper publishes at dawn recapping the night.
+    // Tracks key moments: top combo, most wanted, heists, gang wars, predator kills, etc.
+    this.gazetteEdition = 1;
+    this._resetGazetteStats();
+
     this.tickRate = 20;           // ticks per second
     this.tickInterval = 1000 / this.tickRate;
     this.lastTick = Date.now();
@@ -2174,6 +2180,11 @@ class GameEngine {
 
       this.poops.set(poopId, poop);
       bird.totalPoops++;
+      // Gazette: track poop counts per bird this cycle
+      if (!this.gazetteStats.poopCounts[bird.id]) {
+        this.gazetteStats.poopCounts[bird.id] = { count: 0, name: bird.name, gangTag: bird.gangTag || null };
+      }
+      this.gazetteStats.poopCounts[bird.id].count++;
 
       // XP for pooping
       let xpGain = 2;
@@ -2288,6 +2299,11 @@ class GameEngine {
         xpGain = cop.type === 'swat' ? 80 : 50;
         bird.coins += cop.type === 'swat' ? 25 : 15;
         this.events.push({ type: 'cop_pooped', birdId: bird.id, birdName: bird.name, copType: cop.type, x: cop.x, y: cop.y });
+        // Gazette: track cop stuns
+        if (!this.gazetteStats.copsStunned[bird.id]) {
+          this.gazetteStats.copsStunned[bird.id] = { count: 0, name: bird.name, gangTag: bird.gangTag || null };
+        }
+        this.gazetteStats.copsStunned[bird.id].count++;
       } else if (hit.target === 'territory_predator' && hit.predator) {
         // Poop hit a territory predator (hawk or cat in their home zone)
         const { predKey, predator } = hit;
@@ -2310,6 +2326,8 @@ class GameEngine {
             this.events.push({ type: 'evolve', birdId: bird.id, name: bird.name, birdType: bird.type });
           }
           this.events.push({ type: 'predator_defeated', predType: predKey, birdId: bird.id, birdName: bird.name, x: predator.x, y: predator.y });
+          // Gazette: record predator kill
+          this.gazetteStats.predatorKills.push({ name: bird.name, gangTag: bird.gangTag || null, predType: predKey });
           // Clear all warnings and hit counts for this predator
           for (const warnings of this.predatorWarnings.values()) warnings[predKey] = null;
           for (const counts of this.predatorHitCounts.values()) counts[predKey] = 0;
@@ -2479,6 +2497,10 @@ class GameEngine {
         // City-wide shoutout at milestones
         if (combo === 5 || combo === 10 || combo === 15 || combo === 20) {
           this.events.push({ type: 'combo_milestone', birdId: bird.id, birdName: bird.name, combo });
+        }
+        // Gazette tracking: record top combo this cycle
+        if (combo > this.gazetteStats.topCombo.count) {
+          this.gazetteStats.topCombo = { count: combo, name: bird.name, gangTag: bird.gangTag || null };
         }
       }
 
@@ -3935,6 +3957,14 @@ class GameEngine {
         message: phaseMessages[newPhase],
       });
 
+      // At dusk: reset gazette stats for the new night cycle
+      if (newPhase === 'dusk') {
+        this._resetGazetteStats();
+      }
+      // At day (new morning): publish the Bird City Gazette recap of the night
+      if (newPhase === 'day') {
+        this._compileGazette();
+      }
       // At night: cats get faster and spawn sooner
       if (newPhase === 'night' && this.cat) {
         this.cat.speed *= 1.4;
@@ -5794,6 +5824,13 @@ class GameEngine {
           gang2Id: gang.warWithGangId, gang2Name: rivalGang ? rivalGang.name : '???', gang2Tag: rivalGang ? rivalGang.tag : '???', gang2Kills: enemyKills,
           winnerId, winnerName: winner ? winner.name : null, winnerTag: winner ? winner.tag : null,
         });
+        // Gazette: track gang war result
+        if (winner) {
+          this.gazetteStats.gangWarResults.push({
+            winnerTag: winner.tag, loserTag: rivalGang ? rivalGang.tag : '???',
+            kills: Math.max(myKills, enemyKills),
+          });
+        }
 
         // Clear war state on both gangs
         gang.warWithGangId = null;
@@ -7128,6 +7165,10 @@ class GameEngine {
         const oldLevel = this._getWantedLevel(maxHeat - 2); // approximate prev
         if (newLevel > oldLevel && newLevel >= 2) {
           this.events.push({ type: 'wanted_level_up', birdId: newWanted, birdName: bird ? bird.name : '???', level: newLevel });
+          // Gazette: track highest wanted level reached this cycle
+          if (newLevel > this.gazetteStats.mostWanted.level) {
+            this.gazetteStats.mostWanted = { level: newLevel, name: bird ? bird.name : '???', gangTag: bird ? (bird.gangTag || null) : null };
+          }
         }
       }
 
@@ -7568,6 +7609,8 @@ class GameEngine {
       x: truck.x, y: truck.y,
       rewards,
     });
+    // Gazette: track heist completions
+    this.gazetteStats.heistCount++;
 
     // Don mission progress + daily challenge: heist participant
     for (const birdId of Object.keys(contributions)) {
@@ -8497,6 +8540,8 @@ class GameEngine {
       escapeCount,
       totalCrackers: numContributors,
     });
+    // Gazette: track bank heist completions
+    this.gazetteStats.bankHeistCount++;
 
     console.log(`[BankHeist] RESOLVED! Escapees: ${escapeCount}/${numContributors}`);
 
@@ -9482,6 +9527,7 @@ class GameEngine {
               }
             }
 
+            this.gazetteStats.eggsDelivered.push({ name: carrier.name, gangTag: carrier.gangTag || null });
             this.events.push({
               type: 'egg_delivered',
               birdId: carrier.id,
@@ -9591,6 +9637,7 @@ class GameEngine {
           hitCount: new Map(),
           lastPassiveReward: now,
         };
+        this.gazetteStats.kingpinCount++;
         this.events.push({
           type: 'kingpin_crowned',
           birdId: richestBird.id,
@@ -9608,6 +9655,7 @@ class GameEngine {
           hitCount: new Map(),
           lastPassiveReward: now,
         };
+        this.gazetteStats.kingpinCount++;
         this.events.push({
           type: 'kingpin_crowned',
           birdId: richestBird.id,
@@ -10106,6 +10154,10 @@ class GameEngine {
       x: crate.x,
       y: crate.y,
     });
+    // Gazette: track mystery crate claims (first claim only, most exciting item)
+    if (this.gazetteStats.mysteryCrateItems.length === 0 || item.id !== 'broken_crate') {
+      this.gazetteStats.mysteryCrateItems.unshift({ itemName: item.name, emoji: item.emoji, birdName: bird.name });
+    }
   }
 
   // ============================================================
@@ -10234,6 +10286,7 @@ class GameEngine {
       });
     }
 
+    this.gazetteStats.fluOutbreaks++;
     this.events.push({
       type: 'flu_outbreak_start',
       patientZeroId: patientZero.id,
@@ -10255,6 +10308,171 @@ class GameEngine {
       [arr[i], arr[j]] = [arr[j], arr[i]];
     }
     return arr;
+  }
+
+  // ============================================================
+  // BIRD CITY GAZETTE — Daily Recap Newspaper
+  // ============================================================
+  _resetGazetteStats() {
+    this.gazetteStats = {
+      topCombo:        { count: 0, name: null, gangTag: null },
+      poopCounts:      {},  // birdId -> { count, name, gangTag }
+      mostWanted:      { level: 0, name: null, gangTag: null },
+      heistCount:      0,
+      bankHeistCount:  0,
+      eggsDelivered:   [],  // [{ name, gangTag }]
+      gangWarResults:  [],  // [{ winnerTag, loserTag, kills }]
+      kingpinCount:    0,   // crown changes this cycle
+      predatorKills:   [],  // [{ name, gangTag, predType }]
+      mysteryCrateItems: [],// [{ itemName, emoji, birdName }]
+      fluOutbreaks:    0,
+      copsStunned:     {},  // birdId -> { count, name, gangTag }
+    };
+  }
+
+  _compileGazette() {
+    const stats = this.gazetteStats;
+
+    // Find top pooper
+    let topPooper = null, topPoopCount = 0;
+    for (const [, data] of Object.entries(stats.poopCounts)) {
+      if (data.count > topPoopCount) { topPoopCount = data.count; topPooper = data; }
+    }
+    // Find top cop stunner
+    let topCopStunner = null, topCopCount = 0;
+    for (const [, data] of Object.entries(stats.copsStunned)) {
+      if (data.count > topCopCount) { topCopCount = data.count; topCopStunner = data; }
+    }
+
+    const headlines = [];
+
+    if (stats.topCombo.count >= 10) {
+      const tag = stats.topCombo.gangTag ? `[${stats.topCombo.gangTag}] ` : '';
+      headlines.push({
+        icon: '🔥',
+        headline: `COMBO RAMPAGE: ${tag}${stats.topCombo.name} HITS ${stats.topCombo.count}× STREAK`,
+        subline: 'Witnesses describe "absolute chaos" as bird refuses to stop pooping.',
+      });
+    }
+
+    if (stats.mostWanted.level >= 4) {
+      const tag = stats.mostWanted.gangTag ? `[${stats.mostWanted.gangTag}] ` : '';
+      const stars = '⭐'.repeat(stats.mostWanted.level);
+      headlines.push({
+        icon: '🚨',
+        headline: `${stars} MOST WANTED: ${tag}${stats.mostWanted.name} TERRORIZES CITY`,
+        subline: 'Police dispatch SWAT units. Residents advised to stay indoors.',
+      });
+    }
+
+    if (stats.bankHeistCount > 0) {
+      headlines.push({
+        icon: '🏦',
+        headline: `CITY BANK ROBBED${stats.bankHeistCount > 1 ? ` ${stats.bankHeistCount} TIMES` : ''}!`,
+        subline: 'Authorities baffled as birds execute multi-phase vault breach. "Who gave them wings AND criminal ambition?"',
+      });
+    } else if (stats.heistCount > 0) {
+      headlines.push({
+        icon: '🚨',
+        headline: `FOOD TRUCK HEIST CREW STRIKES: ${stats.heistCount} JOB${stats.heistCount > 1 ? 'S' : ''} PULLED`,
+        subline: 'Police respond 5 minutes too late. Again.',
+      });
+    }
+
+    if (stats.gangWarResults.length > 0) {
+      const war = stats.gangWarResults[0];
+      headlines.push({
+        icon: '⚔️',
+        headline: `TURF WAR: [${war.winnerTag}] DEFEATS [${war.loserTag}] IN BLOODY STREET BATTLE`,
+        subline: `${war.kills} confirmed kills. Treasury looted. City Hall declines comment.`,
+      });
+    }
+
+    if (stats.predatorKills.length > 0) {
+      const kill = stats.predatorKills[0];
+      const predName = kill.predType === 'hawk' ? 'THE HAWK' : kill.predType === 'cat' ? 'MEGA CAT' : 'EAGLE OVERLORD';
+      const tag = kill.gangTag ? `[${kill.gangTag}] ` : '';
+      headlines.push({
+        icon: '🏆',
+        headline: `HERO BIRD: ${tag}${kill.name} SLAYS ${predName}`,
+        subline: 'Spontaneous celebrations in the streets. Local bird refuses interview. PETA confused.',
+      });
+    }
+
+    if (stats.eggsDelivered.length > 0) {
+      const names = stats.eggsDelivered.slice(0, 2).map(e => e.name).join(' & ');
+      headlines.push({
+        icon: '🥚',
+        headline: `GOLDEN EGG SCRAMBLE: ${stats.eggsDelivered.length} EGG${stats.eggsDelivered.length > 1 ? 'S' : ''} SNATCHED AND DELIVERED`,
+        subline: `Top runners: ${names}. Mysterious nests reportedly satisfied.`,
+      });
+    }
+
+    if (stats.kingpinCount >= 3) {
+      headlines.push({
+        icon: '👑',
+        headline: `UNSTABLE CROWN: KINGPIN THRONE CHANGED HANDS ${stats.kingpinCount} TIMES`,
+        subline: 'Financial analysts worried. Birds are not.',
+      });
+    }
+
+    if (stats.mysteryCrateItems.length > 0) {
+      const crate = stats.mysteryCrateItems[0];
+      headlines.push({
+        icon: '📦',
+        headline: `MYSTERY CRATE SHOCK: ${crate.birdName} CLAIMS ${crate.emoji} ${crate.itemName}`,
+        subline: 'City scramble results in minor injuries, maximum chaos, one very smug bird.',
+      });
+    }
+
+    if (topPooper && topPoopCount >= 20) {
+      const tag = topPooper.gangTag ? `[${topPooper.gangTag}] ` : '';
+      headlines.push({
+        icon: '💩',
+        headline: `POOP MACHINE: ${tag}${topPooper.name} FIRED ${topPoopCount} TIMES`,
+        subline: 'Health department issues city-wide umbrella advisory.',
+      });
+    }
+
+    if (topCopStunner && topCopCount >= 3) {
+      const tag = topCopStunner.gangTag ? `[${topCopStunner.gangTag}] ` : '';
+      headlines.push({
+        icon: '🚔',
+        headline: `POLICE HUMILIATED: ${tag}${topCopStunner.name} STUNS ${topCopCount} COPS`,
+        subline: '"We were not prepared for this level of avian boldness," admits precinct captain.',
+      });
+    }
+
+    if (stats.fluOutbreaks > 0) {
+      headlines.push({
+        icon: '🤧',
+        headline: 'BIRD FLU OUTBREAK SWEEPS CITY — MEDICINE SUPPLIES DEPLETED',
+        subline: 'Multiple birds infected. Patient Zero still at large. The pigeons are not sorry.',
+      });
+    }
+
+    // Default headline if nothing notable happened
+    if (headlines.length === 0) {
+      headlines.push({
+        icon: '🌙',
+        headline: 'QUIET NIGHT IN BIRD CITY',
+        subline: 'Sources report unusually lawful behavior overnight. Citizens unsettled by the calm.',
+      });
+    }
+
+    // Build stats summary (for the newspaper footer)
+    const summaryStats = {
+      topCombo: stats.topCombo.count > 0 ? { count: stats.topCombo.count, name: stats.topCombo.name } : null,
+      topPooper: topPoopCount > 0 ? { count: topPoopCount, name: topPooper.name } : null,
+      heists: stats.heistCount + stats.bankHeistCount,
+    };
+
+    this.events.push({
+      type: 'gazette_edition',
+      edition: this.gazetteEdition++,
+      headlines: headlines.slice(0, 4), // max 4 headlines per edition
+      summaryStats,
+    });
   }
 
 }

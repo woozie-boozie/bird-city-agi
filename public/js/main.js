@@ -2139,6 +2139,12 @@
       showAnnouncement('⚔ ' + ev.ownerName + ' LOST ' + ev.zoneName + '!', '#ff4444', 3000);
       addEventMessage('⚔ ' + ev.ownerName + ' lost ' + ev.zoneName + ' to ' + ev.attackerName, '#ff4444');
     }
+
+    // === BIRD CITY GAZETTE ===
+    if (ev.type === 'gazette_edition') {
+      showGazette(ev);
+      addEventMessage('📰 The Bird City Gazette MORNING EDITION is out!', '#c8a040');
+    }
   }
 
   function showAnnouncement(text, color, duration) {
@@ -2149,6 +2155,107 @@
     eventMessages.push({ text, color, time: performance.now() });
     if (eventMessages.length > 6) eventMessages.shift();
     updateEventFeed();
+  }
+
+  // ============================================================
+  // BIRD CITY GAZETTE — newspaper overlay
+  // ============================================================
+  let gazetteCountdownInterval = null;
+
+  function showGazette(data) {
+    const overlay = document.getElementById('gazetteOverlay');
+    if (!overlay) return;
+
+    // Edition info
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    const editionEl = document.getElementById('gazetteEditionLine');
+    if (editionEl) editionEl.textContent = `EDITION #${data.edition} · ${dateStr}`;
+
+    // Build headlines HTML
+    const headlinesEl = document.getElementById('gazetteHeadlines');
+    if (headlinesEl) {
+      headlinesEl.innerHTML = '';
+      data.headlines.forEach((h, i) => {
+        const block = document.createElement('div');
+        block.className = 'gazette-headline-block';
+
+        const iconEl = document.createElement('div');
+        iconEl.className = 'gazette-headline-icon';
+        iconEl.textContent = h.icon;
+
+        const headlineEl = document.createElement('div');
+        headlineEl.className = 'gazette-headline-text';
+        headlineEl.textContent = h.headline;
+
+        const sublineEl = document.createElement('div');
+        sublineEl.className = 'gazette-subline-text';
+        sublineEl.textContent = '"' + h.subline + '"';
+
+        block.appendChild(iconEl);
+        block.appendChild(headlineEl);
+        block.appendChild(sublineEl);
+
+        // Add separator between headlines (not after last)
+        if (i < data.headlines.length - 1) {
+          const sep = document.createElement('div');
+          sep.className = 'gazette-separator';
+          sep.textContent = '— — —';
+          block.appendChild(sep);
+        }
+
+        headlinesEl.appendChild(block);
+      });
+    }
+
+    // Stats footer
+    const footerEl = document.getElementById('gazetteFooter');
+    if (footerEl) {
+      const parts = [];
+      if (data.summaryStats) {
+        if (data.summaryStats.topCombo && data.summaryStats.topCombo.count > 0) {
+          parts.push(`🔥 TOP COMBO: ${data.summaryStats.topCombo.name} × ${data.summaryStats.topCombo.count}`);
+        }
+        if (data.summaryStats.topPooper && data.summaryStats.topPooper.count > 0) {
+          parts.push(`💩 TOP POOPER: ${data.summaryStats.topPooper.name} (${data.summaryStats.topPooper.count})`);
+        }
+        if (data.summaryStats.heists > 0) {
+          parts.push(`🏦 HEISTS: ${data.summaryStats.heists}`);
+        }
+      }
+      if (parts.length === 0) parts.push('A MOSTLY PEACEFUL NIGHT IN BIRD CITY');
+      footerEl.textContent = parts.join('  ·  ');
+    }
+
+    // Show the overlay (use flex so content is centered)
+    overlay.style.display = 'flex';
+
+    // Screen shake to announce it
+    effects.push({ type: 'screen_shake', time: performance.now(), duration: 500, intensity: 6 });
+
+    // Auto-dismiss countdown (20 seconds)
+    let remaining = 20;
+    const countdownEl = document.getElementById('gazetteCountdown');
+    if (gazetteCountdownInterval) clearInterval(gazetteCountdownInterval);
+    if (countdownEl) countdownEl.textContent = `Auto-closes in ${remaining}s`;
+    gazetteCountdownInterval = setInterval(() => {
+      remaining--;
+      if (countdownEl) countdownEl.textContent = `Auto-closes in ${remaining}s`;
+      if (remaining <= 0) {
+        clearInterval(gazetteCountdownInterval);
+        gazetteCountdownInterval = null;
+        overlay.style.display = 'none';
+      }
+    }, 1000);
+  }
+
+  function closeGazette() {
+    const overlay = document.getElementById('gazetteOverlay');
+    if (overlay) overlay.style.display = 'none';
+    if (gazetteCountdownInterval) {
+      clearInterval(gazetteCountdownInterval);
+      gazetteCountdownInterval = null;
+    }
   }
 
   function updateEventFeed() {
@@ -2172,6 +2279,12 @@
     if (!joined) {
       if (e.key === 'Enter') joinGame();
       return;
+    }
+
+    // Escape key: close the gazette if it's open
+    if (e.key === 'Escape') {
+      const go = document.getElementById('gazetteOverlay');
+      if (go && go.style.display !== 'none') { closeGazette(); return; }
     }
 
     // Bird Home toggle
@@ -6961,6 +7074,19 @@
 
   if (tattooCloseBtn) {
     tattooCloseBtn.addEventListener('click', () => hideTattooOverlay());
+  }
+
+  // Gazette close button
+  const gazetteCloseBtn = document.getElementById('gazetteCloseBtn');
+  if (gazetteCloseBtn) {
+    gazetteCloseBtn.addEventListener('click', closeGazette);
+  }
+  // Click overlay background to close gazette
+  const gazetteOverlayEl = document.getElementById('gazetteOverlay');
+  if (gazetteOverlayEl) {
+    gazetteOverlayEl.addEventListener('click', (e) => {
+      if (e.target === gazetteOverlayEl) closeGazette();
+    });
   }
 
   // ============================================================

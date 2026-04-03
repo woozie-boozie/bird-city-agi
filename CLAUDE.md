@@ -1250,6 +1250,59 @@ Introduced a periodic city-wide contagion event that spreads between nearby bird
 
 **Creative intent**: The flu outbreak adds a new social dynamic that no other system creates — AVOIDANCE. Every other mechanic pushes birds toward each other (territory fights, heists, racing). Flu creates the opposite: infected birds become pariahs. But there's nuance: healthy birds WANT the medicine (for the daily challenge "Flu Fighter"), so they have to weigh the risk of flying near infected birds vs. finding medicine. An infected Kingpin is a golden opportunity — they're weakened AND at 75% speed, making dethronement way more viable. The Riot Shield's newfound utility (blocking infection) gives Mystery Crate an additional strategic dimension. Pure CARNAGE + SOCIAL + DISCOVERY energy — the city just got a new axis of chaos.
 
+**Session 40 — 2026-04-03: The Bird City Gazette — Morning Edition Newspaper**
+Every game-day cycle (~20 minutes), a full newspaper publishes at dawn recapping the night's greatest moments. "THE BIRD CITY GAZETTE — ALL THE FILTH THAT'S FIT TO PRINT."
+
+**The Newspaper System (`server/game.js`):**
+- Server tracks `gazetteStats` object throughout each night cycle, reset at dusk
+- At the `day` phase transition (new morning): `_compileGazette()` generates headlines and pushes `gazette_edition` event to all clients
+- 11 possible headline types selected from live stats — only the most dramatic ones print
+
+**What gets tracked (resets each cycle):**
+- Top combo streak reached (who, how many hits)
+- Per-bird poop counts (who fired the most)
+- Highest wanted level reached (who, which star tier)
+- Food truck heists completed (count)
+- Bank heists completed (count)
+- Golden eggs delivered (who ran them)
+- Gang war results (winner tag vs loser tag, kill count)
+- Mystery crate items claimed (what item, by whom)
+- Predator kills (who slew the hawk/cat/eagle)
+- Kingpin crown changes (how many times it changed hands)
+- Bird flu outbreaks (count)
+- Cops stunned (top stunner, how many)
+
+**Headline generation (up to 4 per edition, in priority order):**
+1. 🔥 COMBO RAMPAGE: [Name] HITS [N]× STREAK (if ≥10)
+2. 🚨 ⭐⭐⭐⭐ MOST WANTED: [Name] TERRORIZES CITY (if level ≥4)
+3. 🏦 CITY BANK ROBBED [N TIMES]! (if bank heist happened)
+4. 🚨 FOOD TRUCK HEIST CREW STRIKES (if food truck heist)
+5. ⚔️ TURF WAR: [TAG] DEFEATS [TAG] IN BLOODY STREET BATTLE
+6. 🏆 HERO BIRD: [Name] SLAYS [HAWK/CAT/EAGLE]
+7. 🥚 GOLDEN EGG SCRAMBLE: [N] EGGS DELIVERED
+8. 👑 UNSTABLE CROWN: KINGPIN THRONE CHANGED HANDS [N] TIMES
+9. 📦 MYSTERY CRATE SHOCK: [Name] CLAIMS [emoji] [Item]
+10. 💩 POOP MACHINE: [Name] FIRED [N] TIMES (if ≥20)
+11. 🚔 POLICE HUMILIATED: [Name] STUNS [N] COPS (if ≥3)
+12. 🤧 BIRD FLU OUTBREAK SWEEPS CITY
+13. 🌙 QUIET NIGHT IN BIRD CITY (fallback if nothing notable happened)
+
+Each headline has a satirical subline in classic tabloid style.
+
+**Visual (`public/index.html`, `public/css/style.css`):**
+- Full-page overlay: aged yellow-parchment newspaper aesthetic
+- THE BIRD CITY GAZETTE masthead in Times New Roman serif, 30px
+- Decorative masthead with "ESTABLISHED 2026 · ALL THE FILTH THAT'S FIT TO PRINT"
+- Edition number + current date
+- Up to 4 headline blocks with icon, bold headline text, italic subline
+- — — — separator between headlines
+- Stats footer: TOP COMBO · TOP POOPER · HEIST COUNT
+- Fade-in animation with screen shake when it appears
+- Auto-dismisses after 20 seconds with countdown; close with [ESC] or click button
+- Click background to close
+
+**Creative intent**: Retention is the game's North Star. The newspaper creates a collective narrative moment every 20 minutes — all players simultaneously see the same "front page." "COMBO RAMPAGE: [MOB] BirdName HITS 23× STREAK" is a city-wide shoutout that feels earned. The satirical sublines ("Police respond 5 minutes too late. Again.") make it feel alive and funny, not mechanical. Players will stay for "one more cycle" just to see what the next Gazette says about them. Pure SPECTACLE + SOCIAL + RETENTION energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -1286,7 +1339,7 @@ Built the Territory Control System on top of the existing upstream code:
 - ~~Mystery Crate Airdrop — city-wide scramble event, 10 random powerful items~~ (DONE Session 38)
 - ~~Bird Flu Outbreak — contagious spread mechanic, medicine items, Kingpin drama~~ (DONE Session 39)
 - Birds can shelter under awnings/trees during storms (mechanic: reduced hail hit radius if near cover)
-- City Newspaper / Daily Recap — at the end of each game day, a newspaper front page auto-generates showing top moments (biggest combo, who robbed whom, kingpin changes, etc.) — pure social retention
+- ~~City Newspaper / Daily Recap — at the end of each game day, a newspaper front page auto-generates showing top moments~~ (DONE Session 40 — The Bird City Gazette)
 - Formation Flying bonuses — V-formation gives flock speed boost, wedge gives poop power. Deepens flock social dynamic
 - Bird Flu + Wanted interaction: if a cop arrests you while infected, they catch the flu and wander confused for 5s (new counter-play)
 - ~~Prestige leaderboard: a wall/board in the city showing top-5 prestige players of all time~~ (DONE Session 37 — Hall of Legends)
