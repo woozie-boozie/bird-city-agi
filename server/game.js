@@ -39,6 +39,7 @@ const DAILY_CHALLENGE_POOL = [
   { id: 'wanted_survivor', title: 'Most Wanted',     desc: 'Reach Wanted Level 3 and survive 10s',   target: 1,   trackType: 'wanted_survival', reward: { xp: 150, coins: 75  } },
   { id: 'coin_hoarder',    title: 'Coin Hoarder',    desc: 'Earn 200 coins today',                   target: 200, trackType: 'coins_earned',    reward: { xp: 110, coins: 55  } },
   { id: 'npc_cryer',       title: 'Tear Collector',  desc: 'Make 3 humans cry with poop',            target: 3,   trackType: 'npc_cry',         reward: { xp: 160, coins: 70  } },
+  { id: 'flu_survivor',   title: 'Flu Fighter',     desc: 'Recover from Bird Flu (find medicine)',   target: 1,   trackType: 'flu_cured',       reward: { xp: 170, coins: 80  } },
 ];
 
 class GameEngine {
@@ -345,6 +346,23 @@ class GameEngine {
     ];
     this.MYSTERY_CRATE_TOTAL_WEIGHT = this.MYSTERY_CRATE_ITEMS.reduce((s, i) => s + i.weight, 0);
 
+    // === BIRD FLU OUTBREAK ===
+    // Every 25-40 minutes, Patient Zero is infected and flu spreads between nearby birds.
+    // Medicine items spawn across the city — collect one to cure yourself.
+    this.fluOutbreak = false;           // is an outbreak currently active?
+    this.fluOutbreakTimer = Date.now() + this._randomRange(25 * 60000, 40 * 60000);
+    this.fluMedicineItems = new Map();  // id -> { id, x, y, active }
+    this._fluMedicineCounter = 0;
+    this.FLU_MEDICINE_POSITIONS = [
+      { x: 1200, y: 800  },  // north park
+      { x: 2300, y: 1100 },  // mall area
+      { x: 700,  y: 1850 },  // cafe district
+      { x: 1900, y: 2200 },  // downtown south
+      { x: 580,  y: 620  },  // residential
+      { x: 2500, y: 700  },  // mall north
+      { x: 1400, y: 1900 },  // south road
+    ];
+
     this.tickRate = 20;           // ticks per second
     this.tickInterval = 1000 / this.tickRate;
     this.lastTick = Date.now();
@@ -608,6 +626,9 @@ class GameEngine {
       mcDiamondPoopUntil:  0,
       mcNukePoop:          false,
       mcMagnetLastPull:    0,
+      // === BIRD FLU ===
+      fluUntil: 0,             // timestamp when flu wears off (0 = healthy)
+      fluSpreadCooldown: 0,    // timestamp: can't re-spread to another bird until this passes
     };
 
     // Determine bird type from XP
@@ -1071,6 +1092,9 @@ class GameEngine {
 
     // === Mystery Crate Airdrop ===
     this._tickMysteryCrate(now);
+
+    // === Bird Flu Outbreak ===
+    this._tickFluOutbreak(now);
   }
 
   // ============================================================
@@ -2024,6 +2048,11 @@ class GameEngine {
     // Egg carrying: precious cargo slows you down
     if (bird.carryingEggId) {
       maxSpeed *= 0.8;
+    }
+
+    // Bird Flu: sick birds drag their wings (-25% speed, combo capped at 1x)
+    if (bird.fluUntil > now) {
+      maxSpeed *= 0.75;
     }
 
     // V Formation speed buff: 3+ flock mates within 200px with similar velocity
@@ -3979,6 +4008,7 @@ class GameEngine {
           kingpinMyHits: (this.kingpin && this.kingpin.birdId === b.id) ? (this.kingpin.hitCount.get(bird.id) || 0) : 0,
           tattoosEquipped: b.tattoosEquipped || [],
           eagleFeather: b.eagleFeather || false,
+          isFlu: b.fluUntil > now,
         });
       }
     }
@@ -4778,6 +4808,12 @@ class GameEngine {
       mcMagnetUntil:       bird.mcMagnetUntil,
       mcDiamondPoopUntil:  bird.mcDiamondPoopUntil,
       mcNukePoop:          bird.mcNukePoop,
+      // Bird Flu
+      fluUntil:     bird.fluUntil,
+      fluOutbreak:  this.fluOutbreak,
+      fluMedicineItems: this.fluOutbreak
+        ? Array.from(this.fluMedicineItems.values()).filter(m => m.active)
+        : [],
     };
   }
 
@@ -10070,6 +10106,155 @@ class GameEngine {
       x: crate.x,
       y: crate.y,
     });
+  }
+
+  // ============================================================
+  // BIRD FLU OUTBREAK
+  // ============================================================
+  _tickFluOutbreak(now) {
+    // Trigger a new outbreak if timer is up and at least one bird is online
+    if (!this.fluOutbreak && now >= this.fluOutbreakTimer && this.birds.size > 0) {
+      this._startFluOutbreak(now);
+    }
+
+    if (!this.fluOutbreak) return;
+
+    // Count how many birds are currently sick
+    let infectedCount = 0;
+    for (const bird of this.birds.values()) {
+      if (bird.fluUntil > now) infectedCount++;
+    }
+
+    // Outbreak ends naturally when nobody is infected anymore
+    if (infectedCount === 0) {
+      this._endFluOutbreak(now);
+      return;
+    }
+
+    // --- SPREAD mechanic ---
+    // Every infected bird can spread to a nearby healthy bird (80px radius, 35% chance per tick,
+    // but each infected bird has a 4-second cooldown between spreads)
+    for (const infectedBird of this.birds.values()) {
+      if (infectedBird.fluUntil <= now) continue;       // not infected
+      if (infectedBird.fluSpreadCooldown > now) continue; // on spread cooldown
+
+      for (const targetBird of this.birds.values()) {
+        if (targetBird.id === infectedBird.id) continue;
+        if (targetBird.fluUntil > now) continue;         // already infected
+        // Riot shield blocks infection
+        if (targetBird.mcRiotShieldUntil > now) continue;
+
+        const dx = targetBird.x - infectedBird.x;
+        const dy = targetBird.y - infectedBird.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist < 80 && Math.random() < 0.35) {
+          targetBird.fluUntil = now + 45000; // 45 seconds of sickness
+          infectedBird.fluSpreadCooldown = now + 4000;  // 4s before can spread again
+
+          this.events.push({
+            type: 'flu_spread',
+            fromId: infectedBird.id,
+            fromName: infectedBird.name,
+            targetId: targetBird.id,
+            targetName: targetBird.name,
+            x: targetBird.x,
+            y: targetBird.y,
+          });
+
+          // Special: Kingpin gets infected — city-wide drama!
+          if (this.kingpin && this.kingpin.birdId === targetBird.id) {
+            this.events.push({
+              type: 'flu_kingpin_infected',
+              name: targetBird.name,
+            });
+          }
+
+          break; // one spread per infected bird per check
+        }
+      }
+    }
+
+    // --- MEDICINE PICKUP mechanic ---
+    // Any INFECTED bird that flies over a medicine item gets cured
+    for (const bird of this.birds.values()) {
+      if (bird.fluUntil <= now) continue; // healthy, no need for medicine
+
+      for (const [medId, med] of this.fluMedicineItems) {
+        if (!med.active) continue;
+
+        const dx = bird.x - med.x;
+        const dy = bird.y - med.y;
+        if (Math.sqrt(dx * dx + dy * dy) < 45) {
+          // Cured!
+          bird.fluUntil = 0;
+          med.active = false;
+          const xpGained = 35;
+          const coinsGained = 20;
+          bird.xp += xpGained;
+          bird.coins += coinsGained;
+          this._trackDailyProgress(bird, 'flu_cured', 1);
+
+          this.events.push({
+            type: 'flu_cured',
+            birdId: bird.id,
+            birdName: bird.name,
+            gangTag: bird.gangTag || null,
+            xpGained,
+            coinsGained,
+            x: med.x,
+            y: med.y,
+          });
+          break; // one medicine per bird per tick
+        }
+      }
+    }
+  }
+
+  _startFluOutbreak(now) {
+    this.fluOutbreak = true;
+
+    // Pick a random online bird as Patient Zero
+    const birdList = [...this.birds.values()];
+    const patientZero = birdList[Math.floor(Math.random() * birdList.length)];
+    patientZero.fluUntil = now + 50000; // Patient Zero is sick for 50 seconds
+
+    // Scatter medicine across the city (5 items from preset positions with a little spread)
+    this.fluMedicineItems.clear();
+    const positions = this._shuffleArray([...this.FLU_MEDICINE_POSITIONS]);
+    const count = Math.min(5, positions.length);
+    for (let i = 0; i < count; i++) {
+      const pos = positions[i];
+      const medId = 'med_' + (this._fluMedicineCounter++);
+      this.fluMedicineItems.set(medId, {
+        id: medId,
+        x: pos.x + (Math.random() - 0.5) * 180,
+        y: pos.y + (Math.random() - 0.5) * 180,
+        active: true,
+      });
+    }
+
+    this.events.push({
+      type: 'flu_outbreak_start',
+      patientZeroId: patientZero.id,
+      patientZeroName: patientZero.name,
+    });
+  }
+
+  _endFluOutbreak(now) {
+    this.fluOutbreak = false;
+    this.fluMedicineItems.clear();
+    // Schedule next outbreak in 25-40 minutes
+    this.fluOutbreakTimer = now + this._randomRange(25 * 60000, 40 * 60000);
+    this.events.push({ type: 'flu_outbreak_end' });
+  }
+
+  _shuffleArray(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
   }
 
 }

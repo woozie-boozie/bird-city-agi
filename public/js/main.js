@@ -1043,6 +1043,40 @@
       addEventMessage('📦 The Mystery Crate disappeared — nobody claimed it!', '#888');
       window._mysteryCrateLocation = null;
     }
+
+    // === BIRD FLU OUTBREAK EVENTS ===
+    if (ev.type === 'flu_outbreak_start') {
+      effects.push({ type: 'screen_shake', intensity: 6, duration: 500, time: now });
+      showAnnouncement('🤧 BIRD FLU OUTBREAK! ' + ev.patientZeroName + ' is Patient Zero!\nFind green medicine items to cure yourself!', '#44ff44', 6000);
+      addEventMessage('🤧 BIRD FLU OUTBREAK! ' + ev.patientZeroName + ' is Patient Zero. Medicine scattered across the city!', '#44ff44');
+    }
+    if (ev.type === 'flu_spread') {
+      if (ev.targetId === myId) {
+        showAnnouncement('🤧 YOU\'VE BEEN INFECTED! Find green medicine — avoid other birds!', '#88ff44', 4000);
+        effects.push({ type: 'screen_shake', intensity: 4, duration: 300, time: now });
+        effects.push({ type: 'text', x: ev.x, y: ev.y - 20, time: now, duration: 1500, text: '🤧 INFECTED!', color: '#88ff44', size: 13 });
+      } else {
+        addEventMessage('🤧 ' + ev.targetName + ' caught the flu from ' + ev.fromName + '!', '#88cc44');
+        effects.push({ type: 'text', x: ev.x, y: ev.y - 20, time: now, duration: 1200, text: '🤧', color: '#88ff44', size: 16 });
+      }
+    }
+    if (ev.type === 'flu_cured') {
+      if (ev.birdId === myId) {
+        showAnnouncement('💊 CURED! You found the medicine. Feeling great! +' + ev.xpGained + ' XP +' + ev.coinsGained + 'c', '#aaffcc', 3000);
+        effects.push({ type: 'text', x: ev.x, y: ev.y - 20, time: now, duration: 1500, text: '💊 CURED!', color: '#aaffcc', size: 13 });
+      } else {
+        addEventMessage('💊 ' + (ev.gangTag ? '[' + ev.gangTag + '] ' : '') + ev.birdName + ' found the medicine and was cured!', '#88eeaa');
+      }
+    }
+    if (ev.type === 'flu_outbreak_end') {
+      showAnnouncement('✅ The bird flu outbreak has ended. City is clean!', '#aaffcc', 3000);
+      addEventMessage('✅ Bird flu outbreak over — all clear!', '#88cc88');
+    }
+    if (ev.type === 'flu_kingpin_infected') {
+      effects.push({ type: 'screen_shake', intensity: 8, duration: 500, time: now });
+      showAnnouncement('👑🤧 THE KINGPIN HAS THE FLU! ' + ev.name + ' is WEAKENED!', '#ffcc00', 5000);
+      addEventMessage('👑🤧 KINGPIN ' + ev.name + ' is infected with bird flu — now\'s your chance!', '#ffcc00');
+    }
     if (ev.type === 'mc_diamond_poop') {
       if (ev.birdId === myId) {
         effects.push({
@@ -4690,6 +4724,17 @@
       Renderer.drawGoldenEggs(ctx, camera, gameState.eggScramble.eggs, now / 1000);
     }
 
+    // Bird Flu medicine items — glowing green capsules scattered across city during outbreak
+    if (gameState.self && gameState.self.fluMedicineItems && gameState.self.fluMedicineItems.length > 0) {
+      for (const med of gameState.self.fluMedicineItems) {
+        const sx = med.x - camera.x + camera.screenW / 2;
+        const sy = med.y - camera.y + camera.screenH / 2;
+        if (sx > -margin && sx < camera.screenW + margin && sy > -margin && sy < camera.screenH + margin) {
+          Sprites.drawMedicineItem(ctx, sx, sy, now);
+        }
+      }
+    }
+
     // Power-ups
     if (gameState.powerUps) {
       for (const pu of gameState.powerUps) {
@@ -5078,9 +5123,36 @@
             ctx.stroke();
           }
 
+          // Bird Flu: green glow ring behind infected birds (drawn before the bird sprite)
+          if (b.isFlu) {
+            const fluPulse = 0.4 + 0.35 * Math.sin(now * 0.008);
+            ctx.save();
+            ctx.globalAlpha = fluPulse;
+            const fluGrd = ctx.createRadialGradient(sx, sy, 6, sx, sy, 28);
+            fluGrd.addColorStop(0, 'rgba(0,255,80,0.5)');
+            fluGrd.addColorStop(1, 'rgba(0,200,50,0)');
+            ctx.fillStyle = fluGrd;
+            ctx.beginPath();
+            ctx.arc(sx, sy, 28, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+          }
+
           Sprites.drawBird(ctx, sx, sy, b.rotation, b.type, b.wingPhase, isPlayer, b.birdColor || null);
           ctx.globalAlpha = 1; // Always reset after bird draw
           Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0, b.eagleFeather || false);
+
+          // Bird Flu: sneezing emoji indicator above infected birds
+          if (b.isFlu) {
+            const sneezePulse = Math.abs(Math.sin(now * 0.003));
+            ctx.save();
+            ctx.globalAlpha = 0.7 + 0.3 * sneezePulse;
+            ctx.font = '12px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('🤧', sx, sy - 44);
+            ctx.restore();
+          }
 
           // Sleeping ZZZ for nesting birds
           if (b.inNest) {
@@ -5468,6 +5540,26 @@
     // Mystery Crate on minimap
     if (gameState.self && gameState.self.mysteryCrate && worldData) {
       Renderer.drawMysteryCrateOnMinimap(minimapCtx, worldData, gameState.self.mysteryCrate, now);
+    }
+
+    // Bird Flu medicine items on minimap — green pulsing dots during outbreak
+    if (gameState.self && gameState.self.fluMedicineItems && gameState.self.fluMedicineItems.length > 0 && worldData) {
+      const mw = minimapCtx.canvas.width;
+      const mh = minimapCtx.canvas.height;
+      const msx = mw / worldData.width;
+      const msy = mh / worldData.height;
+      const fluPulse = 0.5 + 0.5 * Math.sin(now * 0.008);
+      for (const med of gameState.self.fluMedicineItems) {
+        minimapCtx.fillStyle = `rgba(0,255,80,${0.7 + 0.3 * fluPulse})`;
+        minimapCtx.beginPath();
+        minimapCtx.arc(med.x * msx, med.y * msy, 3 + fluPulse * 1.5, 0, Math.PI * 2);
+        minimapCtx.fill();
+        minimapCtx.fillStyle = 'rgba(200,255,220,0.9)';
+        minimapCtx.font = '6px sans-serif';
+        minimapCtx.textAlign = 'center';
+        minimapCtx.textBaseline = 'middle';
+        minimapCtx.fillText('💊', med.x * msx, med.y * msy - 5);
+      }
     }
 
     // Draw beacons on minimap
@@ -6210,6 +6302,17 @@
     if (s.mcDiamondPoopUntil && s.mcDiamondPoopUntil > now) {
       const secs = Math.ceil((s.mcDiamondPoopUntil - now) / 1000);
       html += '<div class="bm-buff-pill" style="background:rgba(0,80,120,0.85);border-color:#88eeff;color:#88eeff;">💎 DIAMOND POOP ×3c — ' + secs + 's</div>';
+    }
+    // Bird Flu debuff
+    if (s.fluUntil && s.fluUntil > now) {
+      const secs = Math.ceil((s.fluUntil - now) / 1000);
+      html += '<div class="bm-buff-pill" style="background:rgba(0,100,20,0.85);border-color:#44ff44;color:#88ff88;animation:pulseGreen 0.8s infinite alternate;">🤧 BIRD FLU — ' + secs + 's · Find medicine!</div>';
+    } else if (s.fluOutbreak && gameState.birds) {
+      // Warn healthy birds when infected birds are nearby
+      const nearbyInfectedCount = gameState.birds.filter(b => b.isFlu && b.id !== gameState.self.id).length;
+      if (nearbyInfectedCount > 0) {
+        html += '<div class="bm-buff-pill" style="background:rgba(0,60,10,0.75);border-color:#44cc44;color:#88ee88;">⚠️ SICK BIRD NEARBY — stay back!</div>';
+      }
     }
     if (s.mcNukePoop) {
       html += '<div class="bm-buff-pill" style="background:rgba(120,0,0,0.85);border-color:#ff4422;color:#ff8866;animation:pulseRed 0.5s infinite alternate;font-weight:bold;">💣 NUKE POOP — READY!</div>';

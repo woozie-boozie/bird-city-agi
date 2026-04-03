@@ -3445,4 +3445,78 @@ window.Sprites = {
 
     ctx.restore();
   },
+
+  // === BIRD FLU MEDICINE ITEM ===
+  // A glowing green/white capsule pill with a pulsing halo — spawns during flu outbreaks.
+  drawMedicineItem(ctx, x, y, now) {
+    const t = now * 0.001;
+    const pulse = 0.5 + 0.5 * Math.sin(t * 3.5);
+    const float = Math.sin(t * 2.2) * 2.5;
+
+    ctx.save();
+    ctx.translate(x, y + float);
+
+    // Outer glow halo
+    const haloAlpha = 0.25 + 0.25 * pulse;
+    const grd = ctx.createRadialGradient(0, 0, 3, 0, 0, 18);
+    grd.addColorStop(0, `rgba(0,255,100,${haloAlpha * 2})`);
+    grd.addColorStop(1, 'rgba(0,220,80,0)');
+    ctx.fillStyle = grd;
+    ctx.beginPath();
+    ctx.arc(0, 0, 18, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Pill capsule body (tilted at 30 degrees)
+    ctx.rotate(Math.PI / 6);
+
+    // Left half (white)
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(-3.5, 0, 4, 7, 0, Math.PI / 2, Math.PI * 3 / 2);
+    ctx.rect(-3.5, -7, 3.5, 14);
+    ctx.fillStyle = '#e8ffe8';
+    ctx.fill();
+    ctx.restore();
+
+    // Right half (green)
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(3.5, 0, 4, 7, 0, -Math.PI / 2, Math.PI / 2);
+    ctx.rect(0, -7, 3.5, 14);
+    ctx.fillStyle = `rgba(30,${180 + Math.floor(50 * pulse)},60,1)`;
+    ctx.fill();
+    ctx.restore();
+
+    // Pill outline
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 4, 7, 0, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(0,180,60,0.8)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Center dividing line
+    ctx.beginPath();
+    ctx.moveTo(0, -7);
+    ctx.lineTo(0, 7);
+    ctx.strokeStyle = 'rgba(0,140,40,0.5)';
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+
+    // Highlight shine
+    ctx.fillStyle = 'rgba(220,255,220,0.5)';
+    ctx.beginPath();
+    ctx.ellipse(-1.5, -2, 1.5, 3, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore(); // undo rotate
+
+    // "💊" label above
+    ctx.font = 'bold 9px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = `rgba(80,220,100,${0.75 + 0.25 * pulse})`;
+    ctx.fillText('💊', 0, -16);
+
+    ctx.restore();
+  },
 };

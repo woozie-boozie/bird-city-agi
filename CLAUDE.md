@@ -1214,6 +1214,42 @@ Every 12–16 minutes, a glowing golden crate drops from the sky at a random cit
 
 **Creative intent**: The mystery crate is a city-wide moment machine. Every 12–16 minutes, everyone drops what they're doing and sprints toward the same spot. A Level 5 Most Wanted bird using Ghost Mode to escape cops, then getting Jet Wings on the next crate and blazing across the city — those moments don't require any scripting, they just emerge. The Twister Bomb scattering a crowd of 4 birds who were racing the crate creates instant drama. The broken crate's 3% troll rate means nobody feels fully safe assuming they'll win big. Pure CARNAGE + DISCOVERY + SPECTACLE energy — a periodic chaos injection that makes every session unpredictable.
 
+**Session 39 — 2026-04-03: Bird Flu Outbreak — Contagious Chaos**
+Introduced a periodic city-wide contagion event that spreads between nearby birds, turning the social dynamic upside down. Every 25–40 minutes, one random online bird becomes Patient Zero — infected, visually distinct, and dangerous to fly near.
+
+**Flu mechanics (`server/game.js`):**
+- Outbreak triggers every 25–40 minutes (if ≥1 bird is online), infecting a random bird as Patient Zero
+- Flu lasts 45 seconds naturally, or until the bird finds medicine
+- **Spread**: any infected bird within 80px of a healthy bird has a 35% chance per tick to spread the flu (4-second per-bird spread cooldown prevents spam-spreading)
+- **Speed penalty**: infected birds fly at 75% normal speed — weakened, struggling, dragging their wings
+- **Outbreak ends** naturally when no birds remain infected (all cured or duration expired)
+- Riot Shield from Mystery Crate blocks infection spread — tactical use of an existing item
+- Kingpin gets infected → special city-wide "👑🤧 THE KINGPIN HAS THE FLU!" drama announcement
+
+**Medicine items:**
+- 5 glowing green medicine capsules spawn at randomized city positions when outbreak starts
+- Any **infected** bird that flies within 45px auto-collects medicine — instant cure
+- Reward: +35 XP, +20 coins per medicine collected
+- Medicine items visible on world canvas and minimap (green pulsing dots)
+- Daily challenge hook: "Flu Fighter" — recover from Bird Flu (collect medicine)
+
+**Visual system (`public/js/main.js`, `public/js/sprites.js`, `public/css/style.css`):**
+- Infected birds: pulsing green radial glow aura behind sprite + pulsing 🤧 emoji indicator above their name
+- Medicine items: animated floating pill capsule with independent float bob, half-green half-white body, pulsing glow halo, "💧" label → now "💊" label
+- Active buffs HUD: pulsing green "🤧 BIRD FLU — Xs · Find medicine!" pill when infected
+- Proximity warning: "⚠️ SICK BIRD NEARBY — stay back!" pill appears when healthy bird is near infected ones during an active outbreak
+- Medicine items shown as green pulsing 💊 dots on minimap
+- CSS animation: `pulseGreen` keyframes for the flu debuff pill
+
+**Events & announcements:**
+- `flu_outbreak_start`: screen shake + big green announcement + event feed with Patient Zero callout
+- `flu_spread`: personal "YOU'VE BEEN INFECTED!" announcement + 🤧 floating text at position + city feed entry
+- `flu_cured`: personal "CURED!" announcement + reward callout + city feed entry  
+- `flu_outbreak_end`: city-wide "all clear" announcement
+- `flu_kingpin_infected`: massive drama announcement if the Kingpin catches the flu
+
+**Creative intent**: The flu outbreak adds a new social dynamic that no other system creates — AVOIDANCE. Every other mechanic pushes birds toward each other (territory fights, heists, racing). Flu creates the opposite: infected birds become pariahs. But there's nuance: healthy birds WANT the medicine (for the daily challenge "Flu Fighter"), so they have to weigh the risk of flying near infected birds vs. finding medicine. An infected Kingpin is a golden opportunity — they're weakened AND at 75% speed, making dethronement way more viable. The Riot Shield's newfound utility (blocking infection) gives Mystery Crate an additional strategic dimension. Pure CARNAGE + SOCIAL + DISCOVERY energy — the city just got a new axis of chaos.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -1248,7 +1284,11 @@ Built the Territory Control System on top of the existing upstream code:
 - Bioluminescent park pond at night (glowing water effect)
 - ~~Hot day weather: food spoils faster, birds need water puddles~~ (DONE Session 35)
 - ~~Mystery Crate Airdrop — city-wide scramble event, 10 random powerful items~~ (DONE Session 38)
+- ~~Bird Flu Outbreak — contagious spread mechanic, medicine items, Kingpin drama~~ (DONE Session 39)
 - Birds can shelter under awnings/trees during storms (mechanic: reduced hail hit radius if near cover)
+- City Newspaper / Daily Recap — at the end of each game day, a newspaper front page auto-generates showing top moments (biggest combo, who robbed whom, kingpin changes, etc.) — pure social retention
+- Formation Flying bonuses — V-formation gives flock speed boost, wedge gives poop power. Deepens flock social dynamic
+- Bird Flu + Wanted interaction: if a cop arrests you while infected, they catch the flu and wander confused for 5s (new counter-play)
 - ~~Prestige leaderboard: a wall/board in the city showing top-5 prestige players of all time~~ (DONE Session 37 — Hall of Legends)
 - ~~LEGEND-tier exclusive: ⚜️⚜️⚜️⚜️⚜️ birds can unlock "Prestige Poop" — a special golden poop effect~~ (DONE Session 37)
 - ~~Race power-ups: speed boost gates on the track~~ (DONE Session 30)
