@@ -106,7 +106,7 @@ window.Sprites = {
   },
 
   // === NAME TAG ===
-  drawNameTag(ctx, x, y, name, level, type, isPlayer, mafiaTitle, gangTag, gangColor, tattoosEquipped, prestige) {
+  drawNameTag(ctx, x, y, name, level, type, isPlayer, mafiaTitle, gangTag, gangColor, tattoosEquipped, prestige, eagleFeather) {
     const text = `${name} [Lv.${level}]`;
     ctx.font = 'bold 11px Courier New';
     ctx.textAlign = 'center';
@@ -136,6 +136,24 @@ window.Sprites = {
       ctx.shadowBlur = 0;
       ctx.font = 'bold 11px Courier New';
       offsetY += 15;
+    }
+
+    // Eagle Feather badge — rare drop from Eagle Overlord
+    if (eagleFeather) {
+      ctx.font = '11px serif';
+      const fw = ctx.measureText('🪶').width + 10;
+      ctx.fillStyle = 'rgba(0,40,30,0.90)';
+      ctx.fillRect(x - fw / 2, y - 52 - offsetY, fw, 14);
+      ctx.strokeStyle = '#00e8a0';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x - fw / 2, y - 52 - offsetY, fw, 14);
+      ctx.shadowColor = '#00e8a0';
+      ctx.shadowBlur = 5;
+      ctx.fillStyle = '#00e8a0';
+      ctx.fillText('🪶', x, y - 41 - offsetY);
+      ctx.shadowBlur = 0;
+      ctx.font = 'bold 11px Courier New';
+      offsetY += 14;
     }
 
     // Gang tag badge
@@ -220,6 +238,55 @@ window.Sprites = {
     ctx.beginPath();
     ctx.arc(x - 1, y - 2, 1.5, 0, Math.PI * 2);
     ctx.fill();
+  },
+
+  // === GOLDEN POOP — P5 LEGEND birds drop shimmering gold poop ===
+  drawGoldenPoop(ctx, x, y, now) {
+    const t = (now || 0) / 1000;
+    const pulse = 0.7 + 0.3 * Math.sin(t * 8 + x * 0.5); // shimmer per-position
+
+    // Gold glow halo
+    ctx.save();
+    ctx.shadowColor = '#ffd700';
+    ctx.shadowBlur = 8 * pulse;
+
+    // Main body — rich amber/gold
+    ctx.fillStyle = `rgba(${Math.floor(200 + 40 * pulse)}, ${Math.floor(140 + 30 * pulse)}, 0, 0.95)`;
+    ctx.beginPath();
+    ctx.arc(x, y, 5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Secondary lobe
+    ctx.fillStyle = `rgba(230, 160, 10, 0.90)`;
+    ctx.beginPath();
+    ctx.arc(x - 2, y - 1, 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Tertiary lobe
+    ctx.fillStyle = `rgba(240, 180, 20, 0.85)`;
+    ctx.beginPath();
+    ctx.arc(x + 1, y + 2, 2, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.shadowBlur = 0;
+
+    // Bright gold highlight
+    ctx.fillStyle = `rgba(255, 240, 100, ${0.5 + 0.4 * pulse})`;
+    ctx.beginPath();
+    ctx.arc(x - 1.5, y - 2, 1.8, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Tiny sparkle crosshair on top
+    const sparkAlpha = 0.6 + 0.4 * Math.sin(t * 12 + y * 0.3);
+    ctx.strokeStyle = `rgba(255, 255, 200, ${sparkAlpha})`;
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.moveTo(x, y - 8); ctx.lineTo(x, y - 3);
+    ctx.moveTo(x - 5, y - 5); ctx.lineTo(x - 2, y - 3);
+    ctx.moveTo(x + 5, y - 5); ctx.lineTo(x + 2, y - 3);
+    ctx.stroke();
+
+    ctx.restore();
   },
 
   // === NPC HUMAN (top-down) ===

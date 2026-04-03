@@ -275,6 +275,8 @@ class GameEngine {
       lastPaidTo: null,  // { name, amount } — last payout recipient (for history display)
     };
     this.CITY_HALL_POS = world.CITY_HALL_POS;
+    this.HALL_OF_LEGENDS_POS = world.HALL_OF_LEGENDS_POS;
+    this._cachedHallOfLegends = [];  // top prestige players for the Hall of Legends
 
     // === BIRD TATTOO PARLOR ===
     this.TATTOO_PARLOR_POS = world.TATTOO_PARLOR_POS;
@@ -562,6 +564,8 @@ class GameEngine {
       // === BIRD TATTOO PARLOR ===
       tattoosOwned:    saved ? this._safeJsonParse(saved.tattoos_owned, []) : [],
       tattoosEquipped: saved ? this._safeJsonParse(saved.tattoos_equipped, []) : [],
+      // === EAGLE FEATHER — rare drop from killing Eagle Overlord ===
+      eagleFeather: saved ? (saved.eagle_feather || false) : false,
     };
 
     // Determine bird type from XP
@@ -2050,6 +2054,7 @@ class GameEngine {
         hitTarget: null,
         time: now,
         isNew: true,
+        isLegend: (bird.prestige || 0) >= 5,  // P5 LEGEND birds drop golden poop
       };
 
       // Check if mega poop (power-up OR black market mega poop)
@@ -3876,6 +3881,7 @@ class GameEngine {
           isKingpin: this.kingpin ? this.kingpin.birdId === b.id : false,
           kingpinMyHits: (this.kingpin && this.kingpin.birdId === b.id) ? (this.kingpin.hitCount.get(bird.id) || 0) : 0,
           tattoosEquipped: b.tattoosEquipped || [],
+          eagleFeather: b.eagleFeather || false,
         });
       }
     }
@@ -3884,7 +3890,7 @@ class GameEngine {
     const nearbyPoops = [];
     for (const p of this.poops.values()) {
       if (Math.abs(p.x - bird.x) < viewRange && Math.abs(p.y - bird.y) < viewRange) {
-        nearbyPoops.push({ id: p.id, x: p.x, y: p.y, hitTarget: p.hitTarget });
+        nearbyPoops.push({ id: p.id, x: p.x, y: p.y, hitTarget: p.hitTarget, isLegend: p.isLegend || false });
       }
     }
 
@@ -4652,6 +4658,14 @@ class GameEngine {
         hp: this.owlEnforcer.hp,
         maxHp: this.owlEnforcer.maxHp,
       } : null,
+      // Hall of Legends — top prestige players city-wide
+      hallOfLegends: this._cachedHallOfLegends || [],
+      eagleFeather: bird.eagleFeather || false,
+      nearHallOfLegends: (() => {
+        const dx = bird.x - this.HALL_OF_LEGENDS_POS.x;
+        const dy = bird.y - this.HALL_OF_LEGENDS_POS.y;
+        return Math.sqrt(dx * dx + dy * dy) < this.HALL_OF_LEGENDS_POS.radius;
+      })(),
     };
   }
 
@@ -4690,6 +4704,33 @@ class GameEngine {
     }).catch(e => {
       // Fallback to live data only
       this._cachedLeaderboard = live.sort((a, b) => b.xp - a.xp).slice(0, 20);
+    });
+
+    // Also refresh the Hall of Legends (top prestige players from Firestore)
+    // Merge live prestige birds in first
+    const livePrestige = [];
+    for (const b of this.birds.values()) {
+      if ((b.prestige || 0) > 0) {
+        livePrestige.push({
+          name: b.name, prestige: b.prestige, type: b.type,
+          xp: b.xp, eagleFeather: b.eagleFeather || false,
+          gangTag: b.gangTag || null, gangColor: b.gangColor || null,
+          online: true,
+        });
+      }
+    }
+    firestoreDb.getHallOfLegends().then(savedHall => {
+      const liveNames = new Set(livePrestige.map(b => b.name));
+      const merged = [...livePrestige];
+      for (const s of savedHall) {
+        if (!liveNames.has(s.name)) merged.push({ ...s, online: false });
+      }
+      merged.sort((a, b) => (b.prestige - a.prestige) || (b.xp - a.xp));
+      this._cachedHallOfLegends = merged.slice(0, 5);
+    }).catch(() => {
+      // fallback: live only
+      livePrestige.sort((a, b) => (b.prestige - a.prestige) || (b.xp - a.xp));
+      this._cachedHallOfLegends = livePrestige.slice(0, 5);
     });
   }
 
@@ -4733,6 +4774,7 @@ class GameEngine {
       tattoos_owned: JSON.stringify(bird.tattoosOwned || []),
       tattoos_equipped: JSON.stringify(bird.tattoosEquipped || []),
       prestige: bird.prestige || 0,
+      eagle_feather: bird.eagleFeather || false,
     }).catch(e => {
       console.error('[GameEngine] Failed to save bird:', e.message);
     });
@@ -6812,6 +6854,13 @@ class GameEngine {
     let totalDmg = 0;
     for (const d of boss.damageByBird.values()) totalDmg += d;
 
+    // Find the top damage dealer — they have a 15% chance of the Eagle Feather drop
+    let topDamageDealer = null;
+    let topDmg = 0;
+    for (const [birdId, dmg] of boss.damageByBird.entries()) {
+      if (dmg > topDmg) { topDmg = dmg; topDamageDealer = birdId; }
+    }
+
     const rewards = [];
     for (const [birdId, dmg] of boss.damageByBird.entries()) {
       const bird = this.birds.get(birdId);
@@ -6834,6 +6883,23 @@ class GameEngine {
       const captive = this.birds.get(boss.snatched.birdId);
       if (captive) captive.stunnedUntil = 0;
     }
+
+    // Eagle Feather drop — 15% chance for the top damage dealer
+    if (topDamageDealer && Math.random() < 0.15) {
+      const killer = this.birds.get(topDamageDealer);
+      if (killer && !killer.eagleFeather) {
+        killer.eagleFeather = true;
+        this._saveBird(killer);
+        this.events.push({
+          type: 'eagle_feather_drop',
+          birdId: killer.id,
+          birdName: killer.name,
+          msg: `🪶 ${killer.name} claimed the Eagle Feather! A rare trophy from the Eagle Overlord.`,
+        });
+        console.log(`[GameEngine] 🪶 Eagle Feather dropped for ${killer.name}!`);
+      }
+    }
+
     this.events.push({ type: 'eagle_overlord_defeated', x: boss.x, y: boss.y, rewards });
     this.boss = null;
     this.bossSpawnTimer = now + this._randomRange(420000, 600000);

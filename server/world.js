@@ -379,6 +379,11 @@ const TATTOO_PARLOR_POS = { x: 640, y: 1840, radius: 100 };
 // Hosts the Bounty Board (Dethronement Pool) — [V] to access
 const CITY_HALL_POS = { x: 1780, y: 1050, radius: 110 };
 
+// Hall of Legends — grand memorial hall north of the park, between the radio tower and the main road
+// Shows the city's top prestige players as illuminated golden plaques
+// LEGEND birds' golden poop spawns near here; Eagle Feather drop also displayed
+const HALL_OF_LEGENDS_POS = { x: 1050, y: 640, radius: 110 };
+
 // Tattoo catalog — 25 permanent emoji tattoos in 5 themed categories
 const TATTOO_CATALOG = [
   // Crime
@@ -425,6 +430,7 @@ module.exports = {
   DON_POS, CASINO_POS,
   TATTOO_PARLOR_POS, TATTOO_CATALOG,
   CITY_HALL_POS,
+  HALL_OF_LEGENDS_POS,
   PREDATOR_TERRITORIES,
   getXPForLevel, getLevelFromXP, getBirdTypeForLevel,
 };

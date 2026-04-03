@@ -76,6 +76,7 @@ const db = {
       tattoos_owned: data.tattoos_owned || '[]',
       tattoos_equipped: data.tattoos_equipped || '[]',
       prestige: data.prestige || 0,
+      eagle_feather: data.eagle_feather || false,
       last_seen: Math.floor(Date.now() / 1000),
     };
     await birdsCol.doc(id).set(docData, { merge: true });
@@ -214,6 +215,30 @@ const db = {
       });
     });
     return results;
+  },
+
+  /**
+   * Get the Hall of Legends — top prestige players, ordered by prestige desc then xp desc.
+   * Returns top 5 with name, prestige, type, xp, eagle_feather, gang_tag, gang_color.
+   */
+  async getHallOfLegends() {
+    const snapshot = await birdsCol.orderBy('prestige', 'desc').orderBy('xp', 'desc').limit(10).get();
+    const results = [];
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      if ((data.prestige || 0) > 0) {
+        results.push({
+          name: data.name,
+          prestige: data.prestige || 0,
+          type: data.type || 'pigeon',
+          xp: data.xp || 0,
+          eagleFeather: data.eagle_feather || false,
+          gangTag: data.gang_tag || null,
+          gangColor: data.gang_color || null,
+        });
+      }
+    });
+    return results.slice(0, 5);
   },
 
   /**

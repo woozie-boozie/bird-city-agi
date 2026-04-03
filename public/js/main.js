@@ -1080,6 +1080,14 @@
       addEventMessage(rewardMsg, '#ffd700');
     }
 
+    if (ev.type === 'eagle_feather_drop') {
+      effects.push({ type: 'screen_shake', intensity: 10, duration: 700, time: now });
+      addEventMessage(`🪶 ${ev.birdName} claimed the EAGLE FEATHER — a rare trophy from the Eagle Overlord!`, '#00e8a0');
+      if (ev.birdId === myId) {
+        showAnnouncement('🪶 EAGLE FEATHER CLAIMED!\nYou are now immortalized in the Hall of Legends.', '#00e8a0', 6000);
+      }
+    }
+
     // === TERRITORY PREDATOR EVENTS ===
     if (ev.type === 'territory_warning') {
       if (ev.birdId === myId) {
@@ -4603,7 +4611,11 @@
         const sx = poop.x - camera.x + camera.screenW / 2;
         const sy = poop.y - camera.y + camera.screenH / 2;
         if (sx > -margin && sx < camera.screenW + margin && sy > -margin && sy < camera.screenH + margin) {
-          Sprites.drawPoop(ctx, sx, sy);
+          if (poop.isLegend) {
+            Sprites.drawGoldenPoop(ctx, sx, sy, now);
+          } else {
+            Sprites.drawPoop(ctx, sx, sy);
+          }
         }
       }
     }
@@ -4938,6 +4950,12 @@
       Renderer.drawCityHall(ctx, camera, worldData.cityHallPos, poolAmount, !!gameState.nearCityHall, now);
     }
 
+    // Hall of Legends — prestige leaderboard building
+    if (worldData && worldData.hallOfLegendsPos) {
+      const legendsData = (gameState.self && gameState.self.hallOfLegends) || [];
+      Renderer.drawHallOfLegends(ctx, camera, worldData.hallOfLegendsPos, legendsData, !!(gameState.self && gameState.self.nearHallOfLegends), now);
+    }
+
     // Gang Nests
     if (gameState.gangNests && gameState.gangNests.length > 0) {
       const selfGangId = gameState.self && gameState.self.gangId;
@@ -4971,7 +4989,7 @@
             ctx.globalAlpha = 0.5;
           }
           Sprites.drawBird(ctx, sx, sy, b.rotation, b.type, b.wingPhase, isPlayer, b.birdColor || null);
-          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0);
+          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0, b.eagleFeather || false);
           if (b.cloaked || b.inNest) {
             ctx.globalAlpha = 1;
           }
@@ -5276,6 +5294,12 @@
     if (worldData && worldData.cityHallPos) {
       const poolAmount = (gameState.dethronementPool && gameState.dethronementPool.total) || 0;
       Renderer.drawCityHallOnMinimap(minimapCtx, worldData, poolAmount);
+    }
+
+    // Hall of Legends on minimap
+    if (worldData && worldData.hallOfLegendsPos) {
+      const legendsData = (gameState.self && gameState.self.hallOfLegends) || [];
+      Renderer.drawHallOfLegendsOnMinimap(minimapCtx, worldData, worldData.hallOfLegendsPos, legendsData.length > 0, now);
     }
 
     // Gang Nests on minimap

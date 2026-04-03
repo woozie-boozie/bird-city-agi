@@ -2660,4 +2660,250 @@ window.Renderer = {
       }
     }
   },
+
+  // =====================================================================
+  // HALL OF LEGENDS — Grand memorial hall north of the park
+  // Shows the city's top prestige players as golden illuminated plaques
+  // =====================================================================
+  drawHallOfLegends(ctx, camera, pos, legendsData, nearHall, now) {
+    if (!pos) return;
+    const cx = pos.x - camera.x + camera.screenW / 2;
+    const cy = pos.y - camera.y + camera.screenH / 2;
+    const t = now / 1000;
+    const pulse = 0.5 + 0.5 * Math.sin(t * 1.4);
+    const hasLegends = legendsData && legendsData.length > 0;
+    const hasP5 = legendsData && legendsData.some(l => l.prestige >= 5);
+
+    ctx.save();
+
+    // Foundation shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fillRect(cx - 78 + 5, cy - 108 + 5, 156, 130);
+
+    // Main building — dark marble with golden highlights
+    const grad = ctx.createLinearGradient(cx - 78, cy - 108, cx + 78, cy + 22);
+    grad.addColorStop(0, '#1a1408');
+    grad.addColorStop(0.5, '#2a2010');
+    grad.addColorStop(1, '#1a1408');
+    ctx.fillStyle = grad;
+    ctx.fillRect(cx - 78, cy - 108, 156, 130);
+
+    // Golden aura if any P5 LEGEND is on the board
+    if (hasP5) {
+      ctx.shadowColor = '#ffd700';
+      ctx.shadowBlur = 18 * pulse;
+      ctx.strokeStyle = `rgba(255,215,0,${0.6 + 0.4 * pulse})`;
+    } else if (hasLegends) {
+      ctx.strokeStyle = 'rgba(180,140,30,0.7)';
+    } else {
+      ctx.strokeStyle = 'rgba(90,70,20,0.6)';
+    }
+    ctx.lineWidth = 2;
+    ctx.strokeRect(cx - 78, cy - 108, 156, 130);
+    ctx.shadowBlur = 0;
+
+    // Roof / pediment — triangular, very dark marble
+    ctx.beginPath();
+    ctx.moveTo(cx - 88, cy - 108);
+    ctx.lineTo(cx, cy - 148);
+    ctx.lineTo(cx + 88, cy - 108);
+    ctx.closePath();
+    ctx.fillStyle = '#120e04';
+    ctx.fill();
+    ctx.strokeStyle = hasP5 ? '#ffd700' : '#7a6020';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Pediment inner triangle (decorative)
+    ctx.beginPath();
+    ctx.moveTo(cx - 70, cy - 108);
+    ctx.lineTo(cx, cy - 135);
+    ctx.lineTo(cx + 70, cy - 108);
+    ctx.closePath();
+    ctx.strokeStyle = hasP5 ? 'rgba(255,215,0,0.4)' : 'rgba(120,90,20,0.3)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // 4 tall golden columns
+    for (let i = 0; i < 4; i++) {
+      const colX = cx - 52 + i * 35;
+      const colGrad = ctx.createLinearGradient(colX - 5, 0, colX + 5, 0);
+      colGrad.addColorStop(0, '#3a2a08');
+      colGrad.addColorStop(0.4, '#8a6a18');
+      colGrad.addColorStop(1, '#3a2a08');
+      ctx.fillStyle = colGrad;
+      ctx.fillRect(colX - 5, cy - 102, 10, 124);
+      ctx.strokeStyle = '#5a4010';
+      ctx.lineWidth = 0.5;
+      ctx.strokeRect(colX - 5, cy - 102, 10, 124);
+      // Column capital
+      ctx.fillStyle = '#8a6818';
+      ctx.fillRect(colX - 7, cy - 102, 14, 6);
+    }
+
+    // Building border
+    ctx.strokeStyle = hasP5 ? 'rgba(255,215,0,0.5)' : 'rgba(100,80,20,0.5)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(cx - 78, cy - 108, 156, 130);
+
+    // "HALL OF LEGENDS" carved text on pediment
+    ctx.font = 'bold 8px serif';
+    ctx.textAlign = 'center';
+    if (hasP5) {
+      ctx.shadowColor = '#ffd700';
+      ctx.shadowBlur = 8;
+      ctx.fillStyle = '#ffd700';
+    } else {
+      ctx.fillStyle = '#c8a830';
+    }
+    ctx.fillText('HALL OF LEGENDS', cx, cy - 115);
+    ctx.shadowBlur = 0;
+
+    // ⚜️ crest in the pediment
+    ctx.font = '12px serif';
+    ctx.fillStyle = hasP5 ? '#ffd700' : '#8a6818';
+    if (hasP5) { ctx.shadowColor = '#ffd700'; ctx.shadowBlur = 6; }
+    ctx.fillText('⚜️', cx, cy - 130);
+    ctx.shadowBlur = 0;
+
+    // Entrance arch door
+    ctx.fillStyle = '#0a0804';
+    ctx.fillRect(cx - 14, cy - 22, 28, 44);
+    ctx.beginPath();
+    ctx.arc(cx, cy - 22, 14, Math.PI, 0);
+    ctx.fillStyle = '#050302';
+    ctx.fill();
+    // Door arch glow if near
+    if (nearHall) {
+      ctx.strokeStyle = `rgba(255,215,0,${0.5 + 0.5 * pulse})`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(cx, cy - 22, 14, Math.PI, 0);
+      ctx.stroke();
+    }
+
+    // ── Plaques Panel ──
+    // Gold-tinted inner panel (inside the columns)
+    ctx.fillStyle = 'rgba(30,20,5,0.92)';
+    ctx.fillRect(cx - 60, cy - 96, 120, 72);
+    ctx.strokeStyle = 'rgba(120,90,15,0.5)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(cx - 60, cy - 96, 120, 72);
+
+    if (!hasLegends) {
+      // Empty hall message
+      ctx.font = '7px serif';
+      ctx.fillStyle = 'rgba(120,90,30,0.7)';
+      ctx.fillText('No Legends yet...', cx, cy - 57);
+      ctx.fillText('Prestige to be immortalized', cx, cy - 47);
+    } else {
+      // Draw top-5 prestige plaques
+      const badges = ['', '⚜️', '⚜️⚜️', '⚜️⚜️⚜️', '⚜️⚜️⚜️⚜️', '⚜️⚜️⚜️⚜️⚜️'];
+      const ROW_H = 13;
+      const startY = cy - 92;
+      for (let i = 0; i < Math.min(legendsData.length, 5); i++) {
+        const entry = legendsData[i];
+        const ry = startY + i * ROW_H;
+        const isLeg = entry.prestige >= 5;
+
+        // Plaque background (alternate tones)
+        ctx.fillStyle = i % 2 === 0 ? 'rgba(40,28,5,0.6)' : 'rgba(25,18,3,0.6)';
+        ctx.fillRect(cx - 58, ry, 116, ROW_H);
+
+        if (isLeg) {
+          ctx.strokeStyle = `rgba(255,215,0,${0.3 + 0.3 * pulse})`;
+          ctx.lineWidth = 0.5;
+          ctx.strokeRect(cx - 58, ry, 116, ROW_H);
+        }
+
+        // Rank number
+        ctx.font = 'bold 7px Courier New';
+        ctx.textAlign = 'left';
+        ctx.fillStyle = '#6a5010';
+        ctx.fillText(`#${i + 1}`, cx - 56, ry + ROW_H - 3);
+
+        // Prestige badges
+        ctx.font = '7px serif';
+        ctx.textAlign = 'left';
+        if (isLeg) { ctx.shadowColor = '#ffd700'; ctx.shadowBlur = 3; }
+        ctx.fillStyle = isLeg ? '#ffd700' : '#c8a030';
+        ctx.fillText(badges[Math.min(entry.prestige, 5)], cx - 44, ry + ROW_H - 3);
+        ctx.shadowBlur = 0;
+
+        // Eagle feather badge
+        let nameX = cx - 18;
+        if (entry.eagleFeather) {
+          ctx.font = '7px serif';
+          ctx.fillText('🪶', nameX, ry + ROW_H - 3);
+          nameX += 10;
+        }
+
+        // Name
+        ctx.font = isLeg ? 'bold 7px Courier New' : '7px Courier New';
+        ctx.textAlign = 'left';
+        if (isLeg) {
+          ctx.shadowColor = '#ffd700';
+          ctx.shadowBlur = 2;
+          ctx.fillStyle = '#ffd700';
+        } else {
+          ctx.fillStyle = '#e0c060';
+        }
+        // Clip name to avoid overflow
+        const nameStr = entry.name.length > 12 ? entry.name.slice(0, 11) + '…' : entry.name;
+        ctx.fillText(nameStr, nameX, ry + ROW_H - 3);
+        ctx.shadowBlur = 0;
+
+        // Gang tag if any
+        if (entry.gangTag) {
+          ctx.font = '6px Courier New';
+          ctx.textAlign = 'right';
+          ctx.fillStyle = entry.gangColor || '#ff9944';
+          ctx.fillText(`[${entry.gangTag}]`, cx + 56, ry + ROW_H - 3);
+        }
+      }
+    }
+
+    // Proximity prompt
+    if (nearHall) {
+      ctx.font = 'bold 9px Courier New';
+      ctx.textAlign = 'center';
+      ctx.shadowColor = '#ffd700';
+      ctx.shadowBlur = 6;
+      ctx.fillStyle = '#ffd700';
+      ctx.fillText('🏛 HALL OF LEGENDS', cx, cy + 30);
+      ctx.shadowBlur = 0;
+    } else {
+      ctx.font = '8px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(180,140,30,0.7)';
+      ctx.fillText('Hall of Legends', cx, cy + 30);
+    }
+
+    ctx.restore();
+  },
+
+  drawHallOfLegendsOnMinimap(minimapCtx, worldData, hallPos, hasLegends, now) {
+    if (!hallPos || !worldData) return;
+    const msx = minimapCtx.canvas.width / worldData.width;
+    const msy = minimapCtx.canvas.height / worldData.height;
+    const px = hallPos.x * msx;
+    const py = hallPos.y * msy;
+    const t = now / 1000;
+    const pulse = 0.5 + 0.5 * Math.sin(t * 2.0);
+
+    minimapCtx.save();
+    if (hasLegends) {
+      minimapCtx.shadowColor = '#ffd700';
+      minimapCtx.shadowBlur = 4 * pulse;
+    }
+    minimapCtx.fillStyle = hasLegends ? '#ffd700' : '#8a6818';
+    minimapCtx.beginPath();
+    minimapCtx.arc(px, py, hasLegends ? 3.5 : 2.5, 0, Math.PI * 2);
+    minimapCtx.fill();
+    minimapCtx.shadowBlur = 0;
+    minimapCtx.font = '8px sans-serif';
+    minimapCtx.textAlign = 'center';
+    minimapCtx.fillText('🏛', px, py - 4);
+    minimapCtx.restore();
+  },
 };
