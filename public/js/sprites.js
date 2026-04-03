@@ -106,14 +106,39 @@ window.Sprites = {
   },
 
   // === NAME TAG ===
-  drawNameTag(ctx, x, y, name, level, type, isPlayer, mafiaTitle, gangTag, gangColor, tattoosEquipped) {
+  drawNameTag(ctx, x, y, name, level, type, isPlayer, mafiaTitle, gangTag, gangColor, tattoosEquipped, prestige) {
     const text = `${name} [Lv.${level}]`;
     ctx.font = 'bold 11px Courier New';
     ctx.textAlign = 'center';
 
     let offsetY = 0; // stack badges upward
 
-    // Gang tag badge — topmost
+    // Prestige badge — very topmost (above gang tag)
+    if (prestige && prestige > 0) {
+      const badges = ['', '⚜️', '⚜️⚜️', '⚜️⚜️⚜️', '⚜️⚜️⚜️⚜️', '⚜️⚜️⚜️⚜️⚜️'];
+      const isLegend = prestige >= 5;
+      const badgeStr = badges[Math.min(prestige, 5)];
+      ctx.font = '11px serif';
+      const pw = ctx.measureText(badgeStr).width + 10;
+      const bgColor = isLegend ? 'rgba(100,70,0,0.90)' : 'rgba(30,20,0,0.88)';
+      const borderColor = isLegend ? '#ffd700' : '#aa8833';
+      ctx.fillStyle = bgColor;
+      ctx.fillRect(x - pw / 2, y - 52 - offsetY, pw, 14);
+      ctx.strokeStyle = borderColor;
+      ctx.lineWidth = isLegend ? 1.5 : 1;
+      ctx.strokeRect(x - pw / 2, y - 52 - offsetY, pw, 14);
+      if (isLegend) {
+        ctx.shadowColor = '#ffd700';
+        ctx.shadowBlur = 6;
+      }
+      ctx.fillStyle = isLegend ? '#ffd700' : '#ccaa44';
+      ctx.fillText(badgeStr, x, y - 41 - offsetY);
+      ctx.shadowBlur = 0;
+      ctx.font = 'bold 11px Courier New';
+      offsetY += 15;
+    }
+
+    // Gang tag badge
     if (gangTag) {
       const gColor = gangColor || '#ff6633';
       ctx.font = 'bold 10px Courier New';
@@ -143,14 +168,19 @@ window.Sprites = {
       ctx.font = 'bold 11px Courier New';
     }
 
-    // Background
+    // Background — LEGEND gets golden glow
     const w = ctx.measureText(text).width + 8;
-    ctx.fillStyle = isPlayer ? 'rgba(255, 200, 50, 0.7)' : 'rgba(0, 0, 0, 0.6)';
+    const isLegend = prestige >= 5;
+    if (isLegend && !isPlayer) {
+      ctx.shadowColor = '#ffd700';
+      ctx.shadowBlur = 8;
+    }
+    ctx.fillStyle = isPlayer ? 'rgba(255, 200, 50, 0.7)' : (isLegend ? 'rgba(80,55,0,0.85)' : 'rgba(0, 0, 0, 0.6)');
     ctx.fillRect(x - w / 2, y - 25, w, 15);
-    ctx.borderRadius = 3;
+    ctx.shadowBlur = 0;
 
     // Text
-    ctx.fillStyle = isPlayer ? '#1a1a2e' : '#fff';
+    ctx.fillStyle = isPlayer ? '#1a1a2e' : (isLegend ? '#ffd700' : '#fff');
     ctx.fillText(text, x, y - 14);
 
     // Tattoo strip — rendered below the name pill

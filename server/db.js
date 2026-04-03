@@ -75,6 +75,7 @@ const db = {
       gang_role: data.gang_role || null,
       tattoos_owned: data.tattoos_owned || '[]',
       tattoos_equipped: data.tattoos_equipped || '[]',
+      prestige: data.prestige || 0,
       last_seen: Math.floor(Date.now() / 1000),
     };
     await birdsCol.doc(id).set(docData, { merge: true });

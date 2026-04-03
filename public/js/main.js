@@ -112,6 +112,10 @@
   let bountyBoardVisible = false;
   let lastNearCityHall = false;
 
+  // === PRESTIGE PANEL ===
+  const prestigeOverlay = document.getElementById('prestigeOverlay');
+  let prestigePanelVisible = false;
+
   // === Persistent Identity (localStorage) ===
   function getSavedAccount() {
     try {
@@ -1394,6 +1398,32 @@
       }
     }
 
+    // === PRESTIGE EVENTS ===
+    if (ev.type === 'prestige') {
+      const badges = ['', '⚜️', '⚜️⚜️', '⚜️⚜️⚜️', '⚜️⚜️⚜️⚜️', '⚜️⚜️⚜️⚜️⚜️'];
+      const tierNames = ['', 'Ascended', 'Veteran', 'Elite', 'Champion', 'LEGEND'];
+      const isMe = ev.birdId === myId;
+      const gangPart = ev.gangTag ? ` [${ev.gangTag}]` : '';
+      const tier = tierNames[Math.min(ev.prestige, 5)] || '';
+      const badge = badges[Math.min(ev.prestige, 5)] || '';
+      if (isMe) {
+        triggerScreenShake(10, 800);
+        showAnnouncement(`${badge} PRESTIGE ${ev.prestige}! You are now ${tier}!`, ev.prestige >= 5 ? '#ffd700' : '#cc88ff', 6000);
+        addEventMessage(`${badge} YOU ASCENDED to ${tier}! ${ev.bonus}`, ev.prestige >= 5 ? '#ffd700' : '#cc88ff');
+        if (prestigePanelVisible) renderPrestigePanel();
+      } else {
+        const color = ev.prestige >= 5 ? '#ffd700' : '#cc88ff';
+        showAnnouncement(`${badge} ${ev.birdName}${gangPart} ASCENDED — Prestige ${ev.prestige} (${tier})!`, color, 4000);
+        addEventMessage(`${badge} ${ev.birdName} reached Prestige ${ev.prestige} (${tier})!`, color);
+      }
+    }
+    if (ev.type === 'prestige_fail') {
+      if (ev.birdId === myId) {
+        addEventMessage('⚜️ Prestige: ' + ev.msg, '#ff8844');
+        if (prestigePanelVisible) renderPrestigePanel();
+      }
+    }
+
     // === THE ARENA — PvP EVENTS ===
     if (ev.type === 'arena_enter') {
       if (ev.birdId === myId) {
@@ -2145,6 +2175,14 @@
         showBountyBoard();
       }
     }
+    // Prestige Panel
+    if (e.key.toLowerCase() === 'u') {
+      if (prestigePanelVisible) {
+        hidePrestigePanel();
+      } else {
+        showPrestigePanel();
+      }
+    }
     // Arena enter
     if (e.key.toLowerCase() === 'e') {
       if (gameState && gameState.arena && lastNearArena &&
@@ -2608,7 +2646,9 @@
     const neededXP = s.nextLevelXP;
     const pct = neededXP > 0 ? Math.min(100, (currentLevelXP / neededXP) * 100) : 0;
     xpBarFill.style.width = pct + '%';
-    xpBarText.textContent = 'Lv.' + s.level + ' \u2014 ' + currentLevelXP + '/' + neededXP + ' XP';
+    const prestigeBadges = ['', '⚜️', '⚜️⚜️', '⚜️⚜️⚜️', '⚜️⚜️⚜️⚜️', '⚜️⚜️⚜️⚜️⚜️'];
+    const prestigePrefix = (s.prestige > 0) ? (prestigeBadges[Math.min(s.prestige, 5)] + ' ') : '';
+    xpBarText.textContent = prestigePrefix + 'Lv.' + s.level + ' \u2014 ' + currentLevelXP + '/' + neededXP + ' XP';
 
     // Desktop poop cooldown text
     if (poopCooldown && poopCooldown.style.display !== 'none') {
@@ -2942,8 +2982,11 @@
 
     // Daily Challenges HUD indicator
     updateDailyHudIndicator();
+    updatePrestigeHudPill();
     // Refresh daily panel if open
     if (dailyPanelVisible) renderDailyPanel();
+    // Refresh prestige panel if open
+    if (prestigePanelVisible) renderPrestigePanel();
 
     // Signal Boost HUD
     const sbHud = document.getElementById('signalBoostHud');
@@ -4928,7 +4971,7 @@
             ctx.globalAlpha = 0.5;
           }
           Sprites.drawBird(ctx, sx, sy, b.rotation, b.type, b.wingPhase, isPlayer, b.birdColor || null);
-          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || []);
+          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0);
           if (b.cloaked || b.inNest) {
             ctx.globalAlpha = 1;
           }
@@ -5872,6 +5915,41 @@
     dailyHudIndicator.style.color = allDone ? '#44cc44' : '#ffd700';
   }
 
+  function updatePrestigeHudPill() {
+    const pill = document.getElementById('prestigeHudPill');
+    if (!pill || !joined || !gameState || !gameState.self) {
+      if (pill) pill.style.display = 'none';
+      return;
+    }
+    const prestige = gameState.self.prestige || 0;
+    const threshold = gameState.self.prestigeThreshold || 10000;
+    if (prestige <= 0) {
+      // Show "⚜️ [U]" pill only when close to prestige threshold
+      const totalXP = gameState.self.xp || 0;
+      if (totalXP >= threshold * 0.9) {
+        pill.style.display = 'block';
+        pill.textContent = '⚜️ PRESTIGE READY [U]';
+        pill.style.borderColor = '#cc44ff';
+        pill.style.color = '#cc88ff';
+      } else {
+        pill.style.display = 'none';
+      }
+    } else {
+      const badges = ['', '⚜️', '⚜️⚜️', '⚜️⚜️⚜️', '⚜️⚜️⚜️⚜️', '⚜️⚜️⚜️⚜️⚜️'];
+      pill.style.display = 'block';
+      pill.textContent = badges[Math.min(prestige, 5)] + ' [U]';
+      pill.style.borderColor = prestige >= 5 ? '#ffd700' : '#7733cc';
+      pill.style.color = prestige >= 5 ? '#ffd700' : '#cc88ff';
+    }
+  }
+  // Wire prestige HUD pill click
+  const _prestigeHudPill = document.getElementById('prestigeHudPill');
+  if (_prestigeHudPill) {
+    _prestigeHudPill.addEventListener('click', () => {
+      if (prestigePanelVisible) hidePrestigePanel(); else showPrestigePanel();
+    });
+  }
+
   function updateActiveBuffsHud() {
     const el = document.getElementById('activeBuffsHud');
     if (!el || !gameState || !gameState.self) {
@@ -6565,6 +6643,109 @@
 
   if (tattooCloseBtn) {
     tattooCloseBtn.addEventListener('click', () => hideTattooOverlay());
+  }
+
+  // ============================================================
+  // PRESTIGE PANEL
+  // ============================================================
+  function showPrestigePanel() {
+    if (!prestigeOverlay) return;
+    prestigePanelVisible = true;
+    prestigeOverlay.style.display = 'block';
+    for (const k in keys) keys[k] = false;
+    syncInput();
+    renderPrestigePanel();
+  }
+
+  function hidePrestigePanel() {
+    if (!prestigeOverlay) return;
+    prestigePanelVisible = false;
+    prestigeOverlay.style.display = 'none';
+  }
+
+  function renderPrestigePanel() {
+    if (!gameState || !gameState.self || !prestigeOverlay) return;
+    const s = gameState.self;
+    const prestige = s.prestige || 0;
+    const threshold = s.prestigeThreshold || 10000;
+    const maxPrestige = s.maxPrestige || 5;
+    const badges = ['', '⚜️', '⚜️⚜️', '⚜️⚜️⚜️', '⚜️⚜️⚜️⚜️', '⚜️⚜️⚜️⚜️⚜️'];
+    const tierNames = ['Fledgling', 'Ascended', 'Veteran', 'Elite', 'Champion', 'LEGEND'];
+    const bonusDescs = [
+      'No bonuses yet — prestige to ascend!',
+      '+15% XP on all poop hits',
+      '+15% XP · +10% coins on poop hits',
+      '+15% XP · +10% coins · -15% poop cooldown',
+      '+15% XP · +10% coins · -15% cooldown · Spawn with 50 food',
+      '+20% XP · +15% coins · -20% cooldown · Spawn food · LEGEND status (golden name)',
+    ];
+
+    // XP toward prestige
+    let cumXP = 0;
+    for (let i = 0; i < s.level; i++) cumXP += Math.floor(100 * Math.pow(1.5, i));
+    const totalXP = s.xp || 0;
+    const pctToPrestige = prestige >= maxPrestige ? 100 : Math.min(100, Math.floor((totalXP / threshold) * 100));
+    const canPrestige = totalXP >= threshold && prestige < maxPrestige;
+
+    const badgeEl = document.getElementById('prestigeBadgeDisplay');
+    if (badgeEl) badgeEl.textContent = prestige > 0 ? badges[prestige] : '🐣';
+
+    const tierEl = document.getElementById('prestigeTierName');
+    if (tierEl) {
+      tierEl.textContent = tierNames[Math.min(prestige, 5)];
+      tierEl.style.color = prestige >= 5 ? '#ffd700' : prestige >= 3 ? '#cc88ff' : prestige >= 1 ? '#88ddff' : '#aaa';
+    }
+
+    const bonusEl = document.getElementById('prestigeBonusDesc');
+    if (bonusEl) bonusEl.textContent = bonusDescs[Math.min(prestige, 5)];
+
+    const barEl = document.getElementById('prestigeXpBar');
+    if (barEl) barEl.style.width = pctToPrestige + '%';
+
+    const xpLabel = document.getElementById('prestigeXpLabel');
+    if (xpLabel) {
+      if (prestige >= maxPrestige) {
+        xpLabel.textContent = 'MAX PRESTIGE ACHIEVED';
+      } else {
+        xpLabel.textContent = `${totalXP.toLocaleString()} / ${threshold.toLocaleString()} XP (${pctToPrestige}%)`;
+      }
+    }
+
+    const ascendBtn = document.getElementById('prestigeAscendBtn');
+    if (ascendBtn) {
+      ascendBtn.style.display = canPrestige ? 'block' : 'none';
+    }
+
+    const maxEl = document.getElementById('prestigeMaxMsg');
+    if (maxEl) maxEl.style.display = prestige >= maxPrestige ? 'block' : 'none';
+
+    // Next tier preview
+    const nextPreviewEl = document.getElementById('prestigeNextBonus');
+    if (nextPreviewEl) {
+      if (prestige < maxPrestige) {
+        nextPreviewEl.textContent = `Next (${badges[prestige + 1]} ${tierNames[prestige + 1]}): ${bonusDescs[prestige + 1]}`;
+      } else {
+        nextPreviewEl.textContent = '';
+      }
+    }
+  }
+
+  // Handle prestige event from server
+  socket.on('event', (evts) => {
+    // (already handled inline below — just adding prestige-specific rendering)
+  });
+
+  // Wire up prestige ascend button
+  const _prestigeAscendBtn = document.getElementById('prestigeAscendBtn');
+  if (_prestigeAscendBtn) {
+    _prestigeAscendBtn.addEventListener('click', () => {
+      socket.emit('action', { type: 'prestige' });
+      hidePrestigePanel();
+    });
+  }
+  const _prestigeCloseBtn = document.getElementById('prestigeCloseBtn');
+  if (_prestigeCloseBtn) {
+    _prestigeCloseBtn.addEventListener('click', () => hidePrestigePanel());
   }
 
   // ============================================================

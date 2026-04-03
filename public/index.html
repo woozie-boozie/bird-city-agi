@@ -616,6 +616,91 @@
     border:1.5px solid #cc4400;pointer-events:none;z-index:62;
     text-align:center;cursor:pointer;"></div>
 
+  <!-- Prestige Panel [U] -->
+  <div id="prestigeOverlay" style="display:none;position:fixed;top:50%;left:50%;
+    transform:translate(-50%,-50%);
+    background:rgba(8,4,20,0.97);color:#cc88ff;
+    font:11px 'Courier New',monospace;padding:20px 24px;border-radius:16px;
+    border:2px solid #7733cc;box-shadow:0 0 40px rgba(150,80,255,0.4);
+    z-index:95;min-width:340px;max-width:420px;max-height:85vh;overflow-y:auto;">
+
+    <div style="text-align:center;font:bold 16px serif;color:#cc88ff;
+      text-shadow:0 0 12px #aa44ff;margin-bottom:4px;letter-spacing:2px;">
+      ⚜️ PRESTIGE SYSTEM ⚜️
+    </div>
+    <div style="text-align:center;color:#7744aa;font:9px monospace;margin-bottom:16px;">
+      Reach 10,000 XP · ASCEND · Earn permanent power · Repeat up to 5 times
+    </div>
+
+    <!-- Badge + Tier -->
+    <div style="text-align:center;margin-bottom:14px;">
+      <div id="prestigeBadgeDisplay" style="font:28px serif;line-height:1.2;
+        text-shadow:0 0 16px #cc88ff;"></div>
+      <div id="prestigeTierName" style="font:bold 13px monospace;margin-top:4px;
+        letter-spacing:2px;"></div>
+    </div>
+
+    <!-- Current bonuses -->
+    <div style="background:rgba(60,20,80,0.6);border:1px solid #5522aa;
+      border-radius:10px;padding:10px 14px;margin-bottom:12px;">
+      <div style="font:bold 10px monospace;color:#aa66ff;margin-bottom:6px;">⚡ ACTIVE BONUSES</div>
+      <div id="prestigeBonusDesc" style="color:#cc99ff;font:10px monospace;line-height:1.5;"></div>
+    </div>
+
+    <!-- Next tier preview -->
+    <div id="prestigeNextBonus" style="background:rgba(20,10,40,0.6);border:1px dashed #4422aa;
+      border-radius:10px;padding:8px 12px;margin-bottom:12px;
+      color:#7755aa;font:9px monospace;line-height:1.5;min-height:24px;"></div>
+
+    <!-- XP Progress -->
+    <div style="margin-bottom:12px;">
+      <div style="font:bold 10px monospace;color:#aa66ff;margin-bottom:4px;">XP TO PRESTIGE</div>
+      <div style="background:rgba(30,10,50,0.8);border-radius:8px;height:10px;
+        border:1px solid #5522aa;overflow:hidden;">
+        <div id="prestigeXpBar" style="height:100%;background:linear-gradient(90deg,#7733cc,#cc44ff);
+          border-radius:8px;width:0%;transition:width 0.3s;"></div>
+      </div>
+      <div id="prestigeXpLabel" style="text-align:center;font:9px monospace;
+        color:#9966cc;margin-top:4px;"></div>
+    </div>
+
+    <!-- Max prestige message -->
+    <div id="prestigeMaxMsg" style="display:none;text-align:center;padding:10px;
+      background:rgba(80,60,0,0.7);border:2px solid #ffd700;border-radius:10px;
+      color:#ffd700;font:bold 11px monospace;text-shadow:0 0 8px #ffd700;
+      margin-bottom:12px;">
+      👑 LEGEND STATUS ACHIEVED 👑<br>
+      <span style="font:9px monospace;color:#ccaa44;">You have reached the pinnacle of Bird City.</span>
+    </div>
+
+    <!-- Ascend button -->
+    <button id="prestigeAscendBtn" style="display:none;width:100%;
+      background:linear-gradient(135deg,#4400aa,#8833ff);color:#fff;
+      border:2px solid #aa44ff;border-radius:12px;padding:10px 0;cursor:pointer;
+      font:bold 13px 'Courier New',monospace;letter-spacing:2px;
+      text-shadow:0 0 8px #cc88ff;box-shadow:0 0 16px rgba(150,50,255,0.5);
+      margin-bottom:10px;">
+      ⚜️ ASCEND — RESET XP &amp; PRESTIGE ⚜️
+    </button>
+
+    <div style="text-align:center;color:#5533aa;font:9px monospace;margin-bottom:12px;">
+      Your coins, gang, tattoos &amp; mafia rep are KEPT on prestige.<br>
+      Only XP resets. Your bird returns to Pigeon — but stronger.
+    </div>
+
+    <button id="prestigeCloseBtn"
+      style="display:block;margin:0 auto;background:rgba(30,10,50,0.8);color:#7744aa;
+      border:1px solid #442288;border-radius:10px;padding:6px 24px;cursor:pointer;
+      font:11px 'Courier New',monospace;">CLOSE  [U]</button>
+  </div>
+
+  <!-- Prestige HUD pill — shows ⚜️ count when prestige > 0, clickable to open panel -->
+  <div id="prestigeHudPill" style="display:none;position:fixed;bottom:48px;right:12px;
+    background:rgba(30,10,50,0.9);color:#cc88ff;
+    font:bold 10px 'Courier New',monospace;padding:4px 10px;border-radius:10px;
+    border:1.5px solid #7733cc;cursor:pointer;z-index:62;text-align:center;
+    text-shadow:0 0 6px #aa44ff;"></div>
+
   <script src="/socket.io/socket.io.js"></script>
   <script src="/js/sounds.js"></script>
   <script src="/js/sprites.js"></script>

@@ -1112,6 +1112,40 @@ The sixth weather type arrives: a blistering heatwave that transforms survival f
 
 **Creative intent**: The weather system had rain (bonus food), wind (navigation challenge), storm (lightning hazard), fog (stealth buff), and hailstorm (combo killer). Heatwave is the first weather that creates a **survival urgency** — your food bar is now actively under attack. Players must split attention between their normal chaos loop and finding puddles across the city. The 20-second quench window means you can't just camp one puddle — you need to move. Low-food birds get the speed penalty RIGHT as they need to dash to water, creating genuine tension. A high-combo bird with a bounty on them hitting thirst at the worst possible moment is peak CARNAGE CITY chaos. Pure DISCOVERY + CARNAGE energy.
 
+**Session 36 — 2026-04-03: Prestige System — Ascend, Reset, Rise Stronger**
+The single biggest missing retention mechanic is now live. Reach 10,000 XP, hit [U] to open the Prestige Panel, and ASCEND — your XP resets to zero, you drop back to Pigeon, but you keep everything else (coins, gang, tattoos, mafia rep) and earn permanent power bonuses + a visible ⚜️ badge.
+
+**Five prestige tiers:**
+- ⚜️ P1 (Ascended): +15% XP on all poop hits
+- ⚜️⚜️ P2 (Veteran): +15% XP + +10% coins on poop hits
+- ⚜️⚜️⚜️ P3 (Elite): above + -15% poop cooldown (faster firing)
+- ⚜️⚜️⚜️⚜️ P4 (Champion): above + spawn with 50 bonus food every session
+- ⚜️⚜️⚜️⚜️⚜️ P5 (LEGEND): +20% XP + +15% coins + -20% cooldown + spawn food + golden nametag glow
+
+**Prestige multipliers stack with everything** — Lucky Charm + Signal Boost + P5 = astronomical XP. A 4× combo + Lucky Charm + Signal Boost + P5 LEGEND = 12× XP, bumped to 14.4×.
+
+**Visual system:**
+- ⚜️ badges render ABOVE the gang tag in the nametag stack (highest visibility spot)
+- P5 LEGEND: golden name pill background + yellow text + subtle glow on name — unmistakable from across the map
+- XP bar in HUD shows badge prefix (e.g., "⚜️⚜️ Lv.3 — 450/675 XP")
+- Prestige HUD pill (bottom-right): appears at 90%+ of threshold showing "⚜️ PRESTIGE READY [U]"; if already prestiged, shows current badges
+- [U] key opens the Prestige Panel from anywhere mid-game (no location required)
+
+**Prestige Panel ([U]):**
+- Shows current badge, tier name, active bonuses, XP progress bar to next prestige
+- "Next tier" preview so players always know what they're working toward
+- ASCEND button (enabled only when XP ≥ 10,000 and prestige < 5)
+- Max prestige: golden "LEGEND STATUS ACHIEVED" panel
+- Clean note that coins/gang/tattoos/mafia rep are ALL kept on prestige
+
+**Daily challenge multiplier:** Prestige bonus also applies to daily challenge XP and coin rewards — compounding the daily grind benefit.
+
+**Server events:**
+- `prestige`: city-wide announcement with screen shake — "⚜️⚜️ [MOB] PlayerName ASCENDED — Prestige 2 (Veteran)!" visible to all
+- `prestige_fail`: personal message if XP not high enough or already at max
+
+**Creative intent**: Retention is Bird City's weakest pillar. Daily challenges fixed the "come back tomorrow" problem. Prestige fixes the "long-term identity" problem. When you see ⚜️⚜️⚜️⚜️⚜️ above someone's name, you know that bird has GRINDED. The decision to prestige is visceral — you're a level 9 Crow, you've earned 10k XP, and you willingly reset to a Pigeon to become permanently stronger. That reset moment, the city-wide announcement, the instant badge appearing above your name — pure SPECTACLE. The P5 golden LEGEND nametag is the highest status symbol in the game. Pure PROGRESSION + SPECTACLE + RETENTION energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -1121,6 +1155,7 @@ The sixth weather type arrives: a blistering heatwave that transforms survival f
 - ~~Hit Contract System — player-placed bounties via The Don~~ (DONE Session 25)
 - ~~Kingpin System — richest bird gets a crown + visible on minimap; killing them gives big reward~~ (DONE Session 26)
 - ~~Pigeonhole Slots — casino with progressive jackpot and bird-themed symbols~~ (DONE Session 27)
+- ~~Prestige System — Ascend at 10k XP, earn ⚜️ badge + permanent bonuses, up to 5 times~~ (DONE Session 36)
 - Eagle Overlord rare drop: "Eagle Feather" cosmetic badge (persistent cosmetic, visible on nametag)
 - ~~**Bird Gangs** — persistent named gangs with custom colors/tags, gang treasury, gang turf wars~~ (DONE Session 28)
 - ~~Race power-ups: speed boost gates on the circuit that any racer can fly through~~ (DONE Session 30)
@@ -1145,6 +1180,8 @@ Built the Territory Control System on top of the existing upstream code:
 - Bioluminescent park pond at night (glowing water effect)
 - ~~Hot day weather: food spoils faster, birds need water puddles~~ (DONE Session 35)
 - Birds can shelter under awnings/trees during storms (mechanic: reduced hail hit radius if near cover)
+- Prestige leaderboard: a wall/board in the city showing top-5 prestige players of all time
+- LEGEND-tier exclusive: ⚜️⚜️⚜️⚜️⚜️ birds can unlock "Prestige Poop" — a special golden poop effect
 - ~~Race power-ups: speed boost gates on the track~~ (DONE Session 30)
 - ~~Weather combos: fog (low visibility) + hailstorm~~ (DONE Session 18)
 - ~~Race betting system (spectators bet coins on a racer from anywhere on the map)~~ (DONE Session 17)

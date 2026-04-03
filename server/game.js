@@ -9,6 +9,20 @@ function uid() {
 // ============================================================
 // DAILY CHALLENGE POOL — 3 picked each UTC day via seeded random
 // ============================================================
+// ============================================================
+// PRESTIGE SYSTEM — Ascend at 10,000 XP, earn permanent badges + bonuses
+// ============================================================
+const PRESTIGE_THRESHOLD = 10000; // XP needed to prestige
+const MAX_PRESTIGE = 5;
+// Cumulative XP multiplier on poop hits per prestige tier (0-5)
+const PRESTIGE_XP_MULTS   = [1.00, 1.15, 1.15, 1.15, 1.15, 1.20];
+// Cumulative coin multiplier on poop hits per prestige tier
+const PRESTIGE_COIN_MULTS = [1.00, 1.00, 1.10, 1.10, 1.10, 1.15];
+// Poop cooldown multiplier per prestige tier (lower = faster)
+const PRESTIGE_COOLDOWN_MULTS = [1.00, 1.00, 1.00, 0.85, 0.85, 0.80];
+// Prestige badge strings
+const PRESTIGE_BADGES = ['', '⚜️', '⚜️⚜️', '⚜️⚜️⚜️', '⚜️⚜️⚜️⚜️', '⚜️⚜️⚜️⚜️⚜️'];
+
 const DAILY_CHALLENGE_POOL = [
   { id: 'poop_humans',     title: 'Bombardier',      desc: 'Poop on 15 humans or NPCs',              target: 15,  trackType: 'poop_npc',        reward: { xp: 120, coins: 50  } },
   { id: 'poop_total',      title: 'Poop Machine',    desc: 'Poop 30 times (any target)',             target: 30,  trackType: 'poop_total',      reward: { xp: 100, coins: 45  } },
@@ -474,6 +488,7 @@ class GameEngine {
       rotation: 0,
       type: saved ? saved.type : 'pigeon',
       xp: saved ? saved.xp : 0,
+      prestige: saved ? (saved.prestige || 0) : 0,
       food: saved ? saved.food : 0,
       shinyThings: saved ? saved.shiny_things : 0,
       totalPoops: saved ? saved.total_poops : 0,
@@ -553,6 +568,11 @@ class GameEngine {
     const level = world.getLevelFromXP(bird.xp);
     bird.type = world.getBirdTypeForLevel(level);
     bird.level = level;
+
+    // Prestige P4+: spawn with 50 bonus food (survival edge)
+    if (bird.prestige >= 4) {
+      bird.food = Math.min(100, (bird.food || 0) + 50);
+    }
 
     this.birds.set(id, bird);
 
@@ -754,6 +774,11 @@ class GameEngine {
     }
     if (action.type === 'equip_tattoo') {
       this._handleEquipTattoo(bird, action.tattooId, now);
+    }
+
+    // === Prestige ===
+    if (action.type === 'prestige') {
+      this._handlePrestige(bird, now);
     }
 
     // === The Arena ===
@@ -1920,6 +1945,11 @@ class GameEngine {
       maxSpeed *= 1.7;
     }
 
+    // Prestige P3+: reduced poop cooldown (faster firing rate as permanent bonus)
+    if (bird.prestige >= 3) {
+      poopCooldown = Math.floor(poopCooldown * PRESTIGE_COOLDOWN_MULTS[Math.min(bird.prestige, 5)]);
+    }
+
     // Egg carrying: precious cargo slows you down
     if (bird.carryingEggId) {
       maxSpeed *= 0.8;
@@ -2319,6 +2349,10 @@ class GameEngine {
         }
       }
 
+      // Prestige P2+: coin bonus on poop hits
+      if (bird.prestige >= 2 && coinGain > 0) {
+        coinGain = Math.floor(coinGain * PRESTIGE_COIN_MULTS[Math.min(bird.prestige, 5)]);
+      }
       bird.coins += coinGain;
 
       // === COMBO STREAK — chain hits within 8s for escalating XP ===
@@ -2345,6 +2379,10 @@ class GameEngine {
       if (bird.bmDoubleXpUntil > now) xpGain *= 2;
       // Radio Tower: Signal Boost gives 1.5x XP to ALL birds
       if (this.radioTower.signalBoostUntil > now) xpGain = Math.floor(xpGain * 1.5);
+      // Prestige P1+: XP bonus on all poop hits
+      if (bird.prestige >= 1) {
+        xpGain = Math.floor(xpGain * PRESTIGE_XP_MULTS[Math.min(bird.prestige, 5)]);
+      }
       bird.xp += xpGain;
 
       // Mission progress: poop hits
@@ -3826,6 +3864,7 @@ class GameEngine {
           birdColor: b.birdColor,
           carryingEggId: b.carryingEggId || null,
           mafiaTitle: this._getMafiaTitle(b.mafiaRep || 0),
+          prestige: b.prestige || 0,
           gangId: b.gangId || null,
           gangTag: b.gangTag || null,
           gangColor: b.gangColor || null,
@@ -3994,6 +4033,9 @@ class GameEngine {
     let effectiveCooldown = typeInfo2.poopCooldown;
     if (bird.powerUp && now < bird.powerUp.expiresAt && bird.powerUp.type === 'hot_sauce') {
       effectiveCooldown = 100;
+    }
+    if (bird.prestige >= 3) {
+      effectiveCooldown = Math.floor(effectiveCooldown * PRESTIGE_COOLDOWN_MULTS[Math.min(bird.prestige, 5)]);
     }
 
     // Skill cooldown info for equipped skills
@@ -4385,6 +4427,10 @@ class GameEngine {
         gangTag: bird.gangTag,
         gangColor: bird.gangColor,
         gangRole: bird.gangRole,
+        // Prestige
+        prestige: bird.prestige || 0,
+        prestigeThreshold: PRESTIGE_THRESHOLD,
+        maxPrestige: MAX_PRESTIGE,
       },
       // Kingpin state (global — for minimap and visual targeting)
       kingpin: this.kingpin ? (() => {
@@ -4686,6 +4732,7 @@ class GameEngine {
       gang_role: bird.gangRole || null,
       tattoos_owned: JSON.stringify(bird.tattoosOwned || []),
       tattoos_equipped: JSON.stringify(bird.tattoosEquipped || []),
+      prestige: bird.prestige || 0,
     }).catch(e => {
       console.error('[GameEngine] Failed to save bird:', e.message);
     });
@@ -4786,8 +4833,10 @@ class GameEngine {
     bird.dailyCompleted.push(challenge.id);
 
     const streakMult = this._getDailyStreakMultiplier(bird.dailyStreak);
-    const xpGain  = Math.floor(challenge.reward.xp    * streakMult);
-    const coinsGain = Math.floor(challenge.reward.coins * streakMult);
+    const prestigeXpMult   = PRESTIGE_XP_MULTS[Math.min(bird.prestige || 0, 5)];
+    const prestigeCoinMult = PRESTIGE_COIN_MULTS[Math.min(bird.prestige || 0, 5)];
+    const xpGain  = Math.floor(challenge.reward.xp    * streakMult * prestigeXpMult);
+    const coinsGain = Math.floor(challenge.reward.coins * streakMult * prestigeCoinMult);
     bird.xp    += xpGain;
     bird.coins += coinsGain;
 
@@ -6315,6 +6364,50 @@ class GameEngine {
       tattoosEquipped: bird.tattoosEquipped,
       tattoosOwned: bird.tattoosOwned,
     });
+  }
+
+  // ============================================================
+  // PRESTIGE SYSTEM
+  // ============================================================
+  _handlePrestige(bird, now) {
+    if (bird.xp < PRESTIGE_THRESHOLD) {
+      this.events.push({ type: 'prestige_fail', birdId: bird.id, msg: `Need ${PRESTIGE_THRESHOLD.toLocaleString()} XP to prestige. You have ${bird.xp.toLocaleString()}.` });
+      return;
+    }
+    if ((bird.prestige || 0) >= MAX_PRESTIGE) {
+      this.events.push({ type: 'prestige_fail', birdId: bird.id, msg: 'Already at max prestige (⚜️×5). LEGEND status achieved.' });
+      return;
+    }
+
+    bird.prestige = (bird.prestige || 0) + 1;
+    bird.xp = 0;  // XP resets — coins, gang, tattoos, rep all kept
+    // Recalculate type from fresh XP
+    const newLevel = world.getLevelFromXP(0);
+    bird.type = world.getBirdTypeForLevel(newLevel);
+    bird.level = newLevel;
+
+    const badge = PRESTIGE_BADGES[bird.prestige];
+    const bonuses = [
+      '',
+      '+15% XP on poop hits',
+      '+15% XP · +10% coins on poop hits',
+      '+15% XP · +10% coins · -15% poop cooldown',
+      '+15% XP · +10% coins · -15% cooldown · spawn with 50 food',
+      '+20% XP · +15% coins · -20% cooldown · LEGEND STATUS',
+    ];
+
+    this.events.push({
+      type: 'prestige',
+      birdId: bird.id,
+      birdName: bird.name,
+      prestige: bird.prestige,
+      badge,
+      bonus: bonuses[bird.prestige],
+      gangTag: bird.gangTag || null,
+      gangColor: bird.gangColor || null,
+    });
+
+    this._saveBird(bird);
   }
 
   // ============================================================
