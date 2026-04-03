@@ -1146,6 +1146,31 @@ The single biggest missing retention mechanic is now live. Reach 10,000 XP, hit 
 
 **Creative intent**: Retention is Bird City's weakest pillar. Daily challenges fixed the "come back tomorrow" problem. Prestige fixes the "long-term identity" problem. When you see ⚜️⚜️⚜️⚜️⚜️ above someone's name, you know that bird has GRINDED. The decision to prestige is visceral — you're a level 9 Crow, you've earned 10k XP, and you willingly reset to a Pigeon to become permanently stronger. That reset moment, the city-wide announcement, the instant badge appearing above your name — pure SPECTACLE. The P5 golden LEGEND nametag is the highest status symbol in the game. Pure PROGRESSION + SPECTACLE + RETENTION energy.
 
+**Session 37 — 2026-04-03: Hall of Legends — Prestige Endgame Landmark**
+Three interlocking features that complete the prestige system's endgame identity layer:
+
+**Hall of Legends building (x:1050, y:640 — north of the park):**
+- Grand dark-marble hall with golden columns, triangular pediment, carved "HALL OF LEGENDS" inscription, and ⚜️ crest
+- Live top-5 prestige leaderboard rendered as illuminated golden plaques directly on the building — shows prestige badges, 🪶 eagle feather trophy, name, and gang tag
+- Glows with pulsing gold aura when any P5 LEGEND is on the board; "No Legends yet..." shows when empty
+- 🏛 dot on minimap (pulses gold when legends exist); proximity text when flying nearby
+- Leaderboard merges live birds + Firestore data, refreshed every 10s alongside the regular leaderboard
+
+**LEGEND Golden Poop (P5 birds only):**
+- When a Prestige 5 LEGEND bird poops, the projectile is `isLegend: true` server-side and sent to nearby clients
+- Renders as shimmering gold instead of brown — amber gradient body, 8px pulsing gold glow halo, bright highlight, 3-point sparkle crosshair flickering at 12Hz
+- Per-position phase offsets so each golden poop looks unique on screen
+- Visible to all players in view range — battlefield status symbol that announces LEGEND presence
+
+**Eagle Feather drop (🪶) — rarest cosmetic in the game:**
+- 15% chance for the top damage dealer when Eagle Overlord is defeated (can't be bought, only earned)
+- Stored permanently per bird in Firestore (`eagle_feather` field)
+- Renders as teal 🪶 badge above the gang tag in every nametag — visible city-wide to all players
+- City-wide event feed + personal "You are now immortalized in the Hall of Legends" banner
+- Featured on the Hall of Legends plaques next to the player's name
+
+**Creative intent**: This completes what Prestige was always missing — VISUAL THEATER. Reaching P5 was meaningful but private. Now the whole city knows. Golden poops are a constant flex. The Hall of Legends is a pilgrimage site for new players discovering who's on top. The Eagle Feather needs cooperative skill AND luck — the most exclusive badge in the game. A P5 LEGEND bird with 🪶 and a [MOB] gang tag, raining golden poops while their name glows on the city's marble hall — that's pure SPECTACLE. Pure PROGRESSION + SPECTACLE + DISCOVERY energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -1156,7 +1181,7 @@ The single biggest missing retention mechanic is now live. Reach 10,000 XP, hit 
 - ~~Kingpin System — richest bird gets a crown + visible on minimap; killing them gives big reward~~ (DONE Session 26)
 - ~~Pigeonhole Slots — casino with progressive jackpot and bird-themed symbols~~ (DONE Session 27)
 - ~~Prestige System — Ascend at 10k XP, earn ⚜️ badge + permanent bonuses, up to 5 times~~ (DONE Session 36)
-- Eagle Overlord rare drop: "Eagle Feather" cosmetic badge (persistent cosmetic, visible on nametag)
+- ~~Eagle Overlord rare drop: "Eagle Feather" cosmetic badge (persistent cosmetic, visible on nametag)~~ (DONE Session 37)
 - ~~**Bird Gangs** — persistent named gangs with custom colors/tags, gang treasury, gang turf wars~~ (DONE Session 28)
 - ~~Race power-ups: speed boost gates on the circuit that any racer can fly through~~ (DONE Session 30)
 - ~~Owl enforcer in park at night (no-poop zone, alerts NPCs)~~ (DONE Session 34)
@@ -1180,8 +1205,8 @@ Built the Territory Control System on top of the existing upstream code:
 - Bioluminescent park pond at night (glowing water effect)
 - ~~Hot day weather: food spoils faster, birds need water puddles~~ (DONE Session 35)
 - Birds can shelter under awnings/trees during storms (mechanic: reduced hail hit radius if near cover)
-- Prestige leaderboard: a wall/board in the city showing top-5 prestige players of all time
-- LEGEND-tier exclusive: ⚜️⚜️⚜️⚜️⚜️ birds can unlock "Prestige Poop" — a special golden poop effect
+- ~~Prestige leaderboard: a wall/board in the city showing top-5 prestige players of all time~~ (DONE Session 37 — Hall of Legends)
+- ~~LEGEND-tier exclusive: ⚜️⚜️⚜️⚜️⚜️ birds can unlock "Prestige Poop" — a special golden poop effect~~ (DONE Session 37)
 - ~~Race power-ups: speed boost gates on the track~~ (DONE Session 30)
 - ~~Weather combos: fog (low visibility) + hailstorm~~ (DONE Session 18)
 - ~~Race betting system (spectators bet coins on a racer from anywhere on the map)~~ (DONE Session 17)
