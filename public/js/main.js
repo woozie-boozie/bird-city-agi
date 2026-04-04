@@ -2154,6 +2154,52 @@
       addEventMessage('⚔ ' + ev.ownerName + ' lost ' + ev.zoneName + ' to ' + ev.attackerName, '#ff4444');
     }
 
+    // === CROW CARTEL RAID EVENTS ===
+    if (ev.type === 'cartel_raid_start') {
+      effects.push({ type: 'screen_shake', intensity: 10, duration: 700, time: now });
+      showAnnouncement(`🐦‍⬛ CROW CARTEL RAIDING ${ev.zoneName.toUpperCase()}!\nPoop them out to defend your turf!`, '#cc22cc', 5500);
+      addEventMessage(`🐦‍⬛ The Crow Cartel is assaulting ${ev.zoneName}${ev.ownerName ? ' (' + ev.ownerName + ')' : ''}!`, '#cc22cc');
+    }
+    if (ev.type === 'cartel_crow_hit') {
+      if (ev.birdId === myId) {
+        effects.push({ type: 'text', x: ev.x, y: ev.y - 20, time: now, duration: 1200,
+          text: `-${ev.dmg}HP`, color: '#ff4444', size: 14 });
+      }
+    }
+    if (ev.type === 'cartel_thug_killed') {
+      addEventMessage(`💀 ${ev.birdName ? (ev.gangTag ? '[' + ev.gangTag + '] ' : '') + ev.birdName + ' took down' : 'A Crow Cartel thug fell'} a Cartel thug! (+${ev.killXp}XP +${ev.killCoins}c)`, '#ff6644');
+      if (ev.birdId === myId) {
+        effects.push({ type: 'screen_shake', intensity: 5, duration: 350, time: now });
+        showAnnouncement(`💀 CROW THUG DOWN! +${ev.killXp}XP +${ev.killCoins}c`, '#ff6644', 2500);
+      }
+    }
+    if (ev.type === 'cartel_don_killed') {
+      effects.push({ type: 'screen_shake', intensity: 16, duration: 1000, time: now });
+      const tag = ev.gangTag ? `[${ev.gangTag}] ` : '';
+      showAnnouncement(`🐦‍⬛ DON CORVINO DEFEATED!\n${tag}${ev.birdId === myId ? 'YOU' : ev.birdName} took him down! +${ev.killXp}XP +${ev.killCoins}c`, '#ff44ff', 7000);
+      addEventMessage(`🐦‍⬛🔥 ${tag}${ev.birdName} SLEW DON CORVINO at ${ev.zoneName}! LEGEND. (+${ev.killXp}XP +${ev.killCoins}c)`, '#ff44ff');
+    }
+    if (ev.type === 'cartel_zone_captured') {
+      effects.push({ type: 'screen_shake', intensity: 14, duration: 800, time: now });
+      showAnnouncement(`🐦‍⬛ CROW CARTEL SEIZED ${ev.zoneName.toUpperCase()}!\nThey're holding it — keep pooping!`, '#880088', 5000);
+      addEventMessage(`🐦‍⬛ Crow Cartel captured ${ev.zoneName}! (had: ${ev.prevOwner || 'nobody'})`, '#880088');
+    }
+    if (ev.type === 'cartel_raid_repelled') {
+      effects.push({ type: 'screen_shake', intensity: 12, duration: 900, time: now });
+      showAnnouncement(`🏆 RAID REPELLED! ${ev.zoneName} held!`, '#44ff88', 5000);
+      addEventMessage(`🏆 The Crow Cartel was driven from ${ev.zoneName}! +120XP +80c to defenders`, '#44ff88');
+    }
+    if (ev.type === 'cartel_defender_reward') {
+      if (ev.birdId === myId) {
+        showAnnouncement(`🏆 RAID REPELLED! +${ev.xp}XP +${ev.coins}c`, '#44ff88', 3000);
+        effects.push({ type: 'text', x: camera.x, y: camera.y - 60, time: now, duration: 2000,
+          text: '+' + ev.xp + 'XP +' + ev.coins + 'c', color: '#44ff88', size: 18 });
+      }
+    }
+    if (ev.type === 'cartel_retreated') {
+      addEventMessage(`🐦‍⬛ The Crow Cartel retreated from ${ev.zoneName}.`, '#aa66aa');
+    }
+
     // === BIRD CITY GAZETTE ===
     if (ev.type === 'gazette_edition') {
       showGazette(ev);
@@ -5017,7 +5063,7 @@
     if (gameState.territories && gameState.self) {
       const selfBird = gameState.self;
       const myTeamId = selfBird.flockId || ('solo_' + selfBird.id);
-      Renderer.drawTerritories(ctx, camera, gameState.territories, myTeamId);
+      Renderer.drawTerritories(ctx, camera, gameState.territories, myTeamId, gameState.crowCartel);
     }
 
     // Predator territory danger zones (hawk + cat)
@@ -5320,6 +5366,23 @@
       const owlSy = owl.y - camera.y + camera.screenH / 2;
       if (owlSx > -margin - 50 && owlSx < camera.screenW + margin + 50 && owlSy > -margin - 50 && owlSy < camera.screenH + margin + 50) {
         Sprites.drawOwlEnforcer(ctx, owlSx, owlSy, owl.rotation, owl.state, now);
+      }
+    }
+
+    // Crow Cartel Raiders — NPC gang assaulting a territory
+    if (gameState.crowCartel) {
+      const cc = gameState.crowCartel;
+      for (const crow of cc.crows) {
+        if (crow.state === 'dead') continue;
+        const csx = crow.x - camera.x + camera.screenW / 2;
+        const csy = crow.y - camera.y + camera.screenH / 2;
+        if (csx > -margin - 60 && csx < camera.screenW + margin + 60 && csy > -margin - 60 && csy < camera.screenH + margin + 60) {
+          if (crow.type === 'don') {
+            Sprites.drawDonCorvino(ctx, csx, csy, crow.rotation, crow.hp, crow.maxHp, now);
+          } else {
+            Sprites.drawCrowThug(ctx, csx, csy, crow.rotation, crow.hp, crow.maxHp, now);
+          }
+        }
       }
     }
 
@@ -6178,6 +6241,29 @@
       minimapCtx.textAlign = 'center';
       minimapCtx.fillStyle = '#ffd700';
       minimapCtx.fillText('🎩', gameState.godfatherRaccoon.x * msx, gameState.godfatherRaccoon.y * msy + 3);
+    }
+
+    // Crow Cartel on minimap — pulsing red ⚔️ dots for each crow
+    if (gameState.crowCartel && worldData) {
+      const mw = minimapCtx.canvas.width;
+      const mh = minimapCtx.canvas.height;
+      const msx = mw / worldData.width;
+      const msy = mh / worldData.height;
+      const ccPulse = Math.sin(performance.now() * 0.009) * 0.4 + 0.6;
+      for (const crow of gameState.crowCartel.crows) {
+        if (crow.state === 'dead') continue;
+        const isDon = crow.type === 'don';
+        minimapCtx.fillStyle = `rgba(${isDon ? '180,0,220' : '220,30,30'},${ccPulse})`;
+        minimapCtx.beginPath();
+        minimapCtx.arc(crow.x * msx, crow.y * msy, isDon ? 5 : 3, 0, Math.PI * 2);
+        minimapCtx.fill();
+        if (isDon) {
+          minimapCtx.font = 'bold 7px sans-serif';
+          minimapCtx.textAlign = 'center';
+          minimapCtx.fillStyle = '#ff44ff';
+          minimapCtx.fillText('🐦‍⬛', crow.x * msx, crow.y * msy + 3);
+        }
+      }
     }
 
     // Draw arena on minimap (static red ring + pulsing dot when active)

@@ -363,6 +363,14 @@ class GameEngine {
       { x: 1400, y: 1900 },  // south road
     ];
 
+    // === CROW CARTEL RAIDS ===
+    // Every 20-35 minutes, the Crow Cartel spawns and assaults a player-owned territory.
+    // 3-4 crow thugs + 1 Don Corvino move in and drain the capture progress.
+    // Players must poop them out to defend their turf. If unchecked, zone flips to CARTEL.
+    this.crowCartel = null;   // null or { crows: Map, targetZoneId, state, raidEndsAt, holdUntil, defenderRewards }
+    this.crowCartelTimer = Date.now() + this._randomRange(20 * 60000, 35 * 60000);
+    this._crowCartelIdCounter = 0;
+
     // === BIRD CITY GAZETTE ===
     // Every game day cycle (~20 min), a newspaper publishes at dawn recapping the night.
     // Tracks key moments: top combo, most wanted, heists, gang wars, predator kills, etc.
@@ -1102,6 +1110,9 @@ class GameEngine {
 
     // === Bird Flu Outbreak ===
     this._tickFluOutbreak(now);
+
+    // === Crow Cartel Raid ===
+    this._updateCrowCartel(dt, now);
   }
 
   // ============================================================
@@ -2409,6 +2420,43 @@ class GameEngine {
         this.owlEnforcer.stunnedUntil = now + 8000; // stunned 8s
         this.owlEnforcer.alertBirdId = null;
         this.events.push({ type: 'owl_scared', birdId: bird.id, birdName: bird.name, x: this.owlEnforcer.x, y: this.owlEnforcer.y });
+      } else if (hit.target === 'crow_cartel' && hit.crow && this.crowCartel) {
+        // Poop hit a Crow Cartel member — deal damage!
+        const crow = hit.crow;
+        const isDon = crow.type === 'don';
+        const dmg = isMegaPoop ? (isDon ? 50 : 45) : (isDon ? 18 : 20);
+        crow.hp -= dmg;
+        xpGain = isMegaPoop ? (isDon ? 80 : 55) : (isDon ? 35 : 25);
+        bird.coins += isDon ? 8 : 4;
+
+        this.events.push({
+          type: 'cartel_crow_hit',
+          birdId: bird.id, birdName: bird.name,
+          crowId: crow.id, crowType: crow.type,
+          x: crow.x, y: crow.y,
+          hp: Math.max(0, Math.ceil(crow.hp)), maxHp: crow.maxHp, dmg,
+        });
+
+        if (crow.hp <= 0) {
+          crow.state = 'dead';
+          const killXp = isDon ? 180 : 60;
+          const killCoins = isDon ? 100 : 30;
+          bird.xp += killXp;
+          bird.coins += killCoins;
+          const newLevel = world.getLevelFromXP(bird.xp);
+          if (newLevel !== bird.level) {
+            bird.level = newLevel;
+            bird.type = world.getBirdTypeForLevel(newLevel);
+          }
+          this.events.push({
+            type: isDon ? 'cartel_don_killed' : 'cartel_thug_killed',
+            birdId: bird.id, birdName: bird.name,
+            gangTag: bird.gangTag || null,
+            x: crow.x, y: crow.y,
+            killXp, killCoins,
+            zoneName: this.crowCartel.targetZoneName,
+          });
+        }
       } else if (hit.target === 'hit_target' && hit.hitContract) {
         // Bounty hunting — player hit a bird with an active hit contract
         const hitContract = hit.hitContract;
@@ -3066,6 +3114,21 @@ class GameEngine {
       if (Math.sqrt(odx * odx + ody * ody) < hitRadius + 14) {
         if (!isMegaPoop) return { target: 'owl_enforcer' };
         allHits.push({ target: 'owl_enforcer' });
+      }
+    }
+
+    // Check Crow Cartel members
+    if (this.crowCartel) {
+      for (const crow of this.crowCartel.crows.values()) {
+        if (crow.state === 'dead' || crow.state === 'fleeing') continue;
+        if (crow.stunUntil > Date.now()) continue;
+        const cdx = poop.x - crow.x;
+        const cdy = poop.y - crow.y;
+        const hitDist = hitRadius + (crow.type === 'don' ? 16 : 10);
+        if (Math.sqrt(cdx * cdx + cdy * cdy) < hitDist) {
+          if (!isMegaPoop) return { target: 'crow_cartel', crow };
+          allHits.push({ target: 'crow_cartel', crow });
+        }
       }
     }
 
@@ -5003,6 +5066,18 @@ class GameEngine {
       fluMedicineItems: this.fluOutbreak
         ? Array.from(this.fluMedicineItems.values()).filter(m => m.active)
         : [],
+      // Crow Cartel Raid
+      crowCartel: this.crowCartel ? {
+        crows: Array.from(this.crowCartel.crows.values()).map(c => ({
+          id: c.id, x: c.x, y: c.y, rotation: c.rotation,
+          hp: c.hp, maxHp: c.maxHp, type: c.type, state: c.state,
+        })),
+        targetZoneId: this.crowCartel.targetZoneId,
+        targetZoneName: this.crowCartel.targetZoneName,
+        state: this.crowCartel.state,
+        raidEndsAt: this.crowCartel.raidEndsAt,
+        holdUntil: this.crowCartel.holdUntil,
+      } : null,
     };
   }
 
@@ -10632,6 +10707,333 @@ class GameEngine {
       headlines: headlines.slice(0, 4), // max 4 headlines per edition
       summaryStats,
     });
+  }
+
+  // ============================================================
+  // CROW CARTEL RAID SYSTEM
+  // ============================================================
+  _updateCrowCartel(dt, now) {
+    // Spawn timer — only when players are online
+    if (!this.crowCartel && now >= this.crowCartelTimer && this.birds.size > 0) {
+      // Pick a player-owned territory (not CARTEL, not neutral)
+      const ownedZones = Array.from(this.territories.values()).filter(
+        z => z.ownerTeamId && z.ownerTeamId !== 'CARTEL'
+      );
+      if (ownedZones.length > 0) {
+        const targetZone = ownedZones[Math.floor(Math.random() * ownedZones.length)];
+        this._spawnCrowCartel(targetZone, now);
+      } else {
+        // No owned zones — try again in 3-5 min
+        this.crowCartelTimer = now + this._randomRange(3 * 60000, 5 * 60000);
+      }
+    }
+
+    if (!this.crowCartel) return;
+
+    const cartel = this.crowCartel;
+    const zone = this.territories.get(cartel.targetZoneId);
+
+    if (cartel.state === 'raiding') {
+      // Check if raid timed out (3 min max)
+      if (now >= cartel.raidEndsAt) {
+        this._retreatCrowCartel(now, 'timeout');
+        return;
+      }
+
+      // Move crows toward zone center, then assault
+      const zoneCx = zone.x + zone.w / 2;
+      const zoneCy = zone.y + zone.h / 2;
+      let crowsInZone = 0;
+
+      for (const crow of cartel.crows.values()) {
+        if (crow.state === 'dead' || crow.state === 'fleeing') continue;
+
+        // Check if crow is inside the target zone
+        const inZone = crow.x >= zone.x && crow.x <= zone.x + zone.w &&
+                       crow.y >= zone.y && crow.y <= zone.y + zone.h;
+
+        if (!inZone) {
+          // Move toward zone center
+          const dx = zoneCx - crow.x;
+          const dy = zoneCy - crow.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist > 5) {
+            const speed = crow.speed * dt;
+            crow.x += (dx / dist) * speed;
+            crow.y += (dy / dist) * speed;
+            crow.rotation = Math.atan2(dy, dx);
+          }
+        } else {
+          crowsInZone++;
+          // Assault: drain zone capture progress
+          // Each crow in zone drains at 0.008/s — faster than a single defender captures
+          const drainRate = 0.008 * dt;
+          if (zone.ownerTeamId && zone.ownerTeamId !== 'CARTEL') {
+            zone.captureProgress = Math.max(0, zone.captureProgress - drainRate);
+            if (zone.captureProgress <= 0) {
+              // Zone falls to the Cartel!
+              this._flipZoneToCartel(zone, now);
+              return; // State changes to 'holding' inside _flipZoneToCartel
+            }
+          } else if (zone.ownerTeamId === 'CARTEL') {
+            // Cartel is filling it back up
+            zone.captureProgress = Math.min(1, zone.captureProgress + drainRate);
+          }
+
+          // Crows in zone patrol with slight wander
+          crow._wanderTimer = (crow._wanderTimer || 0) - dt;
+          if (crow._wanderTimer <= 0) {
+            crow._wanderAngle = (Math.random() * Math.PI * 2);
+            crow._wanderTimer = 1.5 + Math.random() * 2;
+          }
+          crow.x += Math.cos(crow._wanderAngle) * 18 * dt;
+          crow.y += Math.sin(crow._wanderAngle) * 18 * dt;
+          // Clamp inside zone
+          crow.x = Math.max(zone.x + 20, Math.min(zone.x + zone.w - 20, crow.x));
+          crow.y = Math.max(zone.y + 20, Math.min(zone.y + zone.h - 20, crow.y));
+          crow.rotation = crow._wanderAngle;
+        }
+      }
+
+      // Check if all crows are dead/fleeing — defenders win!
+      const aliveCrows = Array.from(cartel.crows.values()).filter(c => c.state !== 'dead' && c.state !== 'fleeing');
+      if (aliveCrows.length === 0) {
+        this._defenderVictory(zone, now);
+      }
+
+    } else if (cartel.state === 'holding') {
+      // Holding the zone — stay until holdUntil, then retreat
+      if (now >= cartel.holdUntil) {
+        this._retreatCrowCartel(now, 'voluntary');
+        return;
+      }
+      // Keep crows moving inside the zone
+      for (const crow of cartel.crows.values()) {
+        if (crow.state === 'dead' || crow.state === 'fleeing') continue;
+        crow._wanderTimer = (crow._wanderTimer || 0) - dt;
+        if (crow._wanderTimer <= 0) {
+          crow._wanderAngle = Math.random() * Math.PI * 2;
+          crow._wanderTimer = 1.5 + Math.random() * 2;
+        }
+        crow.x += Math.cos(crow._wanderAngle) * 22 * dt;
+        crow.y += Math.sin(crow._wanderAngle) * 22 * dt;
+        crow.x = Math.max(zone.x + 20, Math.min(zone.x + zone.w - 20, crow.x));
+        crow.y = Math.max(zone.y + 20, Math.min(zone.y + zone.h - 20, crow.y));
+        crow.rotation = crow._wanderAngle;
+      }
+
+      // Check if all crows killed during hold — zone returns to neutral
+      const alive = Array.from(cartel.crows.values()).filter(c => c.state !== 'dead' && c.state !== 'fleeing');
+      if (alive.length === 0) {
+        this._defenderVictory(zone, now);
+      }
+
+    } else if (cartel.state === 'fleeing') {
+      // All crows flee to map edge
+      let allGone = true;
+      for (const crow of cartel.crows.values()) {
+        if (crow.state === 'dead') continue;
+        crow.state = 'fleeing';
+        const tx = crow._fleeTargetX || 1500;
+        const ty = crow._fleeTargetY || -100;
+        const dx = tx - crow.x;
+        const dy = ty - crow.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > 20) {
+          allGone = false;
+          const speed = 160 * dt;
+          crow.x += (dx / dist) * speed;
+          crow.y += (dy / dist) * speed;
+          crow.rotation = Math.atan2(dy, dx);
+        }
+      }
+      if (allGone) {
+        this.crowCartel = null;
+        this.crowCartelTimer = now + this._randomRange(20 * 60000, 35 * 60000);
+      }
+    }
+  }
+
+  _spawnCrowCartel(zone, now) {
+    const crows = new Map();
+    const zoneCx = zone.x + zone.w / 2;
+    const zoneCy = zone.y + zone.h / 2;
+
+    // Spawn crows at zone edges
+    const spawnPositions = [
+      { x: zone.x - 40, y: zoneCy - 60 },
+      { x: zone.x - 40, y: zoneCy + 60 },
+      { x: zone.x + zone.w + 40, y: zoneCy - 60 },
+      { x: zone.x + zone.w + 40, y: zoneCy + 60 },
+    ];
+
+    // 3-4 crow thugs
+    const numThugs = 3 + (Math.random() < 0.5 ? 1 : 0);
+    for (let i = 0; i < numThugs; i++) {
+      const id = 'cartel_' + (++this._crowCartelIdCounter);
+      const pos = spawnPositions[i % spawnPositions.length];
+      crows.set(id, {
+        id,
+        x: pos.x + (Math.random() - 0.5) * 30,
+        y: pos.y + (Math.random() - 0.5) * 30,
+        rotation: 0,
+        hp: 25,
+        maxHp: 25,
+        type: 'thug',
+        state: 'moving',
+        speed: 85,
+        stunUntil: 0,
+        _wanderAngle: Math.random() * Math.PI * 2,
+        _wanderTimer: 0,
+        _fleeTargetX: zone.x < 1500 ? -60 : 3060,
+        _fleeTargetY: zone.y < 1500 ? -60 : 3060,
+      });
+    }
+
+    // 1 Don Corvino (bigger, slower, more HP)
+    const donId = 'cartel_don_' + (++this._crowCartelIdCounter);
+    const donPos = spawnPositions[numThugs % spawnPositions.length];
+    crows.set(donId, {
+      id: donId,
+      x: donPos.x,
+      y: donPos.y,
+      rotation: 0,
+      hp: 80,
+      maxHp: 80,
+      type: 'don',
+      state: 'moving',
+      speed: 60,
+      stunUntil: 0,
+      _wanderAngle: Math.random() * Math.PI * 2,
+      _wanderTimer: 0,
+      _fleeTargetX: zone.x < 1500 ? -60 : 3060,
+      _fleeTargetY: zone.y < 1500 ? -60 : 3060,
+    });
+
+    this.crowCartel = {
+      crows,
+      targetZoneId: zone.id,
+      targetZoneName: zone.name,
+      state: 'raiding',
+      raidEndsAt: now + 180000, // 3 min max raid
+      holdUntil: null,
+      originalOwnerTeamId: zone.ownerTeamId,
+      originalOwnerName: zone.ownerName,
+      originalOwnerColor: zone.ownerColor,
+      originalProgress: zone.captureProgress,
+    };
+
+    this.events.push({
+      type: 'cartel_raid_start',
+      zoneName: zone.name,
+      zoneId: zone.id,
+      ownerName: zone.ownerName,
+      numCrows: crows.size,
+    });
+
+    console.log(`[Cartel] Raid started on ${zone.name} (${crows.size} crows)`);
+  }
+
+  _flipZoneToCartel(zone, now) {
+    const cartel = this.crowCartel;
+    const prevOwner = zone.ownerName;
+    zone.ownerTeamId = 'CARTEL';
+    zone.ownerName = 'Crow Cartel';
+    zone.ownerColor = '#111111';
+    zone.captureProgress = 1.0;
+    zone.capturingTeamId = null;
+    zone.capturingName = null;
+    cartel.state = 'holding';
+    cartel.holdUntil = now + 90000; // hold for 90s then leave
+
+    this.events.push({
+      type: 'cartel_zone_captured',
+      zoneName: zone.name,
+      zoneId: zone.id,
+      prevOwner,
+    });
+
+    // After holding, zone will go neutral (handled in retreat)
+    console.log(`[Cartel] Seized ${zone.name}! Previous owner: ${prevOwner}`);
+  }
+
+  _defenderVictory(zone, now) {
+    const cartel = this.crowCartel;
+
+    // Restore zone if Cartel had captured it
+    if (zone.ownerTeamId === 'CARTEL') {
+      zone.ownerTeamId = null;
+      zone.ownerName = null;
+      zone.ownerColor = null;
+      zone.captureProgress = 0;
+    }
+
+    this.events.push({
+      type: 'cartel_raid_repelled',
+      zoneName: zone.name,
+      zoneId: zone.id,
+      zoneOwnerName: cartel.originalOwnerName,
+    });
+
+    // Big rewards to all birds who were in or near the zone
+    for (const bird of this.birds.values()) {
+      const inZone = bird.x >= zone.x && bird.x <= zone.x + zone.w &&
+                     bird.y >= zone.y && bird.y <= zone.y + zone.h;
+      const nearby = !inZone && Math.abs(bird.x - (zone.x + zone.w/2)) < zone.w * 0.9 &&
+                     Math.abs(bird.y - (zone.y + zone.h/2)) < zone.h * 0.9;
+      if (inZone || nearby) {
+        bird.xp += 120;
+        bird.coins += 80;
+        const newLevel = world.getLevelFromXP(bird.xp);
+        if (newLevel !== bird.level) {
+          bird.level = newLevel;
+          bird.type = world.getBirdTypeForLevel(newLevel);
+        }
+        this.events.push({ type: 'cartel_defender_reward', birdId: bird.id, birdName: bird.name, xp: 120, coins: 80 });
+      }
+    }
+
+    // Set state to fleeing
+    cartel.state = 'fleeing';
+    // All crows flee
+    for (const crow of cartel.crows.values()) {
+      if (crow.state !== 'dead') {
+        crow.state = 'fleeing';
+      }
+    }
+
+    this.crowCartelTimer = now + this._randomRange(20 * 60000, 35 * 60000);
+    console.log(`[Cartel] Raid repelled at ${zone.name}!`);
+  }
+
+  _retreatCrowCartel(now, reason) {
+    const cartel = this.crowCartel;
+    const zone = this.territories.get(cartel.targetZoneId);
+
+    // If Cartel still holds the zone, restore it to neutral
+    if (zone && zone.ownerTeamId === 'CARTEL') {
+      zone.ownerTeamId = null;
+      zone.ownerName = null;
+      zone.ownerColor = null;
+      zone.captureProgress = 0;
+      zone.capturingTeamId = null;
+      zone.capturingName = null;
+    }
+
+    if (reason === 'voluntary') {
+      this.events.push({
+        type: 'cartel_retreated',
+        zoneName: zone ? zone.name : '?',
+        zoneId: cartel.targetZoneId,
+      });
+    }
+
+    cartel.state = 'fleeing';
+    for (const crow of cartel.crows.values()) {
+      if (crow.state !== 'dead') crow.state = 'fleeing';
+    }
+    this.crowCartelTimer = now + this._randomRange(20 * 60000, 35 * 60000);
+    console.log(`[Cartel] Retreated from ${zone ? zone.name : '?'} (${reason})`);
   }
 
 }

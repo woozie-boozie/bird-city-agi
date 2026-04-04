@@ -3519,4 +3519,226 @@ window.Sprites = {
 
     ctx.restore();
   },
+
+  // ============================================================
+  // CROW CARTEL — thug and Don Corvino sprites
+  // ============================================================
+
+  // A sleek gang crow in black with red eyes, gold chain, aggressive lean
+  drawCrowThug(ctx, x, y, rotation, hp, maxHp, now) {
+    ctx.save();
+    ctx.translate(x, y);
+
+    // HP bar (only when damaged)
+    if (hp < maxHp) {
+      const barW = 38;
+      const pct = Math.max(0, hp / maxHp);
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(-barW / 2, -30, barW, 5);
+      ctx.fillStyle = pct > 0.5 ? '#55ff55' : pct > 0.25 ? '#ffcc00' : '#ff3333';
+      ctx.fillRect(-barW / 2, -30, barW * pct, 5);
+    }
+
+    ctx.rotate(rotation);
+
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath();
+    ctx.ellipse(2, 5, 14, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Body — jet black crow, slightly larger than a regular pigeon
+    ctx.fillStyle = '#111111';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 14, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Wings — dark charcoal
+    ctx.fillStyle = '#1e1e1e';
+    // left wing
+    ctx.save();
+    ctx.translate(-3, 0);
+    ctx.beginPath();
+    ctx.ellipse(0, -13, 8, 3.5, -0.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    // right wing
+    ctx.save();
+    ctx.translate(-3, 0);
+    ctx.beginPath();
+    ctx.ellipse(0, 13, 8, 3.5, 0.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Beak — dark hooked beak
+    ctx.fillStyle = '#333';
+    ctx.beginPath();
+    ctx.moveTo(14, 0);
+    ctx.lineTo(21, -2.5);
+    ctx.lineTo(21, 2.5);
+    ctx.closePath();
+    ctx.fill();
+
+    // Red glowing eyes
+    const eyeGlow = 0.7 + 0.3 * Math.sin(now / 300);
+    ctx.fillStyle = `rgba(255,40,40,${eyeGlow})`;
+    ctx.shadowColor = '#ff0000';
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    ctx.arc(8, -4, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(8, 4, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Gold chain across chest — short horizontal arc
+    ctx.strokeStyle = '#ffd700';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(2, 0, 7, -Math.PI * 0.4, Math.PI * 0.4);
+    ctx.stroke();
+
+    ctx.restore();
+
+    // Label
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.font = 'bold 9px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillStyle = '#ff3333';
+    ctx.shadowColor = '#000';
+    ctx.shadowBlur = 3;
+    ctx.fillText('🐦‍⬛ CARTEL', 0, -31);
+    ctx.restore();
+  },
+
+  // Don Corvino — the Cartel boss. Bigger crow in a white collar + black suit with red tie, monocle, silver ring
+  drawDonCorvino(ctx, x, y, rotation, hp, maxHp, now) {
+    ctx.save();
+    ctx.translate(x, y);
+
+    // Purple menace aura
+    const auraPulse = 0.5 + 0.5 * Math.sin(now / 400);
+    const aura = ctx.createRadialGradient(0, 0, 4, 0, 0, 36);
+    aura.addColorStop(0, `rgba(120,0,180,${0.35 * auraPulse})`);
+    aura.addColorStop(1, 'rgba(120,0,180,0)');
+    ctx.fillStyle = aura;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 36, 28, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // HP bar
+    if (hp < maxHp) {
+      const barW = 60;
+      const pct = Math.max(0, hp / maxHp);
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.fillRect(-barW / 2, -48, barW, 7);
+      ctx.fillStyle = pct > 0.5 ? '#55ff55' : pct > 0.25 ? '#ffcc00' : '#ff2222';
+      ctx.fillRect(-barW / 2, -48, barW * pct, 7);
+      ctx.font = 'bold 7px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#fff';
+      ctx.fillText(`DON ${Math.ceil(hp)}/${maxHp}`, 0, -43);
+    }
+
+    ctx.rotate(rotation);
+
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath();
+    ctx.ellipse(3, 7, 20, 11, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Body — large black crow at ~1.8× scale
+    ctx.fillStyle = '#0a0a0a';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 20, 12, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Wings
+    ctx.fillStyle = '#181818';
+    ctx.save();
+    ctx.translate(-4, 0);
+    ctx.beginPath();
+    ctx.ellipse(0, -18, 12, 5, -0.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    ctx.save();
+    ctx.translate(-4, 0);
+    ctx.beginPath();
+    ctx.ellipse(0, 18, 12, 5, 0.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // White collar shirt front
+    ctx.fillStyle = '#e8e8e8';
+    ctx.beginPath();
+    ctx.ellipse(4, 0, 5, 9, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Dark red tie
+    ctx.fillStyle = '#8b0000';
+    ctx.beginPath();
+    ctx.moveTo(5, -3);
+    ctx.lineTo(7, 0);
+    ctx.lineTo(5, 3);
+    ctx.lineTo(4, 0);
+    ctx.closePath();
+    ctx.fill();
+
+    // Beak — large hooked boss beak
+    ctx.fillStyle = '#2a2a2a';
+    ctx.beginPath();
+    ctx.moveTo(20, 0);
+    ctx.lineTo(30, -3.5);
+    ctx.lineTo(28, 0);
+    ctx.lineTo(30, 3.5);
+    ctx.closePath();
+    ctx.fill();
+
+    // Eyes — gold glowing with glow blur
+    const eyeGlow = 0.8 + 0.2 * Math.sin(now / 250);
+    ctx.fillStyle = `rgba(255,200,0,${eyeGlow})`;
+    ctx.shadowColor = '#ffcc00';
+    ctx.shadowBlur = 10;
+    ctx.beginPath();
+    ctx.arc(11, -5, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(11, 5, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Monocle on right eye (left from our perspective, forward-facing side)
+    ctx.strokeStyle = '#ffd700';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(11, -5, 5, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Silver signet ring on talon (tiny circle near back)
+    ctx.fillStyle = '#c0c0c0';
+    ctx.shadowColor = '#fff';
+    ctx.shadowBlur = 4;
+    ctx.beginPath();
+    ctx.arc(-14, -6, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    ctx.restore();
+
+    // Name label
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.font = 'bold 10px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillStyle = '#aa00ff';
+    ctx.shadowColor = '#000';
+    ctx.shadowBlur = 4;
+    ctx.fillText('🐦‍⬛ DON CORVINO', 0, -51);
+    ctx.restore();
+  },
 };

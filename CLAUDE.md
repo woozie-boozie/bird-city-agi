@@ -1374,6 +1374,41 @@ The most visually spectacular and chaotic weather event yet. A massive rotating 
 
 **Creative intent**: The tornado is pure SPECTACLE + CARNAGE, and it doesn't need buttons, bosses, or complex mechanics. A bird flying near the tornado gets gradually pulled in — you watch the suction increasing, decide to fight it or flee. If you wait too long, you get flung 500px across the map in 2 seconds, land stunned, and lose your combo streak. The visual is genuinely dramatic: a massive dark rotating funnel crossing the city on the minimap, visible from everywhere. Two birds racing for a mystery crate while a tornado is crossing their path is peak CARNAGE CITY chaos. The 9% betting rarity means calling a tornado correctly nets massive pari-mutuel payouts when everyone else bet rain. Pure DISCOVERY + SPECTACLE + CARNAGE energy.
 
+**Session 43 — 2026-04-04: Crow Cartel Raids — NPC Gang Assaults Player Territories**
+The city's criminal underworld just got a rival faction. Every 20-35 minutes, the Crow Cartel arrives and assaults a player-owned territory. Players must poop them out or watch their turf fall.
+
+**The Raid Flow (`server/game.js`):**
+- Timer fires every 20-35 min when a player-owned territory exists
+- 3-4 crow thugs + 1 Don Corvino spawn at the edges of the target zone
+- Crows move into the zone and start draining its capture progress at 0.008/s per crow
+- 3-minute maximum raid window — if crows aren't killed in time, they take the zone
+- If zone falls: it becomes "CARTEL" territory (shown in black) for 90 seconds, then goes neutral
+- If all crows are killed before the flip: defenders get +120 XP +80 coins each
+
+**Crow mechanics:**
+- **Crow Thug** (3-4 per raid): 25 HP, 85px/s. 20 HP per poop hit (45 mega). Kill = +25 XP +15 coins + city-wide announcement
+- **Don Corvino** (1 per raid): 80 HP, 60px/s. 18 HP per poop hit (50 mega). Kill = +180 XP +100 coins + massive city-wide callout
+- Crows patrol inside the zone once in it, wander and drain simultaneously
+- If all killed OR raid timer expires without flip: any surviving crows flee to map edge at 160px/s
+
+**Visual system:**
+- `drawCrowThug()`: sleek jet-black bird, charcoal wings, red glowing eyes (pulsing), gold chain across the chest, "🐦‍⬛ CARTEL" red label
+- `drawDonCorvino()`: 1.8× scale crow in white collar + black suit, dark red tie, gold monocle, silver ring, pulsing purple aura, gold glowing eyes — unmistakable boss aesthetic
+- **Territory raid overlay**: pulsing red fill + dashed animated border (scrolling offset) + "⚔️ UNDER RAID" label on targeted zone
+- Animated red drain bar showing capture progress draining right-to-left with "POOP THE CROWS!" label
+- HP bars on damaged crows (thugs: 38px, Don: 60px with "DON X/80" text)
+- **Minimap**: pulsing red dots for each thug, purple dot + emoji for Don Corvino
+
+**Events & announcements:**
+- `cartel_raid_start`: screen shake + "🐦‍⬛ CROW CARTEL RAIDING [ZONE]! Poop them out!" city-wide
+- `cartel_thug_killed`: event feed callout for each kill with XP/coin rewards
+- `cartel_don_killed`: massive screen shake + city-wide "DON CORVINO SLAIN!" announcement
+- `cartel_zone_captured`: "Crow Cartel SEIZED [ZONE]!" with purple-black announcement
+- `cartel_raid_repelled`: "RAID REPELLED! [ZONE] held!" + defender rewards to all nearby birds
+- `cartel_retreated`: quiet event feed note when they leave after holding
+
+**Creative intent**: Territory control was player vs player — now there's a shared NPC enemy. When the Cartel raids YOUR flock's zone, it doesn't matter if you were just fighting over it five minutes ago — now you're both on the same side pooping down the same crows. The Don Corvino kill is a rare, high-prestige moment (180 XP city-wide callout). The 20-35 minute timer means raids fire unpredictably, turning quiet territory sessions into sudden defense emergencies. Pure CARNAGE + SOCIAL + DISCOVERY energy — the city just got an outside threat.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -1414,7 +1449,7 @@ Built the Territory Control System on top of the existing upstream code:
 - ~~City Newspaper / Daily Recap — at the end of each game day, a newspaper front page auto-generates showing top moments~~ (DONE Session 40 — The Bird City Gazette)
 - ~~Formation Flying bonuses — V-formation speed boost + Wedge poop power~~ (DONE Session 41)
 - Bird Flu + Wanted interaction: if a cop arrests you while infected, they catch the flu and wander confused for 5s (new counter-play)
-- NPC Crow Cartel rival gang that periodically raids player territories — forces active defense
+- ~~NPC Crow Cartel rival gang that periodically raids player territories — forces active defense~~ (DONE Session 43)
 - Pigeon Pied Piper event: mysterious NPC that drifts birds toward them; poop to send away for big reward
 - "BIRD CITY IDOL" singing contest — city votes with emojis, winner gets city-wide XP buff for 5 minutes
 - ~~Prestige leaderboard: a wall/board in the city showing top-5 prestige players of all time~~ (DONE Session 37 — Hall of Legends)

@@ -1045,7 +1045,7 @@ window.Renderer = {
   // ============================================================
   // TERRITORY ZONES — colored overlays with ownership UI
   // ============================================================
-  drawTerritories(ctx, camera, territories, myTeamId) {
+  drawTerritories(ctx, camera, territories, myTeamId, crowCartel) {
     if (!territories || territories.length === 0) return;
 
     const now = performance.now();
@@ -1168,6 +1168,56 @@ window.Renderer = {
         ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
         ctx.fillStyle = isMine ? '#ffe066' : (zone.ownerColor || displayColor);
         ctx.fillRect(barX, barY, barW, barH);
+        ctx.globalAlpha = 1;
+      }
+
+      // === Crow Cartel Raid Overlay ===
+      if (crowCartel && crowCartel.targetZoneId === zone.id) {
+        const raidPulse = 0.5 + 0.5 * Math.sin(now * 0.008);
+        // Red danger tint over the zone
+        ctx.globalAlpha = 0.12 + 0.06 * raidPulse;
+        ctx.fillStyle = '#ff1111';
+        ctx.fillRect(sx, sy, zone.w, zone.h);
+
+        // Pulsing dashed red border
+        ctx.globalAlpha = 0.7 + 0.3 * raidPulse;
+        ctx.strokeStyle = '#ff2222';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([10, 6]);
+        ctx.lineDashOffset = (now * 0.05) % 16;
+        ctx.strokeRect(sx + 2, sy + 2, zone.w - 4, zone.h - 4);
+        ctx.setLineDash([]);
+        ctx.lineDashOffset = 0;
+
+        // "⚔️ UNDER RAID" label at top of zone
+        ctx.globalAlpha = 0.9 + 0.1 * raidPulse;
+        ctx.font = `bold ${12 + Math.floor(raidPulse * 2)}px monospace`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.fillStyle = '#000';
+        ctx.fillText('⚔️ UNDER RAID', cx + 1, sy + 6 + 1);
+        ctx.fillStyle = '#ff4444';
+        ctx.fillText('⚔️ UNDER RAID', cx, sy + 6);
+
+        // Drain bar — shows capture drain from right (red bar shrinking)
+        if (zone.captureProgress > 0) {
+          const barW = Math.min(zone.w - 20, 140);
+          const barH = 7;
+          const barX = cx - barW / 2;
+          const barY = sy + zone.h - 30;
+          ctx.globalAlpha = 0.9;
+          ctx.fillStyle = 'rgba(0,0,0,0.6)';
+          ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
+          ctx.fillStyle = '#55bb55';
+          ctx.fillRect(barX, barY, barW * zone.captureProgress, barH);
+          ctx.fillStyle = 'rgba(255,50,50,0.8)';
+          ctx.fillRect(barX + barW * zone.captureProgress, barY, barW * (1 - zone.captureProgress), barH);
+          ctx.font = 'bold 7px monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = '#fff';
+          ctx.fillText('POOP THE CROWS!', cx, barY + barH / 2);
+        }
         ctx.globalAlpha = 1;
       }
 
