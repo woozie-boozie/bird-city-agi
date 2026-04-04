@@ -3198,15 +3198,16 @@ class GameEngine {
 
     // Spawn new weather when timer fires
     if (!this.weather && now >= this.weatherTimer) {
-      // Rain most common; heatwave/fog/hailstorm are rarer surprises
+      // Rain most common; heatwave/fog/hailstorm are rarer surprises; tornado is rarest
       const roll = Math.random();
       let type;
-      if (roll < 0.27) type = 'rain';
-      else if (roll < 0.49) type = 'wind';
-      else if (roll < 0.62) type = 'storm';
-      else if (roll < 0.74) type = 'fog';
-      else if (roll < 0.87) type = 'hailstorm';
-      else type = 'heatwave';
+      if (roll < 0.24) type = 'rain';
+      else if (roll < 0.44) type = 'wind';
+      else if (roll < 0.56) type = 'storm';
+      else if (roll < 0.67) type = 'fog';
+      else if (roll < 0.79) type = 'hailstorm';
+      else if (roll < 0.91) type = 'heatwave';
+      else type = 'tornado';
 
       const windAngle = Math.random() * Math.PI * 2;
       let duration, windSpeed, intensity;
@@ -3230,10 +3231,42 @@ class GameEngine {
         duration = this._randomRange(60000, 120000); // 1–2 min (intense but brief)
         windSpeed = 40 + Math.random() * 60; // moderate wind + hail
         intensity = 0.8 + Math.random() * 0.2;
-      } else { // heatwave
+      } else if (type === 'heatwave') {
         duration = this._randomRange(150000, 240000); // 2.5–4 min of scorching heat
         windSpeed = 0;
         intensity = 0.7 + Math.random() * 0.3; // 0.7–1.0 heat intensity
+      } else { // tornado
+        duration = 95000; // ~95 seconds — traverses the full map
+        windSpeed = 0;
+        intensity = 1.0;
+      }
+
+      // Tornado: compute entry point and direction (enters from a random map edge)
+      let tornadoX = 0, tornadoY = 0, tornadoVx = 0, tornadoVy = 0;
+      if (type === 'tornado') {
+        const TORNADO_SPEED = 38; // px/s
+        const edge = Math.floor(Math.random() * 4); // 0=top, 1=right, 2=bottom, 3=left
+        if (edge === 0) {       // from top, move south
+          tornadoX = 400 + Math.random() * (world.WORLD_WIDTH - 800);
+          tornadoY = -180;
+          tornadoVx = (Math.random() - 0.5) * TORNADO_SPEED * 0.25;
+          tornadoVy = TORNADO_SPEED;
+        } else if (edge === 1) { // from right, move west
+          tornadoX = world.WORLD_WIDTH + 180;
+          tornadoY = 400 + Math.random() * (world.WORLD_HEIGHT - 800);
+          tornadoVx = -TORNADO_SPEED;
+          tornadoVy = (Math.random() - 0.5) * TORNADO_SPEED * 0.25;
+        } else if (edge === 2) { // from bottom, move north
+          tornadoX = 400 + Math.random() * (world.WORLD_WIDTH - 800);
+          tornadoY = world.WORLD_HEIGHT + 180;
+          tornadoVx = (Math.random() - 0.5) * TORNADO_SPEED * 0.25;
+          tornadoVy = -TORNADO_SPEED;
+        } else {                // from left, move east
+          tornadoX = -180;
+          tornadoY = 400 + Math.random() * (world.WORLD_HEIGHT - 800);
+          tornadoVx = TORNADO_SPEED;
+          tornadoVy = (Math.random() - 0.5) * TORNADO_SPEED * 0.25;
+        }
       }
 
       this.weather = {
@@ -3247,6 +3280,9 @@ class GameEngine {
         hailTimer: now + this._randomRange(2000, 4000), // for hailstorm
         heatPuddleTimer: now + 8000,   // for heatwave: when to spawn next puddle batch
         heatThirstTimer: now + 8000,   // for heatwave: when to next drain bird thirst
+        // Tornado position + velocity
+        tornadoX, tornadoY, tornadoVx, tornadoVy,
+        tornadoCooldowns: {}, // birdId -> timestamp when they can be flung again
       };
 
       this.events.push({ type: 'weather_start', weatherType: type, windAngle, windSpeed, intensity });
@@ -3350,6 +3386,73 @@ class GameEngine {
             b.food = Math.max(0, b.food - 1);
             this.events.push({ type: 'heat_thirst_tick', birdId: b.id });
           }
+        }
+      }
+    }
+
+    // === TORNADO: move across map + suck/fling birds ===
+    if (this.weather.type === 'tornado') {
+      const w = this.weather;
+      // Move tornado at constant velocity
+      w.tornadoX += w.tornadoVx * dt;
+      w.tornadoY += w.tornadoVy * dt;
+      const tx = w.tornadoX;
+      const ty = w.tornadoY;
+
+      // End tornado early if it has fully exited the map
+      if (tx < -500 || tx > world.WORLD_WIDTH + 500 || ty < -500 || ty > world.WORLD_HEIGHT + 500) {
+        w.endsAt = now; // triggers expiry next tick
+        return;
+      }
+
+      // Interact with birds
+      const PULL_RADIUS = 260;  // outer ring — gradual pull toward vortex
+      const FLING_RADIUS = 95;  // inner ring — get flung across the map!
+
+      for (const b of this.birds.values()) {
+        if (b.inSewer) continue; // underground birds are safe
+        const dx = tx - b.x;
+        const dy = ty - b.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > PULL_RADIUS) continue;
+
+        const nx = dx / dist; // unit vector toward tornado center
+        const ny = dy / dist;
+
+        if (dist < FLING_RADIUS) {
+          // Check fling cooldown
+          const cooldownUntil = w.tornadoCooldowns[b.id] || 0;
+          if (now < cooldownUntil) continue;
+
+          // FLING — throw bird in a wild random direction
+          const flingAngle = Math.random() * Math.PI * 2;
+          const flingDist = 380 + Math.random() * 240; // 380–620px
+          const newX = Math.max(60, Math.min(world.WORLD_WIDTH - 60, b.x + Math.cos(flingAngle) * flingDist));
+          const newY = Math.max(60, Math.min(world.WORLD_HEIGHT - 60, b.y + Math.sin(flingAngle) * flingDist));
+
+          // Clear velocity so the bird doesn't immediately fly back toward tornado
+          b.vx = Math.cos(flingAngle) * 80;
+          b.vy = Math.sin(flingAngle) * 80;
+          b.x = newX;
+          b.y = newY;
+          b.stunnedUntil = now + 2000; // 2-second daze
+          b.food = Math.max(0, b.food - 12);
+          b.comboCount = 0;
+          b.comboExpiresAt = 0;
+          w.tornadoCooldowns[b.id] = now + 9000; // 9s before tornado can fling them again
+
+          this.events.push({
+            type: 'tornado_fling',
+            birdId: b.id,
+            birdName: b.name,
+            x: newX,
+            y: newY,
+          });
+        } else {
+          // SUCTION — additive pull force toward vortex center (stronger when closer)
+          const pullStrength = 55 * (1 - dist / PULL_RADIUS) * (1 - dist / PULL_RADIUS);
+          b.vx += nx * pullStrength * dt;
+          b.vy += ny * pullStrength * dt;
         }
       }
     }
@@ -4475,6 +4578,9 @@ class GameEngine {
         windAngle: this.weather.windAngle,
         windSpeed: this.weather.windSpeed,
         endsAt: this.weather.endsAt,
+        // Tornado position (world-space) — sent every tick so client can animate
+        tornadoX: this.weather.tornadoX,
+        tornadoY: this.weather.tornadoY,
       } : null,
       weatherBetting: (() => {
         const wb = this.weatherBetting;
@@ -9363,7 +9469,7 @@ class GameEngine {
       this.events.push({ type: 'weather_bet_fail', birdId: bird.id, reason: 'already_bet' });
       return;
     }
-    const VALID_TYPES = ['rain', 'wind', 'storm', 'fog', 'hailstorm', 'heatwave'];
+    const VALID_TYPES = ['rain', 'wind', 'storm', 'fog', 'hailstorm', 'heatwave', 'tornado'];
     if (!VALID_TYPES.includes(action.betType)) {
       this.events.push({ type: 'weather_bet_fail', birdId: bird.id, reason: 'invalid_type' });
       return;

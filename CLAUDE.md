@@ -1336,6 +1336,44 @@ Flocking is now dramatically more powerful and visible. Two formation types acti
 
 **Creative intent**: Flocking was already rewarded (territory capture goes faster, flock XP bonus). Now there's also a KINESTHETIC reward — flying in formation FEELS faster and more powerful. The V-Formation makes escaping cops, racing, and territory rushes better. The Wedge transforms a flock into an aerial attack formation: one bird at the spear tip getting wider poop splash and massive XP, two wing birds getting speed. Flock leaders will start calling out formations mid-session. A gang of 3 holding Wedge formation during a food truck heist — the point bird shredding the progress bar while wingmen keep cops at bay — is pure CARNAGE CITY. Pure SOCIAL + CARNAGE + SPECTACLE energy.
 
+**Session 42 — 2026-04-04: Tornado — The City's Most Destructive Weather Event**
+The most visually spectacular and chaotic weather event yet. A massive rotating vortex enters from a random map edge, slowly traverses the city at 38px/s, and exits the other side — sucking birds toward it and FLINGING them hundreds of pixels across the map if they get too close.
+
+**Tornado mechanics (`server/game.js`):**
+- 9% spawn probability (reshuffled all weather weights: rain 24%, wind 20%, storm 12%, fog 11%, hailstorm 12%, heatwave 12%, tornado 9%)
+- Duration: 95 seconds — enough time to cross the full 3000px map
+- Entry: picks a random map edge (top/right/bottom/left) and moves toward the opposite side at 38px/s with slight drift
+- **Suction radius (260px)**: birds inside this ring feel a growing pull toward the vortex center. Pull strength scales quadratically — barely noticeable far away, powerful up close
+- **Fling radius (95px)**: birds caught at the eye get FLUNG. Thrown 380–620px in a random direction, 2-second stun, −12 food, combo streak wiped. 9-second per-bird cooldown prevents continuous flinging
+- Underground birds (sewer) are safe — creates a tactical reason to dive underground during a tornado
+- Ends early if it exits the map bounds (exits naturally before the 95s timer most runs)
+- `tornadoX/Y` position sent every tick in state snapshot for smooth client animation
+
+**Visual system (`public/js/main.js`):**
+- `drawTornadoInWorld()`: drawn in world space (before zoom restore) at the tornado's live position
+  - **Funnel body**: 22 stacked rotating ellipses narrowing from a 160px-wide sky mouth down to a 12px ground tip. Each layer has independent rotation phase + highlight arc — creates a convincing spinning funnel shape
+  - **Debris particles**: 55 objects orbit the funnel at varying heights and radii — mix of rectangular and circular chunks in dark purple tones
+  - **Ground shadow**: dark radial gradient ellipse under the base suggesting the vortex touching down
+  - **Eye glow**: pulsing purple light at the ground tip — eerie and beautiful
+  - **Cloud cap**: wide dark radial ellipse at the sky mouth with 6 rotating wisp elements
+  - **Label**: "🌪️ TORNADO" in purple with dark stroke above the cloud cap
+- **Screen-space vignette**: when tornado is close to the player, purple tint pulses over the screen (intensity scales with proximity, max at <150px screen distance)
+- **Direction arrow**: when tornado is off-screen, a purple arrow with 🌪️ emoji points toward it (same mechanic as mystery crate compass)
+- **Minimap**: pulsing purple 🌪️ dot at the tornado's live world position — trackable from anywhere on the map
+
+**Weather badge:** `🌪️ TORNADO` — fast-pulsing purple badge at top-center
+
+**Announcements & events:**
+- Start: `🌪️ TORNADO INCOMING! Stay clear or get FLUNG across the city!` + 800ms screen shake
+- End: `🌪️ The tornado dissipates. The city exhales.`
+- `tornado_fling`: personal `🌪️ FLUNG BY THE TORNADO! −12 food!` + 600ms screen shake for the victim, city-wide event feed callout, floating `🌪️ FLUNG!` text at landing position
+
+**Weather betting integration:**
+- `tornado` added as the 7th bettable type in the forecast betting panel (🌪️ TORNADO, 9% odds — the longest shot)
+- Correct guess pays out enormous multiplier given the rarity
+
+**Creative intent**: The tornado is pure SPECTACLE + CARNAGE, and it doesn't need buttons, bosses, or complex mechanics. A bird flying near the tornado gets gradually pulled in — you watch the suction increasing, decide to fight it or flee. If you wait too long, you get flung 500px across the map in 2 seconds, land stunned, and lose your combo streak. The visual is genuinely dramatic: a massive dark rotating funnel crossing the city on the minimap, visible from everywhere. Two birds racing for a mystery crate while a tornado is crossing their path is peak CARNAGE CITY chaos. The 9% betting rarity means calling a tornado correctly nets massive pari-mutuel payouts when everyone else bet rain. Pure DISCOVERY + SPECTACLE + CARNAGE energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -1371,10 +1409,14 @@ Built the Territory Control System on top of the existing upstream code:
 - ~~Hot day weather: food spoils faster, birds need water puddles~~ (DONE Session 35)
 - ~~Mystery Crate Airdrop — city-wide scramble event, 10 random powerful items~~ (DONE Session 38)
 - ~~Bird Flu Outbreak — contagious spread mechanic, medicine items, Kingpin drama~~ (DONE Session 39)
+- ~~Tornado weather event — enters from map edge, sucks and flings birds, 9% probability~~ (DONE Session 42)
 - Birds can shelter under awnings/trees during storms (mechanic: reduced hail hit radius if near cover)
 - ~~City Newspaper / Daily Recap — at the end of each game day, a newspaper front page auto-generates showing top moments~~ (DONE Session 40 — The Bird City Gazette)
 - ~~Formation Flying bonuses — V-formation speed boost + Wedge poop power~~ (DONE Session 41)
 - Bird Flu + Wanted interaction: if a cop arrests you while infected, they catch the flu and wander confused for 5s (new counter-play)
+- NPC Crow Cartel rival gang that periodically raids player territories — forces active defense
+- Pigeon Pied Piper event: mysterious NPC that drifts birds toward them; poop to send away for big reward
+- "BIRD CITY IDOL" singing contest — city votes with emojis, winner gets city-wide XP buff for 5 minutes
 - ~~Prestige leaderboard: a wall/board in the city showing top-5 prestige players of all time~~ (DONE Session 37 — Hall of Legends)
 - ~~LEGEND-tier exclusive: ⚜️⚜️⚜️⚜️⚜️ birds can unlock "Prestige Poop" — a special golden poop effect~~ (DONE Session 37)
 - ~~Race power-ups: speed boost gates on the track~~ (DONE Session 30)

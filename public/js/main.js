@@ -1734,10 +1734,14 @@
         fog:       ['🌫️ DENSE FOG rolls in... cops lose your trail in the mist!', '#b8ddc0'],
         hailstorm: ['🌨️ HAILSTORM! Ice chunks will slow anyone they hit!', '#aaddff'],
         heatwave:  ['🌡️ HEATWAVE! The city is SCORCHING — find water puddles before you shrivel!', '#ff8800'],
+        tornado:   ['🌪️ TORNADO INCOMING! Stay clear or get FLUNG across the city!', '#cc88ff'],
       };
       const [msg, color] = msgs[ev.weatherType] || ['Weather changed!', '#fff'];
       showAnnouncement(msg, color, 4000);
       addEventMessage(msg, color);
+      if (ev.weatherType === 'tornado') {
+        effects.push({ type: 'screen_shake', time: performance.now(), duration: 800, intensity: 10 });
+      }
       weatherState = { type: ev.weatherType, windAngle: ev.windAngle, windSpeed: ev.windSpeed, intensity: ev.intensity };
     }
     if (ev.type === 'weather_end') {
@@ -1748,6 +1752,7 @@
         fog:       '🌫️ The fog lifts. Cops can see you again.',
         hailstorm: '🌨️ The hailstorm passes.',
         heatwave:  '🌡️ The heatwave breaks. Cool relief washes over the city.',
+        tornado:   '🌪️ The tornado dissipates. The city exhales.',
       };
       addEventMessage(endMsgs[ev.weatherType] || 'Weather cleared.', '#aaaaaa');
       weatherState = null;
@@ -1843,6 +1848,15 @@
       }
       addEventMessage(`🧊 ${ev.birdName || 'A bird'} was slowed by hail!`, '#88ccff');
       effects.push({ type: 'text', x: ev.x, y: ev.y, text: '🧊 SLOW!', color: '#aaddff', size: 13, time: performance.now(), duration: 1200 });
+    }
+    if (ev.type === 'tornado_fling') {
+      const isMe = ev.birdId === myId;
+      if (isMe) {
+        showAnnouncement('🌪️ FLUNG BY THE TORNADO! −12 food!', '#cc88ff', 2500);
+        effects.push({ type: 'screen_shake', intensity: 18, duration: 600, time: performance.now() });
+      }
+      addEventMessage(`🌪️ ${ev.birdName || 'A bird'} was FLUNG by the tornado!`, '#cc88ff');
+      effects.push({ type: 'text', x: ev.x, y: ev.y, text: '🌪️ FLUNG!', color: '#cc88ff', size: 16, time: performance.now(), duration: 1800 });
     }
 
     // === RACCOON EVENTS ===
@@ -3808,12 +3822,13 @@
   // WEATHER BETTING PANEL — shown between weather events
   // ============================================================
   const WEATHER_BET_INFO = {
-    rain:      { emoji: '🌧️', label: 'RAIN',      color: '#66aaff', odds: '27%' },
-    wind:      { emoji: '💨', label: 'WIND',      color: '#aaddff', odds: '22%' },
-    storm:     { emoji: '⛈️', label: 'STORM',     color: '#ffdd44', odds: '13%' },
-    fog:       { emoji: '🌫️', label: 'FOG',       color: '#b8ddc0', odds: '12%' },
-    hailstorm: { emoji: '🌨️', label: 'HAILSTORM', color: '#88ccff', odds: '13%' },
-    heatwave:  { emoji: '🌡️', label: 'HEATWAVE',  color: '#ff9933', odds: '13%' },
+    rain:      { emoji: '🌧️', label: 'RAIN',      color: '#66aaff', odds: '24%' },
+    wind:      { emoji: '💨', label: 'WIND',      color: '#aaddff', odds: '20%' },
+    storm:     { emoji: '⛈️', label: 'STORM',     color: '#ffdd44', odds: '12%' },
+    fog:       { emoji: '🌫️', label: 'FOG',       color: '#b8ddc0', odds: '11%' },
+    hailstorm: { emoji: '🌨️', label: 'HAILSTORM', color: '#88ccff', odds: '12%' },
+    heatwave:  { emoji: '🌡️', label: 'HEATWAVE',  color: '#ff9933', odds: '12%' },
+    tornado:   { emoji: '🌪️', label: 'TORNADO',   color: '#cc88ff', odds: '9%' },
   };
 
   function updateWeatherBetPanel(now) {
@@ -3846,8 +3861,8 @@
         + '<div style="color:#7799cc;font-size:9px;margin-top:4px;">Window closes: ' + secsLeft + 's</div>';
       weatherBetPanel.style.pointerEvents = 'none';
     } else {
-      // Betting interface — show all 6 weather types
-      const TYPES = ['rain', 'wind', 'storm', 'fog', 'hailstorm', 'heatwave'];
+      // Betting interface — show all 7 weather types
+      const TYPES = ['rain', 'wind', 'storm', 'fog', 'hailstorm', 'heatwave', 'tornado'];
       let html = '<div style="color:#aaddff;font-size:12px;margin-bottom:2px;">🌤️ FORECAST BET</div>'
         + '<div style="color:#7799cc;font-size:9px;margin-bottom:6px;">What\'s next? · ' + secsLeft + 's · Pool: ' + totalPool + 'c</div>';
 
@@ -4399,6 +4414,172 @@
     }
   }
 
+  // ============================================================
+  // TORNADO — world-space drawing (call before zoom ctx.restore())
+  // ============================================================
+  // Tornado debris particles (lazily initialized, static offsets)
+  let _tornadoDebris = null;
+  function _ensureTornadoDebris() {
+    if (_tornadoDebris) return;
+    _tornadoDebris = [];
+    for (let i = 0; i < 55; i++) {
+      _tornadoDebris.push({
+        orbitRadius: 55 + Math.random() * 200,    // how far from center
+        orbitAngleOffset: Math.random() * Math.PI * 2,
+        orbitSpeed: 1.8 + Math.random() * 3.0,   // rad/s
+        heightFrac: Math.random(),                 // 0=bottom, 1=top of funnel
+        size: 3 + Math.random() * 8,
+        opacity: 0.35 + Math.random() * 0.55,
+        type: Math.random() < 0.4 ? 'rect' : 'circle', // mixed debris
+      });
+    }
+  }
+
+  function drawTornadoInWorld(ctx, camera, weather, now) {
+    if (!weather || weather.type !== 'tornado') return;
+    const tx = weather.tornadoX;
+    const ty = weather.tornadoY;
+    if (tx === undefined || ty === undefined) return;
+
+    // Convert world position to screen position (ctx is in zoomed world space)
+    const sx = tx - camera.x + camera.screenW / 2;
+    const sy = ty - camera.y + camera.screenH / 2;
+
+    // Cull if way off screen
+    const cullMargin = 400;
+    if (sx < -cullMargin || sx > camera.screenW + cullMargin ||
+        sy < -cullMargin || sy > camera.screenH + cullMargin) return;
+
+    _ensureTornadoDebris();
+    const t = now * 0.001;
+
+    // ── Tornado funnel height and dimensions ──
+    const FUNNEL_HEIGHT = 340;   // total height of the tornado sprite
+    const BASE_RADIUS   = 160;   // wide mouth at the sky (top)
+    const TIP_RADIUS    = 12;    // narrow tip at ground (bottom)
+
+    ctx.save();
+
+    // --- Ground shadow / dust base ---
+    const shadowGrad = ctx.createRadialGradient(sx, sy, 0, sx, sy, BASE_RADIUS * 0.9);
+    shadowGrad.addColorStop(0, 'rgba(30,0,50,0.45)');
+    shadowGrad.addColorStop(0.5, 'rgba(40,10,60,0.22)');
+    shadowGrad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = shadowGrad;
+    ctx.beginPath();
+    ctx.ellipse(sx, sy, BASE_RADIUS * 0.9, BASE_RADIUS * 0.35, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // --- Funnel body: stacked rotating ellipses narrowing toward the tip ---
+    const LAYERS = 22;
+    for (let i = 0; i < LAYERS; i++) {
+      const frac = i / (LAYERS - 1);               // 0 = ground tip, 1 = sky mouth
+      const layerY = sy - frac * FUNNEL_HEIGHT;
+      const layerRx = TIP_RADIUS + (BASE_RADIUS - TIP_RADIUS) * frac;
+      const layerRy = layerRx * 0.28;              // flatten to give depth perspective
+
+      // Rotation phase shifts with layer index for the spiral appearance
+      const rotPhase = t * 2.4 + frac * Math.PI * 5;
+      const alpha = frac < 0.15
+        ? 0.55 + frac * 2       // fade in at the very tip
+        : (0.25 + frac * 0.38); // gradually more opaque toward the top
+
+      // Outer dark ring
+      ctx.globalAlpha = alpha * 0.85;
+      ctx.strokeStyle = `hsl(${270 + frac * 30}, 50%, ${12 + frac * 20}%)`;
+      ctx.lineWidth = 3 + frac * 5;
+      ctx.beginPath();
+      ctx.ellipse(sx + Math.cos(rotPhase) * layerRx * 0.08, layerY,
+                  layerRx, layerRy, 0, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Inner highlight arc (lighter purple core)
+      ctx.globalAlpha = alpha * 0.35;
+      ctx.strokeStyle = `hsl(${280 + frac * 20}, 65%, ${30 + frac * 30}%)`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(sx + Math.cos(rotPhase + 0.8) * layerRx * 0.6,
+              layerY + Math.sin(rotPhase + 0.8) * layerRy * 0.4,
+              layerRx * 0.55, rotPhase * 0.8, rotPhase * 0.8 + Math.PI);
+      ctx.stroke();
+    }
+
+    // --- Debris particles orbiting the tornado ---
+    ctx.globalAlpha = 1;
+    for (const d of _tornadoDebris) {
+      const orbitAngle = t * d.orbitSpeed + d.orbitAngleOffset;
+      // Debris height mapped so frac=0 is tip, frac=1 is mouth
+      const debrisFrac = d.heightFrac;
+      const debrisR = TIP_RADIUS + (BASE_RADIUS - TIP_RADIUS) * debrisFrac;
+      const actualOrbitR = d.orbitRadius * (debrisR / BASE_RADIUS);
+      const dsx = sx + Math.cos(orbitAngle) * actualOrbitR;
+      const dsy = (sy - debrisFrac * FUNNEL_HEIGHT) + Math.sin(orbitAngle) * actualOrbitR * 0.28;
+
+      ctx.globalAlpha = d.opacity * (0.55 + debrisFrac * 0.45);
+      ctx.fillStyle = `hsl(${260 + Math.sin(orbitAngle) * 20}, 25%, ${15 + debrisFrac * 25}%)`;
+      if (d.type === 'rect') {
+        ctx.save();
+        ctx.translate(dsx, dsy);
+        ctx.rotate(orbitAngle * 2);
+        ctx.fillRect(-d.size / 2, -d.size / 2, d.size, d.size * 0.6);
+        ctx.restore();
+      } else {
+        ctx.beginPath();
+        ctx.arc(dsx, dsy, d.size * 0.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // --- Inner eye glow (eerie purple light at the tip) ---
+    ctx.globalAlpha = 0.55 + Math.sin(t * 3.5) * 0.15;
+    const eyeGrad = ctx.createRadialGradient(sx, sy, 0, sx, sy, TIP_RADIUS * 3.5);
+    eyeGrad.addColorStop(0, 'rgba(200,120,255,0.75)');
+    eyeGrad.addColorStop(0.5, 'rgba(140,60,200,0.35)');
+    eyeGrad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = eyeGrad;
+    ctx.beginPath();
+    ctx.arc(sx, sy, TIP_RADIUS * 3.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // --- Spinning top cloud mass (wide dark cap at sky) ---
+    const cloudY = sy - FUNNEL_HEIGHT;
+    ctx.globalAlpha = 0.7;
+    const cloudGrad = ctx.createRadialGradient(sx, cloudY, 0, sx, cloudY, BASE_RADIUS * 1.4);
+    cloudGrad.addColorStop(0, 'rgba(40,10,65,0.9)');
+    cloudGrad.addColorStop(0.45, 'rgba(50,20,75,0.65)');
+    cloudGrad.addColorStop(1, 'rgba(20,5,35,0)');
+    ctx.fillStyle = cloudGrad;
+    ctx.beginPath();
+    ctx.ellipse(sx, cloudY, BASE_RADIUS * 1.4, BASE_RADIUS * 0.55, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Cloud edge wisps rotating
+    for (let w = 0; w < 6; w++) {
+      const wAngle = t * 1.5 + (w / 6) * Math.PI * 2;
+      const wsx = sx + Math.cos(wAngle) * BASE_RADIUS * (0.9 + Math.sin(t * 2 + w) * 0.2);
+      const wsy = cloudY + Math.sin(wAngle) * BASE_RADIUS * 0.3;
+      ctx.globalAlpha = 0.3 + Math.sin(t * 2 + w) * 0.1;
+      ctx.fillStyle = 'rgba(80, 30, 110, 0.5)';
+      ctx.beginPath();
+      ctx.ellipse(wsx, wsy, 35 + Math.sin(t + w) * 8, 16, wAngle * 0.3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // --- "🌪️ TORNADO" label above the cloud ---
+    ctx.globalAlpha = 0.9;
+    ctx.font = 'bold 13px Courier New';
+    ctx.textAlign = 'center';
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 3;
+    ctx.fillStyle = '#dd88ff';
+    const labelY = cloudY - 20;
+    ctx.strokeText('🌪️ TORNADO', sx, labelY);
+    ctx.fillText('🌪️ TORNADO', sx, labelY);
+
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
   function drawWeather(ctx, camera, now, weather) {
     if (!weather) return;
     const sw = camera.screenW;
@@ -4407,6 +4588,62 @@
 
     const isRainy = weather.type === 'rain' || weather.type === 'storm';
     const isWindy = weather.windSpeed > 0;
+
+    // === TORNADO SCREEN EFFECTS (directional vignette + direction arrow) ===
+    if (weather.type === 'tornado' && weather.tornadoX !== undefined) {
+      const tx = weather.tornadoX;
+      const ty = weather.tornadoY;
+      // Convert to screen space
+      const tSx = tx - camera.x + sw / 2;
+      const tSy = ty - camera.y + sh / 2;
+      const distToTornado = Math.sqrt((tSx - sw / 2) ** 2 + (tSy - sh / 2) ** 2);
+      const VIGNETTE_START = 450;   // px screen distance where tint begins
+      const VIGNETTE_FULL  = 150;   // px where tint is at max
+
+      // Proximity-based purple tint (stronger when tornado is close)
+      const tintStrength = Math.max(0, Math.min(1, 1 - (distToTornado - VIGNETTE_FULL) / (VIGNETTE_START - VIGNETTE_FULL)));
+      if (tintStrength > 0) {
+        const pulse = 0.8 + Math.sin(now * 0.008) * 0.2;
+        ctx.save();
+        ctx.globalAlpha = tintStrength * 0.28 * pulse;
+        ctx.fillStyle = '#6600aa';
+        ctx.fillRect(0, 0, sw, sh);
+        ctx.globalAlpha = 1;
+        ctx.restore();
+      }
+
+      // Directional arrow when tornado is off-screen (like mystery crate compass)
+      const onScreen = tSx > 40 && tSx < sw - 40 && tSy > 40 && tSy < sh - 40;
+      if (!onScreen) {
+        const angle = Math.atan2(tSy - sh / 2, tSx - sw / 2);
+        const arrowR = Math.min(sw, sh) * 0.42;
+        const arrowX = sw / 2 + Math.cos(angle) * arrowR;
+        const arrowY = sh / 2 + Math.sin(angle) * arrowR;
+        const arrowPulse = 0.65 + Math.sin(now * 0.01) * 0.35;
+        ctx.save();
+        ctx.globalAlpha = arrowPulse * 0.9;
+        ctx.translate(arrowX, arrowY);
+        ctx.rotate(angle);
+        // Arrow body
+        ctx.fillStyle = '#cc66ff';
+        ctx.strokeStyle = '#220033';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(22, 0);
+        ctx.lineTo(-8, -10);
+        ctx.lineTo(-4, 0);
+        ctx.lineTo(-8, 10);
+        ctx.closePath();
+        ctx.stroke();
+        ctx.fill();
+        // Emoji
+        ctx.font = '18px serif';
+        ctx.textAlign = 'center';
+        ctx.globalAlpha = arrowPulse * 0.95;
+        ctx.fillText('🌪️', -18, 6);
+        ctx.restore();
+      }
+    }
 
     // === FOG VIGNETTE ===
     // Dense fog fills the screen except for a clear radius around the player's bird
@@ -4627,18 +4864,21 @@
       fog: '🌫️ FOG',
       hailstorm: '🌨️ HAIL',
       heatwave: '🌡️ HEATWAVE',
+      tornado: '🌪️ TORNADO',
     };
     const badgeBg = {
       storm: 'rgba(60, 40, 0, 0.75)',
       fog: 'rgba(80, 100, 80, 0.72)',
       hailstorm: 'rgba(20, 50, 90, 0.78)',
       heatwave: 'rgba(100, 40, 0, 0.80)',
+      tornado: 'rgba(60, 20, 90, 0.85)',
     };
     const badgeColor = {
       storm: '#ffdd44',
       fog: '#c8e8cc',
       hailstorm: '#aaddff',
       heatwave: '#ffaa44',
+      tornado: '#dd88ff',
     };
     const badge = badges[weather.type];
     if (badge) {
@@ -4649,7 +4889,8 @@
       const pulse = (weather.type === 'storm' || weather.type === 'hailstorm')
         ? (Math.sin(now * 0.006) * 0.15 + 0.85)
         : (weather.type === 'heatwave' ? (Math.sin(now * 0.004) * 0.18 + 0.82)
-        : (weather.type === 'fog' ? (Math.sin(now * 0.002) * 0.08 + 0.92) : 1));
+        : (weather.type === 'fog' ? (Math.sin(now * 0.002) * 0.08 + 0.92)
+        : (weather.type === 'tornado' ? (Math.sin(now * 0.008) * 0.22 + 0.78) : 1)));
       ctx.save();
       ctx.globalAlpha = pulse * 0.88;
       ctx.fillStyle = badgeBg[weather.type] || 'rgba(20, 40, 80, 0.65)';
@@ -5527,6 +5768,11 @@
       Renderer.drawManholes(ctx, camera, worldData.manholes, lastNearManholeId, inSewer);
     }
 
+    // Tornado — world-space vortex (drawn last so it overlays everything on the map)
+    if (gameState.weather && gameState.weather.type === 'tornado') {
+      drawTornadoInWorld(ctx, camera, gameState.weather, now);
+    }
+
     // Restore zoom (HUD drawn at screen scale, not zoomed)
     ctx.restore();
 
@@ -5739,6 +5985,23 @@
     // Mystery Crate on minimap
     if (gameState.self && gameState.self.mysteryCrate && worldData) {
       Renderer.drawMysteryCrateOnMinimap(minimapCtx, worldData, gameState.self.mysteryCrate, now);
+    }
+
+    // Tornado on minimap — pulsing purple 🌪️ dot tracking the vortex position
+    if (gameState.weather && gameState.weather.type === 'tornado' &&
+        gameState.weather.tornadoX !== undefined && worldData) {
+      const mw = minimapCtx.canvas.width;
+      const mh = minimapCtx.canvas.height;
+      const tmx = gameState.weather.tornadoX * mw / worldData.width;
+      const tmy = gameState.weather.tornadoY * mh / worldData.height;
+      const pulse = 0.55 + 0.45 * Math.sin(now * 0.012);
+      minimapCtx.fillStyle = `rgba(180, 80, 255, ${0.7 + 0.3 * pulse})`;
+      minimapCtx.beginPath();
+      minimapCtx.arc(tmx, tmy, 5 + pulse * 2, 0, Math.PI * 2);
+      minimapCtx.fill();
+      minimapCtx.font = '9px sans-serif';
+      minimapCtx.textAlign = 'center';
+      minimapCtx.fillText('🌪️', tmx, tmy - 7);
     }
 
     // Bird Flu medicine items on minimap — green pulsing dots during outbreak
