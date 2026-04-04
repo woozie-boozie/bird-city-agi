@@ -579,6 +579,7 @@ class GameEngine {
       // Flock
       flockId: null,
       flockName: null,
+      formationType: null,  // 'V' | 'WEDGE' | null — detected each tick
       // Mission
       activeMission: null, // { missionId, progress, startedAt }
       // Nest (safe AFK)
@@ -2061,28 +2062,67 @@ class GameEngine {
       maxSpeed *= 0.75;
     }
 
-    // V Formation speed buff: 3+ flock mates within 200px with similar velocity
+    // === FORMATION FLYING ===
+    // Detect V-Formation (trailing flock) and Wedge (flanking attack) each tick.
+    // V-Formation: 2+ sync flock mates within 250px → +18% speed (slipstream / updraft)
+    // Wedge Formation: sync mates flanking BOTH sides within 180px → +10% speed + wider poop radius + +30% poop XP
+    bird.formationType = null;
     if (bird.flockId) {
-      let flockMatesNearby = 0;
-      let flockMatesWithSimilarVel = 0;
       const birdSpeed = Math.sqrt(bird.vx * bird.vx + bird.vy * bird.vy);
-      for (const otherBird of this.birds.values()) {
-        if (otherBird.id === bird.id || otherBird.flockId !== bird.flockId) continue;
-        const dx = otherBird.x - bird.x;
-        const dy = otherBird.y - bird.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < 200) {
-          flockMatesNearby++;
-          // Check velocity direction similarity
-          const otherSpeed = Math.sqrt(otherBird.vx * otherBird.vx + otherBird.vy * otherBird.vy);
-          if (birdSpeed > 10 && otherSpeed > 10) {
-            const dot = (bird.vx / birdSpeed) * (otherBird.vx / otherSpeed) + (bird.vy / birdSpeed) * (otherBird.vy / otherSpeed);
-            if (dot > 0.6) flockMatesWithSimilarVel++;
+      if (birdSpeed > 20) {
+        const velNX = bird.vx / birdSpeed;
+        const velNY = bird.vy / birdSpeed;
+        const perpNX = -velNY;   // perpendicular unit vector (left side)
+        const perpNY = velNX;
+
+        let syncMates = 0;      // mates in sync within 250px
+        let lateralLeft = 0;    // mates on the left flank
+        let lateralRight = 0;   // mates on the right flank
+        let matesAhead = 0;     // mates ahead of this bird
+
+        for (const other of this.birds.values()) {
+          if (other.id === bird.id || other.flockId !== bird.flockId) continue;
+          const dx = other.x - bird.x;
+          const dy = other.y - bird.y;
+          const distSq = dx * dx + dy * dy;
+          if (distSq > 250 * 250) continue;
+
+          const otherSpeed = Math.sqrt(other.vx * other.vx + other.vy * other.vy);
+          if (otherSpeed < 20) continue;
+
+          // Must be flying in roughly the same direction (dot product > 0.55)
+          const velDot = (bird.vx / birdSpeed) * (other.vx / otherSpeed) + (bird.vy / birdSpeed) * (other.vy / otherSpeed);
+          if (velDot < 0.55) continue;
+
+          syncMates++;
+
+          // Inline component: positive = mate is ahead of me along my velocity
+          const inlineComp = dx * velNX + dy * velNY;
+          if (inlineComp > 35) matesAhead++;
+
+          // Lateral component: positive = right of my path, negative = left
+          if (distSq <= 180 * 180) {
+            const lateralComp = dx * perpNX + dy * perpNY;
+            if (lateralComp > 35) lateralRight++;
+            else if (lateralComp < -35) lateralLeft++;
           }
         }
-      }
-      if (flockMatesWithSimilarVel >= 2) {
-        maxSpeed *= 1.15; // 15% speed buff
+
+        if (syncMates >= 2) {
+          // WEDGE: this bird is the point — mates flanking both sides
+          if (lateralLeft >= 1 && lateralRight >= 1) {
+            bird.formationType = 'WEDGE';
+            maxSpeed *= 1.10; // 10% speed for the wedge point
+          } else {
+            // V-FORMATION: trailing flock or lead position
+            bird.formationType = 'V';
+            maxSpeed *= 1.18; // 18% slipstream speed for all V members
+          }
+        } else if (syncMates === 1 && matesAhead >= 1) {
+          // Even with just one mate ahead, slipstream kicks in (2-bird V)
+          bird.formationType = 'V';
+          maxSpeed *= 1.10;
+        }
       }
     }
 
@@ -2174,8 +2214,12 @@ class GameEngine {
         poop.isNuke = true;
       }
 
+      // Wedge Formation: the point bird gets a wider splash radius on their poop
+      const isWedgePoop = !isMegaPoop && bird.formationType === 'WEDGE';
+      if (isWedgePoop) poop.isWedge = true;
+
       // Check what it hit
-      const hit = this._checkPoopHit(poop, isMegaPoop);
+      const hit = this._checkPoopHit(poop, isMegaPoop, isWedgePoop);
       poop.hitTarget = hit.target;
 
       this.poops.set(poopId, poop);
@@ -2458,6 +2502,12 @@ class GameEngine {
       else if (hit.target === 'bride') coinGain = 10;
       else if (hit.target === 'janitor') coinGain = 3;
       if (hit.npc && hit.npc.poopedOn >= 3) coinGain += 5; // made cry bonus
+
+      // Wedge Formation bonus: +30% XP and coins on every actual hit while in wedge attack
+      if (isWedgePoop && xpGain > 2) {
+        xpGain = Math.floor(xpGain * 1.30);
+        coinGain = Math.max(1, Math.floor((coinGain || 1) * 1.30));
+      }
 
       // Territory home turf bonus: +30% XP and coins when pooping in your own zone
       if (xpGain > 2) { // only for actual hits, not bare ground poop
@@ -2857,8 +2907,8 @@ class GameEngine {
     }
   }
 
-  _checkPoopHit(poop, isMegaPoop) {
-    const hitRadius = isMegaPoop ? 60 : 20;
+  _checkPoopHit(poop, isMegaPoop, isWedgePoop = false) {
+    const hitRadius = isMegaPoop ? 60 : (isWedgePoop ? 33 : 20); // Wedge: +65% wider splash
     const allHits = [];
 
     // Check janitor
@@ -4039,6 +4089,7 @@ class GameEngine {
           tattoosEquipped: b.tattoosEquipped || [],
           eagleFeather: b.eagleFeather || false,
           isFlu: b.fluUntil > now,
+          formationType: b.formationType || null,
         });
       }
     }
@@ -4594,6 +4645,8 @@ class GameEngine {
         prestige: bird.prestige || 0,
         prestigeThreshold: PRESTIGE_THRESHOLD,
         maxPrestige: MAX_PRESTIGE,
+        // Formation Flying
+        formationType: bird.formationType || null,
       },
       // Kingpin state (global — for minimap and visual targeting)
       kingpin: this.kingpin ? (() => {

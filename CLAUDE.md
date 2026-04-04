@@ -1303,6 +1303,39 @@ Each headline has a satirical subline in classic tabloid style.
 
 **Creative intent**: Retention is the game's North Star. The newspaper creates a collective narrative moment every 20 minutes — all players simultaneously see the same "front page." "COMBO RAMPAGE: [MOB] BirdName HITS 23× STREAK" is a city-wide shoutout that feels earned. The satirical sublines ("Police respond 5 minutes too late. Again.") make it feel alive and funny, not mechanical. Players will stay for "one more cycle" just to see what the next Gazette says about them. Pure SPECTACLE + SOCIAL + RETENTION energy.
 
+**Session 41 — 2026-04-04: Formation Flying — V-Formation Speed + Wedge Attack Power**
+Flocking is now dramatically more powerful and visible. Two formation types activate when flock members fly in sync — each with distinct bonuses, visual effects, and strategic identities.
+
+**Formation Detection (server-side, per-tick `server/game.js`):**
+- Runs for every bird with a flock ID, every game tick
+- A "sync mate" is defined as: same flock, within 250px, moving in the same direction (velocity dot product > 0.55), speed > 20px/s
+- **V-Formation**: 2+ sync mates within 250px (any configuration) → all birds in the V get **+18% max speed**. Even a 2-bird V gives +10% slipstream to the trailing bird.
+- **Wedge Formation**: 2+ sync mates where at least ONE is laterally left (>35px perpendicular) AND at least ONE is right → the point bird gets **+10% speed** plus the wedge attack bonus
+- Formations auto-detect and auto-expire each tick — no manual activation needed
+
+**Wedge Attack Bonus:**
+- Wedge point bird's poops use a **33px hit radius** (vs standard 20px) — 65% wider splash
+- Every poop hit while in Wedge earns **+30% XP and +30% coins** on top of all other multipliers
+- Stacks with: combo streak, Lucky Charm, Signal Boost, prestige bonuses, territory bonuses
+- A P5 LEGEND bird in Wedge with a 15× combo + Lucky Charm + Signal Boost = astronomical XP per hit
+
+**Visual system (`public/js/main.js`):**
+- V-Formation birds: **cyan glow aura** (pulsing radial gradient, 26px radius) + **speed wake trail** drawn behind the bird along its velocity vector (fades over 32px)
+- Wedge birds: **orange power aura** (stronger pulse, 28px radius) — the point of the spear glows
+- **Formation connection lines**: after all birds are drawn, faint dashed lines connect all same-flock same-formation birds within 300px of each other (cyan for V, orange for Wedge). The lines pulse subtly with the game clock.
+- Both effects scale with a per-bird phase offset so no two birds pulse identically
+
+**Formation HUD buff pills (in `updateActiveBuffsHud()`):**
+- `🔷 V-FORMATION +18% SPD` — blue-cyan pill, slow pulse animation
+- `⚔️ WEDGE ATTACK +10% SPD +30% POOP` — orange pill, fast pulse, bold — the most powerful formation pill in the game
+
+**Formation asymmetry (emergent design):**
+- In a 3-bird V, the leader and the followers all get `formationType = 'V'` → everyone benefits equally from slipstream
+- In a 3-bird Wedge arrowhead, ONLY the point bird gets `WEDGE` → the two wing birds see one mate ahead (the point) and another beside them → they get `V-Formation` slipstream
+- This creates organic role specialization: "I'll take point, you two slipstream me"
+
+**Creative intent**: Flocking was already rewarded (territory capture goes faster, flock XP bonus). Now there's also a KINESTHETIC reward — flying in formation FEELS faster and more powerful. The V-Formation makes escaping cops, racing, and territory rushes better. The Wedge transforms a flock into an aerial attack formation: one bird at the spear tip getting wider poop splash and massive XP, two wing birds getting speed. Flock leaders will start calling out formations mid-session. A gang of 3 holding Wedge formation during a food truck heist — the point bird shredding the progress bar while wingmen keep cops at bay — is pure CARNAGE CITY. Pure SOCIAL + CARNAGE + SPECTACLE energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -1340,7 +1373,7 @@ Built the Territory Control System on top of the existing upstream code:
 - ~~Bird Flu Outbreak — contagious spread mechanic, medicine items, Kingpin drama~~ (DONE Session 39)
 - Birds can shelter under awnings/trees during storms (mechanic: reduced hail hit radius if near cover)
 - ~~City Newspaper / Daily Recap — at the end of each game day, a newspaper front page auto-generates showing top moments~~ (DONE Session 40 — The Bird City Gazette)
-- Formation Flying bonuses — V-formation gives flock speed boost, wedge gives poop power. Deepens flock social dynamic
+- ~~Formation Flying bonuses — V-formation speed boost + Wedge poop power~~ (DONE Session 41)
 - Bird Flu + Wanted interaction: if a cop arrests you while infected, they catch the flu and wander confused for 5s (new counter-play)
 - ~~Prestige leaderboard: a wall/board in the city showing top-5 prestige players of all time~~ (DONE Session 37 — Hall of Legends)
 - ~~LEGEND-tier exclusive: ⚜️⚜️⚜️⚜️⚜️ birds can unlock "Prestige Poop" — a special golden poop effect~~ (DONE Session 37)

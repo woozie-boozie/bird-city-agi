@@ -5236,6 +5236,51 @@
             ctx.stroke();
           }
 
+          // Formation Flying: draw colored aura + speed wake behind formation birds
+          if (b.formationType) {
+            const ft = b.formationType;
+            const isV = ft === 'V';
+            // Aura color: cyan for V-formation, orange for Wedge
+            const auraColor = isV ? [80, 220, 255] : [255, 140, 0];
+            const auraAlpha = isV ? 0.38 : 0.48;
+            const auraR = isV ? 26 : 28;
+            const ftPulse = 0.55 + 0.25 * Math.sin(now * (isV ? 0.006 : 0.009) + b.id * 1.37);
+            ctx.save();
+            ctx.globalAlpha = auraAlpha * ftPulse;
+            const ftGrd = ctx.createRadialGradient(sx, sy, 4, sx, sy, auraR);
+            ftGrd.addColorStop(0, `rgba(${auraColor[0]},${auraColor[1]},${auraColor[2]},0.6)`);
+            ftGrd.addColorStop(1, `rgba(${auraColor[0]},${auraColor[1]},${auraColor[2]},0)`);
+            ctx.fillStyle = ftGrd;
+            ctx.beginPath();
+            ctx.arc(sx, sy, auraR, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+            // Speed wake: stretched gradient behind the bird in V-formation
+            if (isV && b.vx !== undefined) {
+              const spd = Math.sqrt((b.vx || 0) * (b.vx || 0) + (b.vy || 0) * (b.vy || 0));
+              if (spd > 20) {
+                const wakeLen = Math.min(32, spd * 0.18);
+                const wakeNX = -(b.vx / spd);
+                const wakeNY = -(b.vy / spd);
+                const wx = sx + wakeNX * wakeLen;
+                const wy = sy + wakeNY * wakeLen;
+                ctx.save();
+                ctx.globalAlpha = 0.25 * ftPulse;
+                const wakeGrd = ctx.createLinearGradient(sx, sy, wx, wy);
+                wakeGrd.addColorStop(0, 'rgba(120,240,255,0.7)');
+                wakeGrd.addColorStop(1, 'rgba(120,240,255,0)');
+                ctx.strokeStyle = wakeGrd;
+                ctx.lineWidth = 5;
+                ctx.lineCap = 'round';
+                ctx.beginPath();
+                ctx.moveTo(sx, sy);
+                ctx.lineTo(wx, wy);
+                ctx.stroke();
+                ctx.restore();
+              }
+            }
+          }
+
           // Bird Flu: green glow ring behind infected birds (drawn before the bird sprite)
           if (b.isFlu) {
             const fluPulse = 0.4 + 0.35 * Math.sin(now * 0.008);
@@ -5406,6 +5451,47 @@
               ctx.stroke();
             }
           }
+        }
+      }
+    }
+
+    // Formation Flying: draw faint connecting lines between flock birds in same formation
+    if (gameState.birds && gameState.birds.length >= 2) {
+      const formBirds = gameState.birds.filter(b => b.formationType && b.flockId);
+      if (formBirds.length >= 2) {
+        // Group by flockId
+        const flockGroups = new Map();
+        for (const b of formBirds) {
+          if (!flockGroups.has(b.flockId)) flockGroups.set(b.flockId, []);
+          flockGroups.get(b.flockId).push(b);
+        }
+        for (const [, members] of flockGroups) {
+          if (members.length < 2) continue;
+          const ft = members[0].formationType;
+          const lineColor = ft === 'WEDGE' ? 'rgba(255,140,0,' : 'rgba(80,220,255,';
+          const lineAlpha = 0.20 + 0.12 * Math.sin(now * 0.005);
+          ctx.save();
+          ctx.setLineDash([4, 5]);
+          ctx.lineWidth = 1.2;
+          // Draw a line from each member to every other member in the same formation group
+          for (let i = 0; i < members.length; i++) {
+            for (let j = i + 1; j < members.length; j++) {
+              const ax = members[i].x - camera.x + camera.screenW / 2;
+              const ay = members[i].y - camera.y + camera.screenH / 2;
+              const bx = members[j].x - camera.x + camera.screenW / 2;
+              const by2 = members[j].y - camera.y + camera.screenH / 2;
+              const dist = Math.sqrt((ax - bx) * (ax - bx) + (ay - by2) * (ay - by2));
+              if (dist < 300) {
+                ctx.strokeStyle = lineColor + lineAlpha + ')';
+                ctx.beginPath();
+                ctx.moveTo(ax, ay);
+                ctx.lineTo(bx, by2);
+                ctx.stroke();
+              }
+            }
+          }
+          ctx.setLineDash([]);
+          ctx.restore();
         }
       }
     }
@@ -6429,6 +6515,13 @@
     }
     if (s.mcNukePoop) {
       html += '<div class="bm-buff-pill" style="background:rgba(120,0,0,0.85);border-color:#ff4422;color:#ff8866;animation:pulseRed 0.5s infinite alternate;font-weight:bold;">💣 NUKE POOP — READY!</div>';
+    }
+
+    // Formation Flying buff pills
+    if (s.formationType === 'V') {
+      html += '<div class="bm-buff-pill" style="background:rgba(0,60,100,0.85);border-color:#44ddff;color:#88eeff;animation:kingpinGlow 1.0s ease-in-out infinite alternate;">🔷 V-FORMATION +18% SPD</div>';
+    } else if (s.formationType === 'WEDGE') {
+      html += '<div class="bm-buff-pill" style="background:rgba(100,50,0,0.85);border-color:#ff9900;color:#ffcc44;animation:kingpinGlow 0.7s ease-in-out infinite alternate;font-weight:bold;">⚔️ WEDGE ATTACK +10% SPD +30% POOP</div>';
     }
 
     el.innerHTML = html;
