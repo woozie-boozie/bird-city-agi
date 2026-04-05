@@ -3759,4 +3759,178 @@ window.Sprites = {
     ctx.fillText('🐦‍⬛ DON CORVINO', 0, -51);
     ctx.restore();
   },
+
+  // Pigeon Pied Piper — enchanting rainbow musician
+  drawPiedPiper(ctx, x, y, now, hitCount, hitsRequired) {
+    const t = now / 1000;
+    ctx.save();
+    ctx.translate(x, y);
+
+    // Magical rainbow aura behind the piper
+    const auraPulse = 0.65 + 0.35 * Math.sin(t * 2.5);
+    const auraGrad = ctx.createRadialGradient(0, 0, 8, 0, 0, 38);
+    auraGrad.addColorStop(0, `rgba(200,100,255,${auraPulse * 0.5})`);
+    auraGrad.addColorStop(0.5, `rgba(100,200,255,${auraPulse * 0.3})`);
+    auraGrad.addColorStop(1, 'rgba(200,100,255,0)');
+    ctx.fillStyle = auraGrad;
+    ctx.beginPath();
+    ctx.arc(0, 0, 38, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Slight body sway (playing music)
+    const sway = Math.sin(t * 3.5) * 0.12;
+    ctx.rotate(sway);
+
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    ctx.beginPath();
+    ctx.ellipse(2, 8, 13, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Body — iridescent teal/purple pigeon, slightly plump
+    const bodyGrad = ctx.createLinearGradient(-12, -6, 12, 6);
+    bodyGrad.addColorStop(0, '#8844cc');
+    bodyGrad.addColorStop(0.4, '#44aacc');
+    bodyGrad.addColorStop(0.8, '#cc44aa');
+    bodyGrad.addColorStop(1, '#4488ff');
+    ctx.fillStyle = bodyGrad;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 13, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Wing highlights — iridescent shimmer
+    const wingHue = (t * 60) % 360;
+    ctx.fillStyle = `hsla(${wingHue}, 80%, 70%, 0.6)`;
+    ctx.save();
+    ctx.rotate(-0.3);
+    ctx.beginPath();
+    ctx.ellipse(-1, -10, 7, 3.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    ctx.save();
+    ctx.rotate(0.3);
+    ctx.beginPath();
+    ctx.ellipse(-1, 10, 7, 3.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Jester hat — colorful tipped hat
+    ctx.fillStyle = '#ff3366';
+    ctx.beginPath();
+    ctx.ellipse(-4, -7, 8, 4, -0.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffcc00';
+    ctx.beginPath();
+    ctx.moveTo(-10, -9);
+    ctx.lineTo(4, -22);
+    ctx.lineTo(2, -8);
+    ctx.closePath();
+    ctx.fill();
+    // Bell at tip
+    ctx.fillStyle = '#ffd700';
+    ctx.beginPath();
+    ctx.arc(4, -22, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#c8a000';
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+
+    // Flute — held at an angle facing right
+    ctx.save();
+    ctx.rotate(-0.4);
+    ctx.strokeStyle = '#c8860a';
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(6, -2);
+    ctx.lineTo(21, -2);
+    ctx.stroke();
+    ctx.fillStyle = '#ffd700';
+    [10, 13.5, 17].forEach(kx => {
+      ctx.beginPath();
+      ctx.arc(kx, -2, 1.2, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    ctx.restore();
+
+    // Eyes — bright magical glowing yellow
+    const eyeGlow = 0.8 + 0.2 * Math.sin(t * 4);
+    ctx.fillStyle = `rgba(255,220,80,${eyeGlow})`;
+    ctx.shadowColor = '#ffee00';
+    ctx.shadowBlur = 5;
+    ctx.beginPath();
+    ctx.arc(8, -3.5, 2.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Beak
+    ctx.fillStyle = '#ffa030';
+    ctx.beginPath();
+    ctx.moveTo(13, -1);
+    ctx.lineTo(19, -2.5);
+    ctx.lineTo(19, 1);
+    ctx.closePath();
+    ctx.fill();
+
+    // Hit progress bar
+    if (hitCount < hitsRequired) {
+      const barW = 46;
+      const pct = hitCount / hitsRequired;
+      const barX = -barW / 2;
+      const barY = 16;
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.beginPath();
+      ctx.roundRect(barX - 1, barY - 1, barW + 2, 7, 3);
+      ctx.fill();
+      if (pct > 0) {
+        const barGrad = ctx.createLinearGradient(barX, 0, barX + barW, 0);
+        barGrad.addColorStop(0, '#ff44aa');
+        barGrad.addColorStop(0.5, '#aa44ff');
+        barGrad.addColorStop(1, '#44aaff');
+        ctx.fillStyle = barGrad;
+        ctx.beginPath();
+        ctx.roundRect(barX, barY, barW * pct, 5, 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 8px Arial';
+      ctx.textAlign = 'center';
+      ctx.shadowColor = '#000';
+      ctx.shadowBlur = 3;
+      ctx.fillText(`POOP ${hitCount}/${hitsRequired}x to drive away`, 0, barY + 16);
+      ctx.shadowBlur = 0;
+    }
+
+    ctx.restore();
+
+    // Floating musical notes — drawn without body rotation
+    ctx.save();
+    ctx.translate(x, y);
+    const noteData = [
+      { dx: -18, phase: 0.0 },
+      { dx: 16,  phase: 1.5 },
+      { dx:  2,  phase: 3.0 },
+      { dx: -7,  phase: 4.5 },
+    ];
+    noteData.forEach(n => {
+      const floatY = ((t * 28 + n.phase * 18) % 52);
+      const alpha = Math.min(1, Math.min(floatY / 10, (52 - floatY) / 10));
+      if (alpha <= 0) return;
+      const noteHue = (n.phase * 90 + t * 40) % 360;
+      ctx.fillStyle = `hsla(${noteHue}, 95%, 72%, ${alpha})`;
+      ctx.font = 'bold 14px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('♪', n.dx, -24 - floatY);
+    });
+
+    // Name label
+    ctx.fillStyle = '#ffaaff';
+    ctx.font = 'bold 9px monospace';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = '#000';
+    ctx.shadowBlur = 4;
+    ctx.fillText('🎵 PIED PIPER', 0, -40);
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  },
 };

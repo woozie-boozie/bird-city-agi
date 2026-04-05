@@ -40,6 +40,7 @@ const DAILY_CHALLENGE_POOL = [
   { id: 'coin_hoarder',    title: 'Coin Hoarder',    desc: 'Earn 200 coins today',                   target: 200, trackType: 'coins_earned',    reward: { xp: 110, coins: 55  } },
   { id: 'npc_cryer',       title: 'Tear Collector',  desc: 'Make 3 humans cry with poop',            target: 3,   trackType: 'npc_cry',         reward: { xp: 160, coins: 70  } },
   { id: 'flu_survivor',   title: 'Flu Fighter',     desc: 'Recover from Bird Flu (find medicine)',   target: 1,   trackType: 'flu_cured',       reward: { xp: 170, coins: 80  } },
+  { id: 'piper_stopper',  title: 'Music Critic',    desc: 'Hit the Pied Piper to help drive him away', target: 3, trackType: 'piper_hit',       reward: { xp: 180, coins: 90  } },
 ];
 
 class GameEngine {
@@ -384,6 +385,27 @@ class GameEngine {
     this.idolXpBoostUntil = 0; // timestamp when city-wide idol XP boost expires
     this.IDOL_STAGE_POS = world.IDOL_STAGE_POS;
 
+    // === PIGEON PIED PIPER ===
+    // Every 25-35 minutes, a mysterious enchanting musician appears somewhere in the city.
+    // His magical flute pulls birds toward him (suction force within 350px).
+    // Birds who get within 80px get ENCHANTED — cannot poop for 8 seconds.
+    // Players must poop the Piper 6 times to drive him away — rewarding all online birds.
+    // If nobody stops him in 90 seconds, he steals 20% of each nearby bird's coins and vanishes.
+    this.piper = null;
+    this.piperTimer = Date.now() + this._randomRange(25 * 60000, 35 * 60000);
+    this.PIPER_SPAWN_LOCATIONS = [
+      { x: 1200, y: 1200 }, // Park center
+      { x: 800,  y: 1350 }, // Park west edge
+      { x: 1600, y: 580  }, // North road near radio tower
+      { x: 2200, y: 1550 }, // Mall south
+      { x: 700,  y: 1950 }, // Cafe District
+      { x: 2480, y: 1350 }, // East corridor
+      { x: 1380, y: 1850 }, // Central south road
+      { x: 1050, y: 900  }, // Hall of Legends area
+      { x: 400,  y: 1200 }, // West waterfront
+      { x: 2700, y: 700  }, // Mall northeast
+    ];
+
     // === BIRD CITY GAZETTE ===
     // Every game day cycle (~20 min), a newspaper publishes at dawn recapping the night.
     // Tracks key moments: top combo, most wanted, heists, gang wars, predator kills, etc.
@@ -657,6 +679,8 @@ class GameEngine {
       // === BIRD FLU ===
       fluUntil: 0,             // timestamp when flu wears off (0 = healthy)
       fluSpreadCooldown: 0,    // timestamp: can't re-spread to another bird until this passes
+      // === PIGEON PIED PIPER ===
+      piperEnchantedUntil: 0,  // timestamp when enchantment wears off (blocks poop)
     };
 
     // Determine bird type from XP
@@ -1137,6 +1161,9 @@ class GameEngine {
 
     // === Bird City Idol ===
     this._tickBirdIdol(now);
+
+    // === Pigeon Pied Piper ===
+    this._tickPiper(dt, now);
   }
 
   // ============================================================
@@ -2203,6 +2230,31 @@ class GameEngine {
       bird.vy += Math.sin(this.weather.windAngle) * this.weather.windSpeed * dt;
     }
 
+    // Pied Piper suction force — draws birds toward the Piper within 350px
+    if (this.piper && !bird.inSewer) {
+      const pdx = this.piper.x - bird.x;
+      const pdy = this.piper.y - bird.y;
+      const pDist = Math.sqrt(pdx * pdx + pdy * pdy);
+      const PIPER_SUCTION_RADIUS = 350;
+      if (pDist < PIPER_SUCTION_RADIUS && pDist > 1) {
+        // Suction scales quadratically — barely noticeable at edge, strong up close
+        const t2 = 1 - (pDist / PIPER_SUCTION_RADIUS);
+        const suctionForce = 28 * t2 * t2; // max ~28 px/s pull
+        bird.vx += (pdx / pDist) * suctionForce * dt;
+        bird.vy += (pdy / pDist) * suctionForce * dt;
+
+        // Enchantment: birds within 80px get enchanted (can't poop for 8s)
+        if (pDist < 80 && bird.piperEnchantedUntil <= now) {
+          bird.piperEnchantedUntil = now + 8000;
+          this.events.push({
+            type: 'piper_enchanted',
+            birdId: bird.id, birdName: bird.name,
+            x: bird.x, y: bird.y,
+          });
+        }
+      }
+    }
+
     // Update position
     bird.x += bird.vx * dt;
     bird.y += bird.vy * dt;
@@ -2220,7 +2272,7 @@ class GameEngine {
     bird.wingPhase += dt * (5 + speed * 0.03);
 
     // === POOP ===
-    if (!bird.carryingEggId && bird.input.space && now - bird.lastPoop > poopCooldown) {
+    if (!bird.carryingEggId && bird.piperEnchantedUntil <= now && bird.input.space && now - bird.lastPoop > poopCooldown) {
       bird.lastPoop = now;
       const poopId = 'p_' + uid();
       const poop = {
@@ -2444,6 +2496,23 @@ class GameEngine {
         this.owlEnforcer.stunnedUntil = now + 8000; // stunned 8s
         this.owlEnforcer.alertBirdId = null;
         this.events.push({ type: 'owl_scared', birdId: bird.id, birdName: bird.name, x: this.owlEnforcer.x, y: this.owlEnforcer.y });
+      } else if (hit.target === 'piper' && this.piper) {
+        // Poop hit the Pied Piper — one step closer to driving him away!
+        const dmg = isMegaPoop ? 2 : 1; // mega poop counts double
+        this.piper.hitCount += dmg;
+        xpGain = isMegaPoop ? 60 : 30;
+        bird.coins += isMegaPoop ? 12 : 5;
+        this._trackDailyProgress(bird, 'piper_hit', 1);
+        this.events.push({
+          type: 'piper_hit',
+          birdId: bird.id, birdName: bird.name,
+          hitCount: this.piper.hitCount,
+          hitsRequired: this.piper.hitsRequired,
+          x: this.piper.x, y: this.piper.y,
+        });
+        if (this.piper.hitCount >= this.piper.hitsRequired) {
+          this._defeatPiper(bird, now);
+        }
       } else if (hit.target === 'crow_cartel' && hit.crow && this.crowCartel) {
         // Poop hit a Crow Cartel member — deal damage!
         const crow = hit.crow;
@@ -3144,6 +3213,16 @@ class GameEngine {
       if (Math.sqrt(odx * odx + ody * ody) < hitRadius + 14) {
         if (!isMegaPoop) return { target: 'owl_enforcer' };
         allHits.push({ target: 'owl_enforcer' });
+      }
+    }
+
+    // Check Pigeon Pied Piper (can be pooped to drive away)
+    if (this.piper) {
+      const pdx = poop.x - this.piper.x;
+      const pdy = poop.y - this.piper.y;
+      if (Math.sqrt(pdx * pdx + pdy * pdy) < hitRadius + 20) {
+        if (!isMegaPoop) return { target: 'piper' };
+        allHits.push({ target: 'piper' });
       }
     }
 
@@ -5142,6 +5221,15 @@ class GameEngine {
         const dy = bird.y - this.IDOL_STAGE_POS.y;
         return Math.sqrt(dx * dx + dy * dy) < this.IDOL_STAGE_POS.radius;
       })(),
+      // Pigeon Pied Piper
+      piper: this.piper ? {
+        x: this.piper.x,
+        y: this.piper.y,
+        hitCount: this.piper.hitCount,
+        hitsRequired: this.piper.hitsRequired,
+        endsAt: this.piper.endsAt,
+      } : null,
+      piperEnchantedUntil: bird.piperEnchantedUntil,
     };
   }
 
@@ -11287,6 +11375,134 @@ class GameEngine {
       voterName: bird.name,
       contestantName: idol.contestants.get(contestantId).name,
       totalVotes: idol.votes.size,
+    });
+  }
+
+  // ============================================================
+  // PIGEON PIED PIPER
+  // ============================================================
+
+  _tickPiper(dt, now) {
+    // Spawn timer
+    if (!this.piper && now >= this.piperTimer && this.birds.size > 0) {
+      this._spawnPiper(now);
+      return;
+    }
+    if (!this.piper) return;
+
+    const p = this.piper;
+
+    // Check if time's up — piper steals coins and vanishes
+    if (now >= p.endsAt) {
+      this._piperSteal(now);
+      return;
+    }
+
+    // Piper slowly wanders around his spawn area (gentle sine drift)
+    const wanderPhase = now / 4000;
+    const wanderRadius = 80;
+    // Drift target oscillates around spawn point
+    const tx = p.spawnX + Math.cos(wanderPhase) * wanderRadius;
+    const ty = p.spawnY + Math.sin(wanderPhase * 1.3) * wanderRadius;
+    const dx = tx - p.x;
+    const dy = ty - p.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist > 1) {
+      const speed = 22; // very slow, he's focused on music
+      p.x += (dx / dist) * Math.min(speed * dt, dist);
+      p.y += (dy / dist) * Math.min(speed * dt, dist);
+    }
+
+    // Clamp to world bounds
+    p.x = Math.max(50, Math.min(world.WORLD_WIDTH - 50, p.x));
+    p.y = Math.max(50, Math.min(world.WORLD_HEIGHT - 50, p.y));
+  }
+
+  _spawnPiper(now) {
+    const locations = this.PIPER_SPAWN_LOCATIONS;
+    const loc = locations[Math.floor(Math.random() * locations.length)];
+    this.piper = {
+      x: loc.x,
+      y: loc.y,
+      spawnX: loc.x,
+      spawnY: loc.y,
+      hitCount: 0,
+      hitsRequired: 6,
+      spawnedAt: now,
+      endsAt: now + 90000, // 90 seconds to stop him
+    };
+    this.events.push({
+      type: 'piper_appears',
+      x: this.piper.x,
+      y: this.piper.y,
+      endsAt: this.piper.endsAt,
+    });
+  }
+
+  _defeatPiper(defeatingBird, now) {
+    const p = this.piper;
+    this.piper = null;
+    this.piperTimer = now + this._randomRange(25 * 60000, 35 * 60000);
+
+    // Reward ALL online birds for driving away the Piper
+    const rewardXp = 120;
+    const rewardCoins = 60;
+    const winners = [];
+    for (const b of this.birds.values()) {
+      b.xp += rewardXp;
+      b.coins += rewardCoins;
+      this._trackDailyProgress(b, 'coins_earned', rewardCoins);
+      winners.push(b.name);
+      // Level up check
+      const newLevel = world.getLevelFromXP(b.xp);
+      if (newLevel !== b.level) {
+        b.level = newLevel;
+        b.type = world.getBirdTypeForLevel(newLevel);
+        this.events.push({ type: 'evolve', birdId: b.id, name: b.name, birdType: b.type });
+      }
+    }
+    this.events.push({
+      type: 'piper_defeated',
+      defeaterName: defeatingBird ? defeatingBird.name : 'A hero bird',
+      defeaterGangTag: defeatingBird ? (defeatingBird.gangTag || null) : null,
+      rewardXp,
+      rewardCoins,
+      x: p.x, y: p.y,
+    });
+  }
+
+  _piperSteal(now) {
+    const p = this.piper;
+    this.piper = null;
+    this.piperTimer = now + this._randomRange(25 * 60000, 35 * 60000);
+
+    const STEAL_RADIUS = 350;
+    const victims = [];
+    let totalStolen = 0;
+    for (const b of this.birds.values()) {
+      if (b.inSewer) continue;
+      const dx = b.x - p.x;
+      const dy = b.y - p.y;
+      if (Math.sqrt(dx * dx + dy * dy) < STEAL_RADIUS) {
+        const stolen = Math.ceil(b.coins * 0.20); // 20% coins
+        if (stolen > 0) {
+          b.coins = Math.max(0, b.coins - stolen);
+          victims.push({ name: b.name, stolen });
+          totalStolen += stolen;
+          this.events.push({
+            type: 'piper_steal_personal',
+            birdId: b.id,
+            stolen,
+            x: b.x, y: b.y,
+          });
+        }
+      }
+    }
+    this.events.push({
+      type: 'piper_stolen',
+      victims,
+      totalStolen,
+      x: p.x, y: p.y,
     });
   }
 

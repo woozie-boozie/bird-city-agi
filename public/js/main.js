@@ -1078,6 +1078,57 @@
       showAnnouncement('👑🤧 THE KINGPIN HAS THE FLU! ' + ev.name + ' is WEAKENED!', '#ffcc00', 5000);
       addEventMessage('👑🤧 KINGPIN ' + ev.name + ' is infected with bird flu — now\'s your chance!', '#ffcc00');
     }
+
+    // === PIGEON PIED PIPER EVENTS ===
+    if (ev.type === 'piper_appears') {
+      effects.push({ type: 'screen_shake', intensity: 5, duration: 400, time: now });
+      showAnnouncement('🎵 THE PIED PIPER APPEARS!\nPoop on him 6× before he steals your coins!', '#ff88ff', 6000);
+      addEventMessage('🎵 The Pied Piper has appeared — his music enchants nearby birds! POOP HIM AWAY!', '#ff88ff');
+      window._piperLocation = { x: ev.x, y: ev.y, endsAt: ev.endsAt };
+    }
+    if (ev.type === 'piper_enchanted') {
+      if (ev.birdId === myId) {
+        showAnnouncement('🎵 YOU\'RE ENCHANTED! Can\'t poop for 8 seconds — fight the music!', '#cc88ff', 3000);
+        effects.push({ type: 'text', x: ev.x, y: ev.y - 20, time: now, duration: 1500, text: '🎵 ENCHANTED!', color: '#ff88ff', size: 14 });
+      }
+    }
+    if (ev.type === 'piper_hit') {
+      effects.push({ type: 'text', x: ev.x, y: ev.y - 15, time: now, duration: 1200, text: `🎵 HIT! ${ev.hitCount}/${ev.hitsRequired}`, color: '#ff88ff', size: 12 });
+      if (ev.hitCount === Math.floor(ev.hitsRequired / 2)) {
+        addEventMessage(`🎵 Pied Piper hit ${ev.hitCount}/${ev.hitsRequired}× — keep going! ${ev.birdName} landed a hit!`, '#ff88ff');
+      }
+    }
+    if (ev.type === 'piper_defeated') {
+      effects.push({ type: 'screen_shake', intensity: 8, duration: 600, time: now });
+      const tag = ev.defeaterGangTag ? `[${ev.defeaterGangTag}] ` : '';
+      showAnnouncement(`🎵 PIED PIPER DRIVEN AWAY!\n${tag}${ev.defeaterName} landed the final hit!\n+${ev.rewardXp} XP +${ev.rewardCoins}c for ALL birds!`, '#ffaaff', 6000);
+      addEventMessage(`🎵 ${tag}${ev.defeaterName} drove away the Pied Piper! Everyone gets +${ev.rewardXp} XP +${ev.rewardCoins}c!`, '#ff88ff');
+      window._piperLocation = null;
+      // Musical coin shower
+      for (let i = 0; i < 14; i++) {
+        effects.push({
+          type: 'coin_particle',
+          x: camera.screenW / 2 + (Math.random() - 0.5) * 260,
+          y: camera.screenH / 2 + (Math.random() - 0.5) * 200,
+          vx: (Math.random() - 0.5) * 5,
+          vy: (Math.random() - 3) * 3,
+          time: now,
+          duration: 1600,
+        });
+      }
+    }
+    if (ev.type === 'piper_steal_personal') {
+      if (ev.birdId === myId) {
+        showAnnouncement(`🎵 THE PIPER STOLE ${ev.stolen} COINS! You were too close to his music!`, '#ff4488', 4000);
+        effects.push({ type: 'text', x: ev.x, y: ev.y - 20, time: now, duration: 1800, text: `-${ev.stolen}c`, color: '#ff4488', size: 14 });
+        effects.push({ type: 'screen_shake', intensity: 5, duration: 350, time: now });
+      }
+    }
+    if (ev.type === 'piper_stolen') {
+      const victimList = ev.victims.slice(0, 3).map(v => `${v.name} (−${v.stolen}c)`).join(', ');
+      addEventMessage(`🎵 The Pied Piper escaped! Stole ${ev.totalStolen} total coins: ${victimList}`, '#ff4488');
+      window._piperLocation = null;
+    }
     if (ev.type === 'mc_diamond_poop') {
       if (ev.birdId === myId) {
         effects.push({
@@ -5545,6 +5596,11 @@
       Renderer.drawMysteryCrate(ctx, camera, _mc, now);
     }
 
+    // Pigeon Pied Piper
+    if (gameState.self && gameState.self.piper) {
+      Renderer.drawPiedPiper(ctx, camera, gameState.self.piper, now);
+    }
+
     // Pigeon Race track checkpoints
     if (worldData && worldData.raceCheckpoints) {
       Renderer.drawRaceTrack(ctx, camera, worldData.raceCheckpoints, gameState.pigeonRace || null, now);
@@ -5995,6 +6051,80 @@
       ctx.restore();
     }
 
+    // Pigeon Pied Piper — direction arrow + countdown bar
+    if (gameState.self && gameState.self.piper) {
+      const piper = gameState.self.piper;
+      const pcx = piper.x - camera.x + camera.screenW / 2;
+      const pcy = piper.y - camera.y + camera.screenH / 2;
+      const pTimeLeft = Math.max(0, piper.endsAt - now);
+      const pOnScreen = pcx > 20 && pcx < camera.screenW - 20 && pcy > 20 && pcy < camera.screenH - 20;
+      // HUD countdown bar (above mystery crate zone — placed at y=110 to avoid clash)
+      const pTotal = 90000;
+      const pFrac = pTimeLeft / pTotal;
+      const pBarW = 140, pBarH = 12;
+      const pBarX = camera.screenW / 2 - pBarW / 2;
+      const pBarY = 110;
+      const pPulse = 0.7 + 0.3 * Math.sin(now * 0.007);
+      const pHue = (now / 15) % 360;
+      ctx.save();
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.beginPath();
+      ctx.roundRect(pBarX - 40, pBarY - 16, pBarW + 80, pBarH + 28, 8);
+      ctx.fill();
+      ctx.fillStyle = `hsl(${pHue}, 90%, 72%)`;
+      ctx.font = 'bold 11px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(`🎵 PIED PIPER — POOP HIM! ${Math.ceil(pTimeLeft / 1000)}s`, camera.screenW / 2, pBarY - 3);
+      // Bar background
+      ctx.fillStyle = 'rgba(200,100,255,0.2)';
+      ctx.beginPath();
+      ctx.roundRect(pBarX, pBarY + 2, pBarW, pBarH, 4);
+      ctx.fill();
+      // Bar fill — rainbow gradient
+      if (pFrac > 0) {
+        const pBarGrad = ctx.createLinearGradient(pBarX, 0, pBarX + pBarW, 0);
+        pBarGrad.addColorStop(0, '#ff44aa');
+        pBarGrad.addColorStop(0.5, '#aa44ff');
+        pBarGrad.addColorStop(1, '#44aaff');
+        ctx.fillStyle = pFrac > 0.35 ? pBarGrad : '#ff3333';
+        ctx.beginPath();
+        ctx.roundRect(pBarX, pBarY + 2, pBarW * pFrac, pBarH, 4);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      // Direction arrow if off-screen
+      if (!pOnScreen) {
+        const pAngle = Math.atan2(pcy - camera.screenH / 2, pcx - camera.screenW / 2);
+        const pArrowDist = Math.min(camera.screenW, camera.screenH) / 2 - 50;
+        const pAx = camera.screenW / 2 + Math.cos(pAngle) * pArrowDist;
+        const pAy = camera.screenH / 2 + Math.sin(pAngle) * pArrowDist;
+        ctx.save();
+        ctx.translate(pAx, pAy);
+        ctx.rotate(pAngle);
+        ctx.globalAlpha = 0.85 * pPulse;
+        const arrowHue2 = (now / 12) % 360;
+        ctx.fillStyle = `hsl(${arrowHue2}, 90%, 65%)`;
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(20, 0);
+        ctx.lineTo(-10, -10);
+        ctx.lineTo(-5, 0);
+        ctx.lineTo(-10, 10);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#000';
+        ctx.font = 'bold 9px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('🎵', 4, 0);
+        ctx.restore();
+      }
+      ctx.restore();
+    }
+
     // Announcements (screen-space)
     drawAnnouncements(ctx, now);
 
@@ -6115,6 +6245,11 @@
     // Mystery Crate on minimap
     if (gameState.self && gameState.self.mysteryCrate && worldData) {
       Renderer.drawMysteryCrateOnMinimap(minimapCtx, worldData, gameState.self.mysteryCrate, now);
+    }
+
+    // Pied Piper on minimap — rainbow pulsing dot
+    if (gameState.self && gameState.self.piper && worldData) {
+      Renderer.drawPiperOnMinimap(minimapCtx, worldData, gameState.self.piper, now);
     }
 
     // Tornado on minimap — pulsing purple 🌪️ dot tracking the vortex position
@@ -6948,6 +7083,21 @@
     // Idol contestant badge — show when you're in the contest
     if (s.birdIdol && s.birdIdol.isContestant) {
       html += '<div class="bm-buff-pill" style="background:rgba(80,0,100,0.85);border-color:#cc44ff;color:#ee88ff;">🎤 CONTESTANT — POOP FOR PERFORMANCE SCORE!</div>';
+    }
+
+    // Pigeon Pied Piper — enchanted debuff (can't poop!)
+    if (s.piperEnchantedUntil && s.piperEnchantedUntil > now) {
+      const secs = Math.ceil((s.piperEnchantedUntil - now) / 1000);
+      html += '<div class="bm-buff-pill" style="background:rgba(80,0,100,0.9);border-color:#ff88ff;color:#ffaaff;animation:pulseGreen 0.4s infinite alternate;font-weight:bold;">🎵 ENCHANTED — NO POOP! ' + secs + 's</div>';
+    }
+    // Show warning when piper is active and nearby
+    if (s.piper && !s.piperEnchantedUntil) {
+      const pdx = s.x - s.piper.x;
+      const pdy = s.y - s.piper.y;
+      const pDist = Math.sqrt(pdx * pdx + pdy * pdy);
+      if (pDist < 350) {
+        html += '<div class="bm-buff-pill" style="background:rgba(60,0,80,0.75);border-color:#cc66ff;color:#ffaaff;">🎵 PIPER NEARBY — POOP HIM AWAY!</div>';
+      }
     }
 
     el.innerHTML = html;

@@ -3204,4 +3204,38 @@ window.Renderer = {
     minimapCtx.fillText('🎤', px, py - 4);
     minimapCtx.restore();
   },
+
+  // ============================================================
+  // PIGEON PIED PIPER
+  // ============================================================
+
+  drawPiedPiper(ctx, camera, piper, now) {
+    if (!piper) return;
+    const sx = piper.x - camera.x + camera.screenW / 2;
+    const sy = piper.y - camera.y + camera.screenH / 2;
+    if (sx < -80 || sx > camera.screenW + 80 || sy < -80 || sy > camera.screenH + 80) return;
+    Sprites.drawPiedPiper(ctx, sx, sy, now, piper.hitCount, piper.hitsRequired);
+  },
+
+  drawPiperOnMinimap(minimapCtx, worldData, piper, now) {
+    if (!piper) return;
+    const scale = minimapCtx.canvas.width / worldData.width;
+    const px = piper.x * scale;
+    const py = piper.y * scale;
+    const t = now / 1000;
+    const pulse = 0.5 + 0.5 * Math.sin(t * 3);
+    const hue = (t * 60) % 360;
+    minimapCtx.save();
+    minimapCtx.shadowColor = `hsl(${hue}, 90%, 70%)`;
+    minimapCtx.shadowBlur = 6 + 4 * pulse;
+    minimapCtx.fillStyle = `hsla(${hue}, 90%, 70%, ${0.8 + 0.2 * pulse})`;
+    minimapCtx.beginPath();
+    minimapCtx.arc(px, py, 4 + pulse * 1.5, 0, Math.PI * 2);
+    minimapCtx.fill();
+    minimapCtx.shadowBlur = 0;
+    minimapCtx.font = '8px sans-serif';
+    minimapCtx.textAlign = 'center';
+    minimapCtx.fillText('🎵', px, py - 4);
+    minimapCtx.restore();
+  },
 };
