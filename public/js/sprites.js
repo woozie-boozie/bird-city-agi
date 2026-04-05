@@ -3933,4 +3933,106 @@ window.Sprites = {
     ctx.shadowBlur = 0;
     ctx.restore();
   },
+
+  // ============================================================
+  // CURSED COIN — world-space spinning dark gold skull coin
+  // ============================================================
+  drawCursedCoin(ctx, x, y, t) {
+    ctx.save();
+    ctx.translate(x, y);
+
+    const spin = t * 1.8;
+    const pulse = 0.5 + 0.5 * Math.sin(t * 4);
+
+    // Outer dark aura — pulsing purple-red
+    const auraDark = ctx.createRadialGradient(0, 0, 4, 0, 0, 28 + pulse * 8);
+    auraDark.addColorStop(0, `rgba(180, 0, 60, ${0.35 + pulse * 0.2})`);
+    auraDark.addColorStop(1, 'rgba(80, 0, 30, 0)');
+    ctx.fillStyle = auraDark;
+    ctx.beginPath();
+    ctx.arc(0, 0, 36, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Coin body — squashed to simulate 3D spin
+    const scaleX = Math.abs(Math.cos(spin));
+    ctx.save();
+    ctx.scale(Math.max(0.15, scaleX), 1);
+
+    const coinGrad = ctx.createRadialGradient(-2, -3, 1, 0, 0, 12);
+    coinGrad.addColorStop(0, '#c0a020');
+    coinGrad.addColorStop(0.6, '#7a5c00');
+    coinGrad.addColorStop(1, '#3a2a00');
+    ctx.fillStyle = coinGrad;
+    ctx.beginPath();
+    ctx.arc(0, 0, 12, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = '#1a0a00';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    if (scaleX > 0.3) {
+      const alpha = Math.min(1, (scaleX - 0.3) / 0.7);
+      ctx.globalAlpha = alpha;
+      ctx.font = `bold ${Math.floor(10 * scaleX)}px Arial`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('💀', 0, 0.5);
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+
+    // Floating label
+    const bobY = -22 + Math.sin(t * 3) * 2;
+    ctx.fillStyle = '#ff3366';
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 2;
+    ctx.font = 'bold 7px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = '#ff0033';
+    ctx.shadowBlur = 6;
+    ctx.strokeText('💀 CURSED COIN', 0, bobY);
+    ctx.fillText('💀 CURSED COIN', 0, bobY);
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  },
+
+  // ============================================================
+  // CURSED COIN holder indicator — drawn above the bird's head
+  // ============================================================
+  drawCursedCoinIndicator(ctx, x, y, t, intensity) {
+    ctx.save();
+    ctx.translate(x, y);
+
+    const pulse = 0.5 + 0.5 * Math.sin(t * (4 + intensity * 8));
+    const r = Math.floor(200 + intensity * 55);
+    const g = Math.floor(Math.max(0, 50 - intensity * 50));
+    const bobY = -38 + Math.sin(t * 3.5) * 3;
+
+    ctx.shadowColor = `rgb(${r}, ${g}, 0)`;
+    ctx.shadowBlur = 8 + pulse * 6;
+    ctx.font = 'bold 14px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('💀', 0, bobY);
+    ctx.shadowBlur = 0;
+
+    // Intensity bar below skull
+    if (intensity > 0.1) {
+      const barW = 28;
+      const barH = 4;
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.beginPath();
+      ctx.roundRect(-barW / 2, bobY + 10, barW, barH, 2);
+      ctx.fill();
+      const barColor = intensity > 0.8 ? '#ff2200' : intensity > 0.5 ? '#ff8800' : '#cc6600';
+      ctx.fillStyle = barColor;
+      ctx.beginPath();
+      ctx.roundRect(-barW / 2, bobY + 10, barW * intensity, barH, 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+  },
 };

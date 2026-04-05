@@ -3238,4 +3238,35 @@ window.Renderer = {
     minimapCtx.fillText('🎵', px, py - 4);
     minimapCtx.restore();
   },
+
+  // ============================================================
+  // CURSED COIN — world drawing
+  // ============================================================
+  drawCursedCoin(ctx, camera, coin, now) {
+    if (!coin || coin.state !== 'world') return;
+    const sx = coin.x - camera.x + camera.screenW / 2;
+    const sy = coin.y - camera.y + camera.screenH / 2;
+    Sprites.drawCursedCoin(ctx, sx, sy, now / 1000);
+  },
+
+  drawCursedCoinOnMinimap(minimapCtx, worldData, coin, now) {
+    if (!coin) return;
+    const scale = minimapCtx.canvas.width / worldData.width;
+    const cx = coin.x * scale;
+    const cy = coin.y * scale;
+    const t = now / 1000;
+    const pulse = 0.5 + 0.5 * Math.sin(t * 5);
+    minimapCtx.save();
+    minimapCtx.shadowColor = '#ff0033';
+    minimapCtx.shadowBlur = 6 + 4 * pulse;
+    minimapCtx.fillStyle = `rgba(220, 0, 50, ${0.8 + 0.2 * pulse})`;
+    minimapCtx.beginPath();
+    minimapCtx.arc(cx, cy, 4 + pulse * 2, 0, Math.PI * 2);
+    minimapCtx.fill();
+    minimapCtx.shadowBlur = 0;
+    minimapCtx.font = '8px sans-serif';
+    minimapCtx.textAlign = 'center';
+    minimapCtx.fillText('💀', cx, cy - 5);
+    minimapCtx.restore();
+  },
 };

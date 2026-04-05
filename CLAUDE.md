@@ -1533,6 +1533,51 @@ Birds now have a fully persistent RPG skill tree. Every time you level up, you e
 
 **Creative intent**: This completes the PROGRESSION pillar's final gap. Prestige gives XP milestones. Daily challenges give daily reasons to log in. Gang Rep gives criminal identity. The Skill Tree gives IDENTITY WITHIN EACH SESSION. Two birds with the same prestige level can play completely differently: one is a fast-firing combo machine (Combat tree), another is a coin-hoarding territorial banker (Wealth tree), a third is a ghost that never gets arrested (Survival tree). Every level-up now has a second emotional beat — "I leveled up AND got a FP, what should I unlock?" The Ghost Walk evade moment is the game's most dramatic single-skill activation: mid-arrest, a dice roll saves you, the cop gets stunned, and everyone nearby sees the message. Pure PROGRESSION + CARNAGE + DISCOVERY energy.
 
+**Session 47 — 2026-04-05: The Cursed Coin — Legendary Item That Hunts You**
+A single legendary cursed coin materializes somewhere in Bird City every 8-14 minutes. The city-wide CARNAGE machine: whoever holds it gets +2.5× coin gains and +20% speed, but the curse builds toward a catastrophic EXPLOSION.
+
+**The Cursed Coin mechanics (`server/game.js`):**
+- Spawns at one of 8 prominent city locations (park center, mall, cafe district, downtown, residential, docks, south quarter, Hall of Legends area)
+- Auto-collected: fly within 45px to pick it up automatically
+- **While held:**
+  - +2.5× all coin gains from poop hits (multiplicative with all other bonuses — Lucky Charm + Cursed Coin + P5 = obscene wealth)
+  - +20% max speed (urgent cursed energy)
+  - −3 food every 20 seconds (the curse slowly drains you)
+  - Intensity builds from 0% → 100% over 4 minutes
+  - Visible to ALL players on minimap as a pulsing red skull 💀
+- **Steal mechanic**: Any rival flies within 50px of the holder → INSTANT STEAL (5-second per-bird cooldown prevents instant re-steal loops). Intensity does NOT reset on steal — the curse remembers! Getting stolen from at 90% intensity is terrifying.
+- **Explosion at 100% (4 minutes held)**:
+  - Holder loses up to 30% of their coins (max 300c)
+  - Those coins scatter proportionally to ALL birds within 400px — coin shower!
+  - Holder earns +500 XP for surviving the full curse (the danger IS the reward)
+  - Combo streak wiped on explosion
+  - Coin disappears, respawns after 2-3 minutes
+- **Disconnect**: coin drops at holder's last position in world mode
+
+**Visual system:**
+- World-space coin: 3D spinning dark gold coin (squashed ellipse to simulate rotation), skull emoji face, pulsing purple-red dark aura, "💀 CURSED COIN" label that bobs up and down
+- Holder indicator: skull 💀 emoji bobbing above the holder's head visible to all nearby players, with a small intensity bar (orange → red as it climbs)
+- Minimap: pulsing red 💀 skull dot at coin/holder position — trackable from anywhere
+- Off-screen direction arrow: dark red arrow with skull points toward the coin when it's off-screen
+- Active buffs HUD: when holding — shows intensity %, countdown to explosion, with escalating color and animation (slow pulse at low intensity → rapid red pulse at 90%+)
+- Proximity warning: when you're within 100px of the holder you see "TOUCH them to steal it!"
+- Coin shower: 20 coin particles scatter on explosion (same mechanic as kingpin dethronement)
+
+**Events & announcements:**
+- `cursed_coin_appeared`: big city-wide announcement + screen shake when coin materializes
+- `cursed_coin_grabbed`: personal "YOU GRABBED THE CURSED COIN!" + city-wide callout
+- `cursed_coin_stolen`: personal announcement for both thief and victim, city-wide event feed
+- `cursed_coin_warning`: personal warnings at 75% and 90% intensity with screen shake
+- `cursed_coin_drain`: subtle floating "💀 -3 food" at 20s intervals
+- `cursed_coin_explosion`: massive screen shake + city-wide announcement + coin shower for nearby birds + personal payout callout
+- `cursed_coin_dropped`: event feed when holder disconnects
+
+**Daily challenges (2 new):**
+- 💀 **Cursed!**: Hold the Cursed Coin for 30+ seconds (200 XP, 100c)
+- 💀 **Coin Thief**: Steal the Cursed Coin from another bird (150 XP, 75c)
+
+**Creative intent**: This is the ULTIMATE social chaos machine. Every coin-earning system in the game now has a shadow overlay: the coin holder is earning 2.5× on every poop, but EVERYONE on the minimap knows where they are and is actively hunting them. The stealing mechanic creates real pursuit — you see the skull on the minimap, track them down, touch them, get the coin, and now YOU'RE the target. The intensity-doesn't-reset-on-steal mechanic is the killer detail: a coin stolen at 90% intensity is basically a ticking time bomb in your talons, while the city watches. The explosion coin shower means even if you're the unlucky one holding when it explodes, the nearby birds all benefit — creating natural clustering around the holder near the 4-minute mark as everyone positions for the shower. Pure CARNAGE + SOCIAL + SPECTACLE energy — the city just got its most dangerous, most valuable item.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -1577,6 +1622,7 @@ Built the Territory Control System on top of the existing upstream code:
 - ~~Pigeon Pied Piper event: mysterious NPC that drifts birds toward them; poop to send away for big reward~~ (DONE Session 45)
 - ~~"BIRD CITY IDOL" singing contest — city votes with emojis, winner gets city-wide XP buff for 5 minutes~~ (DONE Session 44)
 - ~~**Bird Skill Tree** — earn Feather Points on level-up, spend on permanent skills across Combat/Speed/Wealth/Survival branches~~ (DONE Session 46)
+- ~~The Cursed Coin — legendary item with 2.5× coin gains, everyone tracks it on minimap, steals and explodes~~ (DONE Session 47)
 - Idol Hall of Fame: track all-time Idol winners (persistent leaderboard near the stage)
 - Idol challenge daily task: "Win Bird City Idol" as a rare daily challenge
 - Gang sponsorship for Idol: gangs can sponsor a contestant, putting gang treasury coins on the line
@@ -1584,6 +1630,9 @@ Built the Territory Control System on top of the existing upstream code:
 - ~~LEGEND-tier exclusive: ⚜️⚜️⚜️⚜️⚜️ birds can unlock "Prestige Poop" — a special golden poop effect~~ (DONE Session 37)
 - Skill Tree Mastery badge: unlock ALL 12 skills and earn a permanent ✨ MASTER badge on your nametag
 - Skill respec: spend 500 coins at Don Featherstone to reset all skills and refund all FP (costly but available)
+- Cursed Coin gazette tracking: newspaper headlines for the bird who held it longest / detonated for the most coins
+- Cursed Coin + Kingpin combo: if Kingpin grabs the Cursed Coin, their tribute doubles but explosion potential triples
+- Crime wave event: randomly all wanted levels are doubled for 2 minutes; more cops, higher rewards
 - ~~Race power-ups: speed boost gates on the track~~ (DONE Session 30)
 - ~~Weather combos: fog (low visibility) + hailstorm~~ (DONE Session 18)
 - ~~Race betting system (spectators bet coins on a racer from anywhere on the map)~~ (DONE Session 17)

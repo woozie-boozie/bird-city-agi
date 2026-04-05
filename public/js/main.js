@@ -1129,6 +1129,84 @@
       addEventMessage(`🎵 The Pied Piper escaped! Stole ${ev.totalStolen} total coins: ${victimList}`, '#ff4488');
       window._piperLocation = null;
     }
+
+    // === CURSED COIN EVENTS ===
+    if (ev.type === 'cursed_coin_appeared') {
+      effects.push({ type: 'screen_shake', intensity: 6, duration: 500, time: now });
+      showAnnouncement('💀 THE CURSED COIN HAS MATERIALIZED!\n+2.5× coin gains — but beware the curse!', '#ff3366', 6000);
+      addEventMessage('💀 The Cursed Coin appeared on the streets! First to grab it earns +2.5× coins!', '#ff3366');
+    }
+    if (ev.type === 'cursed_coin_grabbed') {
+      const tag = ev.gangTag ? `[${ev.gangTag}] ` : '';
+      const isMe = ev.birdId === myId;
+      if (isMe) {
+        showAnnouncement('💀 YOU GRABBED THE CURSED COIN!\n+2.5× coins · +20% speed · Everyone can see you!', '#ff6600', 5000);
+      } else {
+        addEventMessage(`💀 ${tag}${ev.birdName} grabbed the Cursed Coin! +2.5× coins... if they survive!`, '#ff3366');
+      }
+    }
+    if (ev.type === 'cursed_coin_stolen') {
+      const tag = ev.thiefGangTag ? `[${ev.thiefGangTag}] ` : '';
+      const vTag = ev.victimGangTag ? `[${ev.victimGangTag}] ` : '';
+      const isMe = ev.thiefId === myId;
+      const stolenFromMe = ev.victimId === myId;
+      if (isMe) {
+        showAnnouncement(`💀 YOU STOLE THE CURSED COIN from ${vTag}${ev.victimName}!\nIntensity: ${ev.intensity}% — better hurry!`, '#ff6600', 4000);
+      } else if (stolenFromMe) {
+        showAnnouncement(`💀 ${tag}${ev.thiefName} STOLE THE CURSED COIN FROM YOU!`, '#ff4444', 4000);
+        effects.push({ type: 'screen_shake', intensity: 4, duration: 300, time: now });
+      } else {
+        addEventMessage(`💀 ${tag}${ev.thiefName} SNATCHED the Cursed Coin from ${vTag}${ev.victimName}! (${ev.intensity}% intensity)`, '#ff5500');
+      }
+    }
+    if (ev.type === 'cursed_coin_warning') {
+      if (ev.birdId === myId) {
+        const msg = ev.intensity >= 90
+          ? '💀 THE CURSE IS ABOUT TO EXPLODE! RUN or brace for impact!'
+          : '💀 CURSE INTENSIFYING! 75% — explosion coming!';
+        showAnnouncement(msg, ev.intensity >= 90 ? '#ff0000' : '#ff6600', 3000);
+        effects.push({ type: 'screen_shake', intensity: ev.intensity >= 90 ? 8 : 5, duration: 400, time: now });
+      }
+    }
+    if (ev.type === 'cursed_coin_drain') {
+      if (ev.birdId === myId) {
+        effects.push({ type: 'text', x: camera.screenW / 2, y: camera.screenH / 2 - 60, time: now, duration: 1200, text: '💀 -3 food', color: '#ff6600', size: 11 });
+      }
+    }
+    if (ev.type === 'cursed_coin_dropped') {
+      addEventMessage('💀 The Cursed Coin was dropped!', '#ff5500');
+    }
+    if (ev.type === 'cursed_coin_explosion') {
+      effects.push({ type: 'screen_shake', intensity: 15, duration: 900, time: now });
+      const tag = ev.holderGangTag ? `[${ev.holderGangTag}] ` : '';
+      const isMe = ev.holderId === myId;
+      if (isMe) {
+        showAnnouncement(`💀 THE CURSE EXPLODES!\nYou lost ${ev.lostCoins}c — but earned +500 XP for surviving!\nCoins scattered to nearby birds!`, '#ff0033', 6000);
+      } else {
+        showAnnouncement(`💀 CURSE EXPLOSION!\n${tag}${ev.holderName} took the full brunt! Coins scattered!`, '#ff3366', 5000);
+      }
+      addEventMessage(`💀 💥 CURSE EXPLODES on ${tag}${ev.holderName}! −${ev.lostCoins}c scattered to ${ev.rewards.length} birds!`, '#ff0033');
+      // Coin shower for nearby birds
+      if (ev.rewards && ev.rewards.length > 0) {
+        for (let i = 0; i < Math.min(20, ev.rewards.length * 3); i++) {
+          effects.push({
+            type: 'coin_particle',
+            x: camera.screenW / 2 + (Math.random() - 0.5) * 300,
+            y: camera.screenH / 2 + (Math.random() - 0.5) * 240,
+            vx: (Math.random() - 0.5) * 6,
+            vy: (Math.random() - 3) * 4,
+            time: now,
+            duration: 1800,
+          });
+        }
+      }
+      // Show personal reward
+      const myReward = ev.rewards && ev.rewards.find(r => r.birdId === myId);
+      if (myReward) {
+        showAnnouncement(`💀 COIN SHOWER! +${myReward.coins}c from the curse explosion!`, '#ffcc00', 4000);
+      }
+    }
+
     if (ev.type === 'mc_diamond_poop') {
       if (ev.birdId === myId) {
         effects.push({
@@ -5609,6 +5687,11 @@
       Renderer.drawPiedPiper(ctx, camera, gameState.self.piper, now);
     }
 
+    // Cursed Coin (world-state)
+    if (gameState.self && gameState.self.cursedCoin && gameState.self.cursedCoin.state === 'world') {
+      Renderer.drawCursedCoin(ctx, camera, gameState.self.cursedCoin, now);
+    }
+
     // Pigeon Race track checkpoints
     if (worldData && worldData.raceCheckpoints) {
       Renderer.drawRaceTrack(ctx, camera, worldData.raceCheckpoints, gameState.pigeonRace || null, now);
@@ -5761,6 +5844,11 @@
           // Golden egg carrier indicator
           if (b.carryingEggId) {
             Renderer.drawCarriedEggIndicator(ctx, sx, sy, now / 1000);
+          }
+
+          // Cursed Coin holder indicator
+          if (b.hasCursedCoin) {
+            Sprites.drawCursedCoinIndicator(ctx, sx, sy, now / 1000, b.cursedCoinIntensity || 0);
           }
 
           // Wanted indicator
@@ -6133,6 +6221,43 @@
       ctx.restore();
     }
 
+    // Cursed Coin — direction arrow and mini HUD bar when coin exists
+    if (gameState.self && gameState.self.cursedCoin) {
+      const cc = gameState.self.cursedCoin;
+      const ccx = cc.x - camera.x + camera.screenW / 2;
+      const ccy = cc.y - camera.y + camera.screenH / 2;
+      const ccOnScreen = ccx > 20 && ccx < camera.screenW - 20 && ccy > 20 && ccy < camera.screenH - 20;
+      const ccPulse = 0.6 + 0.4 * Math.sin(now * 0.006);
+      // Direction arrow when off-screen
+      if (!ccOnScreen) {
+        const ccAngle = Math.atan2(ccy - camera.screenH / 2, ccx - camera.screenW / 2);
+        const ccArrowDist = Math.min(camera.screenW, camera.screenH) / 2 - 55;
+        const ccAx = camera.screenW / 2 + Math.cos(ccAngle) * ccArrowDist;
+        const ccAy = camera.screenH / 2 + Math.sin(ccAngle) * ccArrowDist;
+        ctx.save();
+        ctx.translate(ccAx, ccAy);
+        ctx.rotate(ccAngle);
+        ctx.globalAlpha = 0.85 * ccPulse;
+        ctx.fillStyle = '#cc0033';
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(20, 0);
+        ctx.lineTo(-10, -10);
+        ctx.lineTo(-5, 0);
+        ctx.lineTo(-10, 10);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 9px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('💀', 4, 0);
+        ctx.restore();
+      }
+    }
+
     // Announcements (screen-space)
     drawAnnouncements(ctx, now);
 
@@ -6258,6 +6383,11 @@
     // Pied Piper on minimap — rainbow pulsing dot
     if (gameState.self && gameState.self.piper && worldData) {
       Renderer.drawPiperOnMinimap(minimapCtx, worldData, gameState.self.piper, now);
+    }
+
+    // Cursed Coin on minimap — pulsing red skull (visible even when held by another bird)
+    if (gameState.self && gameState.self.cursedCoin && worldData) {
+      Renderer.drawCursedCoinOnMinimap(minimapCtx, worldData, gameState.self.cursedCoin, now);
     }
 
     // Tornado on minimap — pulsing purple 🌪️ dot tracking the vortex position
@@ -7105,6 +7235,29 @@
       const pDist = Math.sqrt(pdx * pdx + pdy * pdy);
       if (pDist < 350) {
         html += '<div class="bm-buff-pill" style="background:rgba(60,0,80,0.75);border-color:#cc66ff;color:#ffaaff;">🎵 PIPER NEARBY — POOP HIM AWAY!</div>';
+      }
+    }
+
+    // === CURSED COIN holder buffs ===
+    if (s.cursedCoin && s.cursedCoin.isMine) {
+      const intensityPct = Math.round((s.cursedCoin.intensity || 0) * 100);
+      const secHeld = s.cursedCoin.heldSince ? Math.floor((now - s.cursedCoin.heldSince) / 1000) : 0;
+      const timeLeft = Math.max(0, Math.ceil((240000 - (now - (s.cursedCoin.heldSince || now))) / 1000));
+      const urgencyColor = intensityPct >= 90 ? '#ff0000' : intensityPct >= 75 ? '#ff6600' : '#cc3366';
+      const anim = intensityPct >= 90 ? 'pulseRed 0.4s infinite alternate' : intensityPct >= 75 ? 'pulseRed 0.7s infinite alternate' : 'kingpinGlow 1.2s ease-in-out infinite alternate';
+      html += `<div class="bm-buff-pill" style="background:rgba(80,0,20,0.9);border-color:${urgencyColor};color:${urgencyColor};font-weight:bold;animation:${anim};">💀 CURSED COIN — ${intensityPct}% · +2.5× COINS · ${timeLeft}s until EXPLOSION</div>`;
+    }
+    // If someone else has the coin — show proximity warn if you're near them
+    if (s.cursedCoin && s.cursedCoin.state === 'held' && !s.cursedCoin.isMine) {
+      const intensityPct = Math.round((s.cursedCoin.intensity || 0) * 100);
+      const holderBird = gameState.birds && gameState.birds.find(b => b.id === s.cursedCoin.holderId);
+      if (holderBird) {
+        const cdx = s.x - holderBird.x;
+        const cdy = s.y - holderBird.y;
+        const cDist = Math.sqrt(cdx * cdx + cdy * cdy);
+        if (cDist < 100) {
+          html += `<div class="bm-buff-pill" style="background:rgba(60,0,15,0.8);border-color:#cc3366;color:#ff7799;">💀 CURSED COIN NEARBY — TOUCH ${s.cursedCoin.holderName} to steal it! (${intensityPct}%)</div>`;
+        }
       }
     }
 

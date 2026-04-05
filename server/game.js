@@ -64,6 +64,8 @@ const DAILY_CHALLENGE_POOL = [
   { id: 'npc_cryer',       title: 'Tear Collector',  desc: 'Make 3 humans cry with poop',            target: 3,   trackType: 'npc_cry',         reward: { xp: 160, coins: 70  } },
   { id: 'flu_survivor',   title: 'Flu Fighter',     desc: 'Recover from Bird Flu (find medicine)',   target: 1,   trackType: 'flu_cured',       reward: { xp: 170, coins: 80  } },
   { id: 'piper_stopper',  title: 'Music Critic',    desc: 'Hit the Pied Piper to help drive him away', target: 3, trackType: 'piper_hit',       reward: { xp: 180, coins: 90  } },
+  { id: 'cursed_holder',  title: 'Cursed!',         desc: 'Hold the Cursed Coin for 30+ seconds',     target: 1,  trackType: 'cursed_hold',     reward: { xp: 200, coins: 100 } },
+  { id: 'coin_thief',     title: 'Coin Thief',      desc: 'Steal the Cursed Coin from another bird',  target: 1,  trackType: 'cursed_steal',    reward: { xp: 150, coins: 75  } },
 ];
 
 class GameEngine {
@@ -429,6 +431,16 @@ class GameEngine {
       { x: 2700, y: 700  }, // Mall northeast
     ];
 
+    // === CURSED COIN ===
+    // A single legendary cursed coin spawns in the world every 8-14 minutes.
+    // Auto-collected on proximity. While held: +2.5× all coin gains, +20% speed,
+    // but -3 food every 20s. Visible on everyone's minimap as a pulsing skull.
+    // Anyone can STEAL it by flying within 50px (5s per-bird steal cooldown).
+    // After 4 minutes held, EXPLODES: holder loses 30% coins (max 300c),
+    // those coins scatter to all birds within 400px. Holder earns +500 XP.
+    this.cursedCoin = null; // null | { state:'world'|'held', x, y, holderId, holderName, heldSince, intensity, lastDrain, stealCooldowns: Map }
+    this.cursedCoinTimer = Date.now() + this._randomRange(8 * 60000, 14 * 60000); // first spawn 8-14 min in
+
     // === BIRD CITY GAZETTE ===
     // Every game day cycle (~20 min), a newspaper publishes at dawn recapping the night.
     // Tracks key moments: top combo, most wanted, heists, gang wars, predator kills, etc.
@@ -779,6 +791,15 @@ class GameEngine {
           egg.carrierId = null;
           egg.carrierName = null;
         }
+      }
+      // Drop cursed coin if holding — it stays at the bird's last position
+      if (this.cursedCoin && this.cursedCoin.state === 'held' && this.cursedCoin.holderId === id) {
+        this.cursedCoin.state = 'world';
+        this.cursedCoin.holderId = null;
+        this.cursedCoin.holderName = null;
+        this.cursedCoin.heldSince = null;
+        this.cursedCoin.stealCooldowns = new Map();
+        this.events.push({ type: 'cursed_coin_dropped', x: this.cursedCoin.x, y: this.cursedCoin.y, reason: 'disconnect' });
       }
       this.birds.delete(id);
     }
@@ -1197,6 +1218,9 @@ class GameEngine {
 
     // === Pigeon Pied Piper ===
     this._tickPiper(dt, now);
+
+    // === Cursed Coin ===
+    this._tickCursedCoin(dt, now);
   }
 
   // ============================================================
@@ -2134,6 +2158,11 @@ class GameEngine {
       maxSpeed *= 1.7;
     }
 
+    // Cursed Coin: holder gets +20% speed (urgent cursed energy)
+    if (this.cursedCoin && this.cursedCoin.state === 'held' && this.cursedCoin.holderId === bird.id) {
+      maxSpeed *= 1.20;
+    }
+
     // Mystery Crate: Jet Wings — blazing fast
     if (bird.mcJetWingsUntil > now) {
       maxSpeed *= 3.5;
@@ -2741,6 +2770,10 @@ class GameEngine {
       // Skill Tree: Sticky Claws — +18% coins from every poop hit
       if (bird.skillTreeUnlocked && bird.skillTreeUnlocked.includes('sticky_claws') && coinGain > 0) {
         coinGain = Math.max(1, Math.floor(coinGain * 1.18));
+      }
+      // Cursed Coin: 2.5× all coin gains while holding it
+      if (this.cursedCoin && this.cursedCoin.state === 'held' && this.cursedCoin.holderId === bird.id && coinGain > 0) {
+        coinGain = Math.floor(coinGain * 2.5);
       }
       bird.coins += coinGain;
 
@@ -4458,6 +4491,8 @@ class GameEngine {
           idolBadge: b.idolBadge || false,
           isFlu: b.fluUntil > now,
           formationType: b.formationType || null,
+          hasCursedCoin: this.cursedCoin && this.cursedCoin.state === 'held' && this.cursedCoin.holderId === b.id,
+          cursedCoinIntensity: (this.cursedCoin && this.cursedCoin.state === 'held' && this.cursedCoin.holderId === b.id) ? this.cursedCoin.intensity : 0,
         });
       }
     }
@@ -5326,6 +5361,17 @@ class GameEngine {
         endsAt: this.piper.endsAt,
       } : null,
       piperEnchantedUntil: bird.piperEnchantedUntil,
+      // Cursed Coin
+      cursedCoin: this.cursedCoin ? {
+        state: this.cursedCoin.state,
+        x: this.cursedCoin.x,
+        y: this.cursedCoin.y,
+        holderId: this.cursedCoin.holderId,
+        holderName: this.cursedCoin.holderName,
+        intensity: this.cursedCoin.intensity,
+        isMine: this.cursedCoin.holderId === bird.id,
+        heldSince: this.cursedCoin.heldSince,
+      } : null,
     };
   }
 
@@ -11641,6 +11687,231 @@ class GameEngine {
       totalStolen,
       x: p.x, y: p.y,
     });
+  }
+
+  // ============================================================
+  // CURSED COIN SYSTEM
+  // A single legendary cursed coin roams Bird City.
+  // Holding it gives +2.5× coin gains + +20% speed but drains food
+  // and builds toward a catastrophic explosion after 4 minutes.
+  // Anyone can steal it by flying within 50px (5s cooldown per bird).
+  // ============================================================
+  _tickCursedCoin(dt, now) {
+    const CURSE_DURATION = 4 * 60 * 1000; // 4 minutes to full intensity
+    const EXPLODE_RADIUS = 400;
+    const STEAL_RADIUS = 50;
+    const PICKUP_RADIUS = 45;
+    const FOOD_DRAIN_INTERVAL = 20000; // drain 3 food every 20s
+    const STEAL_COOLDOWN = 5000;       // 5s per-bird steal cooldown
+
+    // Spawn timer: respawn after explosion or first appearance
+    if (!this.cursedCoin && now >= this.cursedCoinTimer && this.birds.size > 0) {
+      // Pick a random prominent city spot
+      const SPAWN_SPOTS = [
+        { x: 1200, y: 1200 }, // Park center
+        { x: 2200, y: 1200 }, // Mall area
+        { x: 800,  y: 1800 }, // Cafe District
+        { x: 1800, y: 600  }, // Near Downtown
+        { x: 600,  y: 600  }, // Residential
+        { x: 2500, y: 1800 }, // East docks
+        { x: 1500, y: 2200 }, // South quarter
+        { x: 1050, y: 640  }, // Hall of Legends area
+      ];
+      const spot = SPAWN_SPOTS[Math.floor(Math.random() * SPAWN_SPOTS.length)];
+      this.cursedCoin = {
+        state: 'world',
+        x: spot.x + (Math.random() - 0.5) * 200,
+        y: spot.y + (Math.random() - 0.5) * 200,
+        holderId: null,
+        holderName: null,
+        heldSince: null,
+        intensity: 0,        // 0.0 to 1.0
+        lastDrain: 0,
+        stealCooldowns: new Map(),
+      };
+      this.events.push({
+        type: 'cursed_coin_appeared',
+        x: this.cursedCoin.x,
+        y: this.cursedCoin.y,
+      });
+      return;
+    }
+
+    if (!this.cursedCoin) return;
+
+    const coin = this.cursedCoin;
+
+    if (coin.state === 'world') {
+      // Auto-collect: first non-stunned bird within 45px picks it up
+      for (const bird of this.birds.values()) {
+        if (bird.stunnedUntil > now) continue;
+        if (bird.inSewer) continue;
+        const dx = bird.x - coin.x;
+        const dy = bird.y - coin.y;
+        if (Math.sqrt(dx * dx + dy * dy) < PICKUP_RADIUS) {
+          coin.state = 'held';
+          coin.holderId = bird.id;
+          coin.holderName = bird.name;
+          coin.heldSince = now;
+          coin.intensity = 0;
+          coin.lastDrain = now;
+          coin.stealCooldowns = new Map();
+          this.events.push({
+            type: 'cursed_coin_grabbed',
+            birdId: bird.id,
+            birdName: bird.name,
+            gangTag: bird.gangTag || null,
+          });
+          break;
+        }
+      }
+    } else if (coin.state === 'held') {
+      const holder = this.birds.get(coin.holderId);
+
+      // Holder disconnected → drop at last known position
+      if (!holder) {
+        coin.state = 'world';
+        coin.holderId = null;
+        coin.holderName = null;
+        coin.heldSince = null;
+        coin.intensity = 0;
+        coin.stealCooldowns = new Map();
+        // Coin stays at last known position (x, y unchanged from holder's last pos)
+        this.events.push({ type: 'cursed_coin_dropped', x: coin.x, y: coin.y });
+        return;
+      }
+
+      // Update coin position to follow holder
+      coin.x = holder.x;
+      coin.y = holder.y;
+
+      // Food drain: -3 food every 20 seconds
+      if (now - coin.lastDrain >= FOOD_DRAIN_INTERVAL) {
+        coin.lastDrain = now;
+        holder.food = Math.max(0, holder.food - 3);
+        this.events.push({
+          type: 'cursed_coin_drain',
+          birdId: holder.id,
+          birdName: holder.name,
+        });
+      }
+
+      // Build intensity
+      const elapsed = now - coin.heldSince;
+      coin.intensity = Math.min(1.0, elapsed / CURSE_DURATION);
+
+      // Daily challenge: hold for 30+ seconds
+      if (elapsed >= 30000 && !coin.holdChallengeDone) {
+        coin.holdChallengeDone = true;
+        this._trackDailyProgress(holder, 'cursed_hold', 1);
+      }
+
+      // EXPLOSION at full intensity
+      if (coin.intensity >= 1.0) {
+        this._explodeCursedCoin(holder, now, EXPLODE_RADIUS);
+        return;
+      }
+
+      // Warn at 75% and 90%
+      if (coin.intensity >= 0.90 && !coin.warned90) {
+        coin.warned90 = true;
+        this.events.push({ type: 'cursed_coin_warning', birdId: holder.id, birdName: holder.name, intensity: 90 });
+      } else if (coin.intensity >= 0.75 && !coin.warned75) {
+        coin.warned75 = true;
+        this.events.push({ type: 'cursed_coin_warning', birdId: holder.id, birdName: holder.name, intensity: 75 });
+      }
+
+      // Steal check: any non-holder bird within 50px can steal (with cooldown)
+      for (const bird of this.birds.values()) {
+        if (bird.id === coin.holderId) continue;
+        if (bird.stunnedUntil > now) continue;
+        if (bird.inSewer) continue;
+        const cooldownEnd = coin.stealCooldowns.get(bird.id) || 0;
+        if (now < cooldownEnd) continue;
+        const dx = bird.x - holder.x;
+        const dy = bird.y - holder.y;
+        if (Math.sqrt(dx * dx + dy * dy) < STEAL_RADIUS) {
+          // Steal!
+          const prevHolder = holder;
+          const prevName = coin.holderName;
+          coin.stealCooldowns.set(bird.id, now + STEAL_COOLDOWN);
+          // Give 5s immunity back to original holder too
+          coin.stealCooldowns.set(prevHolder.id, now + STEAL_COOLDOWN);
+          coin.holderId = bird.id;
+          coin.holderName = bird.name;
+          coin.heldSince = now; // intensity does NOT reset — curse remembers!
+          coin.warned75 = false;
+          coin.warned90 = false;
+          coin.lastDrain = now;
+          this.events.push({
+            type: 'cursed_coin_stolen',
+            thiefId: bird.id,
+            thiefName: bird.name,
+            thiefGangTag: bird.gangTag || null,
+            victimId: prevHolder.id,
+            victimName: prevName,
+            victimGangTag: prevHolder.gangTag || null,
+            intensity: Math.round(coin.intensity * 100),
+          });
+          // Reward thief: XP + daily challenge progress
+          bird.xp += 40;
+          this._trackDailyProgress(bird, 'cursed_steal', 1);
+          break;
+        }
+      }
+    }
+  }
+
+  _explodeCursedCoin(holder, now, explodeRadius) {
+    const coin = this.cursedCoin;
+
+    // Holder loses up to 30% of coins (capped at 300c)
+    const lostCoins = Math.min(300, Math.floor(holder.coins * 0.30));
+    holder.coins = Math.max(0, holder.coins - lostCoins);
+
+    // Holder earns +500 XP for surviving the full curse
+    holder.xp += 500;
+
+    // Scatter lost coins to all nearby birds proportionally
+    const nearbyBirds = [];
+    for (const bird of this.birds.values()) {
+      if (bird.id === holder.id) continue;
+      const dx = bird.x - holder.x;
+      const dy = bird.y - holder.y;
+      if (Math.sqrt(dx * dx + dy * dy) < explodeRadius) {
+        nearbyBirds.push(bird);
+      }
+    }
+
+    const rewards = [];
+    if (nearbyBirds.length > 0 && lostCoins > 0) {
+      const share = Math.floor(lostCoins / nearbyBirds.length);
+      for (const b of nearbyBirds) {
+        const earned = Math.max(1, share + Math.floor(Math.random() * 5));
+        b.coins += earned;
+        b.xp += 50;
+        rewards.push({ birdId: b.id, birdName: b.name, coins: earned });
+      }
+    }
+
+    this.events.push({
+      type: 'cursed_coin_explosion',
+      holderId: holder.id,
+      holderName: holder.name,
+      holderGangTag: holder.gangTag || null,
+      lostCoins,
+      rewards,
+      x: holder.x,
+      y: holder.y,
+    });
+
+    // Wipe combo streak for the exploded holder
+    holder.comboCount = 0;
+    holder.comboExpiresAt = 0;
+
+    // Remove the coin for now — respawn after 2-3 minutes
+    this.cursedCoin = null;
+    this.cursedCoinTimer = now + this._randomRange(2 * 60000, 3 * 60000);
   }
 
 }
