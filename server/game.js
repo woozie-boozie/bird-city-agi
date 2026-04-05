@@ -23,6 +23,29 @@ const PRESTIGE_COOLDOWN_MULTS = [1.00, 1.00, 1.00, 0.85, 0.85, 0.80];
 // Prestige badge strings
 const PRESTIGE_BADGES = ['', '⚜️', '⚜️⚜️', '⚜️⚜️⚜️', '⚜️⚜️⚜️⚜️', '⚜️⚜️⚜️⚜️⚜️'];
 
+// ============================================================
+// SKILL TREE SYSTEM — Permanent character build via Feather Points
+// Earn 1 FP per level-up. Unlock from 4 branches: Combat, Speed, Wealth, Survival.
+// ============================================================
+const SKILL_TREE_DEFS = {
+  // Combat Branch (orange) — POOP HARDER
+  quick_draw:    { branch: 'combat',   tier: 1, cost: 1, req: null,           label: 'Quick Draw',    emoji: '🎯', desc: '-15% poop cooldown — fire faster' },
+  splash_zone:   { branch: 'combat',   tier: 2, cost: 2, req: 'quick_draw',   label: 'Splash Zone',   emoji: '💥', desc: '+20% poop hit radius — wider shots' },
+  double_tap:    { branch: 'combat',   tier: 3, cost: 3, req: 'splash_zone',  label: 'Double Tap',    emoji: '🔥', desc: '20% chance to fire a bonus poop on every hit' },
+  // Speed Branch (cyan) — FLY FASTER
+  aerodynamics:  { branch: 'speed',    tier: 1, cost: 1, req: null,            label: 'Aerodynamics',  emoji: '💨', desc: '+10% max speed permanently' },
+  wind_rider:    { branch: 'speed',    tier: 2, cost: 2, req: 'aerodynamics',  label: 'Wind Rider',    emoji: '🌀', desc: 'All external speed boosts +30% stronger' },
+  desperado:     { branch: 'speed',    tier: 3, cost: 3, req: 'wind_rider',    label: 'Desperado',     emoji: '⚡', desc: '+22% speed when food is below 25 — survival instinct' },
+  // Wealth Branch (gold) — EARN MORE
+  sticky_claws:  { branch: 'wealth',   tier: 1, cost: 1, req: null,            label: 'Sticky Claws',  emoji: '💰', desc: '+18% coins from every poop hit' },
+  fence_rep:     { branch: 'wealth',   tier: 2, cost: 2, req: 'sticky_claws',  label: 'Fence Rep',     emoji: '🤝', desc: 'Black Market prices -20%' },
+  territory_tax: { branch: 'wealth',   tier: 3, cost: 3, req: 'fence_rep',     label: 'Territory Tax', emoji: '🏦', desc: '+50% passive territory income' },
+  // Survival Branch (green) — STAY ALIVE
+  street_smart:  { branch: 'survival', tier: 1, cost: 1, req: null,            label: 'Street Smart',  emoji: '🧠', desc: '-20% heat generated per poop — stay off the radar' },
+  iron_wings:    { branch: 'survival', tier: 2, cost: 2, req: 'street_smart',  label: 'Iron Wings',    emoji: '🛡️', desc: '-35% stun duration from all sources' },
+  ghost_walk:    { branch: 'survival', tier: 3, cost: 3, req: 'iron_wings',    label: 'Ghost Walk',    emoji: '👻', desc: '18% chance to fully evade a cop arrest' },
+};
+
 const DAILY_CHALLENGE_POOL = [
   { id: 'poop_humans',     title: 'Bombardier',      desc: 'Poop on 15 humans or NPCs',              target: 15,  trackType: 'poop_npc',        reward: { xp: 120, coins: 50  } },
   { id: 'poop_total',      title: 'Poop Machine',    desc: 'Poop 30 times (any target)',             target: 30,  trackType: 'poop_total',      reward: { xp: 100, coins: 45  } },
@@ -681,12 +704,17 @@ class GameEngine {
       fluSpreadCooldown: 0,    // timestamp: can't re-spread to another bird until this passes
       // === PIGEON PIED PIPER ===
       piperEnchantedUntil: 0,  // timestamp when enchantment wears off (blocks poop)
+      // === SKILL TREE — Feather Points + unlocked skills ===
+      skillPoints: saved ? (saved.skill_points || 0) : 0,
+      skillTreeUnlocked: saved ? this._safeJsonParse(saved.skill_tree, []) : [],
+      lastKnownLevel: 0, // used to detect level-ups and award skill points each tick
     };
 
     // Determine bird type from XP
     const level = world.getLevelFromXP(bird.xp);
     bird.type = world.getBirdTypeForLevel(level);
     bird.level = level;
+    bird.lastKnownLevel = level; // baseline for skill point detection
 
     // Prestige P4+: spawn with 50 bonus food (survival edge)
     if (bird.prestige >= 4) {
@@ -930,6 +958,11 @@ class GameEngine {
     }
     if (action.type === 'weather_bet') {
       this._handleWeatherBet(bird, action, now);
+    }
+
+    // === Skill Tree ===
+    if (action.type === 'skill_tree_unlock') {
+      this._handleSkillTreeUnlock(bird, action.skillId, now);
     }
 
     // === Graffiti Tagging ===
@@ -1270,7 +1303,11 @@ class GameEngine {
       if (dist < 25) {
         // Bird loses 20% food, gets stunned 3 seconds
         nearestBird.food = Math.max(0, Math.floor(nearestBird.food * 0.8));
-        nearestBird.stunnedUntil = now + 3000;
+        {
+          let catStun = 3000;
+          if (nearestBird.skillTreeUnlocked && nearestBird.skillTreeUnlocked.includes('iron_wings')) catStun = Math.floor(catStun * 0.65);
+          nearestBird.stunnedUntil = now + catStun;
+        }
         // Combo break — the cat got your streak!
         nearestBird.comboCount = 0;
         nearestBird.comboExpiresAt = 0;
@@ -2005,6 +2042,16 @@ class GameEngine {
   // BIRD UPDATE (modified)
   // ============================================================
   _updateBird(bird, dt, now) {
+    // === SKILL POINT DETECTION — detect level-ups and award Feather Points ===
+    if (bird.level > (bird.lastKnownLevel || 0)) {
+      const gained = bird.level - (bird.lastKnownLevel || 0);
+      bird.skillPoints = (bird.skillPoints || 0) + gained;
+      bird.lastKnownLevel = bird.level;
+      this.events.push({ type: 'skill_point_gained', birdId: bird.id, birdName: bird.name, skillPoints: bird.skillPoints, gained });
+    } else {
+      bird.lastKnownLevel = bird.level;
+    }
+
     // Check nest — bird is safe, skip everything. Auto-wake on any input.
     if (bird.inNest) {
       bird.vx = 0;
@@ -2112,6 +2159,21 @@ class GameEngine {
     // Prestige P3+: reduced poop cooldown (faster firing rate as permanent bonus)
     if (bird.prestige >= 3) {
       poopCooldown = Math.floor(poopCooldown * PRESTIGE_COOLDOWN_MULTS[Math.min(bird.prestige, 5)]);
+    }
+
+    // === SKILL TREE: Combat — Quick Draw (-15% cooldown) ===
+    if (bird.skillTreeUnlocked && bird.skillTreeUnlocked.includes('quick_draw')) {
+      poopCooldown = Math.floor(poopCooldown * 0.85);
+    }
+
+    // === SKILL TREE: Speed — Aerodynamics (+10% base speed) ===
+    if (bird.skillTreeUnlocked && bird.skillTreeUnlocked.includes('aerodynamics')) {
+      maxSpeed *= 1.10;
+    }
+
+    // === SKILL TREE: Speed — Desperado (+22% speed when food < 25) ===
+    if (bird.skillTreeUnlocked && bird.skillTreeUnlocked.includes('desperado') && bird.food < 25) {
+      maxSpeed *= 1.22;
     }
 
     // Egg carrying: precious cargo slows you down
@@ -2226,8 +2288,9 @@ class GameEngine {
 
     // Wind pushes birds — applied after player-speed clamp so it's additive drift
     if (this.weather && this.weather.windSpeed > 0) {
-      bird.vx += Math.cos(this.weather.windAngle) * this.weather.windSpeed * dt;
-      bird.vy += Math.sin(this.weather.windAngle) * this.weather.windSpeed * dt;
+      const windMult = (bird.skillTreeUnlocked && bird.skillTreeUnlocked.includes('wind_rider')) ? 1.3 : 1.0;
+      bird.vx += Math.cos(this.weather.windAngle) * this.weather.windSpeed * dt * windMult;
+      bird.vy += Math.sin(this.weather.windAngle) * this.weather.windSpeed * dt * windMult;
     }
 
     // Pied Piper suction force — draws birds toward the Piper within 350px
@@ -2622,7 +2685,13 @@ class GameEngine {
 
       // === CHAOS & HEAT & AREA CHAOS ===
       this._addChaos(hit.target === 'npc' || hit.target === 'event_npc' ? 3 : hit.target === 'car' || hit.target === 'moving_car' ? 2 : hit.target === 'bride' ? 5 : 1);
-      this._addHeat(bird.id, hit.target === 'npc' || hit.target === 'event_npc' ? 3 : hit.target === 'car' || hit.target === 'moving_car' ? 2 : 1);
+      {
+        let heatAmt = hit.target === 'npc' || hit.target === 'event_npc' ? 3 : hit.target === 'car' || hit.target === 'moving_car' ? 2 : 1;
+        if (bird.skillTreeUnlocked && bird.skillTreeUnlocked.includes('street_smart')) {
+          heatAmt = Math.max(0, Math.floor(heatAmt * 0.80));
+        }
+        this._addHeat(bird.id, heatAmt);
+      }
       this._addAreaChaos(poop.x, poop.y, 1);
       if (hit.npc && hit.npc.poopedOn >= 3) {
         this._addChaos(5); // cry bonus
@@ -2669,6 +2738,10 @@ class GameEngine {
       if (bird.prestige >= 2 && coinGain > 0) {
         coinGain = Math.floor(coinGain * PRESTIGE_COIN_MULTS[Math.min(bird.prestige, 5)]);
       }
+      // Skill Tree: Sticky Claws — +18% coins from every poop hit
+      if (bird.skillTreeUnlocked && bird.skillTreeUnlocked.includes('sticky_claws') && coinGain > 0) {
+        coinGain = Math.max(1, Math.floor(coinGain * 1.18));
+      }
       bird.coins += coinGain;
 
       // === COMBO STREAK — chain hits within 8s for escalating XP ===
@@ -2710,6 +2783,18 @@ class GameEngine {
         xpGain = Math.floor(xpGain * PRESTIGE_XP_MULTS[Math.min(bird.prestige, 5)]);
       }
       bird.xp += xpGain;
+
+      // Skill Tree: Double Tap — 20% chance to fire a bonus poop on any hit
+      if (bird.skillTreeUnlocked && bird.skillTreeUnlocked.includes('double_tap') && hit.target !== 'miss' && Math.random() < 0.20) {
+        const bonusPoopId = uid();
+        const bonusPoop = {
+          id: bonusPoopId, birdId: bird.id,
+          x: poop.x + (Math.random() - 0.5) * 30, y: poop.y + (Math.random() - 0.5) * 30,
+          hitTarget: null, time: now, isNew: true, isLegend: poop.isLegend || false,
+        };
+        this.poops.set(bonusPoopId, bonusPoop);
+        this.events.push({ type: 'poop', birdId: bird.id, id: bonusPoopId, x: bonusPoop.x, y: bonusPoop.y, isLegend: bonusPoop.isLegend });
+      }
 
       // Mystery Crate: Diamond Poop — triple coins per hit instead of normal XP flow
       if (bird.mcDiamondPoopUntil > now && hit.target !== 'miss') {
@@ -3055,7 +3140,12 @@ class GameEngine {
   }
 
   _checkPoopHit(poop, isMegaPoop, isWedgePoop = false) {
-    const hitRadius = isMegaPoop ? 60 : (isWedgePoop ? 33 : 20); // Wedge: +65% wider splash
+    let hitRadius = isMegaPoop ? 60 : (isWedgePoop ? 33 : 20); // Wedge: +65% wider splash
+    // Skill Tree: Splash Zone — +20% hit radius for the shooter
+    const shooter = this.birds.get(poop.birdId);
+    if (shooter && shooter.skillTreeUnlocked && shooter.skillTreeUnlocked.includes('splash_zone') && !isMegaPoop) {
+      hitRadius = Math.round(hitRadius * 1.20);
+    }
     const allHits = [];
 
     // Check janitor
@@ -3495,7 +3585,8 @@ class GameEngine {
         const dx = b.x - lx;
         const dy = b.y - ly;
         if (Math.sqrt(dx * dx + dy * dy) < 90) {
-          b.stunnedUntil = now + 1800;
+          const lightStun = (b.skillTreeUnlocked && b.skillTreeUnlocked.includes('iron_wings')) ? Math.floor(1800 * 0.65) : 1800;
+          b.stunnedUntil = now + lightStun;
           b.comboCount = 0;
           b.comboExpiresAt = 0;
           this.events.push({ type: 'lightning_hit', birdId: b.id, birdName: b.name, x: b.x, y: b.y });
@@ -4119,8 +4210,9 @@ class GameEngine {
             if (teamId === zone.ownerTeamId &&
                 bird.x >= zone.x && bird.x <= zone.x + zone.w &&
                 bird.y >= zone.y && bird.y <= zone.y + zone.h) {
-              bird.xp += REWARD_XP;
-              bird.coins += REWARD_COINS;
+              const taxMult = (bird.skillTreeUnlocked && bird.skillTreeUnlocked.includes('territory_tax')) ? 1.5 : 1.0;
+              bird.xp += Math.floor(REWARD_XP * taxMult);
+              bird.coins += Math.floor(REWARD_COINS * taxMult);
               bird.food += REWARD_FOOD;
               rewarded++;
             }
@@ -4890,6 +4982,10 @@ class GameEngine {
         birdColor: bird.birdColor,
         skillSlots,
         skillCooldowns: skillCooldownsState,
+        // Skill Tree — Feather Points system
+        skillPoints: bird.skillPoints || 0,
+        skillTreeUnlocked: bird.skillTreeUnlocked || [],
+        skillTreeDefs: SKILL_TREE_DEFS,
         // Black Market active items
         bmSpeedUntil: bird.bmSpeedUntil,
         bmMegaPoops: bird.bmMegaPoops,
@@ -5339,6 +5435,8 @@ class GameEngine {
       tattoos_equipped: JSON.stringify(bird.tattoosEquipped || []),
       prestige: bird.prestige || 0,
       eagle_feather: bird.eagleFeather || false,
+      skill_points: bird.skillPoints || 0,
+      skill_tree: JSON.stringify(bird.skillTreeUnlocked || []),
     }).catch(e => {
       console.error('[GameEngine] Failed to save bird:', e.message);
     });
@@ -5525,6 +5623,31 @@ class GameEngine {
     this.events.push({ type: 'skill_used', birdId: bird.id, skill: skillId, x: bird.x, y: bird.y });
     // Also emit legacy event for backwards compat
     this.events.push({ type: 'ability_used', birdId: bird.id, ability: skillId, x: bird.x, y: bird.y });
+  }
+
+  // ============================================================
+  // SKILL TREE — Feather Point unlock handler
+  // ============================================================
+  _handleSkillTreeUnlock(bird, skillId, now) {
+    const def = SKILL_TREE_DEFS[skillId];
+    if (!def) return;
+    if (bird.skillTreeUnlocked && bird.skillTreeUnlocked.includes(skillId)) {
+      this.events.push({ type: 'skill_tree_fail', birdId: bird.id, reason: 'Already unlocked.', skillId });
+      return;
+    }
+    if (def.req && !(bird.skillTreeUnlocked && bird.skillTreeUnlocked.includes(def.req))) {
+      this.events.push({ type: 'skill_tree_fail', birdId: bird.id, reason: 'Unlock ' + SKILL_TREE_DEFS[def.req].label + ' first.', skillId });
+      return;
+    }
+    if ((bird.skillPoints || 0) < def.cost) {
+      this.events.push({ type: 'skill_tree_fail', birdId: bird.id, reason: 'Need ' + def.cost + ' Feather Point(s). You have ' + (bird.skillPoints || 0) + '.', skillId });
+      return;
+    }
+    bird.skillPoints -= def.cost;
+    bird.skillTreeUnlocked = bird.skillTreeUnlocked || [];
+    bird.skillTreeUnlocked.push(skillId);
+    this._saveBird(bird);
+    this.events.push({ type: 'skill_tree_unlocked', birdId: bird.id, birdName: bird.name, skillId, label: def.label, emoji: def.emoji, skillPoints: bird.skillPoints });
   }
 
   _handleBuySkill(bird, skillId, now) {
@@ -6753,12 +6876,15 @@ class GameEngine {
     }
     const item = this.BLACK_MARKET_CATALOG.find(i => i.id === itemId);
     if (!item) return;
-    if (bird.coins < item.cost) {
-      this.events.push({ type: 'blackmarket_fail', birdId: bird.id, reason: 'Not enough coins. Need ' + item.cost + 'c.' });
+    const effectiveCost = (bird.skillTreeUnlocked && bird.skillTreeUnlocked.includes('fence_rep'))
+      ? Math.max(1, Math.floor(item.cost * 0.80))
+      : item.cost;
+    if (bird.coins < effectiveCost) {
+      this.events.push({ type: 'blackmarket_fail', birdId: bird.id, reason: 'Not enough coins. Need ' + effectiveCost + 'c.' });
       return;
     }
 
-    bird.coins -= item.cost;
+    bird.coins -= effectiveCost;
 
     switch (itemId) {
       case 'speed_serum':
@@ -7763,7 +7889,18 @@ class GameEngine {
       // Arrest: cop catches wanted bird (within 18px, bird not already stunned)
       // Mystery Crate: Riot Shield blocks arrest entirely
       if (dist < 18 && wanted.stunnedUntil <= now && !(wanted.mcRiotShieldUntil > now)) {
-        const arrestDuration = cop.type === 'swat' ? 4000 : 2500;
+        // Skill Tree: Ghost Walk — 18% chance to fully evade a cop arrest
+        if (wanted.skillTreeUnlocked && wanted.skillTreeUnlocked.includes('ghost_walk') && Math.random() < 0.18) {
+          this.events.push({ type: 'ghost_walk_evade', birdId: wanted.id, birdName: wanted.name, x: cop.x, y: cop.y });
+          cop.state = 'stunned';
+          cop.stunnedUntil = now + 3000;
+          continue;
+        }
+        let arrestDuration = cop.type === 'swat' ? 4000 : 2500;
+        // Skill Tree: Iron Wings — -35% stun duration from all sources
+        if (wanted.skillTreeUnlocked && wanted.skillTreeUnlocked.includes('iron_wings')) {
+          arrestDuration = Math.floor(arrestDuration * 0.65);
+        }
         wanted.stunnedUntil = now + arrestDuration;
         // Combo break — busted kills your streak
         wanted.comboCount = 0;

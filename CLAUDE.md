@@ -1484,6 +1484,55 @@ A mysterious rainbow-colored musician appears every 25-35 minutes somewhere in t
 
 **Creative intent**: The Piper creates a total disruption event unlike anything else in the game. Every other system in Bird City rewards pooping — the Piper punishes it by *disabling* it. A bird who flies too close to greedily hunt him gets enchanted and helpless. The suction force means you can't just ignore him and keep doing your thing — he gradually pulls everyone toward him. High-combo grinders near the Piper face a real dilemma: do you break your combo to fly away and preserve the streak, or commit to poop him away? The city-wide reward on defeat makes it genuinely cooperative — even birds who didn't directly engage get paid out. And the enchantment mechanic creates a funny emergent behavior: you see another bird nearby getting pulled in and silently, helplessly pulled along with them. Pure SOCIAL + CARNAGE + DISCOVERY energy — the city's first enemy that uses your own weapon against you.
 
+**Session 46 — 2026-04-05: Bird Skill Tree — Permanent Character Builds via Feather Points**
+Birds now have a fully persistent RPG skill tree. Every time you level up, you earn 1 Feather Point (FP). Spend them in the Skill Tree (press [K]) to permanently unlock abilities across 4 branches — Combat, Speed, Wealth, and Survival.
+
+**12 Skills across 4 branches (`server/game.js` — `SKILL_TREE_DEFS`):**
+- **Combat** (orange): 🎯 Quick Draw (-15% poop cooldown) → 💥 Splash Zone (+20% hit radius) → 🔥 Double Tap (20% chance for a bonus free poop on every hit)
+- **Speed** (cyan): 💨 Aerodynamics (+10% max speed permanently) → 🌀 Wind Rider (all external speed boosts +30% stronger) → ⚡ Desperado (+22% speed when food < 25 — survival instinct kicks in)
+- **Wealth** (gold): 💰 Sticky Claws (+18% coins per poop hit) → 🤝 Fence Rep (Black Market -20% cheaper) → 🏦 Territory Tax (+50% passive territory income)
+- **Survival** (green): 🧠 Street Smart (-20% heat per poop) → 🛡️ Iron Wings (-35% all stun durations) → 👻 Ghost Walk (18% chance to fully evade a cop arrest — stuns the cop instead)
+
+**Tier prerequisite system:** Each tier-2/3 skill requires the tier-1/2 of its branch first. Costs 1/2/3 FP per tier. Can't skip ahead.
+
+**Feather Point detection:** Each `_updateBird()` tick compares `bird.level` vs `bird.lastKnownLevel`. Any increase = FP granted immediately + `skill_point_gained` event tells the client with a "+N FP!" HUD pop.
+
+**Server-side effect application (no client-side trust):**
+- Quick Draw: poop cooldown × 0.85 in the cooldown-check section
+- Aerodynamics: `maxSpeed *= 1.10` in the speed-cap section
+- Desperado: `if (food < 25) maxSpeed *= 1.22` after Aerodynamics
+- Wind Rider: wind drift velocity × 1.3 multiplier
+- Splash Zone: `hitRadius *= 1.20` in `_checkPoopHit()`
+- Double Tap: after a successful poop hit, 20% chance spawns a bonus poop in the same direction
+- Sticky Claws: `coinGain = Math.floor(coinGain * 1.18)` in poop hit rewards
+- Street Smart: `heatAmt = Math.floor(heatAmt * 0.80)` around `_addHeat()` calls
+- Iron Wings: arrest duration × 0.65, lightning stun × 0.65, cat stun × 0.65
+- Ghost Walk: 18% random check before cop arrest; on evade: cop stunned 3s + `ghost_walk_evade` event fires with dramatic "GHOST WALK — EVADED!" client announcement
+- Fence Rep: Black Market `effectiveCost = Math.floor(item.cost * 0.80)`
+- Territory Tax: passive territory reward × 1.5
+
+**Persistence:** `skill_points` (int) and `skill_tree` (JSON array of unlocked skill IDs) saved to Firestore / SQLite in `_saveBird()` and loaded in `addBird()`.
+
+**UI ([K] key — `#skillTreeOverlay`):**
+- Dark green theme (matching survival/nature vibe)
+- 4-column grid — one column per branch, header with branch emoji/name and FP display
+- Each skill card: emoji + name + tier dots + cost + desc + status
+- Locked (grey), Affordable (green glow), Unlocked (gold with ✅), Prerequisite-blocked (dim)
+- Hover tooltip section at the bottom shows full description and unlock status
+- `#fpHudPill` bottom-right pill glows green when you have unspent FP — nudges you to open the tree
+- After unlock: card flashes gold, FP counter decrements live
+
+**Socket events:** `skill_tree_unlocked` (success + refresh), `skill_tree_fail` (reason message), `skill_point_gained` (FP gained + current total), `ghost_walk_evade` (cinematic evade message)
+
+**Stacking interactions (intentional emergent combos):**
+- Quick Draw + Double Tap + high combo + Lucky Charm = absurd fire rate
+- Aerodynamics + Wind Rider + V-Formation slipstream + Mystery Crate Jet Wings = ludicrous speed
+- Sticky Claws + Territory Tax + Prestige P2 coin bonus = pure wealth accumulation build
+- Street Smart + Ghost Walk + Black Market Disguise Kit = essentially untouchable by cops build
+- Iron Wings + Riot Shield from Mystery Crate = stun-immune god mode build
+
+**Creative intent**: This completes the PROGRESSION pillar's final gap. Prestige gives XP milestones. Daily challenges give daily reasons to log in. Gang Rep gives criminal identity. The Skill Tree gives IDENTITY WITHIN EACH SESSION. Two birds with the same prestige level can play completely differently: one is a fast-firing combo machine (Combat tree), another is a coin-hoarding territorial banker (Wealth tree), a third is a ghost that never gets arrested (Survival tree). Every level-up now has a second emotional beat — "I leveled up AND got a FP, what should I unlock?" The Ghost Walk evade moment is the game's most dramatic single-skill activation: mid-arrest, a dice roll saves you, the cop gets stunned, and everyone nearby sees the message. Pure PROGRESSION + CARNAGE + DISCOVERY energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -1527,11 +1576,14 @@ Built the Territory Control System on top of the existing upstream code:
 - ~~NPC Crow Cartel rival gang that periodically raids player territories — forces active defense~~ (DONE Session 43)
 - ~~Pigeon Pied Piper event: mysterious NPC that drifts birds toward them; poop to send away for big reward~~ (DONE Session 45)
 - ~~"BIRD CITY IDOL" singing contest — city votes with emojis, winner gets city-wide XP buff for 5 minutes~~ (DONE Session 44)
+- ~~**Bird Skill Tree** — earn Feather Points on level-up, spend on permanent skills across Combat/Speed/Wealth/Survival branches~~ (DONE Session 46)
 - Idol Hall of Fame: track all-time Idol winners (persistent leaderboard near the stage)
 - Idol challenge daily task: "Win Bird City Idol" as a rare daily challenge
 - Gang sponsorship for Idol: gangs can sponsor a contestant, putting gang treasury coins on the line
 - ~~Prestige leaderboard: a wall/board in the city showing top-5 prestige players of all time~~ (DONE Session 37 — Hall of Legends)
 - ~~LEGEND-tier exclusive: ⚜️⚜️⚜️⚜️⚜️ birds can unlock "Prestige Poop" — a special golden poop effect~~ (DONE Session 37)
+- Skill Tree Mastery badge: unlock ALL 12 skills and earn a permanent ✨ MASTER badge on your nametag
+- Skill respec: spend 500 coins at Don Featherstone to reset all skills and refund all FP (costly but available)
 - ~~Race power-ups: speed boost gates on the track~~ (DONE Session 30)
 - ~~Weather combos: fog (low visibility) + hailstorm~~ (DONE Session 18)
 - ~~Race betting system (spectators bet coins on a racer from anywhere on the map)~~ (DONE Session 17)

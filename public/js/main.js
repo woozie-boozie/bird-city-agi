@@ -2536,6 +2536,11 @@
         showPrestigePanel();
       }
     }
+    // [K] — Skill Tree
+    if (e.key.toLowerCase() === 'k') {
+      toggleSkillTree();
+    }
+
     // Bird City Idol — [I] to enter contest or vote
     if (e.key.toLowerCase() === 'i') {
       if (idolOverlayVisible) {
@@ -3357,10 +3362,13 @@
     // Daily Challenges HUD indicator
     updateDailyHudIndicator();
     updatePrestigeHudPill();
+    updateSkillTreeHud();
     // Refresh daily panel if open
     if (dailyPanelVisible) renderDailyPanel();
     // Refresh prestige panel if open
     if (prestigePanelVisible) renderPrestigePanel();
+    // Refresh skill tree if open
+    if (skillTreeVisible) renderSkillTree();
 
     // Signal Boost HUD
     const sbHud = document.getElementById('signalBoostHud');
@@ -8309,6 +8317,200 @@
     // Refresh overlay to show "voted" state
     setTimeout(() => { if (idolOverlayVisible) renderIdolOverlay(); }, 200);
   };
+
+  // ============================================================
+  // SKILL TREE — [K] to open/close
+  // ============================================================
+  let skillTreeVisible = false;
+
+  function toggleSkillTree() {
+    if (skillTreeVisible) hideSkillTree();
+    else showSkillTree();
+  }
+
+  function showSkillTree() {
+    if (!joined) return;
+    skillTreeVisible = true;
+    const el = document.getElementById('skillTreeOverlay');
+    if (el) el.style.display = 'block';
+    for (const k in keys) keys[k] = false;
+    syncInput();
+    renderSkillTree();
+  }
+
+  function hideSkillTree() {
+    skillTreeVisible = false;
+    const el = document.getElementById('skillTreeOverlay');
+    if (el) el.style.display = 'none';
+  }
+
+  function renderSkillTree() {
+    const el = document.getElementById('skillTreeOverlay');
+    if (!el || !gameState || !gameState.self) return;
+    const s = gameState.self;
+    const fp = s.skillPoints || 0;
+    const unlocked = s.skillTreeUnlocked || [];
+    const defs = s.skillTreeDefs || {};
+
+    const fpDisplay = document.getElementById('skillTreeFpDisplay');
+    if (fpDisplay) {
+      fpDisplay.innerHTML = fp > 0
+        ? `<span style="color:#88ff88;font-weight:bold;font-size:14px;">${fp}</span> <span style="color:#aaffaa;">Feather Point${fp !== 1 ? 's' : ''} available</span>`
+        : `<span style="color:#667766;">0 Feather Points · Level up to earn more</span>`;
+    }
+
+    const branches = [
+      { key: 'combat',   label: '⚔️ Combat',   color: '#ff8844', skills: ['quick_draw', 'splash_zone', 'double_tap'] },
+      { key: 'speed',    label: '💨 Speed',    color: '#44ddff', skills: ['aerodynamics', 'wind_rider', 'desperado'] },
+      { key: 'wealth',   label: '💰 Wealth',   color: '#ffd700', skills: ['sticky_claws', 'fence_rep', 'territory_tax'] },
+      { key: 'survival', label: '🛡️ Survival', color: '#44cc44', skills: ['street_smart', 'iron_wings', 'ghost_walk'] },
+    ];
+
+    const grid = document.getElementById('skillTreeGrid');
+    if (!grid) return;
+    let gridHtml = '';
+
+    for (const branch of branches) {
+      gridHtml += `<div style="display:flex;flex-direction:column;gap:8px;">
+        <div style="text-align:center;font-size:11px;font-weight:bold;color:${branch.color};
+          border-bottom:1px solid ${branch.color}44;padding-bottom:6px;margin-bottom:2px;letter-spacing:1px;">
+          ${branch.label}
+        </div>`;
+
+      for (let ti = 0; ti < branch.skills.length; ti++) {
+        const skillId = branch.skills[ti];
+        const def = defs[skillId];
+        if (!def) continue;
+
+        const isUnlocked = unlocked.includes(skillId);
+        const prereqMet = !def.req || unlocked.includes(def.req);
+        const canAfford = fp >= def.cost;
+        const canBuy = !isUnlocked && prereqMet && canAfford;
+
+        let bg = 'rgba(20,40,20,0.5)';
+        let border = '#334433';
+        let textColor = '#556655';
+        let cursor = 'default';
+        let opacity = '0.55';
+
+        if (isUnlocked) {
+          bg = 'rgba(20,80,20,0.8)';
+          border = branch.color;
+          textColor = '#c8ffc8';
+          opacity = '1';
+        } else if (prereqMet && canAfford) {
+          bg = 'rgba(30,60,30,0.8)';
+          border = branch.color + 'aa';
+          textColor = '#aaddaa';
+          cursor = 'pointer';
+          opacity = '1';
+        } else if (prereqMet) {
+          bg = 'rgba(30,50,30,0.6)';
+          border = '#445544';
+          textColor = '#778877';
+          opacity = '0.75';
+        }
+
+        const costLabel = isUnlocked ? '✓ UNLOCKED' : `${def.cost} FP`;
+        const costColor = isUnlocked ? '#44ff44' : (canBuy ? '#ffdd44' : '#556655');
+        const glowStyle = isUnlocked ? `box-shadow:0 0 8px ${branch.color}66;` : (canBuy ? `box-shadow:0 0 6px ${branch.color}44;` : '');
+        const onclick = canBuy ? `window._buySkillTree('${skillId}')` : '';
+
+        gridHtml += `<div onclick="${onclick}"
+          style="background:${bg};border:1px solid ${border};border-radius:8px;
+          padding:8px 10px;opacity:${opacity};cursor:${cursor};${glowStyle}"
+          onmouseover="window._skillTreeHover('${skillId}')"
+          onmouseleave="window._skillTreeHoverOut()">
+          <div style="font-size:16px;margin-bottom:3px;">${def.emoji}</div>
+          <div style="font-size:10px;font-weight:bold;color:${textColor};line-height:1.3;">${def.label}</div>
+          <div style="font-size:9px;color:${costColor};margin-top:4px;font-weight:bold;">${costLabel}</div>
+          ${ti > 0 ? `<div style="font-size:8px;color:#445544;margin-top:2px;">Tier ${def.tier}</div>` : ''}
+        </div>`;
+
+        if (ti < branch.skills.length - 1) {
+          gridHtml += `<div style="text-align:center;color:${border};font-size:10px;margin:-4px 0;">▼</div>`;
+        }
+      }
+      gridHtml += '</div>';
+    }
+
+    grid.innerHTML = gridHtml;
+
+    const tooltip = document.getElementById('skillTreeTooltip');
+    if (tooltip) tooltip.innerHTML = '<span style="color:#556655;">Hover a skill to see details — click a highlighted node to unlock</span>';
+  }
+
+  window._skillTreeHover = function(skillId) {
+    const tooltip = document.getElementById('skillTreeTooltip');
+    if (!tooltip || !gameState || !gameState.self) return;
+    const def = (gameState.self.skillTreeDefs || {})[skillId];
+    if (!def) return;
+    const unlocked = gameState.self.skillTreeUnlocked || [];
+    const fp = gameState.self.skillPoints || 0;
+    const prereq = def.req ? (gameState.self.skillTreeDefs || {})[def.req] : null;
+    const isUnlocked = unlocked.includes(skillId);
+    const prereqMet = !def.req || unlocked.includes(def.req);
+    const canAfford = fp >= def.cost;
+    let status = '';
+    if (isUnlocked) status = '<span style="color:#44ff44;">✓ UNLOCKED</span>';
+    else if (!prereqMet) status = `<span style="color:#ff8844;">Requires: ${prereq ? prereq.label : def.req}</span>`;
+    else if (!canAfford) status = `<span style="color:#ffaa44;">Need ${def.cost} FP (have ${fp})</span>`;
+    else status = `<span style="color:#88ff44;font-weight:bold;">Click to unlock for ${def.cost} FP!</span>`;
+    tooltip.innerHTML = `<strong style="color:#ccffcc;">${def.emoji} ${def.label}</strong> — ${def.desc}<br>${status}`;
+  };
+
+  window._skillTreeHoverOut = function() {
+    const tooltip = document.getElementById('skillTreeTooltip');
+    if (tooltip) tooltip.innerHTML = '<span style="color:#556655;">Hover a skill to see details — click a highlighted node to unlock</span>';
+  };
+
+  window._buySkillTree = function(skillId) {
+    socket.emit('action', { type: 'skill_tree_unlock', skillId });
+    setTimeout(() => { if (skillTreeVisible) renderSkillTree(); }, 300);
+  };
+
+  function updateSkillTreeHud() {
+    const pill = document.getElementById('fpHudPill');
+    if (!pill || !gameState || !gameState.self) {
+      if (pill) pill.style.display = 'none';
+      return;
+    }
+    const fp = gameState.self.skillPoints || 0;
+    pill.style.display = fp > 0 ? 'block' : 'none';
+    pill.textContent = `🪶 ${fp} FP — Press [K]`;
+    pill.onclick = () => toggleSkillTree();
+  }
+
+  socket.on('skill_tree_unlocked', (data) => {
+    if (data.birdId === socket.id) {
+      showAnnouncement(`🪶 ${data.emoji} ${data.label} UNLOCKED! (${data.skillPoints} FP left)`, '#44cc44', 3000);
+      if (skillTreeVisible) renderSkillTree();
+    } else {
+      addEventFeedMessage(`🪶 ${data.birdName} unlocked ${data.emoji} ${data.label}!`);
+    }
+  });
+
+  socket.on('skill_tree_fail', (data) => {
+    if (data.birdId === socket.id) {
+      showAnnouncement(`❌ ${data.reason}`, '#cc4444', 2000);
+    }
+  });
+
+  socket.on('skill_point_gained', (data) => {
+    if (data.birdId === socket.id) {
+      showAnnouncement(`🪶 +${data.gained} Feather Point${data.gained !== 1 ? 's' : ''}! Press [K] to spend`, '#88ff88', 3500);
+      if (skillTreeVisible) renderSkillTree();
+    }
+  });
+
+  socket.on('ghost_walk_evade', (data) => {
+    if (data.birdId === socket.id) {
+      showAnnouncement('👻 GHOST WALK! Cop arrest evaded!', '#aaffaa', 2000);
+    }
+    addEventFeedMessage(`👻 ${data.birdName} ghost-walked out of an arrest!`);
+  });
+
+  document.getElementById('skillTreeCloseBtn').addEventListener('click', hideSkillTree);
 
   // ============================================================
   // INIT
