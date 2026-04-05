@@ -1217,6 +1217,22 @@
       }
     }
 
+    // === CRIME WAVE EVENTS ===
+    if (ev.type === 'crime_wave_start' && ev.birdId === myId) {
+      effects.push({ type: 'screen_shake', intensity: 10, duration: 800, time: now });
+      showAnnouncement(
+        '🚨 CRIME WAVE!\nHeat builds 2× faster — but ALL crime pays DOUBLE!\nStun cops for big XP · Survive your heat!',
+        '#ff2222', 7000
+      );
+    }
+    if (ev.type === 'crime_wave_start_global') {
+      addEventMessage('🚨 CRIME WAVE ERUPTS ACROSS BIRD CITY! 2× heat · 2× crime rewards · Extra cops!', '#ff4444');
+    }
+    if (ev.type === 'crime_wave_end') {
+      addEventMessage('🚔 The crime wave subsides. Officers stand down.', '#ff8888');
+      showAnnouncement('🚔 Crime wave over. The city breathes again.', '#ff8888', 3000);
+    }
+
     // === BOSS EVENTS ===
     if (ev.type === 'boss_spawn') {
       SoundEngine.bossSpawn();
@@ -3156,7 +3172,8 @@
         wantedHud.className = wLevel >= 5 ? 'level5' : '';
         const copCount = gameState.cops ? gameState.cops.length : 0;
         const copText = copCount > 0 ? ' 🚔' + copCount : '';
-        wantedHud.textContent = '🚨 ' + stars + ' ' + labels[wLevel] + copText;
+        const cwText = gameState.self.crimeWave ? ' 🚨×2' : '';
+        wantedHud.textContent = '🚨 ' + stars + ' ' + labels[wLevel] + copText + cwText;
       }
     }
 
@@ -6066,6 +6083,69 @@
     // Use gameState.weather as authoritative source (server-synced each tick)
     drawWeather(ctx, camera, now, gameState.weather || weatherState);
 
+    // === CRIME WAVE OVERLAY ===
+    if (gameState.self && gameState.self.crimeWave) {
+      const cw = gameState.self.crimeWave;
+      const cwTimeLeft = Math.max(0, cw.endsAt - now);
+      const cwTotal = 120000; // 2 minutes
+      const cwFrac = cwTimeLeft / cwTotal;
+
+      // Pulsing red tint over the whole screen
+      const cwPulse = 0.5 + 0.5 * Math.abs(Math.sin(now * 0.003));
+      ctx.save();
+      ctx.globalAlpha = 0.08 + 0.05 * cwPulse;
+      ctx.fillStyle = '#ff0000';
+      ctx.fillRect(0, 0, camera.screenW, camera.screenH);
+      ctx.globalAlpha = 1;
+      ctx.restore();
+
+      // Siren vignette: red/blue alternating edge flash
+      const sirenPhase = Math.floor(now / 500) % 2; // alternates every 500ms
+      ctx.save();
+      const sirenGrad = ctx.createRadialGradient(
+        camera.screenW / 2, camera.screenH / 2, camera.screenH * 0.3,
+        camera.screenW / 2, camera.screenH / 2, camera.screenH * 0.9
+      );
+      const sirenColor = sirenPhase === 0 ? 'rgba(255,30,30,' : 'rgba(30,80,255,';
+      sirenGrad.addColorStop(0, sirenColor + '0)');
+      sirenGrad.addColorStop(1, sirenColor + '0.12)');
+      ctx.fillStyle = sirenGrad;
+      ctx.fillRect(0, 0, camera.screenW, camera.screenH);
+      ctx.globalAlpha = 1;
+      ctx.restore();
+
+      // HUD bar at top showing countdown
+      const cwBarW = 200, cwBarH = 14;
+      const cwBarX = camera.screenW / 2 - cwBarW / 2;
+      const cwBarY = 132;
+      ctx.save();
+      ctx.globalAlpha = 0.92;
+      ctx.fillStyle = 'rgba(0,0,0,0.65)';
+      ctx.beginPath();
+      ctx.roundRect(cwBarX - 60, cwBarY - 18, cwBarW + 120, cwBarH + 34, 10);
+      ctx.fill();
+      // Label
+      const cwLabelPulse = 0.75 + 0.25 * Math.sin(now * 0.006);
+      ctx.globalAlpha = cwLabelPulse;
+      ctx.fillStyle = '#ff3333';
+      ctx.font = 'bold 12px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(`🚨 CRIME WAVE — ${Math.ceil(cwTimeLeft / 1000)}s · 2× HEAT · 2× CRIME REWARDS`, camera.screenW / 2, cwBarY - 4);
+      // Bar background
+      ctx.globalAlpha = 0.85;
+      ctx.fillStyle = 'rgba(80,0,0,0.5)';
+      ctx.beginPath();
+      ctx.roundRect(cwBarX, cwBarY + 4, cwBarW, cwBarH, 5);
+      ctx.fill();
+      // Bar fill — draining red bar
+      ctx.fillStyle = cwFrac > 0.5 ? '#ff4444' : cwFrac > 0.25 ? '#ff8800' : '#ffcc00';
+      ctx.beginPath();
+      ctx.roundRect(cwBarX, cwBarY + 4, cwBarW * cwFrac, cwBarH, 5);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+
     // Lightning flash (brief bright overlay)
     if (lightningFlash) {
       const age = now - lightningFlash.time;
@@ -7259,6 +7339,12 @@
           html += `<div class="bm-buff-pill" style="background:rgba(60,0,15,0.8);border-color:#cc3366;color:#ff7799;">💀 CURSED COIN NEARBY — TOUCH ${s.cursedCoin.holderName} to steal it! (${intensityPct}%)</div>`;
         }
       }
+    }
+
+    // Crime Wave — city-wide danger indicator
+    if (s.crimeWave) {
+      const cwLeft = Math.max(0, Math.ceil((s.crimeWave.endsAt - now) / 1000));
+      html += `<div class="bm-buff-pill" style="background:rgba(120,0,0,0.9);border-color:#ff2222;color:#ff6666;font-weight:bold;animation:pulseRed 0.6s infinite alternate;">🚨 CRIME WAVE — ${cwLeft}s · 2× heat &amp; coins!</div>`;
     }
 
     el.innerHTML = html;

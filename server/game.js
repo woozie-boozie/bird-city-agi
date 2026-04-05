@@ -441,6 +441,16 @@ class GameEngine {
     this.cursedCoin = null; // null | { state:'world'|'held', x, y, holderId, holderName, heldSince, intensity, lastDrain, stealCooldowns: Map }
     this.cursedCoinTimer = Date.now() + this._randomRange(8 * 60000, 14 * 60000); // first spawn 8-14 min in
 
+    // === CRIME WAVE EVENT ===
+    // Every 40-60 minutes, a 2-minute city-wide crime wave erupts:
+    // - Heat generation ×2 (every poop escalates wanted level faster)
+    // - Cops get 25% faster + spawn sooner
+    // - But ALL crime coin rewards ×2 (high risk, high reward)
+    // - Cop stun XP ×2 (heroes get paid)
+    // - Wanted survival XP ×2
+    this.crimeWave = null;  // null | { startedAt, endsAt }
+    this.crimeWaveTimer = Date.now() + this._randomRange(40 * 60000, 60 * 60000);
+
     // === BIRD CITY GAZETTE ===
     // Every game day cycle (~20 min), a newspaper publishes at dawn recapping the night.
     // Tracks key moments: top combo, most wanted, heists, gang wars, predator kills, etc.
@@ -1221,6 +1231,9 @@ class GameEngine {
 
     // === Cursed Coin ===
     this._tickCursedCoin(dt, now);
+
+    // === Crime Wave ===
+    this._tickCrimeWave(now);
   }
 
   // ============================================================
@@ -2520,7 +2533,10 @@ class GameEngine {
         cop.state = 'stunned';
         cop.stunnedUntil = now + stunDuration;
         xpGain = cop.type === 'swat' ? 80 : 50;
-        bird.coins += cop.type === 'swat' ? 25 : 15;
+        let copCoinReward = cop.type === 'swat' ? 25 : 15;
+        // Crime Wave: double XP and coins for stunning cops — heroes get paid
+        if (this.crimeWave) { xpGain *= 2; copCoinReward *= 2; }
+        bird.coins += copCoinReward;
         this.events.push({ type: 'cop_pooped', birdId: bird.id, birdName: bird.name, copType: cop.type, x: cop.x, y: cop.y });
         // Gazette: track cop stuns
         if (!this.gazetteStats.copsStunned[bird.id]) {
@@ -2719,6 +2735,8 @@ class GameEngine {
         if (bird.skillTreeUnlocked && bird.skillTreeUnlocked.includes('street_smart')) {
           heatAmt = Math.max(0, Math.floor(heatAmt * 0.80));
         }
+        // Crime Wave: heat generation ×2 — every crime escalates faster
+        if (this.crimeWave) heatAmt *= 2;
         this._addHeat(bird.id, heatAmt);
       }
       this._addAreaChaos(poop.x, poop.y, 1);
@@ -2775,6 +2793,8 @@ class GameEngine {
       if (this.cursedCoin && this.cursedCoin.state === 'held' && this.cursedCoin.holderId === bird.id && coinGain > 0) {
         coinGain = Math.floor(coinGain * 2.5);
       }
+      // Crime Wave: ×2 all crime coin rewards — high risk, high reward
+      if (this.crimeWave && coinGain > 0) coinGain *= 2;
       bird.coins += coinGain;
 
       // === COMBO STREAK — chain hits within 8s for escalating XP ===
@@ -5372,6 +5392,10 @@ class GameEngine {
         isMine: this.cursedCoin.holderId === bird.id,
         heldSince: this.cursedCoin.heldSince,
       } : null,
+      // Crime Wave
+      crimeWave: this.crimeWave ? {
+        endsAt: this.crimeWave.endsAt,
+      } : null,
     };
   }
 
@@ -7669,11 +7693,14 @@ class GameEngine {
 
   // How many cop birds should be active for a given star level
   _targetCopCount(level) {
-    if (level >= 5) return 4; // 3 cops + 1 SWAT
-    if (level >= 4) return 3; // 2 cops + 1 SWAT
-    if (level >= 3) return 2;
-    if (level >= 2) return 1;
-    return 0;
+    let base = 0;
+    if (level >= 5) base = 4; // 3 cops + 1 SWAT
+    else if (level >= 4) base = 3; // 2 cops + 1 SWAT
+    else if (level >= 3) base = 2;
+    else if (level >= 2) base = 1;
+    // Crime Wave: +1 extra cop at every wanted level (capped at 5 total)
+    if (this.crimeWave && base > 0) base = Math.min(5, base + 1);
+    return base;
   }
 
   _updateWanted(dt, now) {
@@ -7784,8 +7811,10 @@ class GameEngine {
       // Survival XP: reward the wanted bird for staying alive at high heat
       if (this.wantedBirdId && wantedLevel >= 3 && now - this.lastSurvivalXp > 10000) {
         this.lastSurvivalXp = now;
-        wanted.xp += wantedLevel * 15;
-        wanted.coins += wantedLevel * 5;
+        // Crime Wave: survival XP ×2 — staying alive under hot pursuit pays double
+        const survMult = this.crimeWave ? 2 : 1;
+        wanted.xp += wantedLevel * 15 * survMult;
+        wanted.coins += wantedLevel * 5 * survMult;
         this.events.push({ type: 'wanted_survival', birdId: wanted.id, level: wantedLevel });
         // Daily challenge: survive 10s at wanted level 3+
         this._trackDailyProgress(wanted, 'wanted_survival', 1);
@@ -7837,10 +7866,11 @@ class GameEngine {
     // Count current cops (excluding stunned-for-good ones)
     const activeCops = Array.from(this.copBirds.values()).filter(c => c.targetBirdId === this.wantedBirdId);
 
-    // Spawn more cops if needed (one every 5s max to avoid flooding)
+    // Spawn more cops if needed (one every 5s max; halved during Crime Wave)
     if (activeCops.length < targetCount) {
       const lastSpawn = this._lastCopSpawn || 0;
-      if (now - lastSpawn > 5000) {
+      const spawnCooldown = this.crimeWave ? 2500 : 5000;
+      if (now - lastSpawn > spawnCooldown) {
         this._lastCopSpawn = now;
         // Decide type: SWAT crow for level 4+
         const needSWAT = wantedLevel >= 4 && !activeCops.some(c => c.type === 'swat');
@@ -7924,8 +7954,10 @@ class GameEngine {
       if (!fogActive || dist <= 220) cop.fogWanderAngle = null;
 
       if (dist > 1) {
-        cop.x += (dx / dist) * cop.speed * dt;
-        cop.y += (dy / dist) * cop.speed * dt;
+        // Crime Wave: cops are 30% faster and more aggressive
+        const crimeWaveSpeedMult = this.crimeWave ? 1.30 : 1.0;
+        cop.x += (dx / dist) * cop.speed * crimeWaveSpeedMult * dt;
+        cop.y += (dy / dist) * cop.speed * crimeWaveSpeedMult * dt;
         cop.rotation = Math.atan2(dy, dx);
       }
 
@@ -10895,6 +10927,7 @@ class GameEngine {
       predatorKills:   [],  // [{ name, gangTag, predType }]
       mysteryCrateItems: [],// [{ itemName, emoji, birdName }]
       fluOutbreaks:    0,
+      crimeWaves:      0,
       copsStunned:     {},  // birdId -> { count, name, gangTag }
     };
   }
@@ -11017,6 +11050,14 @@ class GameEngine {
         icon: '🤧',
         headline: 'BIRD FLU OUTBREAK SWEEPS CITY — MEDICINE SUPPLIES DEPLETED',
         subline: 'Multiple birds infected. Patient Zero still at large. The pigeons are not sorry.',
+      });
+    }
+
+    if (stats.crimeWaves > 0) {
+      headlines.push({
+        icon: '🚨',
+        headline: `CRIME WAVE ERUPTS — CITY DESCENDS INTO LAWLESSNESS`,
+        subline: 'Heat doubled. Cops overwhelmed. At least one bird made an absurd amount of coins.',
       });
     }
 
@@ -11912,6 +11953,41 @@ class GameEngine {
     // Remove the coin for now — respawn after 2-3 minutes
     this.cursedCoin = null;
     this.cursedCoinTimer = now + this._randomRange(2 * 60000, 3 * 60000);
+  }
+
+  // ============================================================
+  // CRIME WAVE EVENT
+  // ============================================================
+  _tickCrimeWave(now) {
+    const CRIME_WAVE_DURATION = 2 * 60 * 1000; // 2 minutes
+
+    // Start a new crime wave when timer fires
+    if (!this.crimeWave && now >= this.crimeWaveTimer && this.birds.size > 0) {
+      this.crimeWave = {
+        startedAt: now,
+        endsAt: now + CRIME_WAVE_DURATION,
+      };
+      // Blast every online bird with a personal "brace yourself" event
+      for (const bird of this.birds.values()) {
+        this.events.push({
+          type: 'crime_wave_start',
+          endsAt: this.crimeWave.endsAt,
+          birdId: bird.id,
+        });
+      }
+      // Also fire a single city-wide event for the feed
+      this.events.push({ type: 'crime_wave_start_global', endsAt: this.crimeWave.endsAt });
+      // Track for gazette
+      this.gazetteStats.crimeWaves++;
+      // Reset timer for next crime wave: 40–60 minutes after this one ends
+      this.crimeWaveTimer = now + CRIME_WAVE_DURATION + this._randomRange(40 * 60000, 60 * 60000);
+    }
+
+    // End the crime wave
+    if (this.crimeWave && now >= this.crimeWave.endsAt) {
+      this.crimeWave = null;
+      this.events.push({ type: 'crime_wave_end' });
+    }
   }
 
 }

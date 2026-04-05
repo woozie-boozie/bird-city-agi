@@ -1578,6 +1578,35 @@ A single legendary cursed coin materializes somewhere in Bird City every 8-14 mi
 
 **Creative intent**: This is the ULTIMATE social chaos machine. Every coin-earning system in the game now has a shadow overlay: the coin holder is earning 2.5× on every poop, but EVERYONE on the minimap knows where they are and is actively hunting them. The stealing mechanic creates real pursuit — you see the skull on the minimap, track them down, touch them, get the coin, and now YOU'RE the target. The intensity-doesn't-reset-on-steal mechanic is the killer detail: a coin stolen at 90% intensity is basically a ticking time bomb in your talons, while the city watches. The explosion coin shower means even if you're the unlucky one holding when it explodes, the nearby birds all benefit — creating natural clustering around the holder near the 4-minute mark as everyone positions for the shower. Pure CARNAGE + SOCIAL + SPECTACLE energy — the city just got its most dangerous, most valuable item.
 
+**Session 48 — 2026-04-05: Crime Wave Event — 2 Minutes of Pure Lawlessness**
+Every 40–60 minutes, the city erupts into a full-scale crime wave for 2 minutes — the entire wanted system accelerates, cops flood the streets faster, but all crime rewards double. High risk, high payout. CARNAGE pillar at its purest.
+
+**What happens during a Crime Wave:**
+- **Heat ×2**: every poop on an NPC, car, or human generates double the wanted heat — you escalate from WATCHED to MOST WANTED in half the normal time. Street Smart skill still applies (reduces it by 20%) but even then it's intense
+- **Cop speed +30%**: pursuing cops move 30% faster — evasion is genuinely harder. That comfortable gap you had at 3 stars? Gone
+- **Cop spawn rate ×2**: cops spawn on a 2.5s cooldown instead of 5s — the streets fill up fast
+- **+1 extra cop per wanted level**: every tier spawns one additional cop on top of the normal count (capped at 5 total) — 5-star MOST WANTED during a crime wave means 5 cops + SWAT hunting you
+- **Crime coin rewards ×2**: every poop on an NPC, car, bride, janitor, statue, laundry — all coin gains doubled. So does the bonus for making NPCs cry (+5c → +10c)
+- **Cop stun rewards ×2**: XP and coins for pooping on cops are doubled. Stunning a SWAT crow gives 160 XP instead of 80, plus 50c instead of 25c
+- **Wanted survival XP ×2**: if you're 3+ stars and staying alive, you earn double the passive XP every 10 seconds
+
+**Visual system:**
+- Red screen tint overlay with pulsing intensity — the city literally goes blood-red
+- Alternating red/blue siren vignette at the screen edges (police lights effect)
+- HUD countdown bar at y=132 (below Mystery Crate bar): "🚨 CRIME WAVE — Xs · 2× HEAT · 2× CRIME REWARDS" in red, bar drains from red → orange → yellow as time runs out
+- Wanted Level HUD gets "🚨×2" appended when a crime wave is active
+- Active Buffs HUD: "🚨 CRIME WAVE — Xs · 2× heat & coins!" pill in pulsing red
+
+**Announcements:**
+- `crime_wave_start`: personal screen shake (intensity 10) + big red announcement box for every online bird
+- `crime_wave_start_global`: city-wide event feed: "🚨 CRIME WAVE ERUPTS ACROSS BIRD CITY! 2× heat · 2× crime rewards · Extra cops!"
+- `crime_wave_end`: quiet event feed note + personal announcement when the wave subsides
+
+**Gazette integration:**
+- `crimeWaves` tracked in `gazetteStats` — if one or more happened this cycle, the next Bird City Gazette prints: "🚨 CRIME WAVE ERUPTS — CITY DESCENDS INTO LAWLESSNESS"
+
+**Creative intent**: The city needed a periodic "everybody go nuts" moment. Right now chaos builds organically — one player gets 5 stars and the city watches. The crime wave is the city itself turning up the dial. Every player, regardless of their current heat, suddenly has a reason to LEAN IN: the coins are better, but so is the danger. Low-heat players who normally play cautiously see 2× coin rewards and think "just one hit at a human…" then suddenly they're at 3 stars with faster cops. Expert players see the crime wave as a money run — they want to get hot fast, milk the 2× rewards, then either hit the Black Market for a Disguise Kit or outrun the extra cop. Stack it with a Lucky Charm + P5 Prestige + high combo and the crime wave turns into an XP/coin explosion that takes 30 minutes of normal play to match. Pure CARNAGE + PROGRESSION energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -1632,7 +1661,7 @@ Built the Territory Control System on top of the existing upstream code:
 - Skill respec: spend 500 coins at Don Featherstone to reset all skills and refund all FP (costly but available)
 - Cursed Coin gazette tracking: newspaper headlines for the bird who held it longest / detonated for the most coins
 - Cursed Coin + Kingpin combo: if Kingpin grabs the Cursed Coin, their tribute doubles but explosion potential triples
-- Crime wave event: randomly all wanted levels are doubled for 2 minutes; more cops, higher rewards
+- ~~Crime wave event: randomly all wanted levels are doubled for 2 minutes; more cops, higher rewards~~ (DONE Session 48)
 - ~~Race power-ups: speed boost gates on the track~~ (DONE Session 30)
 - ~~Weather combos: fog (low visibility) + hailstorm~~ (DONE Session 18)
 - ~~Race betting system (spectators bet coins on a racer from anywhere on the map)~~ (DONE Session 17)
