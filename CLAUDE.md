@@ -1448,6 +1448,42 @@ Bird City's first purely SOCIAL spectacle: a talent show that has nothing to do 
 
 **Creative intent**: Bird City already had CARNAGE contests (Arena PvP, racing), criminal contests (bank heist, hit contracts), and economic contests (Kingpin, slots). But nothing purely SOCIAL and chaotic. The Idol contest is different: you can win without being the best fighter. A bird with 8 prestige badges and cool tattoos might get more votes than the highest-combo grinder. The performance score mechanic means you CAN'T just stand there — you have to be active and show off during registration. But pure popularity counts too. Correct voters earn coins, creating a prediction market meta-game. "Who's gonna win the Idol this round?" is a genuine city-wide conversation. The 3-minute XP boost everyone gets after the winner is announced makes the whole city cheer. Pure SOCIAL + SPECTACLE + DISCOVERY energy — the city just got its first TV show.
 
+**Session 45 — 2026-04-05: Pigeon Pied Piper — The Enchanting Disruptor**
+A mysterious rainbow-colored musician appears every 25-35 minutes somewhere in the city. His magical flute music creates a total disruption event: the single enemy that uses your own weapon against you.
+
+**The Pied Piper mechanics (`server/game.js`):**
+- Spawns at 1 of 10 handpicked city locations; wanders in a gentle sine-wave drift around his spawn point at 22px/s (he's focused on music, not running)
+- **Suction force (350px radius)**: all birds within range feel a quadratic pull toward the Piper — barely noticeable at the edge, genuinely strong up close. Applied after player input and wind drift.
+- **Enchantment (80px radius)**: birds who get within 80px have their poop blocked for 8 seconds — the `piperEnchantedUntil` flag skips the poop action entirely
+- **90-second countdown**: if the Piper isn't driven away in time, he steals 20% of each nearby bird's coins and vanishes. No escape from the steal radius underground (sewer birds immune).
+- **Counter-play**: poop on the Piper 6 times to drive him away. Mega poop counts as 2 hits. On defeat: ALL online birds receive +120 XP +60 coins city-wide — the only event that rewards the whole server equally.
+
+**New daily challenge: Music Critic** — hit the Pied Piper 3 times (180 XP, 90c)
+
+**Visual system:**
+- Iridescent teal/purple pigeon body with wing highlights cycling through the hue spectrum every few seconds (genuinely rainbow-shimmering)
+- Colorful jester hat with gold bell at the tip
+- Flute held at a jaunty -0.4 radian angle with gold keys
+- Golden glowing eyes with yellow shadowBlur glow
+- Body swaying gently with a sin-wave "playing music" animation
+- 4 musical ♪ notes float upward from the sprite in cycling hues — each at independent float speed and phase, fading in/out as they rise
+- Hit progress bar (0/6) at base with rainbow gradient fill, "POOP X/6x to drive away" label
+- Magical radial aura: purple/cyan gradient pulsing behind the entire sprite
+- **Minimap**: rainbow-hued pulsing dot cycling through hue at the Piper's world position
+- **HUD countdown bar**: shows "🎵 PIED PIPER — POOP HIM! Xs" with rainbow progress bar when active
+- **Direction arrow**: rainbow-colored pointing arrow when Piper is off-screen, identical mechanic to mystery crate
+- **Active buffs HUD**: "🎵 ENCHANTED — NO POOP! Xs" red pulsing pill when blocked; "🎵 PIPER NEARBY — POOP HIM AWAY!" proximity warning pill
+
+**Events & announcements:**
+- `piper_appears`: screen shake + big pink announcement + event feed
+- `piper_enchanted`: personal "YOU'RE ENCHANTED! Can't poop for 8 seconds!"
+- `piper_hit`: floating "🎵 HIT! X/6" text at Piper position; event feed at halfway mark
+- `piper_defeated`: massive screen shake + city-wide coin shower particles + "PIED PIPER DRIVEN AWAY! +120 XP +60c for ALL birds!"
+- `piper_steal_personal`: personal red announcement with coins lost
+- `piper_stolen`: event feed with victim list showing total theft
+
+**Creative intent**: The Piper creates a total disruption event unlike anything else in the game. Every other system in Bird City rewards pooping — the Piper punishes it by *disabling* it. A bird who flies too close to greedily hunt him gets enchanted and helpless. The suction force means you can't just ignore him and keep doing your thing — he gradually pulls everyone toward him. High-combo grinders near the Piper face a real dilemma: do you break your combo to fly away and preserve the streak, or commit to poop him away? The city-wide reward on defeat makes it genuinely cooperative — even birds who didn't directly engage get paid out. And the enchantment mechanic creates a funny emergent behavior: you see another bird nearby getting pulled in and silently, helplessly pulled along with them. Pure SOCIAL + CARNAGE + DISCOVERY energy — the city's first enemy that uses your own weapon against you.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -1489,7 +1525,7 @@ Built the Territory Control System on top of the existing upstream code:
 - ~~Formation Flying bonuses — V-formation speed boost + Wedge poop power~~ (DONE Session 41)
 - Bird Flu + Wanted interaction: if a cop arrests you while infected, they catch the flu and wander confused for 5s (new counter-play)
 - ~~NPC Crow Cartel rival gang that periodically raids player territories — forces active defense~~ (DONE Session 43)
-- Pigeon Pied Piper event: mysterious NPC that drifts birds toward them; poop to send away for big reward
+- ~~Pigeon Pied Piper event: mysterious NPC that drifts birds toward them; poop to send away for big reward~~ (DONE Session 45)
 - ~~"BIRD CITY IDOL" singing contest — city votes with emojis, winner gets city-wide XP buff for 5 minutes~~ (DONE Session 44)
 - Idol Hall of Fame: track all-time Idol winners (persistent leaderboard near the stage)
 - Idol challenge daily task: "Win Bird City Idol" as a rare daily challenge
