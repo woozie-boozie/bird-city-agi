@@ -115,6 +115,7 @@
   // === PRESTIGE PANEL ===
   const prestigeOverlay = document.getElementById('prestigeOverlay');
   let prestigePanelVisible = false;
+  let idolOverlayVisible = false;
 
   // === Persistent Identity (localStorage) ===
   function getSavedAccount() {
@@ -2205,6 +2206,38 @@
       showGazette(ev);
       addEventMessage('📰 The Bird City Gazette MORNING EDITION is out!', '#c8a040');
     }
+
+    // === BIRD CITY IDOL ===
+    if (ev.type === 'idol_contest_open') {
+      showAnnouncement('🎤 BIRD CITY IDOL — CONTEST OPEN!\nFly to the 🎤 stage in the park · Press [I] to enter!', '#ff88ff', 7000);
+      addEventMessage('🎤 BIRD CITY IDOL contest has opened! Fly to the stage in the east park and press [I]!', '#ff88ff');
+      triggerScreenShake(8, 400);
+    }
+    if (ev.type === 'idol_contestant_joined') {
+      addEventMessage(`🎤 ${ev.birdName} joined BIRD CITY IDOL as contestant #${ev.slotNum}! (${ev.totalContestants}/4)`, '#cc88ff');
+      if (idolOverlayVisible) renderIdolOverlay();
+    }
+    if (ev.type === 'idol_cancelled') {
+      addEventMessage('🎤 Idol contest cancelled — not enough contestants.', '#888888');
+      if (idolOverlayVisible) hideIdolOverlay();
+    }
+    if (ev.type === 'idol_voting_open') {
+      showAnnouncement('🗳️ BIRD CITY IDOL VOTING OPEN!\nPress [I] to vote for your favourite performer!', '#44aaff', 6000);
+      addEventMessage('🗳️ IDOL VOTING is open! Press [I] from anywhere to cast your vote!', '#44aaff');
+      if (idolOverlayVisible) renderIdolOverlay();
+      else showIdolOverlay(); // Auto-open voting overlay for all
+    }
+    if (ev.type === 'idol_vote_cast') {
+      addEventMessage(`🗳️ ${ev.voterName} voted in the Idol contest! (${ev.totalVotes} total votes)`, '#8888ff');
+      if (idolOverlayVisible) renderIdolOverlay();
+    }
+    if (ev.type === 'idol_results') {
+      showAnnouncement(`🏆 BIRD CITY IDOL WINNER: ${ev.winnerName}!\n+300c · +250 XP · 🎤 IDOL badge · ⚡ 3-min XP boost for ALL!`, '#ffd700', 8000);
+      addEventMessage(`🏆 IDOL WINNER: ${ev.winnerName}! City-wide 1.5× XP boost for 3 minutes!`, '#ffd700');
+      triggerScreenShake(12, 600);
+      if (idolOverlayVisible) renderIdolOverlay();
+      else showIdolOverlay(); // Show results to everyone
+    }
   }
 
   function showAnnouncement(text, color, duration) {
@@ -2450,6 +2483,24 @@
         hidePrestigePanel();
       } else {
         showPrestigePanel();
+      }
+    }
+    // Bird City Idol — [I] to enter contest or vote
+    if (e.key.toLowerCase() === 'i') {
+      if (idolOverlayVisible) {
+        hideIdolOverlay();
+      } else if (gameState) {
+        const idol = gameState.self && gameState.self.birdIdol;
+        const nearStage = gameState.self && gameState.self.nearIdolStage;
+        if (idol && idol.state === 'open' && nearStage && !idol.isContestant) {
+          // Register as contestant
+          socket.emit('action', { type: 'idol_enter' });
+        } else if (idol && (idol.state === 'open' || idol.state === 'voting')) {
+          // Open voting/status overlay
+          showIdolOverlay();
+        } else if (nearStage) {
+          showIdolOverlay();
+        }
       }
     }
     // Arena enter
@@ -3202,6 +3253,9 @@
 
     // Gang HQ — update when open
     if (gangHqVisible) renderGangHq();
+
+    // Bird City Idol overlay auto-refresh
+    if (idolOverlayVisible) renderIdolOverlay();
 
     // Don mission HUD
     if (gameState.donMission) {
@@ -5478,6 +5532,13 @@
       Renderer.drawGangNests(ctx, camera, gameState.gangNests, selfGangId, now);
     }
 
+    // Bird City Idol Stage
+    if (worldData && worldData.idolStagePos) {
+      const idolSt = gameState.self && gameState.self.birdIdol;
+      const nearStage = gameState.self && gameState.self.nearIdolStage;
+      Renderer.drawIdolStage(ctx, camera, worldData.idolStagePos, idolSt, nearStage, now);
+    }
+
     // Mystery Crate Airdrop
     const _mc = gameState.self && gameState.self.mysteryCrate;
     if (_mc) {
@@ -5602,7 +5663,7 @@
 
           Sprites.drawBird(ctx, sx, sy, b.rotation, b.type, b.wingPhase, isPlayer, b.birdColor || null);
           ctx.globalAlpha = 1; // Always reset after bird draw
-          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0, b.eagleFeather || false);
+          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0, b.eagleFeather || false, b.idolBadge || false);
 
           // Bird Flu: sneezing emoji indicator above infected birds
           if (b.isFlu) {
@@ -6037,6 +6098,12 @@
     if (worldData && worldData.hallOfLegendsPos) {
       const legendsData = (gameState.self && gameState.self.hallOfLegends) || [];
       Renderer.drawHallOfLegendsOnMinimap(minimapCtx, worldData, worldData.hallOfLegendsPos, legendsData.length > 0, now);
+    }
+
+    // Bird City Idol stage on minimap
+    if (worldData && worldData.idolStagePos) {
+      const idolSt = gameState.self && gameState.self.birdIdol;
+      Renderer.drawIdolStageOnMinimap(minimapCtx, worldData, worldData.idolStagePos, idolSt, now);
     }
 
     // Gang Nests on minimap
@@ -6871,6 +6938,16 @@
       html += '<div class="bm-buff-pill" style="background:rgba(0,60,100,0.85);border-color:#44ddff;color:#88eeff;animation:kingpinGlow 1.0s ease-in-out infinite alternate;">🔷 V-FORMATION +18% SPD</div>';
     } else if (s.formationType === 'WEDGE') {
       html += '<div class="bm-buff-pill" style="background:rgba(100,50,0,0.85);border-color:#ff9900;color:#ffcc44;animation:kingpinGlow 0.7s ease-in-out infinite alternate;font-weight:bold;">⚔️ WEDGE ATTACK +10% SPD +30% POOP</div>';
+    }
+
+    // Bird City Idol — city-wide XP boost
+    if (s.idolXpBoostUntil && s.idolXpBoostUntil > now) {
+      const secs = Math.ceil((s.idolXpBoostUntil - now) / 1000);
+      html += '<div class="bm-buff-pill" style="background:rgba(100,0,120,0.85);border-color:#ff88ff;color:#ffaafF;animation:kingpinGlow 0.9s ease-in-out infinite alternate;font-weight:bold;">🎤 IDOL XP BOOST ×1.5 — ' + secs + 's</div>';
+    }
+    // Idol contestant badge — show when you're in the contest
+    if (s.birdIdol && s.birdIdol.isContestant) {
+      html += '<div class="bm-buff-pill" style="background:rgba(80,0,100,0.85);border-color:#cc44ff;color:#ee88ff;">🎤 CONTESTANT — POOP FOR PERFORMANCE SCORE!</div>';
     }
 
     el.innerHTML = html;
@@ -7903,6 +7980,184 @@
   };
   window._gangInvite = function(targetId) {
     socket.emit('action', { type: 'gang_invite', targetId });
+  };
+
+  // ============================================================
+  // BIRD CITY IDOL — Overlay management
+  // ============================================================
+  const idolOverlayEl = document.getElementById('idolOverlay');
+  const idolOverlayCloseBtn = document.getElementById('idolOverlayClose');
+  if (idolOverlayCloseBtn) {
+    idolOverlayCloseBtn.addEventListener('click', () => hideIdolOverlay());
+  }
+
+  function showIdolOverlay() {
+    if (!idolOverlayEl) return;
+    idolOverlayVisible = true;
+    idolOverlayEl.style.display = 'block';
+    for (const k in keys) keys[k] = false;
+    syncInput();
+    renderIdolOverlay();
+  }
+
+  function hideIdolOverlay() {
+    if (!idolOverlayEl) return;
+    idolOverlayVisible = false;
+    idolOverlayEl.style.display = 'none';
+  }
+
+  function renderIdolOverlay() {
+    if (!idolOverlayEl || !gameState) return;
+    const s = gameState.self;
+    const idol = s && s.birdIdol;
+    const titleEl = document.getElementById('idolOverlayTitle');
+    const subtitleEl = document.getElementById('idolOverlaySubtitle');
+    const bodyEl = document.getElementById('idolOverlayBody');
+    if (!titleEl || !bodyEl) return;
+
+    if (!idol) {
+      subtitleEl.textContent = 'Next contest coming soon...';
+      bodyEl.innerHTML = `<div style="text-align:center;color:#aa88cc;font-size:10px;padding:10px;">
+        The stage is quiet for now. Come back soon!<br>
+        <br><span style="color:#cc88ff;">Contest opens every 35-50 minutes.</span>
+      </div>`;
+      return;
+    }
+
+    if (idol.state === 'open') {
+      const timeLeft = Math.max(0, Math.ceil((idol.openUntil - Date.now()) / 1000));
+      subtitleEl.textContent = `REGISTRATION OPEN — ${timeLeft}s remaining`;
+      const isContestant = idol.isContestant;
+      const nearStage = s.nearIdolStage;
+
+      let html = `<div style="font-size:10px;color:#cc88ff;margin-bottom:10px;text-align:center;">
+        ${idol.contestants.length}/4 contestants registered<br>
+        <span style="color:#ffdd88;font-size:9px;">Poop hits during the open phase count as performance score!</span>
+      </div>`;
+
+      if (idol.contestants.length > 0) {
+        html += `<div style="margin-bottom:10px;">`;
+        for (const c of idol.contestants) {
+          const badges = ['', '⚜️', '⚜️⚜️', '⚜️⚜️⚜️', '⚜️⚜️⚜️⚜️', '⚜️⚜️⚜️⚜️⚜️'];
+          const prestigeBadge = badges[Math.min(c.prestige || 0, 5)];
+          const tattoos = (c.tattoos || []).join(' ');
+          html += `<div style="display:flex;align-items:center;gap:6px;padding:5px 8px;
+            background:rgba(100,0,150,0.3);border:1px solid #660099;border-radius:6px;margin-bottom:4px;">
+            <span style="color:#ff88ff;font-weight:bold;font-size:11px;">#${c.slotNum}</span>
+            <span style="color:#ffffff;font-size:11px;">${c.name}</span>
+            ${c.gangTag ? `<span style="color:${c.gangColor||'#ff9944'};font-size:9px;">[${c.gangTag}]</span>` : ''}
+            ${prestigeBadge ? `<span style="font-size:9px;">${prestigeBadge}</span>` : ''}
+            ${tattoos ? `<span style="font-size:9px;">${tattoos}</span>` : ''}
+          </div>`;
+        }
+        html += `</div>`;
+      }
+
+      if (!isContestant && nearStage && idol.contestants.length < 4) {
+        html += `<div style="text-align:center;margin-top:8px;">
+          <button onclick="window._idolEnter()" style="background:linear-gradient(135deg,#880088,#cc00cc);
+            color:#fff;border:2px solid #ff44ff;border-radius:8px;padding:8px 20px;cursor:pointer;
+            font:bold 11px 'Courier New',monospace;letter-spacing:1px;
+            box-shadow:0 0 12px rgba(255,68,255,0.4);">🎤 JOIN THE CONTEST</button>
+          <div style="color:#aa88cc;font-size:8px;margin-top:4px;">Cost: FREE · Reward: 80c + 50 XP (winner: 300c + 250 XP)</div>
+        </div>`;
+      } else if (isContestant) {
+        html += `<div style="text-align:center;padding:8px;color:#88ff88;font-size:10px;">
+          ✅ You're registered! Go poop on everything to build your performance score!
+        </div>`;
+      } else if (!nearStage) {
+        html += `<div style="text-align:center;color:#aa88cc;font-size:9px;padding:6px;">
+          Fly to the 🎤 stage in the east park to register!
+        </div>`;
+      }
+      bodyEl.innerHTML = html;
+
+    } else if (idol.state === 'voting') {
+      const timeLeft = Math.max(0, Math.ceil((idol.votingUntil - Date.now()) / 1000));
+      subtitleEl.textContent = `VOTE NOW — ${timeLeft}s remaining`;
+      const isContestant = idol.isContestant;
+      const myVote = idol.myVote;
+
+      if (isContestant) {
+        bodyEl.innerHTML = `<div style="text-align:center;color:#ffdd88;font-size:10px;padding:12px;">
+          🎤 You're performing! Spectators are voting...<br>
+          <span style="color:#88ff88;margin-top:4px;display:block;">${idol.totalVotes} vote${idol.totalVotes !== 1 ? 's' : ''} cast so far</span>
+        </div>`;
+        return;
+      }
+
+      if (myVote) {
+        const voted = idol.contestants.find(c => c.id === myVote);
+        bodyEl.innerHTML = `<div style="text-align:center;color:#88ff88;font-size:10px;padding:12px;">
+          ✅ You voted for <strong>${voted ? voted.name : '?'}</strong>!<br>
+          <span style="color:#ffdd88;font-size:9px;">Correct pick = +60c +30 XP</span>
+        </div>`;
+        return;
+      }
+
+      let html = `<div style="font-size:9px;color:#cc88ff;margin-bottom:10px;text-align:center;">
+        Click a contestant to cast your vote! Correct picks earn +60c +30 XP
+      </div>`;
+      for (const c of idol.contestants) {
+        const badges = ['', '⚜️', '⚜️⚜️', '⚜️⚜️⚜️', '⚜️⚜️⚜️⚜️', '⚜️⚜️⚜️⚜️⚜️'];
+        const prestigeBadge = badges[Math.min(c.prestige || 0, 5)];
+        const tattoos = (c.tattoos || []).join(' ');
+        html += `<button onclick="window._idolVote('${c.id}')" style="
+          display:flex;align-items:center;gap:6px;width:100%;padding:8px 10px;margin-bottom:6px;
+          background:rgba(80,0,120,0.5);border:1.5px solid #aa44dd;border-radius:8px;
+          cursor:pointer;color:#fff;font:10px 'Courier New',monospace;
+          text-align:left;transition:background 0.15s;">
+          <span style="color:#ff88ff;font-weight:bold;font-size:13px;">#${c.slotNum}</span>
+          <div>
+            <div style="font-size:11px;font-weight:bold;">${c.name}
+              ${c.gangTag ? `<span style="color:${c.gangColor||'#ff9944'};font-size:9px;">[${c.gangTag}]</span>` : ''}
+              ${prestigeBadge}
+            </div>
+            <div style="font-size:9px;color:#cc99ff;">
+              ${c.performanceHits} poop hits ${tattoos ? `· ${tattoos}` : ''}
+            </div>
+          </div>
+        </button>`;
+      }
+      bodyEl.innerHTML = html;
+
+    } else if (idol.state === 'results') {
+      subtitleEl.textContent = '🏆 AND THE WINNER IS...';
+
+      let html = `<div style="text-align:center;margin-bottom:12px;">
+        <div style="font-size:24px;margin-bottom:4px;">🏆</div>
+        <div style="font-size:16px;font-weight:900;color:#ffd700;text-shadow:0 0 12px #ffaa00;">${idol.winnerName}</div>
+        <div style="font-size:9px;color:#ffdd88;margin-top:4px;">+300c · +250 XP · 🎤 IDOL badge</div>
+        <div style="font-size:9px;color:#88ff88;margin-top:2px;">⚡ City-wide 1.5× XP boost for 3 minutes!</div>
+      </div>`;
+
+      html += `<div style="border-top:1px solid #660099;padding-top:8px;">`;
+      const sorted = [...idol.contestants].sort((a, b) => (b.score || 0) - (a.score || 0));
+      for (let i = 0; i < sorted.length; i++) {
+        const c = sorted[i];
+        const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '  ';
+        const isWinner = c.id === idol.winnerId;
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;
+          padding:4px 8px;margin-bottom:3px;background:${isWinner ? 'rgba(180,140,0,0.2)' : 'rgba(60,0,90,0.3)'};
+          border-radius:5px;border:1px solid ${isWinner ? '#886600' : '#440066'};">
+          <span>${medal} <span style="color:${isWinner ? '#ffd700' : '#cc88ff'};font-weight:${isWinner ? 'bold' : 'normal'};font-size:11px;">${c.name}</span></span>
+          <span style="font-size:9px;color:#aa88cc;">${c.votes} vote${c.votes !== 1 ? 's' : ''} · ${c.performanceHits} hits · <strong style="color:#ffdd88;">${c.score} pts</strong></span>
+        </div>`;
+      }
+      html += `</div>`;
+      bodyEl.innerHTML = html;
+    }
+  }
+
+  // Global helpers for idol overlay onclick
+  window._idolEnter = function() {
+    socket.emit('action', { type: 'idol_enter' });
+    hideIdolOverlay();
+  };
+  window._idolVote = function(contestantId) {
+    socket.emit('action', { type: 'idol_vote', contestantId });
+    // Refresh overlay to show "voted" state
+    setTimeout(() => { if (idolOverlayVisible) renderIdolOverlay(); }, 200);
   };
 
   // ============================================================

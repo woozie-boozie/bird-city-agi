@@ -371,6 +371,19 @@ class GameEngine {
     this.crowCartelTimer = Date.now() + this._randomRange(20 * 60000, 35 * 60000);
     this._crowCartelIdCounter = 0;
 
+    // === BIRD CITY IDOL ===
+    // Every 35-50 minutes, a singing contest opens at the stage in the park.
+    // Birds fly to the stage and press [I] to register as contestants (up to 4).
+    // During the open phase, contestant poop hits are tracked as performance score.
+    // Then spectators vote by pressing [I] from anywhere on the map.
+    // Winner = most (votes × 3 + performance hits × 2) → 300c + 250 XP + 🎤 badge
+    // + city-wide 1.5× XP boost for 3 minutes. Runners-up: 80c + 50 XP.
+    // Correct voters: 60c + 30 XP.
+    this.birdIdol = null;
+    this.birdIdolTimer = Date.now() + this._randomRange(35 * 60000, 50 * 60000);
+    this.idolXpBoostUntil = 0; // timestamp when city-wide idol XP boost expires
+    this.IDOL_STAGE_POS = world.IDOL_STAGE_POS;
+
     // === BIRD CITY GAZETTE ===
     // Every game day cycle (~20 min), a newspaper publishes at dawn recapping the night.
     // Tracks key moments: top combo, most wanted, heists, gang wars, predator kills, etc.
@@ -876,6 +889,14 @@ class GameEngine {
       this._handleTowerBroadcast(bird, action.broadcastType, now);
     }
 
+    // === Bird City Idol ===
+    if (action.type === 'idol_enter') {
+      this._handleIdolEnter(bird, now);
+    }
+    if (action.type === 'idol_vote') {
+      this._handleIdolVote(bird, action, now);
+    }
+
     // === Pigeon Racing ===
     if (action.type === 'race_join') {
       this._handleRaceJoin(bird, now);
@@ -1113,6 +1134,9 @@ class GameEngine {
 
     // === Crow Cartel Raid ===
     this._updateCrowCartel(dt, now);
+
+    // === Bird City Idol ===
+    this._tickBirdIdol(now);
   }
 
   // ============================================================
@@ -2606,6 +2630,12 @@ class GameEngine {
       if (bird.bmDoubleXpUntil > now) xpGain *= 2;
       // Radio Tower: Signal Boost gives 1.5x XP to ALL birds
       if (this.radioTower.signalBoostUntil > now) xpGain = Math.floor(xpGain * 1.5);
+      // Bird City Idol: winner's boost gives 1.5x XP to ALL birds for 3 minutes
+      if (this.idolXpBoostUntil > now) xpGain = Math.floor(xpGain * 1.5);
+      // Idol: track performance hits for contestants during open phase
+      if (this.birdIdol && this.birdIdol.state === 'open' && this.birdIdol.contestants.has(poop.birdId) && hit.target !== 'miss') {
+        this.birdIdol.contestants.get(poop.birdId).performanceHits++;
+      }
       // Prestige P1+: XP bonus on all poop hits
       if (bird.prestige >= 1) {
         xpGain = Math.floor(xpGain * PRESTIGE_XP_MULTS[Math.min(bird.prestige, 5)]);
@@ -4254,6 +4284,7 @@ class GameEngine {
           kingpinMyHits: (this.kingpin && this.kingpin.birdId === b.id) ? (this.kingpin.hitCount.get(bird.id) || 0) : 0,
           tattoosEquipped: b.tattoosEquipped || [],
           eagleFeather: b.eagleFeather || false,
+          idolBadge: b.idolBadge || false,
           isFlu: b.fluUntil > now,
           formationType: b.formationType || null,
         });
@@ -5078,6 +5109,39 @@ class GameEngine {
         raidEndsAt: this.crowCartel.raidEndsAt,
         holdUntil: this.crowCartel.holdUntil,
       } : null,
+      // Bird City Idol
+      birdIdol: (() => {
+        const idol = this.birdIdol;
+        if (!idol) return null;
+        return {
+          state: idol.state,
+          contestants: idol.contestantsOrder.map((id, i) => ({
+            id,
+            name: idol.contestants.get(id).name,
+            gangTag: idol.contestants.get(id).gangTag,
+            gangColor: idol.contestants.get(id).gangColor,
+            prestige: idol.contestants.get(id).prestige,
+            tattoos: idol.contestants.get(id).tattoos,
+            performanceHits: idol.contestants.get(id).performanceHits,
+            slotNum: i + 1,
+          })),
+          openUntil: idol.openUntil,
+          votingUntil: idol.votingUntil,
+          resultsUntil: idol.resultsUntil,
+          winnerId: idol.winnerId,
+          winnerName: idol.winnerName,
+          myVote: idol.votes.has(bird.id) ? idol.votes.get(bird.id).contestantId : null,
+          isContestant: idol.contestants.has(bird.id),
+          totalVotes: idol.votes.size,
+        };
+      })(),
+      idolXpBoostUntil: this.idolXpBoostUntil,
+      idolBadge: bird.idolBadge || false,
+      nearIdolStage: (() => {
+        const dx = bird.x - this.IDOL_STAGE_POS.x;
+        const dy = bird.y - this.IDOL_STAGE_POS.y;
+        return Math.sqrt(dx * dx + dy * dy) < this.IDOL_STAGE_POS.radius;
+      })(),
     };
   }
 
@@ -11034,6 +11098,196 @@ class GameEngine {
     }
     this.crowCartelTimer = now + this._randomRange(20 * 60000, 35 * 60000);
     console.log(`[Cartel] Retreated from ${zone ? zone.name : '?'} (${reason})`);
+  }
+
+  // ============================================================
+  // BIRD CITY IDOL — Singing Contest
+  // ============================================================
+
+  _tickBirdIdol(now) {
+    // Start a new contest if timer elapsed and birds are online
+    if (!this.birdIdol && now >= this.birdIdolTimer && this.birds.size > 0) {
+      this.birdIdol = {
+        state: 'open',
+        contestants: new Map(),     // birdId -> contestant info
+        contestantsOrder: [],       // ordered list of birdIds (for slot numbers)
+        votes: new Map(),           // voterId -> { contestantId, birdName }
+        openUntil: now + 35000,     // 35-second registration + performance window
+        votingUntil: null,
+        resultsUntil: null,
+        winnerId: null,
+        winnerName: null,
+        scoreMap: null,
+      };
+      this.events.push({
+        type: 'idol_contest_open',
+        openUntil: this.birdIdol.openUntil,
+      });
+      return;
+    }
+
+    if (!this.birdIdol) return;
+    const idol = this.birdIdol;
+
+    // Open phase: wait for contestants to register. Transition to voting when timer runs out.
+    if (idol.state === 'open' && now >= idol.openUntil) {
+      if (idol.contestants.size < 2) {
+        // Not enough contestants — cancel
+        this.events.push({ type: 'idol_cancelled' });
+        this.birdIdol = null;
+        this.birdIdolTimer = now + this._randomRange(35 * 60000, 50 * 60000);
+        return;
+      }
+      idol.state = 'voting';
+      idol.votingUntil = now + 25000;
+      this.events.push({
+        type: 'idol_voting_open',
+        contestants: idol.contestantsOrder.map((id, i) => ({
+          id,
+          name: idol.contestants.get(id).name,
+          slotNum: i + 1,
+          performanceHits: idol.contestants.get(id).performanceHits,
+        })),
+        votingUntil: idol.votingUntil,
+      });
+      return;
+    }
+
+    // Voting phase: collect spectator votes. Tally and announce when done.
+    if (idol.state === 'voting' && now >= idol.votingUntil) {
+      // Tally scores: votes × 3 + performanceHits × 2
+      const scores = new Map();
+      for (const c of idol.contestants.values()) {
+        scores.set(c.id, (c.performanceHits || 0) * 2);
+      }
+      for (const { contestantId } of idol.votes.values()) {
+        scores.set(contestantId, (scores.get(contestantId) || 0) + 3);
+      }
+
+      // Find winner (random tiebreak among equal top scorers)
+      let topScore = -1;
+      for (const score of scores.values()) {
+        if (score > topScore) topScore = score;
+      }
+      const tied = [...scores.entries()].filter(([, s]) => s === topScore).map(([id]) => id);
+      const winnerId = tied[Math.floor(Math.random() * tied.length)];
+
+      idol.winnerId = winnerId;
+      idol.winnerName = winnerId && idol.contestants.has(winnerId)
+        ? idol.contestants.get(winnerId).name : 'Nobody';
+      idol.state = 'results';
+      idol.resultsUntil = now + 12000;
+      idol.scoreMap = Object.fromEntries(scores);
+
+      // Vote totals for display
+      const voteCounts = {};
+      for (const c of idol.contestants.values()) voteCounts[c.id] = 0;
+      for (const { contestantId } of idol.votes.values()) {
+        voteCounts[contestantId] = (voteCounts[contestantId] || 0) + 1;
+      }
+
+      // Reward winner
+      const winnerBird = winnerId ? this.birds.get(winnerId) : null;
+      if (winnerBird) {
+        winnerBird.coins += 300;
+        winnerBird.xp += 250;
+        winnerBird.idolBadge = true;
+      }
+
+      // Reward runners-up
+      for (const id of idol.contestants.keys()) {
+        if (id === winnerId) continue;
+        const b = this.birds.get(id);
+        if (b) { b.coins += 80; b.xp += 50; }
+      }
+
+      // Reward correct voters
+      for (const [voterId, vote] of idol.votes) {
+        if (vote.contestantId === winnerId) {
+          const b = this.birds.get(voterId);
+          if (b) { b.coins += 60; b.xp += 30; }
+        }
+      }
+
+      // City-wide XP boost for 3 minutes
+      this.idolXpBoostUntil = now + 180000;
+
+      this.events.push({
+        type: 'idol_results',
+        winnerId,
+        winnerName: idol.winnerName,
+        contestants: idol.contestantsOrder.map((id, i) => ({
+          id,
+          name: idol.contestants.get(id).name,
+          slotNum: i + 1,
+          votes: voteCounts[id] || 0,
+          performanceHits: idol.contestants.get(id).performanceHits || 0,
+          score: scores.get(id) || 0,
+        })),
+        totalVotes: idol.votes.size,
+        xpBoostUntil: this.idolXpBoostUntil,
+      });
+      return;
+    }
+
+    // Results phase: show winner, then clean up
+    if (idol.state === 'results' && now >= idol.resultsUntil) {
+      this.birdIdol = null;
+      this.birdIdolTimer = now + this._randomRange(35 * 60000, 50 * 60000);
+    }
+  }
+
+  _handleIdolEnter(bird, now) {
+    const idol = this.birdIdol;
+    if (!idol || idol.state !== 'open') return;
+    if (idol.contestants.has(bird.id)) return;
+    if (idol.contestants.size >= 4) {
+      this.events.push({ type: 'idol_stage_full', birdId: bird.id });
+      return;
+    }
+
+    // Proximity check
+    const dx = bird.x - this.IDOL_STAGE_POS.x;
+    const dy = bird.y - this.IDOL_STAGE_POS.y;
+    if (Math.sqrt(dx * dx + dy * dy) > this.IDOL_STAGE_POS.radius) return;
+
+    idol.contestants.set(bird.id, {
+      id: bird.id,
+      name: bird.name,
+      gangTag: bird.gangTag || null,
+      gangColor: bird.gangColor || null,
+      prestige: bird.prestige || 0,
+      tattoos: bird.tattoosEquipped || [],
+      performanceHits: 0,
+    });
+    idol.contestantsOrder.push(bird.id);
+
+    this.events.push({
+      type: 'idol_contestant_joined',
+      birdId: bird.id,
+      birdName: bird.name,
+      slotNum: idol.contestantsOrder.length,
+      totalContestants: idol.contestants.size,
+    });
+  }
+
+  _handleIdolVote(bird, action, now) {
+    const idol = this.birdIdol;
+    if (!idol || idol.state !== 'voting') return;
+    if (idol.contestants.has(bird.id)) return; // contestants can't vote for themselves
+    if (idol.votes.has(bird.id)) return;        // one vote per bird
+
+    const contestantId = action.contestantId;
+    if (!contestantId || !idol.contestants.has(contestantId)) return;
+
+    idol.votes.set(bird.id, { contestantId, birdName: bird.name });
+
+    this.events.push({
+      type: 'idol_vote_cast',
+      voterName: bird.name,
+      contestantName: idol.contestants.get(contestantId).name,
+      totalVotes: idol.votes.size,
+    });
   }
 
 }

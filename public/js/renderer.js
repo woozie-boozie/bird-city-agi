@@ -2987,4 +2987,221 @@ window.Renderer = {
     minimapCtx.fillText('?', px, py + 3);
     minimapCtx.restore();
   },
+
+  // ============================================================
+  // BIRD CITY IDOL — Stage drawing
+  // ============================================================
+
+  drawIdolStage(ctx, camera, stagePos, idolState, nearStage, now) {
+    if (!stagePos) return;
+    const sx = stagePos.x - camera.x + camera.screenW / 2;
+    const sy = stagePos.y - camera.y + camera.screenH / 2;
+    if (sx < -200 || sx > camera.screenW + 200 || sy < -200 || sy > camera.screenH + 200) return;
+
+    const t = now / 1000;
+    const isActive = idolState && (idolState.state === 'open' || idolState.state === 'voting' || idolState.state === 'results');
+    const pulse = 0.5 + 0.5 * Math.sin(t * 3.0);
+
+    ctx.save();
+    ctx.translate(sx, sy);
+
+    // Stage platform — wooden boards
+    const stageW = 150;
+    const stageH = 55;
+    const stageY = -10;
+
+    // Platform shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath();
+    ctx.ellipse(0, stageY + stageH / 2 + 8, stageW / 2 + 4, 12, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Stage floor
+    ctx.fillStyle = '#8B5E14';
+    ctx.beginPath();
+    ctx.roundRect(-stageW / 2, stageY - stageH / 2, stageW, stageH, 6);
+    ctx.fill();
+
+    // Wooden plank lines
+    ctx.strokeStyle = '#6b4810';
+    ctx.lineWidth = 1.5;
+    for (let px2 = -55; px2 <= 55; px2 += 22) {
+      ctx.beginPath();
+      ctx.moveTo(px2, stageY - stageH / 2 + 3);
+      ctx.lineTo(px2, stageY + stageH / 2 - 3);
+      ctx.stroke();
+    }
+
+    // Stage edge trim
+    ctx.strokeStyle = '#ffd04a';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(-stageW / 2, stageY - stageH / 2, stageW, stageH, 6);
+    ctx.stroke();
+
+    // Left and right curtain poles
+    ctx.strokeStyle = '#8B1A1A';
+    ctx.lineWidth = 4;
+    // Left pole
+    ctx.beginPath();
+    ctx.moveTo(-stageW / 2 - 8, stageY - stageH / 2 - 40);
+    ctx.lineTo(-stageW / 2 - 8, stageY + stageH / 2);
+    ctx.stroke();
+    // Right pole
+    ctx.beginPath();
+    ctx.moveTo(stageW / 2 + 8, stageY - stageH / 2 - 40);
+    ctx.lineTo(stageW / 2 + 8, stageY + stageH / 2);
+    ctx.stroke();
+
+    // Left curtain
+    ctx.fillStyle = 'rgba(180, 20, 20, 0.82)';
+    ctx.beginPath();
+    ctx.moveTo(-stageW / 2 - 8, stageY - stageH / 2 - 40);
+    ctx.bezierCurveTo(-stageW / 2 + 15, stageY - stageH / 2 - 20, -stageW / 2 - 5, stageY - 8, -stageW / 2 + 20, stageY + stageH / 2);
+    ctx.lineTo(-stageW / 2 - 8, stageY + stageH / 2);
+    ctx.closePath();
+    ctx.fill();
+
+    // Right curtain
+    ctx.fillStyle = 'rgba(180, 20, 20, 0.82)';
+    ctx.beginPath();
+    ctx.moveTo(stageW / 2 + 8, stageY - stageH / 2 - 40);
+    ctx.bezierCurveTo(stageW / 2 - 15, stageY - stageH / 2 - 20, stageW / 2 + 5, stageY - 8, stageW / 2 - 20, stageY + stageH / 2);
+    ctx.lineTo(stageW / 2 + 8, stageY + stageH / 2);
+    ctx.closePath();
+    ctx.fill();
+
+    // Stage lights — small spotlights along the top
+    const lightColors = ['#fffbe0', '#fff0b0', '#ffe580'];
+    for (let i = 0; i < 5; i++) {
+      const lx = -60 + i * 30;
+      const ly = stageY - stageH / 2 - 4;
+      const glow = isActive ? (0.7 + 0.3 * Math.sin(t * 4 + i * 1.2)) : 0.4;
+      ctx.fillStyle = `rgba(255, 240, 100, ${glow})`;
+      ctx.beginPath();
+      ctx.arc(lx, ly, 5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Spotlight beams during active contest
+    if (isActive) {
+      for (let i = 0; i < 3; i++) {
+        const beamAlpha = 0.06 + 0.04 * Math.sin(t * 2 + i * 2.1);
+        const beamX = -40 + i * 40;
+        const grad = ctx.createLinearGradient(beamX, stageY - stageH / 2 - 6, beamX + 10, stageY - 50);
+        grad.addColorStop(0, `rgba(255,250,200,${beamAlpha * 3})`);
+        grad.addColorStop(1, `rgba(255,250,200,0)`);
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.moveTo(beamX - 5, stageY - stageH / 2 - 6);
+        ctx.lineTo(beamX + 15, stageY - stageH / 2 - 6);
+        ctx.lineTo(beamX + 30, stageY - 50);
+        ctx.lineTo(beamX - 20, stageY - 50);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
+    // Microphone stand center-stage
+    ctx.strokeStyle = '#999';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, stageY + stageH / 2 - 6);
+    ctx.lineTo(0, stageY - stageH / 2 + 12);
+    ctx.stroke();
+    // Mic head
+    ctx.fillStyle = '#ccc';
+    ctx.beginPath();
+    ctx.ellipse(0, stageY - stageH / 2 + 8, 5, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#888';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    // Mic shimmer
+    ctx.fillStyle = isActive ? `rgba(255,255,200,${0.6 + 0.4 * pulse})` : 'rgba(200,200,150,0.3)';
+    ctx.beginPath();
+    ctx.ellipse(-1, stageY - stageH / 2 + 6, 2, 3, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Label
+    const labelY = stageY - stageH / 2 - 50;
+    if (isActive && idolState.state === 'open') {
+      // Pulsing neon pink sign
+      ctx.shadowColor = '#ff44cc';
+      ctx.shadowBlur = 10 + 6 * pulse;
+      ctx.fillStyle = `rgba(255,68,204,${0.85 + 0.15 * pulse})`;
+      ctx.font = 'bold 11px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('🎤 IDOL STAGE — OPEN!', 0, labelY);
+      ctx.shadowBlur = 0;
+      // Contestant count
+      ctx.fillStyle = '#ffdd88';
+      ctx.font = '9px Courier New';
+      ctx.fillText(`${idolState.contestants.length}/4 contestants`, 0, labelY + 13);
+      if (nearStage) {
+        ctx.fillStyle = '#88ff88';
+        ctx.fillText('[I] JOIN THE CONTEST', 0, labelY + 25);
+      }
+    } else if (isActive && idolState.state === 'voting') {
+      ctx.shadowColor = '#44aaff';
+      ctx.shadowBlur = 10 + 6 * pulse;
+      ctx.fillStyle = '#44aaff';
+      ctx.font = 'bold 11px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('🗳️ VOTING IN PROGRESS', 0, labelY);
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#aaddff';
+      ctx.font = '9px Courier New';
+      ctx.fillText('[I] to vote from anywhere', 0, labelY + 13);
+    } else if (isActive && idolState.state === 'results') {
+      ctx.shadowColor = '#ffd700';
+      ctx.shadowBlur = 14 + 6 * pulse;
+      ctx.fillStyle = '#ffd700';
+      ctx.font = 'bold 12px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('🏆 ' + (idolState.winnerName || '???') + ' WINS!', 0, labelY);
+      ctx.shadowBlur = 0;
+    } else {
+      // Idle — show subtle label
+      ctx.fillStyle = 'rgba(200,150,255,0.6)';
+      ctx.font = '9px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('🎤 IDOL STAGE', 0, labelY);
+      if (nearStage) {
+        ctx.fillStyle = 'rgba(180,180,255,0.8)';
+        ctx.font = '8px Courier New';
+        ctx.fillText('Contest coming soon...', 0, labelY + 11);
+      }
+    }
+
+    ctx.restore();
+  },
+
+  drawIdolStageOnMinimap(minimapCtx, worldData, stagePos, idolState, now) {
+    if (!stagePos || !worldData) return;
+    const msx = minimapCtx.canvas.width / worldData.width;
+    const msy = minimapCtx.canvas.height / worldData.height;
+    const px = stagePos.x * msx;
+    const py = stagePos.y * msy;
+    const t = now / 1000;
+    const pulse = 0.5 + 0.5 * Math.sin(t * 3.0);
+    const isActive = idolState && (idolState.state === 'open' || idolState.state === 'voting');
+
+    minimapCtx.save();
+    if (isActive) {
+      minimapCtx.shadowColor = idolState.state === 'voting' ? '#44aaff' : '#ff44cc';
+      minimapCtx.shadowBlur = 5 + 3 * pulse;
+    }
+    minimapCtx.fillStyle = isActive
+      ? (idolState.state === 'voting' ? `rgba(68,170,255,${0.8 + 0.2 * pulse})` : `rgba(255,68,204,${0.8 + 0.2 * pulse})`)
+      : '#cc88ff';
+    minimapCtx.beginPath();
+    minimapCtx.arc(px, py, isActive ? 3.5 + pulse : 2.5, 0, Math.PI * 2);
+    minimapCtx.fill();
+    minimapCtx.shadowBlur = 0;
+    minimapCtx.font = '8px sans-serif';
+    minimapCtx.textAlign = 'center';
+    minimapCtx.fillText('🎤', px, py - 4);
+    minimapCtx.restore();
+  },
 };

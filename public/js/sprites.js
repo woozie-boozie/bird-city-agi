@@ -106,7 +106,7 @@ window.Sprites = {
   },
 
   // === NAME TAG ===
-  drawNameTag(ctx, x, y, name, level, type, isPlayer, mafiaTitle, gangTag, gangColor, tattoosEquipped, prestige, eagleFeather) {
+  drawNameTag(ctx, x, y, name, level, type, isPlayer, mafiaTitle, gangTag, gangColor, tattoosEquipped, prestige, eagleFeather, idolBadge) {
     const text = `${name} [Lv.${level}]`;
     ctx.font = 'bold 11px Courier New';
     ctx.textAlign = 'center';
@@ -136,6 +136,24 @@ window.Sprites = {
       ctx.shadowBlur = 0;
       ctx.font = 'bold 11px Courier New';
       offsetY += 15;
+    }
+
+    // Idol badge — 🎤 shown for session winner
+    if (idolBadge) {
+      ctx.font = '11px serif';
+      const iw = ctx.measureText('🎤').width + 10;
+      ctx.fillStyle = 'rgba(80,0,100,0.90)';
+      ctx.fillRect(x - iw / 2, y - 52 - offsetY, iw, 14);
+      ctx.strokeStyle = '#ff88ff';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(x - iw / 2, y - 52 - offsetY, iw, 14);
+      ctx.shadowColor = '#ff44ff';
+      ctx.shadowBlur = 7;
+      ctx.fillStyle = '#ff88ff';
+      ctx.fillText('🎤', x, y - 41 - offsetY);
+      ctx.shadowBlur = 0;
+      ctx.font = 'bold 11px Courier New';
+      offsetY += 14;
     }
 
     // Eagle Feather badge — rare drop from Eagle Overlord

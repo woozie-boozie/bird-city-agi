@@ -1409,6 +1409,45 @@ The city's criminal underworld just got a rival faction. Every 20-35 minutes, th
 
 **Creative intent**: Territory control was player vs player — now there's a shared NPC enemy. When the Cartel raids YOUR flock's zone, it doesn't matter if you were just fighting over it five minutes ago — now you're both on the same side pooping down the same crows. The Don Corvino kill is a rare, high-prestige moment (180 XP city-wide callout). The 20-35 minute timer means raids fire unpredictably, turning quiet territory sessions into sudden defense emergencies. Pure CARNAGE + SOCIAL + DISCOVERY energy — the city just got an outside threat.
 
+**Session 44 — 2026-04-05: Bird City Idol — The City's Singing Contest**
+Bird City's first purely SOCIAL spectacle: a talent show that has nothing to do with combat. An open-air performance stage sits in the east park at x:1380, y:970. Every 35-50 minutes, a contest opens for 35 seconds — fly there and press [I] to enter as a contestant (up to 4 birds). Then 25 seconds of voting, then results.
+
+**The Contest Flow (`server/game.js`):**
+- `birdIdol` object tracks state: `'open'` → `'voting'` → `'results'`
+- During `'open'` (35s): Birds fly to the stage and press [I] to register. Contestants' poop hits during this window are tracked as **performance score** (2 pts each)
+- During `'voting'` (25s): Overlay auto-opens for all birds. Spectators click/press [I] to vote (3 pts per vote for the chosen contestant)
+- **Winner** = highest (votes × 3 + poop_hits × 2). Tiebreaker is random.
+- **Winner rewards**: 300c + 250 XP + 🎤 IDOL badge (visible on nametag above eagle feather) + city-wide 1.5× XP boost for 3 minutes
+- **Runner-up rewards**: 80c + 50 XP each
+- **Correct voters**: 60c + 30 XP — picking the winner pays!
+
+**The Idol XP Boost:**
+- `this.idolXpBoostUntil` timestamp tracked server-side, multiplies all poop hit XP by 1.5 for 3 minutes after the winner is announced
+- Stacks with Lucky Charm + Signal Boost + Prestige bonuses — a P5 LEGEND bird on a 15× combo during idol boost hits astronomical XP numbers
+
+**Visual system (`public/js/renderer.js`):**
+- Open-air stage: wooden plank floor with board lines, red velvet curtains on left/right poles, 5 stage lights along the top rail, standing microphone center-stage
+- During active contest: spotlight beam cones emanate upward from the lights, softly illuminating the "sky" above the stage
+- Context-sensitive labels: pink neon "IDOL STAGE — OPEN!" during registration, blue "VOTING IN PROGRESS" during vote phase, gold "🏆 [Name] WINS!" during results
+- Ground shadow ellipse beneath the platform gives depth
+- Minimap: permanent 🎤 dot at stage position, turns pink/pulses during open phase, blue during voting
+- Contestant count (X/4) shown in real-time on the stage label during registration
+
+**Idol Overlay ([I] key, `#idolOverlay`):**
+- Deep purple neon aesthetic (matching the Black Market dark economy vibe but for showbiz)
+- **Open phase**: shows contestant roster with their gang tags, prestige badges, tattoos, and performance hit count. "JOIN THE CONTEST" button for eligible birds near stage.
+- **Voting phase**: lists all contestants as clickable cards. One vote per bird, contestants can't vote. Once voted: shows confirmation with "Correct pick = +60c +30 XP" reminder.
+- **Results phase**: podium display with medal emojis 🥇🥈🥉, vote count, performance hits, and final score for each contestant. Winner highlighted in gold.
+- Auto-opens during voting (so all birds see it, can instantly vote), auto-updates during results.
+
+**🎤 IDOL badge (nametag):**
+- `bird.idolBadge = true` set on winner (session-only, cleared on server restart)
+- Renders as a purple-glow 🎤 pill above the gang tag in `drawNameTag()`, visible to all nearby birds
+- Idol boost shown in active buffs HUD as a pulsing magenta "🎤 IDOL XP BOOST ×1.5" pill with countdown
+- Contestant prompt in active buffs shows "🎤 CONTESTANT — POOP FOR PERFORMANCE SCORE!" during the open phase
+
+**Creative intent**: Bird City already had CARNAGE contests (Arena PvP, racing), criminal contests (bank heist, hit contracts), and economic contests (Kingpin, slots). But nothing purely SOCIAL and chaotic. The Idol contest is different: you can win without being the best fighter. A bird with 8 prestige badges and cool tattoos might get more votes than the highest-combo grinder. The performance score mechanic means you CAN'T just stand there — you have to be active and show off during registration. But pure popularity counts too. Correct voters earn coins, creating a prediction market meta-game. "Who's gonna win the Idol this round?" is a genuine city-wide conversation. The 3-minute XP boost everyone gets after the winner is announced makes the whole city cheer. Pure SOCIAL + SPECTACLE + DISCOVERY energy — the city just got its first TV show.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -1451,7 +1490,10 @@ Built the Territory Control System on top of the existing upstream code:
 - Bird Flu + Wanted interaction: if a cop arrests you while infected, they catch the flu and wander confused for 5s (new counter-play)
 - ~~NPC Crow Cartel rival gang that periodically raids player territories — forces active defense~~ (DONE Session 43)
 - Pigeon Pied Piper event: mysterious NPC that drifts birds toward them; poop to send away for big reward
-- "BIRD CITY IDOL" singing contest — city votes with emojis, winner gets city-wide XP buff for 5 minutes
+- ~~"BIRD CITY IDOL" singing contest — city votes with emojis, winner gets city-wide XP buff for 5 minutes~~ (DONE Session 44)
+- Idol Hall of Fame: track all-time Idol winners (persistent leaderboard near the stage)
+- Idol challenge daily task: "Win Bird City Idol" as a rare daily challenge
+- Gang sponsorship for Idol: gangs can sponsor a contestant, putting gang treasury coins on the line
 - ~~Prestige leaderboard: a wall/board in the city showing top-5 prestige players of all time~~ (DONE Session 37 — Hall of Legends)
 - ~~LEGEND-tier exclusive: ⚜️⚜️⚜️⚜️⚜️ birds can unlock "Prestige Poop" — a special golden poop effect~~ (DONE Session 37)
 - ~~Race power-ups: speed boost gates on the track~~ (DONE Session 30)

@@ -384,6 +384,12 @@ const CITY_HALL_POS = { x: 1780, y: 1050, radius: 110 };
 // LEGEND birds' golden poop spawns near here; Eagle Feather drop also displayed
 const HALL_OF_LEGENDS_POS = { x: 1050, y: 640, radius: 110 };
 
+// Bird City Idol — open-air performance stage in the east side of the park
+// Every 35-50 minutes a singing contest opens. Birds register as contestants,
+// perform (poop hits tracked for performance score), then spectators vote.
+// Winner gets 300c + 250 XP + 🎤 badge + city-wide 1.5× XP boost for 3 minutes.
+const IDOL_STAGE_POS = { x: 1380, y: 970, radius: 90 };
+
 // Tattoo catalog — 25 permanent emoji tattoos in 5 themed categories
 const TATTOO_CATALOG = [
   // Crime
@@ -432,5 +438,6 @@ module.exports = {
   CITY_HALL_POS,
   HALL_OF_LEGENDS_POS,
   PREDATOR_TERRITORIES,
+  IDOL_STAGE_POS,
   getXPForLevel, getLevelFromXP, getBirdTypeForLevel,
 };

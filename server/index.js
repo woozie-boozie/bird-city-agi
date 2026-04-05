@@ -42,6 +42,7 @@ app.get('/api/world', (req, res) => {
     tattooParlor: { pos: world.TATTOO_PARLOR_POS, catalog: world.TATTOO_CATALOG },
     cityHallPos: world.CITY_HALL_POS,
     hallOfLegendsPos: world.HALL_OF_LEGENDS_POS,
+    idolStagePos: world.IDOL_STAGE_POS,
   });
 });
 

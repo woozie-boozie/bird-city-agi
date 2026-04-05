@@ -756,6 +756,26 @@
     </div>
   </div>
 
+  <!-- Bird City Idol — Contest overlay ([I] to open) -->
+  <div id="idolOverlay" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+    background:linear-gradient(160deg,#1a0a2e,#2a1050,#1a0a2e);
+    border:2px solid #dd44ff;border-radius:14px;padding:20px 24px;z-index:150;
+    min-width:320px;max-width:420px;box-shadow:0 0 40px rgba(180,60,255,0.5),inset 0 0 20px rgba(180,60,255,0.08);
+    color:#f0d0ff;font-family:'Courier New',monospace;">
+    <div style="text-align:center;margin-bottom:14px;">
+      <div style="font-size:22px;margin-bottom:4px;">🎤</div>
+      <div id="idolOverlayTitle" style="font-size:16px;font-weight:900;color:#ff88ff;
+        text-shadow:0 0 12px #cc44ff;letter-spacing:2px;">BIRD CITY IDOL</div>
+      <div id="idolOverlaySubtitle" style="font-size:10px;color:#cc88ff;margin-top:3px;letter-spacing:1px;"></div>
+    </div>
+    <div id="idolOverlayBody" style="margin-bottom:14px;"></div>
+    <div style="text-align:center;">
+      <button id="idolOverlayClose" style="background:rgba(100,30,150,0.6);color:#cc88ff;
+        border:1px solid #aa44dd;border-radius:6px;padding:6px 20px;cursor:pointer;
+        font:bold 10px 'Courier New',monospace;letter-spacing:1px;">CLOSE [I]</button>
+    </div>
+  </div>
+
   <script src="/socket.io/socket.io.js"></script>
   <script src="/js/sounds.js"></script>
   <script src="/js/sprites.js"></script>
