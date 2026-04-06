@@ -1607,6 +1607,47 @@ Every 40–60 minutes, the city erupts into a full-scale crime wave for 2 minute
 
 **Creative intent**: The city needed a periodic "everybody go nuts" moment. Right now chaos builds organically — one player gets 5 stars and the city watches. The crime wave is the city itself turning up the dial. Every player, regardless of their current heat, suddenly has a reason to LEAN IN: the coins are better, but so is the danger. Low-heat players who normally play cautiously see 2× coin rewards and think "just one hit at a human…" then suddenly they're at 3 stars with faster cops. Expert players see the crime wave as a money run — they want to get hot fast, milk the 2× rewards, then either hit the Black Market for a Disguise Kit or outrun the extra cop. Stack it with a Lucky Charm + P5 Prestige + high combo and the crime wave turns into an XP/coin explosion that takes 30 minutes of normal play to match. Pure CARNAGE + PROGRESSION energy.
 
+**Session 49 — 2026-04-06: The Bounty Hunter — Persistent Manhunter NPC**
+The wanted system's ultimate escalation. At Wanted Level 4, a single persistent Bounty Hunter NPC spawns and relentlessly tracks the target across the entire city — unlike cops, he NEVER gives up.
+
+**The Bounty Hunter (`server/game.js`):**
+- Spawns when any bird reaches Wanted Level 4 (heat ≥ 100) from a random edge ~700px away
+- Moves at 160px/s — faster than cop pigeons (110px/s) and SWAT (145px/s)
+- Persists as a single entity (not a flock of cops) — one hunter, one target, one dramatic chase
+- Despawns when wanted level drops below 3 (via Disguise Kit, heat decay, or cop arrest)
+- **Counter-play system**: requires 4 rapid poop hits to stun (8-second hit window, resets if no hits in time). Mega poop counts as 2 hits. Stun duration: 10 seconds.
+- **Catch mechanic**: fly within 20px → steal 40% of coins (max 500c) + 3.5s stun + combo wipe. 8-second catch cooldown prevents instant re-catch loops.
+- **Smart evasion**: Sewer — stops at manhole entrance (can't follow underground). Fog — partially confused at >200px. Smoke bomb — DOES NOT WORK (professional tracker by scent). Ghost Mode (Mystery Crate) — 40% chance to confuse per tick.
+
+**New Black Market item:** 🔫 **Contract Cancel** (120c) — sends the Bounty Hunter off-duty for 60 seconds. He wanders aimlessly and won't pursue. Stacks with other escapes.
+
+**Rewards:**
+- Each poop hit: +30 XP, +10 coins, floating "💥 X/4" progress indicator
+- Stun (4th hit): +100 XP, +50c, city-wide callout
+- Ghost Walk skill: 18% chance to evade a catch (stunned cop → stunned BH for 3s instead)
+- Iron Wings skill: reduces catch stun to ~2.3s
+
+**Visual system (`public/js/sprites.js`):**
+- Custom `drawBountyHunter()` sprite: dark charcoal/brown body, wide-brim detective hat with dark red band, no police siren (silent operator), glowing red eyes when pursuing, coat collar silhouette
+- Hit progress bar (4 dots) appears above sprite when being hit
+- Threatening red radial aura glow when pursuing
+- Stunned: 💫 effect; Off-duty: grey desaturated look with "OFF DUTY" label
+
+**HUD & Minimap:**
+- Active buffs pill: "🔫 BOUNTY HUNTER ON YOUR TAIL! Poop him: X/4 · Go underground to hide" (red pulsing)
+- Off-duty + Stunned variants update dynamically
+- Off-screen directional arrow (dark red 🔫 arrow) pointing toward the BH when targeting you and off-screen
+- Minimap: dark red pulsing 🔫 dot at BH position — trackable from anywhere
+
+**Events:**
+- Spawn: screen shake + "🔫 A BOUNTY HUNTER is on your trail!" personal + city-wide
+- Hit progress: floating "💥 X/4" at BH position
+- Stun: "🎯 BOUNTY HUNTER DOWN!" city-wide callout
+- Caught: "🔫 CAUGHT BY BOUNTY HUNTER! -Xc!" personal + city-wide shame
+- Gone: quiet "The Bounty Hunter stands down." event feed note
+
+**Creative intent**: The wanted system needed an endgame escalation beyond "more cops spawn." At Level 5, you have 5 cops PLUS a Bounty Hunter that doesn't go off-duty, doesn't get confused by smoke, and has a clear visual presence that other players can see approaching you. The 4-hit-to-stun design creates a risk-reward moment: you see the BH bearing down, you fire 3 rapid hits, he's almost stunned — then a cop arrests you and your combo is wiped. Do you fight back or run? The Contract Cancel at 120c means the Black Market becomes crucial at high wanted levels (now has 6 items). Fog + sewer + Ghost Mode + Contract Cancel = 4 distinct escape tools that reward game knowledge. A Level 5 bird with 3 cops, a SWAT crow, AND a Bounty Hunter hunting them simultaneously is the most CARNAGE moment in the game. Pure CARNAGE + PROGRESSION energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -1661,7 +1702,16 @@ Built the Territory Control System on top of the existing upstream code:
 - Skill respec: spend 500 coins at Don Featherstone to reset all skills and refund all FP (costly but available)
 - Cursed Coin gazette tracking: newspaper headlines for the bird who held it longest / detonated for the most coins
 - Cursed Coin + Kingpin combo: if Kingpin grabs the Cursed Coin, their tribute doubles but explosion potential triples
+- Bounty Hunter gazette tracking: "🔫 BOUNTY HUNTER TOOK DOWN [Name] for X COINS" headline
+- Witness Protection Program: buy at City Hall for 500c — clears name, hides from minimap for 3 min, no Bounty Hunter targeting
+- Bird Flu + Bounty Hunter interaction: BH can get infected if he catches a flu-carrying bird — wanders confused for 15s (cinematic chaos)
+- Multi-bird Wanted system: track top 2 most-wanted simultaneously (two Bounty Hunters chase two separate targets at once)
+- Bird Flu + Wanted interaction: if a cop arrests an infected bird, the cop catches the flu and wanders confused for 5s
+- Seagull Invasion: 8-10 fast seagulls swoop in from the coast every 25-35 min, stealing food items en masse — drive them away by pooping (2 hits each)
+- Idol Hall of Fame: persistent leaderboard of all-time Idol winners near the stage
+- Idol daily challenge: "Win Bird City Idol" as a rare daily task
 - ~~Crime wave event: randomly all wanted levels are doubled for 2 minutes; more cops, higher rewards~~ (DONE Session 48)
+- ~~Bounty Hunter Bird — persistent manhunter NPC at Wanted Level 4+, 4 hits to stun, Contract Cancel at Black Market~~ (DONE Session 49)
 - ~~Race power-ups: speed boost gates on the track~~ (DONE Session 30)
 - ~~Weather combos: fog (low visibility) + hailstorm~~ (DONE Session 18)
 - ~~Race betting system (spectators bet coins on a racer from anywhere on the map)~~ (DONE Session 17)

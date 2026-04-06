@@ -212,11 +212,12 @@ class GameEngine {
     this.blackMarket = null;  // null when closed, { x, y } when open at night
     this.BLACK_MARKET_POS = { x: 700, y: 2200 }; // dark alley behind Cafe District
     this.BLACK_MARKET_CATALOG = [
-      { id: 'speed_serum',  name: 'Speed Serum',   desc: '+60% speed for 30s',            cost: 50,  emoji: '💉' },
-      { id: 'mega_poop',    name: 'Mega Poop',      desc: 'Next 3 poops are AOE blasts',   cost: 75,  emoji: '💣' },
-      { id: 'disguise_kit', name: 'Disguise Kit',   desc: 'Clears ALL heat instantly',     cost: 100, emoji: '🎭' },
-      { id: 'smoke_bomb',   name: 'Smoke Bomb',     desc: 'Cops lose you for 15 seconds',  cost: 80,  emoji: '💨' },
-      { id: 'lucky_charm',  name: 'Lucky Charm',    desc: '2x XP for 5 full minutes',      cost: 150, emoji: '🍀' },
+      { id: 'speed_serum',      name: 'Speed Serum',      desc: '+60% speed for 30s',                      cost: 50,  emoji: '💉' },
+      { id: 'mega_poop',        name: 'Mega Poop',         desc: 'Next 3 poops are AOE blasts',             cost: 75,  emoji: '💣' },
+      { id: 'disguise_kit',     name: 'Disguise Kit',      desc: 'Clears ALL heat instantly',               cost: 100, emoji: '🎭' },
+      { id: 'smoke_bomb',       name: 'Smoke Bomb',        desc: 'Cops lose you for 15 seconds',            cost: 80,  emoji: '💨' },
+      { id: 'lucky_charm',      name: 'Lucky Charm',       desc: '2x XP for 5 full minutes',               cost: 150, emoji: '🍀' },
+      { id: 'contract_cancel',  name: 'Contract Cancel',   desc: 'Bounty Hunter stands down for 60s',       cost: 120, emoji: '🔫' },
     ];
 
     // === BANK HEIST (multi-phase cooperative heist event) ===
@@ -450,6 +451,12 @@ class GameEngine {
     // - Wanted survival XP ×2
     this.crimeWave = null;  // null | { startedAt, endsAt }
     this.crimeWaveTimer = Date.now() + this._randomRange(40 * 60000, 60 * 60000);
+
+    // === BOUNTY HUNTER ===
+    // Persistent manhunter NPC that spawns when any bird reaches Wanted Level 4+.
+    // Unlike cops, he never gives up — follows across the whole map, ignores smoke bombs.
+    // Takes 4 poop hits to stun (pros have armor). Catches nets 40% coin steal.
+    this.bountyHunter = null; // null | { id, x, y, rotation, targetId, targetName, state, stunUntil, offDutyUntil, poopHits, poopHitResetAt, lastCatchAt, spawnedAt, wanderAngle, sewerWanderAngle, fogWanderAngle }
 
     // === BIRD CITY GAZETTE ===
     // Every game day cycle (~20 min), a newspaper publishes at dawn recapping the night.
@@ -811,6 +818,10 @@ class GameEngine {
         this.cursedCoin.stealCooldowns = new Map();
         this.events.push({ type: 'cursed_coin_dropped', x: this.cursedCoin.x, y: this.cursedCoin.y, reason: 'disconnect' });
       }
+      // Clear bounty hunter if they were hunting the disconnecting bird
+      if (this.bountyHunter && this.bountyHunter.targetId === id) {
+        this.bountyHunter = null;
+      }
       this.birds.delete(id);
     }
   }
@@ -1155,6 +1166,7 @@ class GameEngine {
     // === Wanted System ===
     this._updateWanted(dt, now);
     this._updateCopBirds(dt, now);
+    this._updateBountyHunter(dt, now);
 
     // === Food Truck ===
     this._updateFoodTruck(dt, now);
@@ -2543,6 +2555,24 @@ class GameEngine {
           this.gazetteStats.copsStunned[bird.id] = { count: 0, name: bird.name, gangTag: bird.gangTag || null };
         }
         this.gazetteStats.copsStunned[bird.id].count++;
+      } else if (hit.target === 'bounty_hunter' && this.bountyHunter) {
+        // Poop hit the Bounty Hunter! Build up hits — 4 in a row stuns him
+        const bh = this.bountyHunter;
+        bh.poopHits = (bh.poopHits || 0) + (isMegaPoop ? 2 : 1); // mega poop counts as 2 hits
+        bh.poopHitResetAt = now + 10000; // reset counter if no hits in 10s
+        xpGain = 30;
+        bird.coins += 10;
+        this.events.push({ type: 'bounty_hunter_hit', birdId: bird.id, birdName: bird.name, hits: bh.poopHits, x: bh.x, y: bh.y });
+        if (bh.poopHits >= 4) {
+          // STUNNED! Bounty Hunter goes down for 10 seconds
+          bh.state = 'stunned';
+          bh.stunUntil = now + 10000;
+          bh.poopHits = 0;
+          bh.poopHitResetAt = 0;
+          xpGain = 100;
+          bird.coins += 50;
+          this.events.push({ type: 'bounty_hunter_stunned', birdId: bird.id, birdName: bird.name, x: bh.x, y: bh.y });
+        }
       } else if (hit.target === 'territory_predator' && hit.predator) {
         // Poop hit a territory predator (hawk or cat in their home zone)
         const { predKey, predator } = hit;
@@ -3414,6 +3444,16 @@ class GameEngine {
         if (Math.sqrt(dx * dx + dy * dy) < hitRadius + 14) {
           return { target: 'hit_target', hitContract, targetBird };
         }
+      }
+    }
+
+    // Check Bounty Hunter (4 hits to stun — tough target)
+    if (this.bountyHunter && this.bountyHunter.state === 'pursuing') {
+      const bh = this.bountyHunter;
+      const bdx = poop.x - bh.x;
+      const bdy = poop.y - bh.y;
+      if (Math.sqrt(bdx * bdx + bdy * bdy) < hitRadius + 10) {
+        return { target: 'bounty_hunter' };
       }
     }
 
@@ -4882,6 +4922,15 @@ class GameEngine {
       raccoons: nearbyRaccoons,
       drunkPigeons: nearbyDrunkPigeons,
       cops: nearbyCops,
+      bountyHunter: this.bountyHunter ? {
+        x: this.bountyHunter.x,
+        y: this.bountyHunter.y,
+        rotation: this.bountyHunter.rotation,
+        state: this.bountyHunter.state,
+        targetId: this.bountyHunter.targetId,
+        poopHits: this.bountyHunter.poopHits,
+        isTargetingMe: this.bountyHunter.targetId === bird.id,
+      } : null,
       godfatherRaccoon: this.godfatherRaccoon ? {
         id: this.godfatherRaccoon.id,
         x: this.godfatherRaccoon.x,
@@ -6980,6 +7029,13 @@ class GameEngine {
         break;
       case 'lucky_charm':
         bird.bmDoubleXpUntil = now + 300000; // 5 min
+        break;
+      case 'contract_cancel':
+        // Send the Bounty Hunter off-duty for 60 seconds — even if not targeting you, pocket the coin
+        if (this.bountyHunter && this.bountyHunter.targetId === bird.id) {
+          this.bountyHunter.state = 'off_duty';
+          this.bountyHunter.offDutyUntil = now + 60000;
+        }
         break;
     }
 
@@ -11953,6 +12009,200 @@ class GameEngine {
     // Remove the coin for now — respawn after 2-3 minutes
     this.cursedCoin = null;
     this.cursedCoinTimer = now + this._randomRange(2 * 60000, 3 * 60000);
+  }
+
+  // ============================================================
+  // BOUNTY HUNTER
+  // ============================================================
+  _updateBountyHunter(dt, now) {
+    // Only active when there's a wanted bird
+    if (!this.wantedBirdId) {
+      if (this.bountyHunter) {
+        this.bountyHunter = null;
+      }
+      return;
+    }
+
+    const wanted = this.birds.get(this.wantedBirdId);
+    if (!wanted) {
+      this.bountyHunter = null;
+      return;
+    }
+
+    const wantedHeat = this.heatScores.get(this.wantedBirdId) || 0;
+    const wantedLevel = this._getWantedLevel(wantedHeat);
+
+    // Despawn if wanted level drops below 3
+    if (wantedLevel < 3) {
+      if (this.bountyHunter) {
+        this.bountyHunter = null;
+        this.events.push({ type: 'bounty_hunter_gone', reason: 'heat_dropped' });
+      }
+      return;
+    }
+
+    // Spawn at wanted level 4+ (one persistent hunter per target)
+    if (!this.bountyHunter && wantedLevel >= 4) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 600 + Math.random() * 200;
+      const x = Math.max(60, Math.min(world.WORLD_WIDTH - 60, wanted.x + Math.cos(angle) * dist));
+      const y = Math.max(60, Math.min(world.WORLD_HEIGHT - 60, wanted.y + Math.sin(angle) * dist));
+      this.bountyHunter = {
+        id: 'bounty_hunter_1',
+        x, y,
+        rotation: Math.atan2(wanted.y - y, wanted.x - x),
+        targetId: this.wantedBirdId,
+        targetName: wanted.name,
+        state: 'pursuing',
+        stunUntil: 0,
+        offDutyUntil: 0,
+        poopHits: 0,
+        poopHitResetAt: 0,
+        lastCatchAt: 0,
+        spawnedAt: now,
+      };
+      this.events.push({
+        type: 'bounty_hunter_spawned',
+        targetId: this.wantedBirdId,
+        targetName: wanted.name,
+        x, y,
+      });
+      return;
+    }
+
+    if (!this.bountyHunter) return;
+
+    const bh = this.bountyHunter;
+
+    // Update target if the most-wanted bird changed
+    if (bh.targetId !== this.wantedBirdId) {
+      bh.targetId = this.wantedBirdId;
+      bh.targetName = wanted.name;
+      bh.poopHits = 0;
+      bh.state = 'pursuing';
+    }
+
+    // Stunned state
+    if (bh.state === 'stunned') {
+      if (now >= bh.stunUntil) {
+        bh.state = 'pursuing';
+      }
+      return; // don't move while stunned
+    }
+
+    // Off-duty state (Contract Cancel purchased)
+    if (bh.state === 'off_duty') {
+      if (now >= bh.offDutyUntil) {
+        bh.state = 'pursuing';
+      } else {
+        // Wander aimlessly, not threatening
+        bh.wanderAngle = (bh.wanderAngle !== undefined ? bh.wanderAngle : Math.random() * Math.PI * 2) + dt * 0.6;
+        bh.x += Math.cos(bh.wanderAngle) * 55 * dt;
+        bh.y += Math.sin(bh.wanderAngle) * 55 * dt;
+        bh.x = Math.max(10, Math.min(world.WORLD_WIDTH - 10, bh.x));
+        bh.y = Math.max(10, Math.min(world.WORLD_HEIGHT - 10, bh.y));
+        return;
+      }
+    }
+
+    // Reset poop hit counter if target hasn't been hit recently
+    if (bh.poopHits > 0 && now > bh.poopHitResetAt) {
+      bh.poopHits = 0;
+    }
+
+    // Underground: Bounty Hunter can't follow underground (even pros don't go in sewers)
+    if (wanted.inSewer) {
+      bh.sewerWanderAngle = (bh.sewerWanderAngle !== undefined ? bh.sewerWanderAngle : Math.random() * Math.PI * 2) + dt * 0.35;
+      bh.x += Math.cos(bh.sewerWanderAngle) * 40 * dt;
+      bh.y += Math.sin(bh.sewerWanderAngle) * 40 * dt;
+      bh.x = Math.max(10, Math.min(world.WORLD_WIDTH - 10, bh.x));
+      bh.y = Math.max(10, Math.min(world.WORLD_HEIGHT - 10, bh.y));
+      return;
+    }
+    bh.sewerWanderAngle = undefined;
+
+    // Fog: BH has slightly better sight than cops but still affected
+    const fogActive = this.weather && this.weather.type === 'fog';
+    const dx = wanted.x - bh.x;
+    const dy = wanted.y - bh.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    if (fogActive && dist > 200) {
+      // Semi-professional tracker — slightly better than cops in fog but still loses them
+      bh.fogWanderAngle = bh.fogWanderAngle !== undefined ? bh.fogWanderAngle : Math.atan2(dy, dx);
+      bh.fogWanderAngle += (Math.random() - 0.5) * 0.35 * dt * 3;
+      bh.x += Math.cos(bh.fogWanderAngle) * 110 * dt;
+      bh.y += Math.sin(bh.fogWanderAngle) * 110 * dt;
+      bh.x = Math.max(10, Math.min(world.WORLD_WIDTH - 10, bh.x));
+      bh.y = Math.max(10, Math.min(world.WORLD_HEIGHT - 10, bh.y));
+      return;
+    }
+    if (!fogActive || dist <= 200) bh.fogWanderAngle = undefined;
+
+    // NOTE: Smoke bomb does NOT work on Bounty Hunter — he's a professional, not a city cop.
+    // He tracks by scent, not sight. Ghost Mode from Mystery Crate DOES partially work (40% not tracked).
+    const ghostActive = wanted.mcGhostModeUntil > now;
+    if (ghostActive && Math.random() < 0.40) {
+      // Ghost mode gives a 40% chance each tick of the BH losing the scent briefly
+      bh.wanderAngle = (bh.wanderAngle !== undefined ? bh.wanderAngle : Math.atan2(dy, dx)) + (Math.random() - 0.5) * 1.0;
+      bh.x += Math.cos(bh.wanderAngle) * 80 * dt;
+      bh.y += Math.sin(bh.wanderAngle) * 80 * dt;
+      bh.x = Math.max(10, Math.min(world.WORLD_WIDTH - 10, bh.x));
+      bh.y = Math.max(10, Math.min(world.WORLD_HEIGHT - 10, bh.y));
+      return;
+    }
+
+    // Pursue at 160px/s (faster than cop_pigeon at 110, slightly faster than SWAT at 145)
+    if (dist > 1) {
+      const BH_SPEED = 160;
+      bh.x += (dx / dist) * BH_SPEED * dt;
+      bh.y += (dy / dist) * BH_SPEED * dt;
+      bh.rotation = Math.atan2(dy, dx);
+    }
+    bh.x = Math.max(10, Math.min(world.WORLD_WIDTH - 10, bh.x));
+    bh.y = Math.max(10, Math.min(world.WORLD_HEIGHT - 10, bh.y));
+
+    // Catch: close enough and bird not currently stunned/shielded
+    if (dist < 20 && wanted.stunnedUntil <= now && !(wanted.mcRiotShieldUntil > now) && now - bh.lastCatchAt > 8000) {
+      bh.lastCatchAt = now;
+
+      // Skill Tree: Ghost Walk — 18% chance to evade a catch
+      if (wanted.skillTreeUnlocked && wanted.skillTreeUnlocked.includes('ghost_walk') && Math.random() < 0.18) {
+        this.events.push({ type: 'ghost_walk_evade', birdId: wanted.id, birdName: wanted.name, x: bh.x, y: bh.y });
+        // Ghost walk stuns the BH for 3 seconds, not just a cop
+        bh.state = 'stunned';
+        bh.stunUntil = now + 3000;
+        bh.poopHits = 0;
+        return;
+      }
+
+      // Steal 40% of coins — Bounty Hunter takes a bigger cut than a cop
+      const stolen = Math.min(500, Math.max(8, Math.floor(wanted.coins * 0.40)));
+      wanted.coins = Math.max(0, wanted.coins - stolen);
+
+      // Stun the bird (3.5s base; Iron Wings skill reduces it)
+      let stunDur = 3500;
+      if (wanted.skillTreeUnlocked && wanted.skillTreeUnlocked.includes('iron_wings')) {
+        stunDur = Math.floor(stunDur * 0.65);
+      }
+      wanted.stunnedUntil = now + stunDur;
+
+      // Wipe combo streak
+      wanted.comboCount = 0;
+      wanted.comboExpiresAt = 0;
+
+      // Small heat reduction (not a full arrest — he robs, not books)
+      const currentHeat = this.heatScores.get(wanted.id) || 0;
+      this.heatScores.set(wanted.id, Math.max(0, currentHeat - 15));
+
+      this.events.push({
+        type: 'bounty_hunter_caught',
+        birdId: wanted.id,
+        birdName: wanted.name,
+        coinsStolen: stolen,
+        x: bh.x, y: bh.y,
+      });
+    }
   }
 
   // ============================================================

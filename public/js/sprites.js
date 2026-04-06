@@ -2029,6 +2029,171 @@ window.Sprites = {
     ctx.restore();
   },
 
+  // Draw the Bounty Hunter — a grizzled detective bird in a trench coat and wide-brim hat
+  drawBountyHunter(ctx, x, y, rotation, state, poopHits, now) {
+    const isStunned = state === 'stunned';
+    const isOffDuty = state === 'off_duty';
+
+    ctx.save();
+    ctx.translate(x, y);
+
+    // Threat aura (dark red pulsing glow behind the hunter when pursuing)
+    if (!isStunned && !isOffDuty) {
+      const auraPulse = 0.4 + 0.2 * Math.sin(now * 0.004);
+      const auraGrd = ctx.createRadialGradient(0, 0, 2, 0, 0, 22);
+      auraGrd.addColorStop(0, `rgba(180, 20, 20, ${auraPulse})`);
+      auraGrd.addColorStop(1, 'rgba(100, 0, 0, 0)');
+      ctx.fillStyle = auraGrd;
+      ctx.beginPath();
+      ctx.arc(0, 0, 22, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.rotate(rotation);
+
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath();
+    ctx.ellipse(2, 6, 12, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Wings — dark leathery trench coat look
+    const wingFlap = Math.sin(now * 0.012) * 0.25;
+    const wingColor = isOffDuty ? '#5a5a6a' : '#3a1a0a';
+    // Left wing
+    ctx.save();
+    ctx.translate(-3, 0);
+    ctx.rotate(-0.35 + wingFlap);
+    ctx.fillStyle = wingColor;
+    ctx.beginPath();
+    ctx.ellipse(-7, 1, 10, 4, 0.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    // Right wing
+    ctx.save();
+    ctx.translate(-3, 0);
+    ctx.rotate(0.35 - wingFlap);
+    ctx.fillStyle = wingColor;
+    ctx.beginPath();
+    ctx.ellipse(-7, 1, 10, 4, -0.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Body — dark brown with slight trench coat drape
+    ctx.fillStyle = isOffDuty ? '#6a6a7a' : '#4a2010';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 9, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Coat collar detail (darker stripe across chest)
+    ctx.strokeStyle = isOffDuty ? '#4a4a5a' : '#2a0a00';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 1, 5, -0.8, 0.8);
+    ctx.stroke();
+
+    // Head
+    ctx.fillStyle = isOffDuty ? '#7a7a8a' : '#5a2a12';
+    ctx.beginPath();
+    ctx.arc(7, 0, 5.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Wide-brim detective hat
+    const hatColor = isOffDuty ? '#333340' : '#1a0800';
+    ctx.fillStyle = hatColor;
+    // Hat crown
+    ctx.beginPath();
+    ctx.ellipse(7, -3, 5, 3.5, 0, Math.PI, 0);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.rect(3, -3.5, 8, 2);
+    ctx.fill();
+    // Hat brim (wide flat disc)
+    ctx.fillStyle = isOffDuty ? '#2a2a38' : '#0d0400';
+    ctx.beginPath();
+    ctx.ellipse(7, -1.5, 9, 2.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Hat band (dark red stripe)
+    ctx.fillStyle = isOffDuty ? '#555560' : '#8b0000';
+    ctx.fillRect(3.5, -3, 7, 1.2);
+
+    // Eye — menacing red glow
+    const eyeColor = isOffDuty ? '#aaa' : (isStunned ? '#555' : '#ff2200');
+    if (!isStunned && !isOffDuty) {
+      // Red glow around eye when hunting
+      const eyeGrd = ctx.createRadialGradient(9.5, -0.5, 0, 9.5, -0.5, 5);
+      eyeGrd.addColorStop(0, 'rgba(255, 50, 0, 0.6)');
+      eyeGrd.addColorStop(1, 'rgba(255, 0, 0, 0)');
+      ctx.fillStyle = eyeGrd;
+      ctx.beginPath();
+      ctx.arc(9.5, -0.5, 5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = '#111';
+    ctx.beginPath();
+    ctx.arc(9.5, -0.5, 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = eyeColor;
+    ctx.beginPath();
+    ctx.arc(9.5, -0.5, 1.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Beak — sharp and angular
+    ctx.fillStyle = '#c87020';
+    ctx.beginPath();
+    ctx.moveTo(11, -0.5);
+    ctx.lineTo(16, 0.5);
+    ctx.lineTo(11, 1.5);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.restore();
+
+    // === Poop hit progress bar (shows how close to stunning him) ===
+    if (poopHits > 0 && !isStunned && !isOffDuty) {
+      const barW = 32;
+      const barH = 4;
+      const bx = x - barW / 2;
+      const by = y - 22;
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.beginPath();
+      ctx.roundRect(bx - 1, by - 1, barW + 2, barH + 2, 2);
+      ctx.fill();
+      // Fill (orange → red based on progress)
+      const progress = poopHits / 4;
+      ctx.fillStyle = progress >= 0.75 ? '#ff4400' : '#ff8800';
+      ctx.beginPath();
+      ctx.roundRect(bx, by, barW * progress, barH, 2);
+      ctx.fill();
+    }
+
+    // Stunned: 💫 effect
+    if (isStunned) {
+      ctx.save();
+      ctx.font = 'bold 12px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#ffff00';
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 2;
+      const stunBob = Math.sin(now * 0.005) * 3;
+      ctx.strokeText('💫', x, y - 22 + stunBob);
+      ctx.fillText('💫', x, y - 22 + stunBob);
+      ctx.restore();
+    }
+
+    // Label
+    ctx.save();
+    ctx.font = 'bold 9px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = isOffDuty ? '#888' : '#ff3300';
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 2;
+    const bhLabel = isOffDuty ? 'OFF DUTY' : (isStunned ? 'STUNNED!' : '🔫 BOUNTY HUNTER');
+    ctx.strokeText(bhLabel, x, y - 28);
+    ctx.fillText(bhLabel, x, y - 28);
+    ctx.restore();
+  },
+
   // Draw the Black Market NPC — a hooded raccoon fence in a dark alley
   drawBlackMarket(ctx, x, y, now) {
     ctx.save();

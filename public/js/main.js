@@ -1440,6 +1440,41 @@
       }
     }
 
+    // === BOUNTY HUNTER EVENTS ===
+    if (ev.type === 'bounty_hunter_spawned') {
+      effects.push({ type: 'screen_shake', intensity: 6, duration: 500, time: now });
+      if (ev.targetId === myId) {
+        showAnnouncement('🔫 A BOUNTY HUNTER is on your trail!', '#cc2200', 4000);
+        addEventMessage('🔫 A Bounty Hunter was hired to track YOU. 4 poop hits to stun him.', '#cc2200');
+      } else {
+        addEventMessage('🔫 Bounty Hunter spotted — hunting ' + ev.targetName + '!', '#aa3300');
+      }
+    }
+    if (ev.type === 'bounty_hunter_hit') {
+      if (ev.birdId === myId) {
+        showAnnouncement('💥 HIT! ' + ev.hits + '/4 — keep going!', '#ff8800', 1500);
+      }
+      effects.push({ type: 'float_text', text: '💥 ' + ev.hits + '/4', x: ev.x, y: ev.y, color: '#ff8800', time: now });
+    }
+    if (ev.type === 'bounty_hunter_stunned') {
+      effects.push({ type: 'screen_shake', intensity: 5, duration: 400, time: now });
+      if (ev.birdId === myId) {
+        showAnnouncement('🎯 BOUNTY HUNTER DOWN! +100 XP +50c!', '#4ade80', 3000);
+      }
+      addEventMessage('🔫💫 ' + ev.birdName + ' STUNNED the Bounty Hunter! +100 XP +50c', '#4ade80');
+    }
+    if (ev.type === 'bounty_hunter_caught') {
+      effects.push({ type: 'screen_shake', intensity: 7, duration: 600, time: now });
+      if (ev.birdId === myId) {
+        showAnnouncement('🔫 CAUGHT BY BOUNTY HUNTER! -' + ev.coinsStolen + 'c!', '#ff1100', 4000);
+      } else {
+        addEventMessage('🔫 Bounty Hunter caught ' + ev.birdName + '! -' + ev.coinsStolen + 'c', '#ff4400');
+      }
+    }
+    if (ev.type === 'bounty_hunter_gone') {
+      addEventMessage('🔫 The Bounty Hunter stands down.', '#888');
+    }
+
     // === COMBO MILESTONE ===
     if (ev.type === 'combo_milestone') {
       const fireCount = ev.combo >= 15 ? '🔥🔥🔥' : ev.combo >= 10 ? '🔥🔥' : '🔥';
@@ -5640,6 +5675,16 @@
       }
     }
 
+    // Bounty Hunter (persistent manhunter NPC — visible city-wide)
+    if (gameState.bountyHunter) {
+      const bh = gameState.bountyHunter;
+      const sx = bh.x - camera.x + camera.screenW / 2;
+      const sy = bh.y - camera.y + camera.screenH / 2;
+      if (sx > -margin - 40 && sx < camera.screenW + margin + 40 && sy > -margin - 40 && sy < camera.screenH + margin + 40) {
+        Sprites.drawBountyHunter(ctx, sx, sy, bh.rotation, bh.state, bh.poopHits, now);
+      }
+    }
+
     // Bank Heist overlays (cameras, vault progress, escape van) — drawn before buildings for z-order
     if (gameState.bankHeist) {
       Renderer.drawBankHeist(ctx, camera, gameState.bankHeist, now);
@@ -6301,6 +6346,42 @@
       ctx.restore();
     }
 
+    // Bounty Hunter — direction arrow when targeting the player and off-screen
+    if (gameState.bountyHunter && gameState.bountyHunter.isTargetingMe && gameState.bountyHunter.state === 'pursuing') {
+      const bh = gameState.bountyHunter;
+      const bhsx = bh.x - camera.x + camera.screenW / 2;
+      const bhsy = bh.y - camera.y + camera.screenH / 2;
+      const bhOnScreen = bhsx > 20 && bhsx < camera.screenW - 20 && bhsy > 20 && bhsy < camera.screenH - 20;
+      if (!bhOnScreen) {
+        const bhAngle = Math.atan2(bhsy - camera.screenH / 2, bhsx - camera.screenW / 2);
+        const bhArrowDist = Math.min(camera.screenW, camera.screenH) / 2 - 55;
+        const bhAx = camera.screenW / 2 + Math.cos(bhAngle) * bhArrowDist;
+        const bhAy = camera.screenH / 2 + Math.sin(bhAngle) * bhArrowDist;
+        const bhPulse = 0.7 + 0.3 * Math.sin(now * 0.006);
+        ctx.save();
+        ctx.translate(bhAx, bhAy);
+        ctx.rotate(bhAngle);
+        ctx.globalAlpha = bhPulse;
+        ctx.fillStyle = '#cc1100';
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(20, 0);
+        ctx.lineTo(-10, -10);
+        ctx.lineTo(-5, 0);
+        ctx.lineTo(-10, 10);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 9px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('🔫', 4, 0);
+        ctx.restore();
+      }
+    }
+
     // Cursed Coin — direction arrow and mini HUD bar when coin exists
     if (gameState.self && gameState.self.cursedCoin) {
       const cc = gameState.self.cursedCoin;
@@ -6612,6 +6693,23 @@
         minimapCtx.arc(cop.x * msx, cop.y * msy, cop.type === 'swat' ? 3.5 : 2.5, 0, Math.PI * 2);
         minimapCtx.fill();
       }
+    }
+
+    // Draw Bounty Hunter on minimap (dark red pulsing skull dot)
+    if (gameState.bountyHunter && gameState.bountyHunter.state !== 'off_duty' && worldData) {
+      const bh = gameState.bountyHunter;
+      const mw = minimapCtx.canvas.width;
+      const mh = minimapCtx.canvas.height;
+      const msx = mw / worldData.width;
+      const msy = mh / worldData.height;
+      const bhPulse = Math.sin(performance.now() * 0.006) > 0;
+      minimapCtx.fillStyle = bhPulse ? '#cc1100' : '#880800';
+      minimapCtx.beginPath();
+      minimapCtx.arc(bh.x * msx, bh.y * msy, 4, 0, Math.PI * 2);
+      minimapCtx.fill();
+      minimapCtx.font = '7px sans-serif';
+      minimapCtx.textAlign = 'center';
+      minimapCtx.fillText('🔫', bh.x * msx, bh.y * msy - 4);
     }
 
     // Draw food truck on minimap (flashing red during heist)
@@ -7345,6 +7443,19 @@
     if (s.crimeWave) {
       const cwLeft = Math.max(0, Math.ceil((s.crimeWave.endsAt - now) / 1000));
       html += `<div class="bm-buff-pill" style="background:rgba(120,0,0,0.9);border-color:#ff2222;color:#ff6666;font-weight:bold;animation:pulseRed 0.6s infinite alternate;">🚨 CRIME WAVE — ${cwLeft}s · 2× heat &amp; coins!</div>`;
+    }
+
+    // Bounty Hunter targeting indicator
+    if (gameState.bountyHunter && gameState.bountyHunter.isTargetingMe) {
+      const bhState = gameState.bountyHunter.state;
+      if (bhState === 'off_duty') {
+        html += '<div class="bm-buff-pill" style="background:rgba(40,20,0,0.85);border-color:#888866;color:#bbbbaa;">🔫 BOUNTY HUNTER — OFF DUTY (60s)</div>';
+      } else if (bhState === 'stunned') {
+        html += '<div class="bm-buff-pill" style="background:rgba(0,80,0,0.85);border-color:#44ff44;color:#88ff88;">🔫 BOUNTY HUNTER — STUNNED! RUN!</div>';
+      } else {
+        const hits = gameState.bountyHunter.poopHits || 0;
+        html += `<div class="bm-buff-pill" style="background:rgba(100,0,0,0.9);border-color:#cc2200;color:#ff6644;font-weight:bold;animation:pulseRed 0.8s infinite alternate;">🔫 BOUNTY HUNTER ON YOUR TAIL! Poop him: ${hits}/4 hits · Go underground to hide</div>`;
+      }
     }
 
     el.innerHTML = html;
