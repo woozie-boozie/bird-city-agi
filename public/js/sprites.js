@@ -106,7 +106,7 @@ window.Sprites = {
   },
 
   // === NAME TAG ===
-  drawNameTag(ctx, x, y, name, level, type, isPlayer, mafiaTitle, gangTag, gangColor, tattoosEquipped, prestige, eagleFeather, idolBadge) {
+  drawNameTag(ctx, x, y, name, level, type, isPlayer, mafiaTitle, gangTag, gangColor, tattoosEquipped, prestige, eagleFeather, idolBadge, royaleChampBadge) {
     const text = `${name} [Lv.${level}]`;
     ctx.font = 'bold 11px Courier New';
     ctx.textAlign = 'center';
@@ -151,6 +151,24 @@ window.Sprites = {
       ctx.shadowBlur = 7;
       ctx.fillStyle = '#ff88ff';
       ctx.fillText('🎤', x, y - 41 - offsetY);
+      ctx.shadowBlur = 0;
+      ctx.font = 'bold 11px Courier New';
+      offsetY += 14;
+    }
+
+    // 🏆 Royale Champion Badge — session-only trophy for winning Bird Royale
+    if (royaleChampBadge) {
+      ctx.font = '11px serif';
+      const cw = ctx.measureText('🏆').width + 10;
+      ctx.fillStyle = 'rgba(80,50,0,0.92)';
+      ctx.fillRect(x - cw / 2, y - 52 - offsetY, cw, 14);
+      ctx.strokeStyle = '#ffd700';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(x - cw / 2, y - 52 - offsetY, cw, 14);
+      ctx.shadowColor = '#ffaa00';
+      ctx.shadowBlur = 8;
+      ctx.fillStyle = '#ffd700';
+      ctx.fillText('🏆', x, y - 41 - offsetY);
       ctx.shadowBlur = 0;
       ctx.font = 'bold 11px Courier New';
       offsetY += 14;

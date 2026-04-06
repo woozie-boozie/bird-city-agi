@@ -1307,6 +1307,26 @@
       showAnnouncement(`💀 BIRD ROYALE — NO SURVIVORS!\nAll ${ev.participantCount} birds were eliminated.\nThe city mourns.`, '#888888', 6000);
       addEventMessage(`💀 Bird Royale ended with no survivors! All ${ev.participantCount} birds eliminated.`, '#aa6644');
     }
+    // Spectator crowd cheer received (you got cheered for)
+    if (ev.type === 'royale_cheer_received' && ev.birdId === myId) {
+      if (gameState.self) {
+        effects.push({ type: 'float_text', text: `🎉 +${ev.foodGain} food!`, x: gameState.self.x, y: gameState.self.y - 30, color: '#44ff88', duration: 1800, time: now });
+      }
+      addEventMessage(`🎉 ${ev.cheerName} cheered for you! +${ev.foodGain} food`, '#44ff88');
+    }
+    // City-wide cheer shoutout
+    if (ev.type === 'royale_cheer_city') {
+      addEventMessage(`🎉 ${ev.cheerName} cheers for ${ev.targetName}!`, '#88cc88');
+    }
+    // Gang territory royale bonus
+    if (ev.type === 'royale_gang_territory_bonus') {
+      const isMine = gameState.self && gameState.self.gangId === ev.gangId;
+      if (isMine) {
+        showAnnouncement(`🗺️ YOUR GANG WINS BIRD ROYALE!\n[${ev.gangTag}] ${ev.gangName}\n+1.5× Territory Capture Power for 5 min!`, '#ffd700', 8000);
+        effects.push({ type: 'screen_shake', intensity: 10, duration: 800, time: now });
+      }
+      addEventMessage(`🗺️ [${ev.gangTag}] ${ev.gangName} wins Bird Royale! 1.5× territory power for 5 min!`, '#ffd700');
+    }
 
     // === BOSS EVENTS ===
     if (ev.type === 'boss_spawn') {
@@ -2785,6 +2805,11 @@
       toggleSkillTree();
     }
 
+    // [Z] — Royale Spectator Cheer Panel
+    if (e.key.toLowerCase() === 'z') {
+      toggleRoyaleCheerPanel();
+    }
+
     // Bird City Idol — [I] to enter contest or vote
     if (e.key.toLowerCase() === 'i') {
       if (idolOverlayVisible) {
@@ -3614,6 +3639,15 @@
     if (prestigePanelVisible) renderPrestigePanel();
     // Refresh skill tree if open
     if (skillTreeVisible) renderSkillTree();
+    // Refresh royale cheer panel — auto-close when royale ends or we're no longer spectating
+    if (royaleCheerPanelVisible) {
+      const ry = gameState.birdRoyale;
+      if (!ry || ry.state !== 'active' || (ry.myStatus !== 'eliminated' && !ry.isSpectator)) {
+        hideRoyaleCheerPanel();
+      } else {
+        renderRoyaleCheerPanel();
+      }
+    }
 
     // Signal Boost HUD
     const sbHud = document.getElementById('signalBoostHud');
@@ -6022,7 +6056,7 @@
 
           Sprites.drawBird(ctx, sx, sy, b.rotation, b.type, b.wingPhase, isPlayer, b.birdColor || null);
           ctx.globalAlpha = 1; // Always reset after bird draw
-          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0, b.eagleFeather || false, b.idolBadge || false);
+          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0, b.eagleFeather || false, b.idolBadge || false, b.royaleChampBadge || false);
 
           // Bird Flu: sneezing emoji indicator above infected birds
           if (b.isFlu) {
@@ -7851,11 +7885,25 @@
             }
           }
         } else if (myStatus === 'eliminated') {
-          html += `<div class="bm-buff-pill" style="background:rgba(40,40,40,0.85);border-color:#888888;color:#aaaaaa;">💀 ELIMINATED — ${ry.aliveCount} birds remain</div>`;
+          html += `<div class="bm-buff-pill" style="background:rgba(40,40,40,0.85);border-color:#888888;color:#aaaaaa;cursor:pointer;" onclick="toggleRoyaleCheerPanel()">💀 ELIMINATED — [Z] CHEER survivors · ${ry.aliveCount} left</div>`;
+        } else if (ry.isSpectator) {
+          html += `<div class="bm-buff-pill" style="background:rgba(20,60,20,0.85);border-color:#44aa44;color:#88ff88;cursor:pointer;" onclick="toggleRoyaleCheerPanel()">🎉 SPECTATING — [Z] to cheer · ${ry.aliveCount} alive</div>`;
         } else {
           html += `<div class="bm-buff-pill" style="background:rgba(60,30,0,0.75);border-color:#aa6600;color:#ddaa44;">⚔️ ROYALE ACTIVE — ${ry.aliveCount}/${ry.participantCount} alive</div>`;
         }
       }
+    }
+
+    // Gang Royale Territory Bonus
+    if (gameState.gangRoyaleBonus && gameState.gangRoyaleBonus.isMyGang) {
+      const bonus = gameState.gangRoyaleBonus;
+      const secLeft = Math.max(0, Math.ceil((bonus.bonusUntil - now) / 1000));
+      html += `<div class="bm-buff-pill" style="background:rgba(80,50,0,0.9);border-color:#ffd700;color:#ffd700;animation:kingpinGlow 1.2s ease-in-out infinite alternate;">🗺️ ROYALE BONUS — 1.5× Territory · ${secLeft}s</div>`;
+    }
+
+    // Royale Champion badge reminder
+    if (s.royaleChampBadge) {
+      html += `<div class="bm-buff-pill" style="background:rgba(80,55,0,0.9);border-color:#ffd700;color:#ffd700;">🏆 ROYALE CHAMPION — You are a legend!</div>`;
     }
 
     el.innerHTML = html;
@@ -9244,6 +9292,88 @@
     const tooltip = document.getElementById('skillTreeTooltip');
     if (tooltip) tooltip.innerHTML = '<span style="color:#556655;">Hover a skill to see details — click a highlighted node to unlock</span>';
   };
+
+  // ============================================================
+  // ROYALE SPECTATOR CHEER PANEL
+  // ============================================================
+
+  let royaleCheerPanelVisible = false;
+
+  function toggleRoyaleCheerPanel() {
+    if (royaleCheerPanelVisible) hideRoyaleCheerPanel();
+    else showRoyaleCheerPanel();
+  }
+
+  function showRoyaleCheerPanel() {
+    if (!joined || !gameState) return;
+    const ry = gameState.birdRoyale;
+    // Only show if royale is active and we're a spectator or eliminated
+    if (!ry || ry.state !== 'active') return;
+    if (ry.myStatus !== 'eliminated' && !ry.isSpectator) return;
+
+    royaleCheerPanelVisible = true;
+    const el = document.getElementById('royaleCheerPanel');
+    if (el) { el.style.display = 'block'; renderRoyaleCheerPanel(); }
+  }
+
+  function hideRoyaleCheerPanel() {
+    royaleCheerPanelVisible = false;
+    const el = document.getElementById('royaleCheerPanel');
+    if (el) el.style.display = 'none';
+  }
+
+  function renderRoyaleCheerPanel() {
+    const el = document.getElementById('royaleCheerPanel');
+    if (!el || !gameState) return;
+    const ry = gameState.birdRoyale;
+    if (!ry || ry.state !== 'active') { hideRoyaleCheerPanel(); return; }
+
+    const now = Date.now();
+    const cooldown = ry.cheerCooldown || 0;
+    const onCooldown = cooldown > now;
+    const secLeft = onCooldown ? Math.ceil((cooldown - now) / 1000) : 0;
+    const participants = ry.aliveParticipants || [];
+
+    let html = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <span style="font-size:14px;font-weight:bold;color:#88ff88;">🎉 CROWD CHEERS</span>
+        <button onclick="window._hideRoyaleCheerPanel()" style="background:rgba(0,0,0,0.5);border:1px solid #666;color:#ccc;cursor:pointer;padding:2px 8px;border-radius:3px;">✕</button>
+      </div>
+      <div style="font-size:11px;color:#aaaaaa;margin-bottom:6px;">Click a survivor to give them +8 food!${onCooldown ? ` (cooldown: ${secLeft}s)` : ''}</div>`;
+
+    if (participants.length === 0) {
+      html += `<div style="color:#888;font-size:12px;text-align:center;padding:10px;">No survivors remaining...</div>`;
+    } else {
+      for (const p of participants) {
+        const tag = p.gangTag ? `[${p.gangTag}] ` : '';
+        html += `<button onclick="window._royaleCheer('${p.birdId}')" style="
+          display:block;width:100%;margin-bottom:4px;padding:6px 8px;
+          background:${onCooldown ? 'rgba(40,40,40,0.7)' : 'rgba(20,80,20,0.85)'};
+          border:1px solid ${onCooldown ? '#555' : '#44aa44'};
+          color:${onCooldown ? '#888' : '#88ff88'};
+          cursor:${onCooldown ? 'not-allowed' : 'pointer'};
+          border-radius:4px;text-align:left;font-size:12px;
+          ${onCooldown ? '' : 'transition:background 0.15s;'}
+        " ${onCooldown ? 'disabled' : ''}>
+          🐦 ${tag}${p.name}  <span style="float:right;opacity:0.7">+8 🍖</span>
+        </button>`;
+      }
+    }
+
+    el.innerHTML = html;
+  }
+
+  window._royaleCheer = function(targetBirdId) {
+    if (!gameState || !gameState.birdRoyale) return;
+    const now = Date.now();
+    const cooldown = gameState.birdRoyale.cheerCooldown || 0;
+    if (cooldown > now) return;
+    socket.emit('action', { type: 'royale_cheer', targetBirdId });
+    renderRoyaleCheerPanel(); // re-render to show optimistic cooldown
+  };
+
+  window._hideRoyaleCheerPanel = function() { hideRoyaleCheerPanel(); };
+  window.toggleRoyaleCheerPanel = toggleRoyaleCheerPanel;
 
   window._buySkillTree = function(skillId) {
     socket.emit('action', { type: 'skill_tree_unlock', skillId });

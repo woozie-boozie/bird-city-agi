@@ -476,6 +476,7 @@ class GameEngine {
     this.birdRoyale = null; // null | { state:'warning'|'active'|'ended', startAt, endsAt, centerX, centerY, startRadius, endRadius, participants: Map(birdId -> {name, alive, eliminatedAt}), pot, zoneDrainTimers: Map(birdId -> lastDrainAt) }
     this.birdRoyaleTimer = Date.now() + this._randomRange(35 * 60000, 50 * 60000);
     this._royaleIdCounter = 0;
+    this.gangRoyaleBonus = null; // { gangId, gangTag, gangName, bonusUntil } — 5-min territory bonus for royale-winning gang
 
     // === BIRD CITY GAZETTE ===
     // Every game day cycle (~20 min), a newspaper publishes at dawn recapping the night.
@@ -980,6 +981,11 @@ class GameEngine {
     }
     if (action.type === 'buy_witness_protection') {
       this._handleWitnessProtection(bird, now);
+    }
+
+    // === Bird Royale Spectator Cheer ===
+    if (action.type === 'royale_cheer') {
+      this._handleRoyaleCheer(bird, action, now);
     }
 
     // === Bird Tattoo Parlor ===
@@ -4333,13 +4339,21 @@ class GameEngine {
         }
       }
 
+      // --- Gang Royale Bonus: 1.5× capture power for winning gang for 5 min ---
+      // Clean up expired bonus
+      if (this.gangRoyaleBonus && now > this.gangRoyaleBonus.bonusUntil) {
+        this.gangRoyaleBonus = null;
+      }
+      const gangCaptureMult = (this.gangRoyaleBonus && now < this.gangRoyaleBonus.bonusUntil && dominantTeamId === this.gangRoyaleBonus.gangId) ? 1.5 : 1.0;
+      const effectivePower = dominantPower * gangCaptureMult;
+
       // --- Update capture state ---
       if (zone.ownerTeamId === null) {
         // NEUTRAL: first dominant team starts capturing
         if (dominantTeamId !== null) {
           zone.capturingTeamId = dominantTeamId;
           zone.capturingName = dominantName;
-          zone.captureProgress = Math.min(1, zone.captureProgress + CAPTURE_RATE * dominantPower * dt);
+          zone.captureProgress = Math.min(1, zone.captureProgress + CAPTURE_RATE * effectivePower * dt);
           if (zone.captureProgress >= 1) {
             zone.captureProgress = 1;
             zone.ownerTeamId = dominantTeamId;
@@ -4360,10 +4374,10 @@ class GameEngine {
           // Empty zone — hold steady (no change)
         } else if (dominantTeamId === zone.ownerTeamId) {
           // Owners reinforcing
-          zone.captureProgress = Math.min(1, zone.captureProgress + CAPTURE_RATE * 0.3 * dominantPower * dt);
+          zone.captureProgress = Math.min(1, zone.captureProgress + CAPTURE_RATE * 0.3 * effectivePower * dt);
         } else {
           // CONTESTED — rival team eroding the owner's hold
-          zone.captureProgress = Math.max(0, zone.captureProgress - CAPTURE_RATE * dominantPower * dt);
+          zone.captureProgress = Math.max(0, zone.captureProgress - CAPTURE_RATE * effectivePower * dt);
 
           // Alert: zone under attack (throttled)
           if (now - zone.lastContestAlert > 25000) {
@@ -4647,6 +4661,7 @@ class GameEngine {
           tattoosEquipped: b.tattoosEquipped || [],
           eagleFeather: b.eagleFeather || false,
           idolBadge: b.idolBadge || false,
+          royaleChampBadge: b.royaleChampBadge || false,
           isFlu: b.fluUntil > now,
           formationType: b.formationType || null,
           hasCursedCoin: this.cursedCoin && this.cursedCoin.state === 'held' && this.cursedCoin.holderId === b.id,
@@ -5518,6 +5533,7 @@ class GameEngine {
       })(),
       idolXpBoostUntil: this.idolXpBoostUntil,
       idolBadge: bird.idolBadge || false,
+      royaleChampBadge: bird.royaleChampBadge || false,
       nearIdolStage: (() => {
         const dx = bird.x - this.IDOL_STAGE_POS.x;
         const dy = bird.y - this.IDOL_STAGE_POS.y;
@@ -5577,6 +5593,20 @@ class GameEngine {
           return p.alive ? 'alive' : 'eliminated';
         })(),
         winner: this.birdRoyale.winner || null,
+        // For spectator cheer panel: list of alive participants
+        aliveParticipants: Array.from(this.birdRoyale.participants.entries())
+          .filter(([, p]) => p.alive)
+          .map(([bId, p]) => ({ birdId: bId, name: p.name, gangTag: p.gangTag || null })),
+        isSpectator: bird.royaleSpectator || false,
+        cheerCooldown: bird.royaleCheerCooldown || 0,
+      } : null,
+      // Gang Royale Territory Bonus
+      gangRoyaleBonus: (this.gangRoyaleBonus && now < this.gangRoyaleBonus.bonusUntil) ? {
+        gangId: this.gangRoyaleBonus.gangId,
+        gangTag: this.gangRoyaleBonus.gangTag,
+        gangName: this.gangRoyaleBonus.gangName,
+        bonusUntil: this.gangRoyaleBonus.bonusUntil,
+        isMyGang: bird.gangId === this.gangRoyaleBonus.gangId,
       } : null,
     };
   }
@@ -12723,6 +12753,41 @@ class GameEngine {
   }
 
   // ============================================================
+  // BIRD ROYALE SPECTATOR CHEER
+  // ============================================================
+
+  _handleRoyaleCheer(bird, action, now) {
+    if (!this.birdRoyale || this.birdRoyale.state !== 'active') return;
+    if (!bird.royaleSpectator) return;
+    if ((bird.royaleCheerCooldown || 0) > now) return;
+
+    const targetBirdId = action.targetBirdId;
+    if (!targetBirdId || typeof targetBirdId !== 'string') return;
+    const participant = this.birdRoyale.participants.get(targetBirdId);
+    if (!participant || !participant.alive) return;
+    const targetBird = this.birds.get(targetBirdId);
+    if (!targetBird) return;
+
+    const foodGain = 8;
+    targetBird.food = Math.min(100, targetBird.food + foodGain);
+    bird.royaleCheerCooldown = now + 15000; // 15-second cooldown
+
+    this.events.push({
+      type: 'royale_cheer_received',
+      birdId: targetBirdId,
+      targetName: targetBird.name,
+      cheerName: bird.name,
+      foodGain,
+    });
+    this.events.push({
+      type: 'royale_cheer_city',
+      targetName: targetBird.name,
+      cheerName: bird.name,
+    });
+    console.log(`[BirdRoyale] ${bird.name} cheered for ${targetBird.name} (+${foodGain} food)`);
+  }
+
+  // ============================================================
   // BIRD ROYALE — shrinking zone battle royal
   // ============================================================
 
@@ -12853,6 +12918,9 @@ class GameEngine {
                 bird.y = r.centerY + Math.sin(angle) * (r.currentRadius * 0.85);
                 bird.vx = 0; bird.vy = 0;
                 bird.food = 20; // small food top-up on respawn so they can move
+                // Mark as spectator so they can cheer for survivors
+                bird.royaleSpectator = true;
+                bird.royaleCheerCooldown = 0;
 
                 this.events.push({
                   type: 'royale_eliminated',
@@ -12862,7 +12930,7 @@ class GameEngine {
                   aliveCount,
                   participantCount: r.participants.size,
                 });
-                console.log(`[BirdRoyale] ${bird.name} eliminated! ${aliveCount} left.`);
+                console.log(`[BirdRoyale] ${bird.name} eliminated! ${aliveCount} left. Now spectating.`);
               }
             }
           }
@@ -12926,7 +12994,29 @@ class GameEngine {
             coinGain: 400,
             participantCount: r.participants.size,
           });
-          console.log(`[BirdRoyale] Winner: ${winnerBird.name}! +500 XP +400c`);
+          // 🏆 Champion Badge — session-only trophy visible on nametag
+          winnerBird.royaleChampBadge = true;
+
+          // 🗺️ Gang Territory Royale Bonus — 5-min 1.5× capture power for winning gang
+          if (winnerBird.gangId) {
+            this.gangRoyaleBonus = {
+              gangId: winnerBird.gangId,
+              gangTag: winnerBird.gangTag || '???',
+              gangName: winnerBird.gangName || 'Unknown Gang',
+              bonusUntil: now + 5 * 60 * 1000,
+            };
+            this.events.push({
+              type: 'royale_gang_territory_bonus',
+              gangId: winnerBird.gangId,
+              gangTag: winnerBird.gangTag || '???',
+              gangName: winnerBird.gangName || 'Unknown Gang',
+              winnerName: winnerBird.name,
+              bonusUntil: this.gangRoyaleBonus.bonusUntil,
+            });
+            console.log(`[BirdRoyale] Gang territory bonus for [${winnerBird.gangTag}] — 5 min 1.5× capture power`);
+          }
+
+          console.log(`[BirdRoyale] Winner: ${winnerBird.name}! +500 XP +400c 🏆`);
         } else {
           // No winner (everyone eliminated or nobody survived)
           this.events.push({ type: 'royale_no_winner', participantCount: r.participants.size });
@@ -12935,8 +13025,14 @@ class GameEngine {
         r.state = 'ended';
         // Reset royale timer: 35-50 min after this one ends
         this.birdRoyaleTimer = now + this._randomRange(35 * 60000, 50 * 60000);
-        // Clear royale after 10 seconds (let HUD show results)
-        setTimeout(() => { this.birdRoyale = null; }, 10000);
+        // Clear royale after 10 seconds (let HUD show results), also clear spectator status
+        setTimeout(() => {
+          this.birdRoyale = null;
+          for (const b of this.birds.values()) {
+            b.royaleSpectator = false;
+            b.royaleCheerCooldown = 0;
+          }
+        }, 10000);
       }
     }
   }
