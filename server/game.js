@@ -747,6 +747,9 @@ class GameEngine {
       skillPoints: saved ? (saved.skill_points || 0) : 0,
       skillTreeUnlocked: saved ? this._safeJsonParse(saved.skill_tree, []) : [],
       lastKnownLevel: 0, // used to detect level-ups and award skill points each tick
+      // === WITNESS PROTECTION ===
+      witnessProtectionUntil: 0,       // timestamp when WP expires
+      witnessProtectionCooldown: 0,    // timestamp when WP can be purchased again
     };
 
     // Determine bird type from XP
@@ -965,6 +968,9 @@ class GameEngine {
     // === Dethronement Pool (City Hall Bounty Board) ===
     if (action.type === 'pool_contribute') {
       this._handlePoolContribute(bird, action.amount, now);
+    }
+    if (action.type === 'buy_witness_protection') {
+      this._handleWitnessProtection(bird, now);
     }
 
     // === Bird Tattoo Parlor ===
@@ -4633,6 +4639,7 @@ class GameEngine {
           formationType: b.formationType || null,
           hasCursedCoin: this.cursedCoin && this.cursedCoin.state === 'held' && this.cursedCoin.holderId === b.id,
           cursedCoinIntensity: (this.cursedCoin && this.cursedCoin.state === 'held' && this.cursedCoin.holderId === b.id) ? this.cursedCoin.intensity : 0,
+          witnessProtectionActive: b.witnessProtectionUntil > now,
         });
       }
     }
@@ -5206,6 +5213,9 @@ class GameEngine {
         maxPrestige: MAX_PRESTIGE,
         // Formation Flying
         formationType: bird.formationType || null,
+        // Witness Protection
+        witnessProtectionUntil: bird.witnessProtectionUntil || 0,
+        witnessProtectionCooldown: bird.witnessProtectionCooldown || 0,
       },
       // Kingpin state (global — for minimap and visual targeting)
       kingpin: this.kingpin ? (() => {
@@ -8011,6 +8021,13 @@ class GameEngine {
     const wantedLevel = this._getWantedLevel(wantedHeat);
     const targetCount = this._targetCopCount(wantedLevel);
 
+    // Witness Protection: clear all cops if wanted bird is protected
+    const wpBird = this.birds.get(this.wantedBirdId);
+    if (wpBird && wpBird.witnessProtectionUntil > now) {
+      if (this.copBirds.size > 0) this.copBirds.clear();
+      return;
+    }
+
     // Count current cops (excluding stunned-for-good ones)
     const activeCops = Array.from(this.copBirds.values()).filter(c => c.targetBirdId === this.wantedBirdId);
 
@@ -10566,6 +10583,82 @@ class GameEngine {
   }
 
   // ============================================================
+  // WITNESS PROTECTION PROGRAM
+  // ============================================================
+
+  _handleWitnessProtection(bird, now) {
+    const COST = 500;
+    const DURATION = 3 * 60 * 1000;    // 3 minutes
+    const COOLDOWN = 10 * 60 * 1000;   // 10 minute cooldown between uses
+
+    // Must be near City Hall
+    const ch = this.CITY_HALL_POS;
+    const dx = bird.x - ch.x;
+    const dy = bird.y - ch.y;
+    if (Math.sqrt(dx * dx + dy * dy) > ch.radius * 1.4) {
+      this.events.push({ type: 'wp_fail', birdId: bird.id, msg: 'Must be near City Hall to enter Witness Protection.' });
+      return;
+    }
+
+    // Cooldown check
+    if (now < bird.witnessProtectionCooldown) {
+      const secsLeft = Math.ceil((bird.witnessProtectionCooldown - now) / 1000);
+      this.events.push({ type: 'wp_fail', birdId: bird.id, msg: `Witness Protection on cooldown — ${secsLeft}s remaining.` });
+      return;
+    }
+
+    // Already in WP
+    if (bird.witnessProtectionUntil > now) {
+      this.events.push({ type: 'wp_fail', birdId: bird.id, msg: 'You are already in Witness Protection!' });
+      return;
+    }
+
+    // Cost check
+    if (bird.coins < COST) {
+      this.events.push({ type: 'wp_fail', birdId: bird.id, msg: `Not enough coins — costs ${COST}c.` });
+      return;
+    }
+
+    // Apply effects
+    bird.coins -= COST;
+    bird.witnessProtectionUntil = now + DURATION;
+    bird.witnessProtectionCooldown = now + COOLDOWN;
+
+    // Clear all heat — enter the program clean
+    this.heatScores.delete(bird.id);
+
+    // Despawn cops targeting this bird
+    if (this.wantedBirdId === bird.id) {
+      this.wantedBirdId = null;
+      this.copBirds.clear();
+    } else {
+      for (const [cid, cop] of this.copBirds) {
+        if (cop.targetBirdId === bird.id) this.copBirds.delete(cid);
+      }
+    }
+
+    // Send Bounty Hunter off-duty for the full WP duration
+    if (this.bountyHunter && this.bountyHunter.targetId === bird.id) {
+      this.bountyHunter.state = 'off_duty';
+      this.bountyHunter.offDutyUntil = bird.witnessProtectionUntil;
+    }
+
+    // Wipe active hit contracts on this bird (they can't be fulfilled while in WP)
+    if (this.activeHits.has(bird.id)) {
+      this.activeHits.delete(bird.id);
+    }
+
+    this.events.push({
+      type: 'witness_protection_active',
+      birdId: bird.id,
+      birdName: bird.name,
+      expiresAt: bird.witnessProtectionUntil,
+    });
+
+    console.log(`[GameEngine] 🛡 ${bird.name} entered Witness Protection for 3 min (-${COST}c)`);
+  }
+
+  // ============================================================
   // GANG NESTS — persistent home bases for criminal crews
   // ============================================================
 
@@ -12191,7 +12284,13 @@ class GameEngine {
       return; // don't move while stunned
     }
 
-    // Off-duty state (Contract Cancel purchased)
+    // Witness Protection: if target entered WP, BH goes off-duty for the duration
+    if (wanted.witnessProtectionUntil > now && bh.state !== 'off_duty') {
+      bh.state = 'off_duty';
+      bh.offDutyUntil = wanted.witnessProtectionUntil;
+    }
+
+    // Off-duty state (Contract Cancel purchased or Witness Protection active)
     if (bh.state === 'off_duty') {
       if (now >= bh.offDutyUntil) {
         bh.state = 'pursuing';

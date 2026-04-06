@@ -482,6 +482,8 @@ window.Renderer = {
     if (birds) {
       for (const b of birds) {
         if (b.id === (selfBird && selfBird.id)) continue;
+        // Witness Protection: hidden from other players' minimaps
+        if (b.witnessProtectionActive) continue;
         if (b.hitBounty) {
           // Hit contract target: pulsing red dot
           const pulse = Math.sin(Date.now() * 0.012) * 0.4 + 0.6;

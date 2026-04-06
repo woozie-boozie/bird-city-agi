@@ -1682,6 +1682,37 @@ Every 25-35 minutes, 8-10 fast seagulls (130-150px/s) swoop in from a random coa
 
 **Creative intent**: The invasion creates a new type of communal threat that's fundamentally different from all existing events. Unlike the Crow Cartel (territory-based, stationary) or Pied Piper (you go to it), the seagulls are ACTIVELY DRAINING the world's food supply in real time. Every second you don't fight back, more food disappears from the map. The race to poop them all down before the 90-second timer is pure cooperative pressure — solo birds can chip away, but organized flocks can wipe the invasion fast and claim the full-repel bonus. The carrier mechanic (orange dots on minimap, loot drops on hit) means tracking a seagull across the city to intercept it is genuinely satisfying. The food depletion creates real urgency: "The seagulls are stealing our stuff!" is an instantly understandable threat. Pure CARNAGE + SOCIAL energy.
 
+**Session 51 — 2026-04-06: Witness Protection Program — Vanish from the Grid**
+The ultimate escape valve for high-heat birds. A dedicated "Witness Protection" section now lives inside the City Hall overlay (press [V]). For 500 coins, you can burn your identity, clear all heat, vanish from every other player's minimap, and send the Bounty Hunter off-duty — all for 3 full minutes.
+
+**How it works (`server/game.js`):**
+- Fly to City Hall and press [V] — the Bounty Board now also includes a 🛡 WITNESS PROTECTION section
+- Cost: 500c. Duration: 3 minutes. Cooldown: 10 minutes between uses.
+- **Instant effects on purchase**:
+  - All wanted heat deleted (heatScores cleared for this bird)
+  - All cops targeting this bird immediately despawned
+  - Bounty Hunter sent off-duty for the full 3-minute duration
+  - All active hit contracts on this bird cancelled
+  - `witnessProtectionUntil` timestamp set on the bird
+- **Minimap hiding**: WP birds are excluded from all other players' minimap rendering — they simply don't appear
+- **World rendering**: WP birds are visible in the world but drawn at 28% alpha for other players (ghost outline — you can barely see them)
+- **Cop immunity**: `_updateCopBirds()` returns early without spawning new cops while the wanted bird has active WP
+- **BH immunity**: `_updateBountyHunter()` detects active WP and forces BH into off-duty mode for the duration
+- **Self-visibility**: The WP bird still sees themselves normally, with a soft pulsing blue shield aura confirming protection
+
+**Visual system:**
+- WP bird: rendered at 28% alpha to other players — ghostly but visible if you look closely at the world
+- Own blue shield aura: subtle radial blue glow around the player when WP is active (for self-confirmation)
+- Active buffs HUD: pulsing blue "🛡 WITNESS PROTECTION — Xm Ys · Off the grid" pill
+- City Hall overlay: WP section shows live status (active countdown / cooldown / available)
+- City Hall prompt: updated to mention "Witness Protection: 500c"
+
+**Events:**
+- `witness_protection_active`: screen shake + big blue announcement for the buyer ("You vanish from the radar for 3 minutes!") + city-wide event feed ("X entered Witness Protection!")
+- `wp_fail`: personal error message in the overlay (insufficient funds, cooldown, wrong location)
+
+**Creative intent**: The city now has an escape valve that costs exactly what it's worth. A Level 5 Most Wanted bird with a Bounty Hunter on their tail, a hit contract on their back, and 500 coins to spare can walk into City Hall and disappear. The drama: the moment the WP announcement hits city-wide, ALL other players know someone just went ghost — but they can't track them on the minimap. Three minutes of invisibility while everyone wonders where the quarry fled. The Kingpin who's about to be dethroned spending 500c to reset the board. The 10-minute cooldown means it's a genuine decision, not a spam button. Pure PROGRESSION + CARNAGE energy — and finally a meaningful money sink that rewards strategic play over raw speed.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -1737,7 +1768,7 @@ Built the Territory Control System on top of the existing upstream code:
 - Cursed Coin gazette tracking: newspaper headlines for the bird who held it longest / detonated for the most coins
 - Cursed Coin + Kingpin combo: if Kingpin grabs the Cursed Coin, their tribute doubles but explosion potential triples
 - Bounty Hunter gazette tracking: "🔫 BOUNTY HUNTER TOOK DOWN [Name] for X COINS" headline
-- Witness Protection Program: buy at City Hall for 500c — clears name, hides from minimap for 3 min, no Bounty Hunter targeting
+- ~~Witness Protection Program: buy at City Hall for 500c — clears name, hides from minimap for 3 min, no Bounty Hunter targeting~~ (DONE Session 51)
 - Bird Flu + Bounty Hunter interaction: BH can get infected if he catches a flu-carrying bird — wanders confused for 15s (cinematic chaos)
 - Multi-bird Wanted system: track top 2 most-wanted simultaneously (two Bounty Hunters chase two separate targets at once)
 - Bird Flu + Wanted interaction: if a cop arrests an infected bird, the cop catches the flu and wanders confused for 5s

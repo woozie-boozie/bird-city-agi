@@ -107,6 +107,9 @@
   const bbContributeBtn = document.getElementById('bbContributeBtn');
   const bbContributeAmount = document.getElementById('bbContributeAmount');
   const bbContributeMsg = document.getElementById('bbContributeMsg');
+  const bbWpBtn = document.getElementById('bbWpBtn');
+  const bbWpMsg = document.getElementById('bbWpMsg');
+  const bbWpStatus = document.getElementById('bbWpStatus');
   const poolHudPill = document.getElementById('poolHudPill');
   const cityHallPrompt = document.getElementById('cityHallPrompt');
   let bountyBoardVisible = false;
@@ -863,6 +866,22 @@
       if (ev.birdId === myId) {
         const msg = document.getElementById('bbContributeMsg');
         if (msg) { msg.textContent = ev.msg; setTimeout(() => { msg.textContent = ''; }, 3000); }
+      }
+    }
+    if (ev.type === 'wp_fail') {
+      if (ev.birdId === myId) {
+        const msg = document.getElementById('bbWpMsg');
+        if (msg) { msg.textContent = ev.msg; setTimeout(() => { msg.textContent = ''; }, 3500); }
+      }
+    }
+    if (ev.type === 'witness_protection_active') {
+      const isSelf = ev.birdId === myId;
+      if (isSelf) {
+        screenShake(10, 600);
+        showAnnouncement('🛡 WITNESS PROTECTION ACTIVE!\nYou vanish from the radar for 3 minutes.\nAll heat cleared. Bounty Hunter stands down.', '#44aaff', 6000);
+        addEventMessage(`🛡 ${ev.birdName} entered WITNESS PROTECTION — they are now off the grid!`, '#44aaff');
+      } else {
+        addEventMessage(`🛡 ${ev.birdName} entered Witness Protection — they vanished from the minimap!`, '#4488cc');
       }
     }
     if (ev.type === 'kingpin_hit') {
@@ -3458,7 +3477,7 @@
       const pool = gameState.dethronementPool || { total: 0 };
       const poolTxt = pool.total > 0 ? `💀 Pool: ${pool.total}c` : 'No pool yet — start one!';
       if (cityHallPrompt) {
-        cityHallPrompt.innerHTML = `🏛 CITY HALL — Press [V] to open Bounty Board<br><span style="font:9px monospace;color:#ff8800;">${poolTxt}</span>`;
+        cityHallPrompt.innerHTML = `🏛 CITY HALL — Press [V] to open Bounty Board &amp; Witness Protection<br><span style="font:9px monospace;color:#ff8800;">${poolTxt}</span>`;
         cityHallPrompt.style.display = 'block';
       }
     }
@@ -3473,8 +3492,8 @@
     const pool = gameState.dethronementPool || { total: 0 };
     updatePoolHudPill(pool.total);
     if (nearCH && cityHallPrompt && cityHallPrompt.style.display !== 'none') {
-      const poolTxtLive = pool.total > 0 ? `💀 Pool: ${pool.total}c — dethrone the Kingpin to claim it!` : 'No pool yet — be the first to contribute!';
-      cityHallPrompt.innerHTML = `🏛 CITY HALL — Press [V] to open Bounty Board<br><span style="font:9px monospace;color:#ff8800;">${poolTxtLive}</span>`;
+      const poolTxtLive = pool.total > 0 ? `💀 Pool: ${pool.total}c · 🛡 Witness Protection: 500c` : '🛡 Witness Protection 500c · Bounty Board';
+      cityHallPrompt.innerHTML = `🏛 CITY HALL — Press [V]<br><span style="font:9px monospace;color:#ff8800;">${poolTxtLive}</span>`;
     }
 
     // Gang HQ — update when open
@@ -5845,11 +5864,29 @@
           // Mystery Crate: Ghost Mode — partially transparent self-bird
           if (selfData && selfData.mcGhostModeUntil > selfNow) {
             ctx.globalAlpha = 0.35;
+          } else if (b.witnessProtectionActive && !isPlayer) {
+            // Witness Protection: ghost outline visible locally but semi-transparent to others
+            ctx.globalAlpha = 0.28;
           } else if (b.cloaked) {
             // Cloaked birds: render at low alpha (ghost outline for others, more visible for self)
             ctx.globalAlpha = isPlayer ? 0.4 : 0.15;
           } else if (b.inNest) {
             ctx.globalAlpha = 0.5;
+          }
+
+          // Witness Protection — soft blue shield aura visible to the WP bird themselves
+          if (isPlayer && selfData && selfData.witnessProtectionUntil > selfNow) {
+            const wpPulse = 0.35 + 0.25 * Math.sin(selfNow * 0.005);
+            ctx.save();
+            ctx.globalAlpha = wpPulse;
+            const wpGrd = ctx.createRadialGradient(sx, sy, 8, sx, sy, 34);
+            wpGrd.addColorStop(0, 'rgba(40,140,255,0.5)');
+            wpGrd.addColorStop(1, 'rgba(20,80,200,0)');
+            ctx.fillStyle = wpGrd;
+            ctx.beginPath();
+            ctx.arc(sx, sy, 34, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
           }
 
           // Mystery Crate: Riot Shield — electric blue ring
@@ -7572,6 +7609,15 @@
       }
     }
 
+    // Witness Protection — off the grid
+    if (s.witnessProtectionUntil && s.witnessProtectionUntil > now) {
+      const secsLeft = Math.ceil((s.witnessProtectionUntil - now) / 1000);
+      const minsLeft = Math.floor(secsLeft / 60);
+      const secsPart = secsLeft % 60;
+      const timeStr = minsLeft > 0 ? `${minsLeft}m ${secsPart}s` : `${secsLeft}s`;
+      html += `<div class="bm-buff-pill" style="background:rgba(0,30,80,0.9);border-color:#44aaff;color:#88ddff;font-weight:bold;animation:kingpinGlow 1.5s ease-in-out infinite alternate;">🛡 WITNESS PROTECTION — ${timeStr} · Off the grid</div>`;
+    }
+
     // Crime Wave — city-wide danger indicator
     if (s.crimeWave) {
       const cwLeft = Math.max(0, Math.ceil((s.crimeWave.endsAt - now) / 1000));
@@ -8076,6 +8122,32 @@
       contributeBtn.style.cursor = disabled ? 'not-allowed' : 'pointer';
     }
 
+    // Witness Protection status display
+    const now = Date.now();
+    if (bbWpStatus && self) {
+      const wpActive = self.witnessProtectionUntil && self.witnessProtectionUntil > now;
+      const wpCooldown = self.witnessProtectionCooldown && self.witnessProtectionCooldown > now;
+      if (wpActive) {
+        const secsLeft = Math.ceil((self.witnessProtectionUntil - now) / 1000);
+        bbWpStatus.innerHTML = `<span style="color:#44ff88;font-weight:bold;">🛡 ACTIVE — ${secsLeft}s remaining · You are off the grid</span>`;
+      } else if (wpCooldown) {
+        const cdLeft = Math.ceil((self.witnessProtectionCooldown - now) / 1000);
+        bbWpStatus.innerHTML = `<span style="color:#888;">Cooldown: ${cdLeft}s remaining</span>`;
+      } else if (self.coins < 500) {
+        bbWpStatus.innerHTML = `<span style="color:#886644;">Insufficient funds — need 500c (you have ${self.coins || 0}c)</span>`;
+      } else {
+        bbWpStatus.innerHTML = '<span style="color:#44aaff;">Available — your identity can be wiped</span>';
+      }
+    }
+    if (bbWpBtn && self) {
+      const wpActive = self.witnessProtectionUntil && self.witnessProtectionUntil > now;
+      const wpCooldown = self.witnessProtectionCooldown && self.witnessProtectionCooldown > now;
+      const canBuy = !wpActive && !wpCooldown && (self.coins || 0) >= 500;
+      bbWpBtn.disabled = !canBuy;
+      bbWpBtn.style.opacity = canBuy ? '1' : '0.4';
+      bbWpBtn.style.cursor = canBuy ? 'pointer' : 'not-allowed';
+    }
+
     // Leaderboard — use leaderboardData (XP-based global rankings)
     const lbEl = document.getElementById('bbLeaderboard');
     if (lbEl) {
@@ -8114,6 +8186,11 @@
       const raw = parseInt(bbContributeAmount ? bbContributeAmount.value : '50', 10);
       const amount = isNaN(raw) ? 50 : Math.max(10, Math.min(500, raw));
       socket.emit('action', { type: 'pool_contribute', amount });
+    });
+  }
+  if (bbWpBtn) {
+    bbWpBtn.addEventListener('click', () => {
+      socket.emit('action', { type: 'buy_witness_protection' });
     });
   }
 
