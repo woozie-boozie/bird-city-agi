@@ -3271,4 +3271,97 @@ window.Renderer = {
     minimapCtx.fillText('💀', cx, cy - 5);
     minimapCtx.restore();
   },
+
+  // ============================================================
+  // BIRD ROYALE — shrinking safe zone
+  // ============================================================
+
+  drawBirdRoyaleZone(ctx, camera, royale, now) {
+    if (!royale || royale.state === 'warning') return;
+
+    const cx = royale.centerX - camera.x + camera.screenW / 2;
+    const cy = royale.centerY - camera.y + camera.screenH / 2;
+    const r = royale.currentRadius;
+    // Scale radius to screen (world units = screen units at zoom=1; if camera has zoom use it)
+    const zoom = camera.zoom || 1;
+    const sr = r * zoom;
+
+    const t = now / 1000;
+    const pulse = 0.5 + 0.5 * Math.sin(t * 3);
+
+    // ── DANGER ZONE: Red fill outside the circle ──
+    // Use compositing: fill whole screen red (tinted), then cut out the safe circle
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, camera.screenW, camera.screenH);
+    // Cut-out circle (safe zone)
+    ctx.arc(cx, cy, sr, 0, Math.PI * 2, true); // true = counterclockwise = hole
+    ctx.fillStyle = `rgba(200, 0, 0, ${0.22 + 0.08 * pulse})`;
+    ctx.fill();
+    ctx.restore();
+
+    // ── SAFE ZONE BORDER: Pulsing white/electric ring ──
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, sr, 0, Math.PI * 2);
+    // Outer glow
+    ctx.shadowColor = '#ff4444';
+    ctx.shadowBlur = 16 + 8 * pulse;
+    ctx.strokeStyle = `rgba(255, ${80 + Math.floor(120 * pulse)}, ${80 + Math.floor(80 * pulse)}, ${0.85 + 0.15 * pulse})`;
+    ctx.lineWidth = 3 + pulse * 2;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // Inner white core of the border
+    ctx.beginPath();
+    ctx.arc(cx, cy, sr, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(255, 255, 255, ${0.5 + 0.3 * pulse})`;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.restore();
+
+    // ── "SAFE ZONE" label near the border (top of circle) ──
+    const labelY = cy - sr - 12;
+    if (labelY > 10 && labelY < camera.screenH - 10) {
+      ctx.save();
+      ctx.font = 'bold 13px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = `rgba(255, 200, 200, ${0.8 + 0.2 * pulse})`;
+      ctx.shadowColor = '#ff0000';
+      ctx.shadowBlur = 6;
+      ctx.fillText('⚔️ SAFE ZONE', cx, labelY);
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    }
+  },
+
+  drawBirdRoyaleOnMinimap(minimapCtx, worldData, royale, now) {
+    if (!royale || royale.state === 'warning') return;
+    const scale = minimapCtx.canvas.width / worldData.width;
+    const cx = royale.centerX * scale;
+    const cy = royale.centerY * scale;
+    const r = royale.currentRadius * scale;
+
+    const t = now / 1000;
+    const pulse = 0.5 + 0.5 * Math.sin(t * 3);
+
+    minimapCtx.save();
+    // Red ring around safe zone
+    minimapCtx.beginPath();
+    minimapCtx.arc(cx, cy, r, 0, Math.PI * 2);
+    minimapCtx.strokeStyle = `rgba(255, 80, 80, ${0.7 + 0.3 * pulse})`;
+    minimapCtx.lineWidth = 2 + pulse;
+    minimapCtx.shadowColor = '#ff4444';
+    minimapCtx.shadowBlur = 4 + 2 * pulse;
+    minimapCtx.stroke();
+    minimapCtx.shadowBlur = 0;
+
+    // Subtle danger zone fill outside
+    minimapCtx.beginPath();
+    minimapCtx.rect(0, 0, minimapCtx.canvas.width, minimapCtx.canvas.height);
+    minimapCtx.arc(cx, cy, r, 0, Math.PI * 2, true);
+    minimapCtx.fillStyle = `rgba(180, 0, 0, 0.18)`;
+    minimapCtx.fill();
+    minimapCtx.restore();
+  },
 };

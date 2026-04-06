@@ -1252,6 +1252,62 @@
       showAnnouncement('🚔 Crime wave over. The city breathes again.', '#ff8888', 3000);
     }
 
+    // === BIRD ROYALE EVENTS ===
+    if (ev.type === 'royale_warning' && ev.birdId === myId) {
+      effects.push({ type: 'screen_shake', intensity: 12, duration: 1000, time: now });
+      const warningSecS = Math.round((ev.startAt - now) / 1000);
+      showAnnouncement(
+        `⚔️ BIRD ROYALE in ${warningSecS}s!\nFly to the SAFE ZONE or be eliminated!\nLast bird alive wins 400 coins + 500 XP!`,
+        '#ff6600', 8000
+      );
+    }
+    if (ev.type === 'royale_warning_global') {
+      addEventMessage('⚔️ BIRD ROYALE starts in 2 minutes! Stay inside the shrinking zone or lose your food fast!', '#ff6600');
+    }
+    if (ev.type === 'royale_start' && ev.birdId === myId) {
+      effects.push({ type: 'screen_shake', intensity: 14, duration: 1000, time: now });
+      showAnnouncement(
+        `⚔️ BIRD ROYALE BEGINS!\n${ev.participantCount} birds enter — one walks out!\nZone shrinks for 3 minutes. DON'T LEAVE THE RING!`,
+        '#ff2200', 7000
+      );
+    }
+    if (ev.type === 'royale_start_global') {
+      addEventMessage(`⚔️ BIRD ROYALE HAS BEGUN! ${ev.participantCount} participants. Zone shrinks for 3 minutes!`, '#ff4400');
+    }
+    if (ev.type === 'royale_zone_damage' && ev.birdId === myId) {
+      // Subtle food drain warning — only show text if food is low
+      if (ev.foodLeft !== undefined && ev.foodLeft <= 20) {
+        effects.push({ type: 'text', x: gameState.self.x, y: gameState.self.y - 30, text: `⚠️ ZONE! ${ev.foodLeft}🍗`, color: '#ff4400', time: now, duration: 1200 });
+      }
+    }
+    if (ev.type === 'royale_eliminated') {
+      if (ev.birdId === myId) {
+        effects.push({ type: 'screen_shake', intensity: 8, duration: 600, time: now });
+        const penalty = ev.coinLoss > 0 ? ` −${ev.coinLoss}c penalty` : '';
+        showAnnouncement(`💀 YOU'VE BEEN ELIMINATED!\n${ev.aliveCount} birds remain${penalty}\nWatch the survivors fight it out!`, '#cc2200', 6000);
+      } else {
+        if (ev.disconnected) {
+          addEventMessage(`💀 ${ev.name} disconnected — eliminated from Bird Royale! (${ev.aliveCount} left)`, '#ff6644');
+        } else {
+          addEventMessage(`💀 ${ev.name} was eliminated from Bird Royale! (${ev.aliveCount} remain)`, '#ff6644');
+        }
+      }
+    }
+    if (ev.type === 'royale_winner') {
+      effects.push({ type: 'screen_shake', intensity: 18, duration: 1200, time: now });
+      const tag = ev.gangTag ? `[${ev.gangTag}] ` : '';
+      if (ev.birdId === myId) {
+        showAnnouncement(`🏆 YOU WIN BIRD ROYALE!\n+500 XP +400 COINS\nLast bird standing out of ${ev.participantCount}!`, '#ffd700', 10000);
+      } else {
+        showAnnouncement(`🏆 BIRD ROYALE WINNER:\n${tag}${ev.name}\n+500 XP +400c — Last one standing!`, '#ffd700', 8000);
+      }
+      addEventMessage(`🏆 BIRD ROYALE WINNER: ${tag}${ev.name} outlasted ${ev.participantCount} birds! +500 XP +400c`, '#ffd700');
+    }
+    if (ev.type === 'royale_no_winner') {
+      showAnnouncement(`💀 BIRD ROYALE — NO SURVIVORS!\nAll ${ev.participantCount} birds were eliminated.\nThe city mourns.`, '#888888', 6000);
+      addEventMessage(`💀 Bird Royale ended with no survivors! All ${ev.participantCount} birds eliminated.`, '#aa6644');
+    }
+
     // === BOSS EVENTS ===
     if (ev.type === 'boss_spawn') {
       SoundEngine.bossSpawn();
@@ -5825,6 +5881,11 @@
       Renderer.drawCursedCoin(ctx, camera, gameState.self.cursedCoin, now);
     }
 
+    // Bird Royale — safe zone ring + danger zone overlay
+    if (gameState.birdRoyale && gameState.birdRoyale.state === 'active') {
+      Renderer.drawBirdRoyaleZone(ctx, camera, gameState.birdRoyale, now);
+    }
+
     // Pigeon Race track checkpoints
     if (worldData && worldData.raceCheckpoints) {
       Renderer.drawRaceTrack(ctx, camera, worldData.raceCheckpoints, gameState.pigeonRace || null, now);
@@ -6332,6 +6393,84 @@
       ctx.restore();
     }
 
+    // === BIRD ROYALE OVERLAY ===
+    if (gameState.birdRoyale) {
+      const ry = gameState.birdRoyale;
+      const ryPulse = 0.5 + 0.5 * Math.abs(Math.sin(now * 0.005));
+
+      if (ry.state === 'active') {
+        // Pulsing orange tint during royale
+        ctx.save();
+        ctx.globalAlpha = 0.05 + 0.03 * ryPulse;
+        ctx.fillStyle = '#ff6600';
+        ctx.fillRect(0, 0, camera.screenW, camera.screenH);
+        ctx.globalAlpha = 1;
+        ctx.restore();
+      }
+
+      // Determine bar y position (stack below seagull and crime wave bars)
+      const hasCrimeWave = gameState.crimeWave;
+      const hasSeagull = gameState.seagullInvasion;
+      let ryBarY = 132;
+      if (hasCrimeWave) ryBarY += 43;
+      if (hasSeagull) ryBarY += 43;
+
+      const ryBarW = 220, ryBarH = 14;
+      const ryBarX = camera.screenW / 2 - ryBarW / 2;
+      const ryLabelPulse = 0.75 + 0.25 * Math.sin(now * 0.006);
+
+      ctx.save();
+      ctx.globalAlpha = 0.92;
+      ctx.fillStyle = 'rgba(0,0,0,0.65)';
+      ctx.beginPath();
+      ctx.roundRect(ryBarX - 60, ryBarY - 18, ryBarW + 120, ryBarH + 36, 10);
+      ctx.fill();
+
+      if (ry.state === 'warning') {
+        const secLeft = Math.max(0, Math.ceil((ry.startAt - now) / 1000));
+        ctx.globalAlpha = ryLabelPulse;
+        ctx.fillStyle = '#ff9900';
+        ctx.font = 'bold 12px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(`⚔️ BIRD ROYALE in ${secLeft}s — Fly to the center!`, camera.screenW / 2, ryBarY - 4);
+        // Warning countdown bar (orange, draining)
+        const warningTotal = 2 * 60 * 1000;
+        const warnFrac = Math.max(0, Math.min(1, (ry.startAt - now) / warningTotal));
+        ctx.globalAlpha = 0.8;
+        ctx.fillStyle = 'rgba(80,40,0,0.5)';
+        ctx.beginPath();
+        ctx.roundRect(ryBarX, ryBarY + 4, ryBarW, ryBarH, 5);
+        ctx.fill();
+        ctx.fillStyle = '#ff9900';
+        ctx.beginPath();
+        ctx.roundRect(ryBarX, ryBarY + 4, ryBarW * warnFrac, ryBarH, 5);
+        ctx.fill();
+      } else if (ry.state === 'active') {
+        const secLeft = Math.max(0, Math.ceil((ry.endsAt - now) / 1000));
+        const myStatus = ry.myStatus || 'spectator';
+        const statusStr = myStatus === 'alive' ? '— STAY INSIDE!' : myStatus === 'eliminated' ? '— ELIMINATED' : '';
+        ctx.globalAlpha = ryLabelPulse;
+        ctx.fillStyle = '#ff4400';
+        ctx.font = 'bold 12px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(`⚔️ BIRD ROYALE — ${ry.aliveCount} alive · ${secLeft}s ${statusStr}`, camera.screenW / 2, ryBarY - 4);
+        // Time remaining bar
+        const shrinkTotal = 3 * 60 * 1000;
+        const ryFrac = Math.max(0, Math.min(1, (ry.endsAt - now) / shrinkTotal));
+        ctx.globalAlpha = 0.8;
+        ctx.fillStyle = 'rgba(80,20,0,0.5)';
+        ctx.beginPath();
+        ctx.roundRect(ryBarX, ryBarY + 4, ryBarW, ryBarH, 5);
+        ctx.fill();
+        ctx.fillStyle = ryFrac > 0.5 ? '#ff4400' : ryFrac > 0.25 ? '#ff8800' : '#ffcc00';
+        ctx.beginPath();
+        ctx.roundRect(ryBarX, ryBarY + 4, ryBarW * ryFrac, ryBarH, 5);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+
     // Lightning flash (brief bright overlay)
     if (lightningFlash) {
       const age = now - lightningFlash.time;
@@ -6411,6 +6550,54 @@
         ctx.restore();
       }
       ctx.restore();
+    }
+
+    // Bird Royale — compass arrow pointing to safe zone center when outside or near edge
+    if (gameState.birdRoyale && gameState.birdRoyale.state === 'active' && gameState.self) {
+      const ry = gameState.birdRoyale;
+      const myStatus = ry.myStatus || 'spectator';
+      if (myStatus === 'alive') {
+        // Compute where zone center is on screen
+        const zx = ry.centerX - camera.x + camera.screenW / 2;
+        const zy = ry.centerY - camera.y + camera.screenH / 2;
+        const dx = gameState.self.x - ry.centerX;
+        const dy = gameState.self.y - ry.centerY;
+        const distFromCenter = Math.sqrt(dx * dx + dy * dy);
+        const outsideZone = distFromCenter > ry.currentRadius;
+        const zoneOnScreen = zx > 80 && zx < camera.screenW - 80 && zy > 80 && zy < camera.screenH - 80;
+
+        if (outsideZone || !zoneOnScreen) {
+          // Point arrow toward zone center
+          const angle = Math.atan2(zy - camera.screenH / 2, zx - camera.screenW / 2);
+          const arrowDist = Math.min(camera.screenW, camera.screenH) / 2 - 60;
+          const ax = camera.screenW / 2 + Math.cos(angle) * arrowDist;
+          const ay = camera.screenH / 2 + Math.sin(angle) * arrowDist;
+          const ryPulse = 0.6 + 0.4 * Math.sin(now * 0.008);
+          ctx.save();
+          ctx.translate(ax, ay);
+          ctx.rotate(angle);
+          ctx.globalAlpha = 0.9 * ryPulse;
+          // Arrow body
+          ctx.fillStyle = outsideZone ? '#ff2200' : '#ff8800';
+          ctx.strokeStyle = '#000';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(22, 0);
+          ctx.lineTo(-10, -11);
+          ctx.lineTo(-5, 0);
+          ctx.lineTo(-10, 11);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+          // Arrow label
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 8px Arial';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('⚔️', 4, 0);
+          ctx.restore();
+        }
+      }
     }
 
     // Pigeon Pied Piper — direction arrow + countdown bar
@@ -6730,6 +6917,11 @@
       minimapCtx.font = 'bold 7px monospace';
       minimapCtx.textAlign = 'left';
       minimapCtx.fillText(`🐦 ${gameState.seagullInvasion.aliveCount}/${gameState.seagullInvasion.totalCount}`, 3, mh - 3);
+    }
+
+    // Bird Royale safe zone ring on minimap
+    if (gameState.birdRoyale && gameState.birdRoyale.state === 'active' && worldData) {
+      Renderer.drawBirdRoyaleOnMinimap(minimapCtx, worldData, gameState.birdRoyale, now);
     }
 
     // Bird Flu medicine items on minimap — green pulsing dots during outbreak
@@ -7634,6 +7826,35 @@
       } else {
         const hits = gameState.bountyHunter.poopHits || 0;
         html += `<div class="bm-buff-pill" style="background:rgba(100,0,0,0.9);border-color:#cc2200;color:#ff6644;font-weight:bold;animation:pulseRed 0.8s infinite alternate;">🔫 BOUNTY HUNTER ON YOUR TAIL! Poop him: ${hits}/4 hits · Go underground to hide</div>`;
+      }
+    }
+
+    // Bird Royale — status pill
+    if (gameState.birdRoyale) {
+      const ry = gameState.birdRoyale;
+      if (ry.state === 'warning') {
+        const secLeft = Math.max(0, Math.ceil((ry.startAt - now) / 1000));
+        html += `<div class="bm-buff-pill" style="background:rgba(140,50,0,0.9);border-color:#ff7700;color:#ffcc44;font-weight:bold;animation:kingpinGlow 0.8s ease-in-out infinite alternate;">⚔️ BIRD ROYALE IN ${secLeft}s — FLY TO CENTER!</div>`;
+      } else if (ry.state === 'active') {
+        const secLeft = Math.max(0, Math.ceil((ry.endsAt - now) / 1000));
+        const myStatus = ry.myStatus || 'spectator';
+        if (myStatus === 'alive') {
+          // Check if outside zone
+          if (s.x !== undefined && s.y !== undefined) {
+            const dx = s.x - ry.centerX;
+            const dy = s.y - ry.centerY;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist > ry.currentRadius) {
+              html += `<div class="bm-buff-pill" style="background:rgba(160,0,0,0.95);border-color:#ff2200;color:#ff8888;font-weight:bold;animation:pulseRed 0.35s infinite alternate;">⚔️ OUTSIDE ZONE — −6 FOOD/SEC! FLY IN NOW!</div>`;
+            } else {
+              html += `<div class="bm-buff-pill" style="background:rgba(100,40,0,0.85);border-color:#ff8800;color:#ffcc66;animation:kingpinGlow 1.0s ease-in-out infinite alternate;">⚔️ ROYALE — ${ry.aliveCount} alive · ${secLeft}s · SAFE ✓</div>`;
+            }
+          }
+        } else if (myStatus === 'eliminated') {
+          html += `<div class="bm-buff-pill" style="background:rgba(40,40,40,0.85);border-color:#888888;color:#aaaaaa;">💀 ELIMINATED — ${ry.aliveCount} birds remain</div>`;
+        } else {
+          html += `<div class="bm-buff-pill" style="background:rgba(60,30,0,0.75);border-color:#aa6600;color:#ddaa44;">⚔️ ROYALE ACTIVE — ${ry.aliveCount}/${ry.participantCount} alive</div>`;
+        }
       }
     }
 

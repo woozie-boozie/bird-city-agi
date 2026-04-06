@@ -1713,6 +1713,36 @@ The ultimate escape valve for high-heat birds. A dedicated "Witness Protection" 
 
 **Creative intent**: The city now has an escape valve that costs exactly what it's worth. A Level 5 Most Wanted bird with a Bounty Hunter on their tail, a hit contract on their back, and 500 coins to spare can walk into City Hall and disappear. The drama: the moment the WP announcement hits city-wide, ALL other players know someone just went ghost — but they can't track them on the minimap. Three minutes of invisibility while everyone wonders where the quarry fled. The Kingpin who's about to be dethroned spending 500c to reset the board. The 10-minute cooldown means it's a genuine decision, not a spam button. Pure PROGRESSION + CARNAGE energy — and finally a meaningful money sink that rewards strategic play over raw speed.
 
+**Session 52 — 2026-04-06: Bird Royale — Shrinking Zone Battle Royal**
+Every 35-50 minutes, the city's most visceral event erupts: a battle royale where all online birds must fight to be the last one inside the shrinking safe zone. No entry fee, no special equipment — just raw survival instinct.
+
+**The Royale Flow:**
+- 2-minute warning announced city-wide: screen shake + big orange announcement + event feed
+- All online birds are automatically enrolled as participants
+- Zone starts at 1420px radius (almost the entire map), centered on city center (1500, 1500)
+- Zone shrinks linearly over 3 minutes down to a 160px final panic circle at the dead center
+- Birds outside the safe zone take **−6 food per second** — brutal and fast
+- At 0 food while outside: **eliminated** → teleported to zone edge with small food top-up, lose 15% coins
+- Last bird alive inside the zone wins **500 XP + 400 coins**
+
+**Visual System:**
+- **Danger zone overlay**: semi-transparent red fill covers the entire screen outside the safe circle — the world turns blood-red where it's unsafe
+- **Zone border**: pulsing white/red ring with red shadow glow — unmistakably the "don't cross this line"
+- **Minimap**: red circle showing current zone size with red tint outside the ring — trackable at all times
+- **HUD countdown bar**: orange bar at top center showing zone time + alive count + personal status ("SAFE ✓" or "STAY INSIDE!")
+- **Direction arrow**: red/orange compass arrow points toward zone center when you're outside the zone or the center is off-screen
+- **Active buffs pill**: real-time status showing alive count, time remaining, "OUTSIDE ZONE −6 FOOD/SEC!" warning when in danger
+
+**Events & announcements:**
+- 2-minute warning: screen shake + personal announcement + city-wide feed entry
+- Royale start: massive screen shake + personal announcement with participant count
+- Zone damage: floating "⚠️ ZONE! Xfood" text when food gets critical (≤20)
+- Elimination: personal announcement with coin loss + city-wide feed callout for each eliminated bird
+- Winner: biggest screen shake + gold announcement + city-wide shoutout
+- No-winner (rare): all players eliminated simultaneously → dark "city mourns" announcement
+
+**Creative intent**: Bird Royale is the ultimate periodic chaos injection — it doesn't matter what you were doing before it starts, everything stops and the WHOLE CITY pivots to survival. A 5-star Most Wanted bird getting hunted by a Bounty Hunter AND trying to stay inside a shrinking zone while dodging cops is peak CARNAGE CITY. The 35-50 min interval means it fires maybe 1-2 times per long play session, making it feel SPECIAL every time. The "everyone gets enrolled automatically" design means no barrier to entry — you're in whether you like it or not, which creates emergent decision-making ("do I fight my way to the center or try to hide?"). The shrink from 1420px to 160px means the first 2 minutes are relaxed (plenty of room), then suddenly the zone is closing fast and every bird is converging on a tiny panic circle at city center. Pure CARNAGE + SPECTACLE + RETENTION energy — every session now has a climax event.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -1769,10 +1799,14 @@ Built the Territory Control System on top of the existing upstream code:
 - Cursed Coin + Kingpin combo: if Kingpin grabs the Cursed Coin, their tribute doubles but explosion potential triples
 - Bounty Hunter gazette tracking: "🔫 BOUNTY HUNTER TOOK DOWN [Name] for X COINS" headline
 - ~~Witness Protection Program: buy at City Hall for 500c — clears name, hides from minimap for 3 min, no Bounty Hunter targeting~~ (DONE Session 51)
+- ~~Bird Royale: periodic shrinking-zone battle royale every 35-50 min, last survivor wins 500 XP + 400c~~ (DONE Session 52)
 - Bird Flu + Bounty Hunter interaction: BH can get infected if he catches a flu-carrying bird — wanders confused for 15s (cinematic chaos)
 - Multi-bird Wanted system: track top 2 most-wanted simultaneously (two Bounty Hunters chase two separate targets at once)
 - Bird Flu + Wanted interaction: if a cop arrests an infected bird, the cop catches the flu and wanders confused for 5s
 - ~~Seagull Invasion: 8-10 fast seagulls swoop in from the coast every 25-35 min, stealing food items en masse — drive them away by pooping (2 hits each)~~ (DONE Session 50)
+- Bird Royale elimination zone mechanic: winners get Royale Champion badge (session-only, like idol badge) visible on nametag
+- Bird Royale + gang interaction: if your gang wins the royale (last member alive), the gang earns territory control bonus on the zone where the final showdown happened
+- Bird Royale spectator mode: eliminated birds can watch others' screens and throw "crowd cheers" that give small food boosts to surviving birds
 - Idol Hall of Fame: persistent leaderboard of all-time Idol winners near the stage
 - Idol daily challenge: "Win Bird City Idol" as a rare daily task
 - ~~Crime wave event: randomly all wanted levels are doubled for 2 minutes; more cops, higher rewards~~ (DONE Session 48)

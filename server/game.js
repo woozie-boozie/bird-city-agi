@@ -468,6 +468,15 @@ class GameEngine {
     this.seagullTimer = Date.now() + this._randomRange(25 * 60000, 35 * 60000);
     this._seagullIdCounter = 0;
 
+    // === BIRD ROYALE ===
+    // Every 35-50 minutes, a shrinking zone forces all birds toward the city center.
+    // Safe zone shrinks from 1400px radius to 150px over 3 minutes.
+    // Birds outside take -6 food/sec. Hit 0 food outside = eliminated (lose 15% coins).
+    // Last bird alive inside the zone wins 500 XP + 400c. Timer: 2-min warning first.
+    this.birdRoyale = null; // null | { state:'warning'|'active'|'ended', startAt, endsAt, centerX, centerY, startRadius, endRadius, participants: Map(birdId -> {name, alive, eliminatedAt}), pot, zoneDrainTimers: Map(birdId -> lastDrainAt) }
+    this.birdRoyaleTimer = Date.now() + this._randomRange(35 * 60000, 50 * 60000);
+    this._royaleIdCounter = 0;
+
     // === BIRD CITY GAZETTE ===
     // Every game day cycle (~20 min), a newspaper publishes at dawn recapping the night.
     // Tracks key moments: top combo, most wanted, heists, gang wars, predator kills, etc.
@@ -1265,6 +1274,9 @@ class GameEngine {
 
     // === Seagull Invasion ===
     this._updateSeagullInvasion(dt, now);
+
+    // === Bird Royale ===
+    this._tickBirdRoyale(dt, now);
   }
 
   // ============================================================
@@ -5546,6 +5558,25 @@ class GameEngine {
           })),
         totalCount: this.seagullInvasion.seagulls.size,
         aliveCount: Array.from(this.seagullInvasion.seagulls.values()).filter(sg => sg.state !== 'dead').length,
+      } : null,
+      // Bird Royale
+      birdRoyale: this.birdRoyale ? {
+        state: this.birdRoyale.state,
+        startAt: this.birdRoyale.startAt,
+        endsAt: this.birdRoyale.endsAt,
+        centerX: this.birdRoyale.centerX,
+        centerY: this.birdRoyale.centerY,
+        currentRadius: this.birdRoyale.currentRadius,
+        startRadius: this.birdRoyale.startRadius,
+        endRadius: this.birdRoyale.endRadius,
+        participantCount: this.birdRoyale.participants.size,
+        aliveCount: Array.from(this.birdRoyale.participants.values()).filter(p => p.alive).length,
+        myStatus: (() => {
+          const p = this.birdRoyale.participants.get(bird.id);
+          if (!p) return 'spectator';
+          return p.alive ? 'alive' : 'eliminated';
+        })(),
+        winner: this.birdRoyale.winner || null,
       } : null,
     };
   }
@@ -12689,6 +12720,225 @@ class GameEngine {
     this.seagullInvasion = null;
     this.seagullTimer = now + this._randomRange(25 * 60000, 35 * 60000);
     console.log(`[Seagull] Invasion ended (${reason})`);
+  }
+
+  // ============================================================
+  // BIRD ROYALE — shrinking zone battle royal
+  // ============================================================
+
+  _tickBirdRoyale(dt, now) {
+    const WORLD_W = 3000;
+    const WORLD_H = 3000;
+    const CENTER_X = WORLD_W / 2;   // 1500
+    const CENTER_Y = WORLD_H / 2;   // 1500
+    const START_RADIUS = 1420;      // covers almost the whole map
+    const END_RADIUS = 160;         // final panic zone at city center
+    const SHRINK_DURATION = 3 * 60 * 1000; // 3 minutes
+    const WARNING_DURATION = 2 * 60 * 1000; // 2 min warning before start
+    const FOOD_DRAIN_RATE = 6;       // food lost per second outside zone
+    const DRAIN_INTERVAL = 1000;     // drain once per second
+
+    // ── TRIGGER WARNING PHASE ──
+    if (!this.birdRoyale && now >= this.birdRoyaleTimer && this.birds.size >= 1) {
+      const startAt = now + WARNING_DURATION;
+      this.birdRoyale = {
+        state: 'warning',
+        startAt,
+        endsAt: startAt + SHRINK_DURATION,
+        centerX: CENTER_X,
+        centerY: CENTER_Y,
+        startRadius: START_RADIUS,
+        endRadius: END_RADIUS,
+        currentRadius: START_RADIUS,
+        participants: new Map(),  // birdId -> { name, alive, eliminatedAt, gangTag, gangColor }
+        pot: 0,
+        zoneDrainTimers: new Map(), // birdId -> lastDrainAt
+        winner: null,
+        survivorXpGiven: false,
+      };
+      for (const bird of this.birds.values()) {
+        this.events.push({
+          type: 'royale_warning',
+          birdId: bird.id,
+          startAt,
+          warningDuration: WARNING_DURATION,
+        });
+      }
+      this.events.push({ type: 'royale_warning_global', startAt });
+      console.log('[BirdRoyale] Warning phase started. Royale begins in 2 min.');
+    }
+
+    if (!this.birdRoyale) return;
+    const r = this.birdRoyale;
+
+    // ── START ACTIVE PHASE ──
+    if (r.state === 'warning' && now >= r.startAt) {
+      // Need at least 2 participants to run; if only 1 online, still start (solo survival)
+      // Register all currently online birds as participants
+      for (const bird of this.birds.values()) {
+        r.participants.set(bird.id, {
+          name: bird.name,
+          alive: true,
+          eliminatedAt: null,
+          gangTag: bird.gangTag || null,
+          gangColor: bird.gangColor || null,
+        });
+        r.zoneDrainTimers.set(bird.id, now);
+      }
+      r.state = 'active';
+      r.currentRadius = START_RADIUS;
+
+      for (const bird of this.birds.values()) {
+        this.events.push({
+          type: 'royale_start',
+          birdId: bird.id,
+          endsAt: r.endsAt,
+          participantCount: r.participants.size,
+        });
+      }
+      this.events.push({
+        type: 'royale_start_global',
+        endsAt: r.endsAt,
+        participantCount: r.participants.size,
+      });
+      console.log(`[BirdRoyale] Active phase started! ${r.participants.size} participants.`);
+    }
+
+    // ── ACTIVE PHASE TICK ──
+    if (r.state === 'active') {
+      // Shrink zone linearly
+      const elapsed = now - r.startAt;
+      const shrinkProg = Math.min(1.0, elapsed / SHRINK_DURATION);
+      r.currentRadius = START_RADIUS - (START_RADIUS - END_RADIUS) * shrinkProg;
+
+      // Count alive participants
+      let aliveCount = 0;
+      let lastAliveId = null;
+      for (const [bId, p] of r.participants) {
+        if (p.alive) { aliveCount++; lastAliveId = bId; }
+      }
+
+      // Apply zone drain to birds outside the safe zone
+      for (const bird of this.birds.values()) {
+        if (bird.inSewer) continue; // sewer birds get drained too (can't hide to win)
+
+        const dx = bird.x - r.centerX;
+        const dy = bird.y - r.centerY;
+        const distFromCenter = Math.sqrt(dx * dx + dy * dy);
+        const outsideZone = distFromCenter > r.currentRadius;
+
+        if (outsideZone) {
+          // Drain food every second
+          const lastDrain = r.zoneDrainTimers.get(bird.id) || 0;
+          if (now - lastDrain >= DRAIN_INTERVAL) {
+            r.zoneDrainTimers.set(bird.id, now);
+            bird.food = Math.max(0, bird.food - FOOD_DRAIN_RATE);
+            // Tell client they're outside the zone
+            this.events.push({ type: 'royale_zone_damage', birdId: bird.id, foodLeft: bird.food });
+
+            // Elimination: food hits 0 outside the zone
+            if (bird.food <= 0) {
+              const participant = r.participants.get(bird.id);
+              if (participant && participant.alive) {
+                participant.alive = false;
+                participant.eliminatedAt = now;
+                aliveCount--;
+
+                // Penalty: lose 15% of coins (mild)
+                const coinLoss = Math.min(Math.floor(bird.coins * 0.15), 120);
+                bird.coins = Math.max(0, bird.coins - coinLoss);
+                // Warp to zone edge (push them just inside)
+                const angle = Math.atan2(dy, dx);
+                bird.x = r.centerX + Math.cos(angle) * (r.currentRadius * 0.85);
+                bird.y = r.centerY + Math.sin(angle) * (r.currentRadius * 0.85);
+                bird.vx = 0; bird.vy = 0;
+                bird.food = 20; // small food top-up on respawn so they can move
+
+                this.events.push({
+                  type: 'royale_eliminated',
+                  birdId: bird.id,
+                  name: bird.name,
+                  coinLoss,
+                  aliveCount,
+                  participantCount: r.participants.size,
+                });
+                console.log(`[BirdRoyale] ${bird.name} eliminated! ${aliveCount} left.`);
+              }
+            }
+          }
+        } else {
+          // Reset drain timer while inside zone (grace reset)
+          r.zoneDrainTimers.set(bird.id, now);
+        }
+      }
+
+      // Also handle birds who registered but are now disconnected — auto-eliminate after 20s of being offline
+      for (const [bId, p] of r.participants) {
+        if (!p.alive) continue;
+        if (!this.birds.has(bId)) {
+          // Bird disconnected mid-royale — eliminate them
+          p.alive = false;
+          p.eliminatedAt = now;
+          aliveCount--;
+          this.events.push({
+            type: 'royale_eliminated',
+            name: p.name,
+            birdId: bId,
+            coinLoss: 0,
+            aliveCount,
+            participantCount: r.participants.size,
+            disconnected: true,
+          });
+        }
+      }
+
+      // ── WINNER CHECK ──
+      if (aliveCount <= 1 || now >= r.endsAt) {
+        // Find winner (last alive or most recently online if time ran out)
+        let winnerId = null;
+        let winnerBird = null;
+        for (const [bId, p] of r.participants) {
+          if (p.alive && this.birds.has(bId)) {
+            winnerId = bId;
+            winnerBird = this.birds.get(bId);
+            break;
+          }
+        }
+
+        if (winnerBird) {
+          winnerBird.xp += 500;
+          winnerBird.coins += 400;
+          // Inline level-up check
+          const wNewLevel = world.getLevelFromXP(winnerBird.xp);
+          const wNewType = world.getBirdTypeForLevel(wNewLevel);
+          if (wNewType !== winnerBird.type) {
+            winnerBird.type = wNewType;
+            this.events.push({ type: 'evolve', birdId: winnerId, name: winnerBird.name, birdType: wNewType });
+          }
+          winnerBird.level = wNewLevel;
+          r.winner = { id: winnerId, name: winnerBird.name, gangTag: winnerBird.gangTag || null };
+          this.events.push({
+            type: 'royale_winner',
+            birdId: winnerId,
+            name: winnerBird.name,
+            gangTag: winnerBird.gangTag || null,
+            xpGain: 500,
+            coinGain: 400,
+            participantCount: r.participants.size,
+          });
+          console.log(`[BirdRoyale] Winner: ${winnerBird.name}! +500 XP +400c`);
+        } else {
+          // No winner (everyone eliminated or nobody survived)
+          this.events.push({ type: 'royale_no_winner', participantCount: r.participants.size });
+        }
+
+        r.state = 'ended';
+        // Reset royale timer: 35-50 min after this one ends
+        this.birdRoyaleTimer = now + this._randomRange(35 * 60000, 50 * 60000);
+        // Clear royale after 10 seconds (let HUD show results)
+        setTimeout(() => { this.birdRoyale = null; }, 10000);
+      }
+    }
   }
 
 }
