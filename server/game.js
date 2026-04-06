@@ -458,6 +458,16 @@ class GameEngine {
     // Takes 4 poop hits to stun (pros have armor). Catches nets 40% coin steal.
     this.bountyHunter = null; // null | { id, x, y, rotation, targetId, targetName, state, stunUntil, offDutyUntil, poopHits, poopHitResetAt, lastCatchAt, spawnedAt, wanderAngle, sewerWanderAngle, fogWanderAngle }
 
+    // === SEAGULL INVASION ===
+    // Every 25-35 minutes, 8-10 fast seagulls swoop in from the coast to steal food en masse.
+    // Each seagull swoops toward an active food item, steals it, then flies back to the edge.
+    // Poop on them (2 hits each) to drive them away — drop stolen food back on hit!
+    // If all seagulls are defeated before the 90s timer: bonus XP+coins for all online birds.
+    // Gazette: tracks seagull invasions.
+    this.seagullInvasion = null; // null | { seagulls: Map, startedAt, endsAt, repelBonusGiven }
+    this.seagullTimer = Date.now() + this._randomRange(25 * 60000, 35 * 60000);
+    this._seagullIdCounter = 0;
+
     // === BIRD CITY GAZETTE ===
     // Every game day cycle (~20 min), a newspaper publishes at dawn recapping the night.
     // Tracks key moments: top combo, most wanted, heists, gang wars, predator kills, etc.
@@ -1246,6 +1256,9 @@ class GameEngine {
 
     // === Crime Wave ===
     this._tickCrimeWave(now);
+
+    // === Seagull Invasion ===
+    this._updateSeagullInvasion(dt, now);
   }
 
   // ============================================================
@@ -2688,6 +2701,60 @@ class GameEngine {
             zoneName: this.crowCartel.targetZoneName,
           });
         }
+      } else if (hit.target === 'seagull' && hit.seagull && this.seagullInvasion) {
+        // Poop hit a seagull! Two hits to knock one out.
+        const sg = hit.seagull;
+        const dmg = isMegaPoop ? 2 : 1; // mega = instant kill
+        sg.hp -= dmg;
+        xpGain = isMegaPoop ? 50 : 25;
+        bird.coins += 8;
+
+        // Drop any stolen food at seagull position
+        if (sg.hp <= 0) {
+          sg.state = 'dead';
+          // If carrying food, drop it
+          if (sg.carriedFoodType) {
+            const droppedId = 'food_sgdrop_' + uid();
+            this.foods.set(droppedId, {
+              id: droppedId,
+              x: sg.x + (Math.random() - 0.5) * 20,
+              y: sg.y + (Math.random() - 0.5) * 20,
+              type: sg.carriedFoodType,
+              value: 15 + Math.floor(Math.random() * 10),
+              respawnAt: null,
+              active: true,
+            });
+            setTimeout(() => { this.foods.delete(droppedId); }, 25000);
+          }
+          const killXp = 60;
+          const killCoins = 20;
+          bird.xp += killXp;
+          bird.coins += killCoins;
+          const newLevel = world.getLevelFromXP(bird.xp);
+          if (newLevel !== bird.level) { bird.level = newLevel; bird.type = world.getBirdTypeForLevel(newLevel); }
+          this.events.push({ type: 'seagull_killed', birdId: bird.id, birdName: bird.name, gangTag: bird.gangTag || null, x: sg.x, y: sg.y, killXp, killCoins });
+          // Check if all seagulls are defeated
+          this._checkSeagullInvasionVictory(now);
+        } else {
+          // First hit — seagull drops food if carrying and flees
+          if (sg.carriedFoodType) {
+            const droppedId = 'food_sgdrop_' + uid();
+            this.foods.set(droppedId, {
+              id: droppedId,
+              x: sg.x + (Math.random() - 0.5) * 20,
+              y: sg.y + (Math.random() - 0.5) * 20,
+              type: sg.carriedFoodType,
+              value: 15 + Math.floor(Math.random() * 10),
+              respawnAt: null,
+              active: true,
+            });
+            setTimeout(() => { this.foods.delete(droppedId); }, 25000);
+            sg.carriedFoodType = null;
+            sg.targetFoodId = null;
+          }
+          // After first hit seagull becomes frantic — finds new target
+          this.events.push({ type: 'seagull_hit', birdId: bird.id, x: sg.x, y: sg.y });
+        }
       } else if (hit.target === 'hit_target' && hit.hitContract) {
         // Bounty hunting — player hit a bird with an active hit contract
         const hitContract = hit.hitContract;
@@ -3410,6 +3477,19 @@ class GameEngine {
         if (Math.sqrt(cdx * cdx + cdy * cdy) < hitDist) {
           if (!isMegaPoop) return { target: 'crow_cartel', crow };
           allHits.push({ target: 'crow_cartel', crow });
+        }
+      }
+    }
+
+    // Check Seagull Invasion members
+    if (this.seagullInvasion) {
+      for (const sg of this.seagullInvasion.seagulls.values()) {
+        if (sg.state === 'fleeing' || sg.state === 'dead') continue;
+        const sdx = poop.x - sg.x;
+        const sdy = poop.y - sg.y;
+        if (Math.sqrt(sdx * sdx + sdy * sdy) < hitRadius + 10) {
+          if (!isMegaPoop) return { target: 'seagull', seagull: sg };
+          allHits.push({ target: 'seagull', seagull: sg });
         }
       }
     }
@@ -5444,6 +5524,18 @@ class GameEngine {
       // Crime Wave
       crimeWave: this.crimeWave ? {
         endsAt: this.crimeWave.endsAt,
+      } : null,
+      // Seagull Invasion
+      seagullInvasion: this.seagullInvasion ? {
+        endsAt: this.seagullInvasion.endsAt,
+        seagulls: Array.from(this.seagullInvasion.seagulls.values())
+          .filter(sg => sg.state !== 'dead')
+          .map(sg => ({
+            id: sg.id, x: sg.x, y: sg.y, rotation: sg.rotation,
+            state: sg.state, hp: sg.hp, carriedFoodType: sg.carriedFoodType || null,
+          })),
+        totalCount: this.seagullInvasion.seagulls.size,
+        aliveCount: Array.from(this.seagullInvasion.seagulls.values()).filter(sg => sg.state !== 'dead').length,
       } : null,
     };
   }
@@ -10985,6 +11077,7 @@ class GameEngine {
       fluOutbreaks:    0,
       crimeWaves:      0,
       copsStunned:     {},  // birdId -> { count, name, gangTag }
+      seagullInvasions: 0,
     };
   }
 
@@ -11114,6 +11207,14 @@ class GameEngine {
         icon: '🚨',
         headline: `CRIME WAVE ERUPTS — CITY DESCENDS INTO LAWLESSNESS`,
         subline: 'Heat doubled. Cops overwhelmed. At least one bird made an absurd amount of coins.',
+      });
+    }
+
+    if (stats.seagullInvasions > 0) {
+      headlines.push({
+        icon: '🐦',
+        headline: `SEAGULL INVASION HITS CITY — COASTAL RAIDERS STRIP FOOD SUPPLIES`,
+        subline: `${stats.seagullInvasions} invasion${stats.seagullInvasions > 1 ? 's' : ''} launched from the coast. Birds urged to "poop back immediately."`,
       });
     }
 
@@ -12238,6 +12339,257 @@ class GameEngine {
       this.crimeWave = null;
       this.events.push({ type: 'crime_wave_end' });
     }
+  }
+
+  // ============================================================
+  // SEAGULL INVASION — coastal raiders who steal food en masse
+  // ============================================================
+
+  _updateSeagullInvasion(dt, now) {
+    // Spawn timer — only when players are online
+    if (!this.seagullInvasion && now >= this.seagullTimer && this.birds.size > 0) {
+      this._spawnSeagullInvasion(now);
+    }
+
+    if (!this.seagullInvasion) return;
+
+    const invasion = this.seagullInvasion;
+
+    // Check invasion timeout (90s)
+    if (now >= invasion.endsAt) {
+      this._endSeagullInvasion(now, 'timeout');
+      return;
+    }
+
+    const W = 3000, H = 3000; // world bounds
+
+    for (const sg of invasion.seagulls.values()) {
+      if (sg.state === 'dead') continue;
+
+      if (sg.state === 'fleeing') {
+        // Fast flee toward target edge
+        const dx = sg._fleeTargetX - sg.x;
+        const dy = sg._fleeTargetY - sg.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 20 || sg.x < -80 || sg.x > W + 80 || sg.y < -80 || sg.y > H + 80) {
+          sg.state = 'dead';
+          continue;
+        }
+        const spd = sg.fleeSpeed * dt;
+        sg.x += (dx / dist) * spd;
+        sg.y += (dy / dist) * spd;
+        sg.rotation = Math.atan2(dy, dx);
+        continue;
+      }
+
+      if (sg.state === 'carrying') {
+        // Fly toward map edge with the stolen food
+        const dx = sg._fleeTargetX - sg.x;
+        const dy = sg._fleeTargetY - sg.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 20 || sg.x < -80 || sg.x > W + 80 || sg.y < -80 || sg.y > H + 80) {
+          sg.state = 'dead';
+          continue;
+        }
+        const spd = sg.speed * dt;
+        sg.x += (dx / dist) * spd;
+        sg.y += (dy / dist) * spd;
+        sg.rotation = Math.atan2(dy, dx);
+        continue;
+      }
+
+      if (sg.state === 'stealing') {
+        // Count down the steal timer
+        sg.stealTimer -= dt;
+        if (sg.stealTimer <= 0) {
+          // Steal complete — remove the food and start carrying
+          const food = this.foods.get(sg.targetFoodId);
+          if (food) {
+            food.active = false;
+            food.respawnAt = now + 20000;
+            sg.carriedFoodType = food.type;
+          }
+          sg.targetFoodId = null;
+          sg.state = 'carrying';
+          // Pick flee direction toward nearest map edge
+          const edgeTarget = this._seagullEdgeTarget(sg.x, sg.y);
+          sg._fleeTargetX = edgeTarget.x;
+          sg._fleeTargetY = edgeTarget.y;
+          this.events.push({ type: 'seagull_stole_food', x: sg.x, y: sg.y, foodType: sg.carriedFoodType });
+        }
+        // Hover in place while stealing
+        continue;
+      }
+
+      // state === 'swooping' — find and move toward a food item
+      // Check if current target is still valid
+      if (sg.targetFoodId) {
+        const food = this.foods.get(sg.targetFoodId);
+        if (!food || !food.active) {
+          sg.targetFoodId = null; // food gone, re-acquire
+        }
+      }
+
+      // Acquire a new food target if needed
+      if (!sg.targetFoodId) {
+        // Find the nearest active food item not already targeted by another seagull
+        const targeted = new Set();
+        for (const other of invasion.seagulls.values()) {
+          if (other.id !== sg.id && other.targetFoodId) targeted.add(other.targetFoodId);
+        }
+        let bestFood = null, bestDist = Infinity;
+        for (const food of this.foods.values()) {
+          if (!food.active || targeted.has(food.id)) continue;
+          if (food.type === 'worm' || food.type === 'water_puddle') continue; // skip weather foods
+          const fdx = food.x - sg.x;
+          const fdy = food.y - sg.y;
+          const d = Math.sqrt(fdx * fdx + fdy * fdy);
+          if (d < bestDist) { bestDist = d; bestFood = food; }
+        }
+        if (bestFood) {
+          sg.targetFoodId = bestFood.id;
+        } else {
+          // No food — just flee
+          sg.state = 'fleeing';
+          const edgeTarget = this._seagullEdgeTarget(sg.x, sg.y);
+          sg._fleeTargetX = edgeTarget.x;
+          sg._fleeTargetY = edgeTarget.y;
+          continue;
+        }
+      }
+
+      const targetFood = this.foods.get(sg.targetFoodId);
+      if (!targetFood) continue;
+
+      const fdx = targetFood.x - sg.x;
+      const fdy = targetFood.y - sg.y;
+      const foodDist = Math.sqrt(fdx * fdx + fdy * fdy);
+
+      if (foodDist < 28) {
+        // Arrived at food — start stealing (1.5-second steal action)
+        sg.state = 'stealing';
+        sg.stealTimer = 1.5;
+        sg.x = targetFood.x;
+        sg.y = targetFood.y;
+      } else {
+        // Move toward food
+        const spd = sg.speed * dt;
+        sg.x += (fdx / foodDist) * spd;
+        sg.y += (fdy / foodDist) * spd;
+        sg.rotation = Math.atan2(fdy, fdx);
+      }
+    }
+
+    // Clean up dead seagulls from map
+    for (const [id, sg] of invasion.seagulls.entries()) {
+      if (sg.state === 'dead') invasion.seagulls.delete(id);
+    }
+
+    // If all seagulls gone (escaped or dead) — end invasion quietly
+    if (invasion.seagulls.size === 0 && !invasion.repelBonusGiven) {
+      this._endSeagullInvasion(now, 'all_gone');
+    }
+  }
+
+  _spawnSeagullInvasion(now) {
+    const W = 3000, H = 3000;
+    const numSeagulls = 8 + Math.floor(Math.random() * 3); // 8-10
+    const seagulls = new Map();
+
+    // Seagulls enter from a random coastal edge (right or bottom edges = "coast")
+    const edges = ['right', 'bottom', 'top'];
+    const chosenEdge = edges[Math.floor(Math.random() * edges.length)];
+
+    for (let i = 0; i < numSeagulls; i++) {
+      const id = 'seagull_' + (++this._seagullIdCounter);
+      let x, y;
+      if (chosenEdge === 'right') {
+        x = W + 40 + Math.random() * 60;
+        y = 200 + Math.random() * (H - 400);
+      } else if (chosenEdge === 'bottom') {
+        x = 200 + Math.random() * (W - 400);
+        y = H + 40 + Math.random() * 60;
+      } else {
+        x = 200 + Math.random() * (W - 400);
+        y = -40 - Math.random() * 60;
+      }
+
+      // Flee direction is back toward the spawn edge
+      const edgeTarget = this._seagullEdgeTarget(x, y);
+
+      seagulls.set(id, {
+        id,
+        x, y,
+        rotation: 0,
+        speed: 130 + Math.random() * 20, // 130-150px/s — fast!
+        fleeSpeed: 180,
+        state: 'swooping',
+        hp: 2,
+        targetFoodId: null,
+        carriedFoodType: null,
+        stealTimer: 0,
+        _fleeTargetX: edgeTarget.x,
+        _fleeTargetY: edgeTarget.y,
+        spawnedAt: now,
+      });
+    }
+
+    this.seagullInvasion = {
+      seagulls,
+      startedAt: now,
+      endsAt: now + 90000, // 90 seconds
+      repelBonusGiven: false,
+    };
+
+    this.events.push({ type: 'seagull_invasion_start', count: numSeagulls });
+    this.gazetteStats.seagullInvasions = (this.gazetteStats.seagullInvasions || 0) + 1;
+    console.log(`[Seagull] Invasion started — ${numSeagulls} seagulls from ${chosenEdge} edge`);
+  }
+
+  _seagullEdgeTarget(x, y) {
+    const W = 3000, H = 3000;
+    // Find the nearest map edge and return a point beyond it
+    const dLeft   = x;
+    const dRight  = W - x;
+    const dTop    = y;
+    const dBottom = H - y;
+    const minDist = Math.min(dLeft, dRight, dTop, dBottom);
+    if (minDist === dRight)  return { x: W + 120, y };
+    if (minDist === dBottom) return { x, y: H + 120 };
+    if (minDist === dLeft)   return { x: -120, y };
+    return { x, y: -120 }; // top
+  }
+
+  _checkSeagullInvasionVictory(now) {
+    if (!this.seagullInvasion || this.seagullInvasion.repelBonusGiven) return;
+    const aliveSeagulls = Array.from(this.seagullInvasion.seagulls.values()).filter(sg => sg.state !== 'dead');
+    if (aliveSeagulls.length === 0) {
+      this.seagullInvasion.repelBonusGiven = true;
+      // Big reward for all online birds!
+      for (const bird of this.birds.values()) {
+        bird.xp += 150;
+        bird.coins += 60;
+        const newLevel = world.getLevelFromXP(bird.xp);
+        if (newLevel !== bird.level) { bird.level = newLevel; bird.type = world.getBirdTypeForLevel(newLevel); }
+        this.events.push({ type: 'seagull_invasion_repelled_reward', birdId: bird.id, xp: 150, coins: 60 });
+      }
+      this.events.push({ type: 'seagull_invasion_repelled' });
+      this.seagullTimer = now + this._randomRange(25 * 60000, 35 * 60000);
+      console.log('[Seagull] Invasion REPELLED! Rewards given to all birds.');
+      setTimeout(() => { this.seagullInvasion = null; }, 3000);
+    }
+  }
+
+  _endSeagullInvasion(now, reason) {
+    if (!this.seagullInvasion) return;
+    if (reason === 'timeout') {
+      // Count surviving seagulls that stole food
+      const carrierCount = Array.from(this.seagullInvasion.seagulls.values()).filter(sg => sg.state === 'carrying').length;
+      this.events.push({ type: 'seagull_invasion_fled', carrierCount });
+    }
+    this.seagullInvasion = null;
+    this.seagullTimer = now + this._randomRange(25 * 60000, 35 * 60000);
+    console.log(`[Seagull] Invasion ended (${reason})`);
   }
 
 }

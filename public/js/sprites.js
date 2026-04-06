@@ -4200,4 +4200,149 @@ window.Sprites = {
 
     ctx.restore();
   },
+
+  // ============================================================
+  // SEAGULL INVASION — coastal raider sprite
+  // ============================================================
+
+  // White seagull with grey wingtips, orange beak, webbed feet.
+  // States: swooping (hunting), stealing (hovering), carrying (flying with food), fleeing.
+  drawSeagull(ctx, x, y, rotation, state, hp, carriedFoodType, now) {
+    ctx.save();
+    ctx.translate(x, y);
+
+    // HP bar (shows damage — second hit kills)
+    if (hp < 2) {
+      const barW = 32;
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(-barW / 2, -28, barW, 5);
+      ctx.fillStyle = '#ff4444';
+      ctx.fillRect(-barW / 2, -28, barW * (hp / 2), 5);
+    }
+
+    ctx.rotate(rotation);
+
+    // Wing flap animation
+    const flapPhase = (now / 200 + x * 0.01) % (Math.PI * 2);
+    const wingFlap = Math.sin(flapPhase) * 0.35;
+
+    // Ground shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.18)';
+    ctx.beginPath();
+    ctx.ellipse(2, 7, 14, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Left wing
+    ctx.save();
+    ctx.rotate(-wingFlap - 0.2);
+    ctx.fillStyle = '#cccccc';
+    ctx.beginPath();
+    ctx.ellipse(-5, -11, 9, 3.5, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+    // Grey wingtip
+    ctx.fillStyle = '#888888';
+    ctx.beginPath();
+    ctx.ellipse(-11, -15, 5, 2, -0.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Right wing
+    ctx.save();
+    ctx.rotate(wingFlap + 0.2);
+    ctx.fillStyle = '#cccccc';
+    ctx.beginPath();
+    ctx.ellipse(-5, 11, 9, 3.5, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    // Grey wingtip
+    ctx.fillStyle = '#888888';
+    ctx.beginPath();
+    ctx.ellipse(-11, 15, 5, 2, 0.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Body — white seagull body
+    ctx.fillStyle = '#f8f8f8';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 13, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Belly highlight
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.ellipse(-2, 0, 7, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Orange beak
+    ctx.fillStyle = '#ff8800';
+    ctx.beginPath();
+    ctx.moveTo(13, 0);
+    ctx.lineTo(20, -2);
+    ctx.lineTo(20, 2.5);
+    ctx.closePath();
+    ctx.fill();
+    // Beak tip (red spot like a real seagull)
+    ctx.fillStyle = '#cc3300';
+    ctx.beginPath();
+    ctx.arc(19, 1.5, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Black eye
+    ctx.fillStyle = '#111111';
+    ctx.beginPath();
+    ctx.arc(8, -3, 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(8.5, -3.5, 0.7, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Orange webbed feet (only visible when stealing/hovering)
+    if (state === 'stealing') {
+      ctx.fillStyle = '#ff8800';
+      // Left foot
+      ctx.beginPath();
+      ctx.moveTo(-2, 6);
+      ctx.lineTo(-6, 10);
+      ctx.lineTo(-4, 10);
+      ctx.lineTo(-3, 8);
+      ctx.lineTo(-1, 10);
+      ctx.lineTo(1, 10);
+      ctx.lineTo(2, 8);
+      ctx.lineTo(3, 10);
+      ctx.lineTo(5, 10);
+      ctx.lineTo(3, 6);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    ctx.restore();
+
+    // State labels (unrotated, in screen space above the bird)
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 9px monospace';
+
+    if (state === 'carrying' && carriedFoodType) {
+      // Show what they're carrying
+      const foodEmoji = { bread:'🍞', chips:'🍟', sandwich:'🥪', kebab:'🌯', pizza:'🍕', donut:'🍩', crumb:'🍞', fry:'🍟', cheese:'🧀', meat:'🍖', corn:'🌽' }[carriedFoodType] || '🍔';
+      const pulse = 0.7 + 0.3 * Math.sin(now / 300);
+      ctx.globalAlpha = pulse;
+      ctx.fillStyle = '#ff3333';
+      ctx.shadowColor = '#000';
+      ctx.shadowBlur = 3;
+      ctx.fillText(`THIEF! ${foodEmoji}`, 0, -32);
+      ctx.globalAlpha = 1;
+      ctx.shadowBlur = 0;
+    } else if (state === 'stealing') {
+      // Stealing animation — pulsing orange text
+      const pulse = 0.6 + 0.4 * Math.sin(now / 200);
+      ctx.globalAlpha = pulse;
+      ctx.fillStyle = '#ff8800';
+      ctx.fillText('STEALING...', 0, -32);
+      ctx.globalAlpha = 1;
+    }
+
+    ctx.restore();
+  },
 };

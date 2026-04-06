@@ -2381,6 +2381,46 @@
       addEventMessage(`🐦‍⬛ The Crow Cartel retreated from ${ev.zoneName}.`, '#aa66aa');
     }
 
+    // === SEAGULL INVASION ===
+    if (ev.type === 'seagull_invasion_start') {
+      effects.push({ type: 'screen_shake', intensity: 8, duration: 600, time: now });
+      showAnnouncement(`🐦 SEAGULL INVASION! ${ev.count} seagulls swooping in from the coast!\nPOOP THEM BEFORE THEY STEAL ALL THE FOOD!`, '#44aaff', 6000);
+      addEventMessage(`🐦 SEAGULL INVASION! ${ev.count} seagulls are raiding the city's food supply!`, '#44aaff');
+    }
+    if (ev.type === 'seagull_stole_food') {
+      addEventMessage(`🐦 A seagull snatched some food! Poop them to get it back!`, '#ff8844');
+    }
+    if (ev.type === 'seagull_hit') {
+      if (ev.birdId === myId) {
+        effects.push({ type: 'text', x: ev.x, y: ev.y - 20, time: now, duration: 1000,
+          text: 'HIT! 1/2', color: '#44aaff', size: 13 });
+      }
+    }
+    if (ev.type === 'seagull_killed') {
+      addEventMessage(`💀 ${ev.birdName ? (ev.gangTag ? '[' + ev.gangTag + '] ' : '') + ev.birdName + ' downed' : 'A'} a seagull! (+${ev.killXp}XP +${ev.killCoins}c)`, '#44aaff');
+      if (ev.birdId === myId) {
+        effects.push({ type: 'screen_shake', intensity: 4, duration: 250, time: now });
+        showAnnouncement(`💀 SEAGULL DOWN! +${ev.killXp}XP +${ev.killCoins}c`, '#44aaff', 2000);
+      }
+    }
+    if (ev.type === 'seagull_invasion_repelled') {
+      effects.push({ type: 'screen_shake', intensity: 14, duration: 900, time: now });
+      showAnnouncement(`🏆 SEAGULLS REPELLED! The city's food supply is safe!\n+150XP +60c for ALL birds!`, '#44ff88', 6000);
+      addEventMessage(`🏆 SEAGULL INVASION REPELLED! All birds earn +150XP +60c!`, '#44ff88');
+    }
+    if (ev.type === 'seagull_invasion_repelled_reward') {
+      if (ev.birdId === myId) {
+        effects.push({ type: 'text', x: camera.x, y: camera.y - 50, time: now, duration: 2500,
+          text: '+150XP +60c DEFENSE BONUS', color: '#44ff88', size: 16 });
+      }
+    }
+    if (ev.type === 'seagull_invasion_fled') {
+      const msg = ev.carrierCount > 0
+        ? `🐦 The seagulls got away with ${ev.carrierCount} food item${ev.carrierCount > 1 ? 's' : ''}! Drive them away faster next time.`
+        : '🐦 The seagulls retreated without stealing much.';
+      addEventMessage(msg, '#ff8844');
+    }
+
     // === BIRD CITY GAZETTE ===
     if (ev.type === 'gazette_edition') {
       showGazette(ev);
@@ -5629,6 +5669,18 @@
       }
     }
 
+    // Seagull Invasion — fast coastal raiders swooping in to steal food
+    if (gameState.seagullInvasion && gameState.seagullInvasion.seagulls) {
+      for (const sg of gameState.seagullInvasion.seagulls) {
+        const sgsx = sg.x - camera.x + camera.screenW / 2;
+        const sgsy = sg.y - camera.y + camera.screenH / 2;
+        if (sgsx > -margin - 50 && sgsx < camera.screenW + margin + 50 &&
+            sgsy > -margin - 50 && sgsy < camera.screenH + margin + 50) {
+          Sprites.drawSeagull(ctx, sgsx, sgsy, sg.rotation, sg.state, sg.hp, sg.carriedFoodType, now);
+        }
+      }
+    }
+
     // The Pigeon Mafia Don — permanent NPC at his corner
     {
       const DON_WORLD_X = 1300, DON_WORLD_Y = 2380;
@@ -6128,6 +6180,58 @@
     // Use gameState.weather as authoritative source (server-synced each tick)
     drawWeather(ctx, camera, now, gameState.weather || weatherState);
 
+    // === SEAGULL INVASION HUD ===
+    if (gameState.seagullInvasion) {
+      const si = gameState.seagullInvasion;
+      const siTimeLeft = Math.max(0, si.endsAt - now);
+      const siTotal = 90000;
+      const siFrac = siTimeLeft / siTotal;
+      const aliveCount = si.aliveCount || 0;
+      const totalCount = si.totalCount || si.seagulls.length;
+
+      // Subtle blue-white tint during invasion
+      const sgPulse = 0.5 + 0.5 * Math.abs(Math.sin(now * 0.004));
+      ctx.save();
+      ctx.globalAlpha = 0.04 + 0.03 * sgPulse;
+      ctx.fillStyle = '#44aaff';
+      ctx.fillRect(0, 0, camera.screenW, camera.screenH);
+      ctx.globalAlpha = 1;
+      ctx.restore();
+
+      // HUD bar below crime wave bar (y=168 if crime wave active, else y=132)
+      const hasCrimeWave = gameState.self && gameState.self.crimeWave;
+      const sgBarY = hasCrimeWave ? 175 : 132;
+      const sgBarW = 180, sgBarH = 12;
+      const sgBarX = camera.screenW / 2 - sgBarW / 2;
+
+      ctx.save();
+      ctx.globalAlpha = 0.92;
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.beginPath();
+      ctx.roundRect(sgBarX - 55, sgBarY - 18, sgBarW + 110, sgBarH + 32, 10);
+      ctx.fill();
+
+      const sgLabelPulse = 0.75 + 0.25 * Math.sin(now * 0.007);
+      ctx.globalAlpha = sgLabelPulse;
+      ctx.fillStyle = '#66ccff';
+      ctx.font = 'bold 11px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(`🐦 SEAGULL RAID — ${aliveCount}/${totalCount} remaining · ${Math.ceil(siTimeLeft / 1000)}s`, camera.screenW / 2, sgBarY - 4);
+
+      ctx.globalAlpha = 0.8;
+      ctx.fillStyle = 'rgba(0,40,80,0.5)';
+      ctx.beginPath();
+      ctx.roundRect(sgBarX, sgBarY + 2, sgBarW, sgBarH, 4);
+      ctx.fill();
+
+      ctx.fillStyle = siFrac > 0.5 ? '#44aaff' : siFrac > 0.25 ? '#88ccff' : '#ffcc44';
+      ctx.beginPath();
+      ctx.roundRect(sgBarX, sgBarY + 2, sgBarW * siFrac, sgBarH, 4);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+
     // === CRIME WAVE OVERLAY ===
     if (gameState.self && gameState.self.crimeWave) {
       const cw = gameState.self.crimeWave;
@@ -6566,6 +6670,29 @@
       minimapCtx.font = '9px sans-serif';
       minimapCtx.textAlign = 'center';
       minimapCtx.fillText('🌪️', tmx, tmy - 7);
+    }
+
+    // Seagull Invasion on minimap — white/blue pulsing dots showing raider positions
+    if (gameState.seagullInvasion && gameState.seagullInvasion.seagulls && worldData) {
+      const mw = minimapCtx.canvas.width;
+      const mh = minimapCtx.canvas.height;
+      const sgPulse = 0.6 + 0.4 * Math.sin(now * 0.009);
+      for (const sg of gameState.seagullInvasion.seagulls) {
+        const smx = sg.x * mw / worldData.width;
+        const smy = sg.y * mh / worldData.height;
+        // White for swooping, orange for carrying (thieves!)
+        minimapCtx.fillStyle = sg.state === 'carrying'
+          ? `rgba(255,140,40,${0.7 + 0.3 * sgPulse})`
+          : `rgba(180,220,255,${0.6 + 0.4 * sgPulse})`;
+        minimapCtx.beginPath();
+        minimapCtx.arc(smx, smy, 2.5 + sgPulse, 0, Math.PI * 2);
+        minimapCtx.fill();
+      }
+      // Seagull count label at top-left of minimap
+      minimapCtx.fillStyle = '#66ccff';
+      minimapCtx.font = 'bold 7px monospace';
+      minimapCtx.textAlign = 'left';
+      minimapCtx.fillText(`🐦 ${gameState.seagullInvasion.aliveCount}/${gameState.seagullInvasion.totalCount}`, 3, mh - 3);
     }
 
     // Bird Flu medicine items on minimap — green pulsing dots during outbreak
@@ -7382,6 +7509,12 @@
     }
     if (s.mcNukePoop) {
       html += '<div class="bm-buff-pill" style="background:rgba(120,0,0,0.85);border-color:#ff4422;color:#ff8866;animation:pulseRed 0.5s infinite alternate;font-weight:bold;">💣 NUKE POOP — READY!</div>';
+    }
+
+    // Seagull Invasion awareness pill
+    if (gameState.seagullInvasion && gameState.seagullInvasion.aliveCount > 0) {
+      const sgLeft = Math.ceil((gameState.seagullInvasion.endsAt - now) / 1000);
+      html += `<div class="bm-buff-pill" style="background:rgba(0,40,80,0.9);border-color:#44aaff;color:#88ccff;animation:kingpinGlow 1.0s ease-in-out infinite alternate;">🐦 SEAGULL RAID — ${gameState.seagullInvasion.aliveCount} left · ${sgLeft}s · POOP THEM!</div>`;
     }
 
     // Formation Flying buff pills
