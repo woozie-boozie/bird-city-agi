@@ -1743,6 +1743,34 @@ Every 35-50 minutes, the city's most visceral event erupts: a battle royale wher
 
 **Creative intent**: Bird Royale is the ultimate periodic chaos injection — it doesn't matter what you were doing before it starts, everything stops and the WHOLE CITY pivots to survival. A 5-star Most Wanted bird getting hunted by a Bounty Hunter AND trying to stay inside a shrinking zone while dodging cops is peak CARNAGE CITY. The 35-50 min interval means it fires maybe 1-2 times per long play session, making it feel SPECIAL every time. The "everyone gets enrolled automatically" design means no barrier to entry — you're in whether you like it or not, which creates emergent decision-making ("do I fight my way to the center or try to hide?"). The shrink from 1420px to 160px means the first 2 minutes are relaxed (plenty of room), then suddenly the zone is closing fast and every bird is converging on a tiny panic circle at city center. Pure CARNAGE + SPECTACLE + RETENTION energy — every session now has a climax event.
 
+**Session 53 — 2026-04-06: Bird Royale — Champion Badge + Spectator Crowd Cheers + Gang Territory Bonus**
+Three interlocking enhancements that complete the Bird Royale feature's social layer:
+
+**🏆 Champion Badge:**
+- The royale winner gets `royaleChampBadge = true` (session-only, no persistence)
+- Rendered as a gold 🏆 badge in the nametag stack above the eagle feather — visible to all nearby birds for the entire session
+- "YOU WIN BIRD ROYALE" is now a visible flex every time you fly near other players
+- drawNameTag() gains a new param (last in chain, fully backwards compatible)
+
+**🎉 Spectator Crowd Cheers:**
+- When eliminated from a royale, `bird.royaleSpectator = true` — eliminated birds can now cheer for survivors
+- Press [Z] or click the active buffs pill to open the Spectator Cheer Panel (green side panel, right side of screen)
+- Panel shows all alive survivors as clickable buttons — click one to send them +8 food
+- 15-second cooldown between cheers (prevents spam, keeps it meaningful)
+- City-wide event feed shouts every cheer: "🎉 [Spectator] cheers for [Bird]!"
+- Target sees floating "+8 food!" text at their position
+- Emergent social drama: two eliminated spectators might cheer for opposite final survivors, creating "fan club" rivalries even from the sidelines
+- Panel auto-hides when royale ends (royale.state !== 'active' check)
+
+**🗺️ Gang Territory Royale Bonus:**
+- If the royale winner belongs to a gang: `this.gangRoyaleBonus = { gangId, bonusUntil: +5min }` is set server-side
+- In `_updateTerritories()`, `effectivePower = dominantPower * gangCaptureMult` where `gangCaptureMult` is 1.5 when the dominant team is the winning gang — applies to all capture/contest/reinforce calculations
+- Fires `royale_gang_territory_bonus` event: gang members see a full-screen announcement + gold "🗺️ ROYALE BONUS — 1.5× Territory · Xs" pill in active buffs HUD
+- City-wide event feed entry for all players: instantly telegraphs that a gang just got a massive territorial advantage
+- Integrates with gang wars: winning the royale becomes a tactical advantage for ongoing territory disputes
+
+**Creative intent**: These three features complete what Bird Royale was always missing — AFTERMATH identity. Before: you won, got 500 XP + 400c, the HUD cleared, done. Now: you win and wear a 🏆 badge all session. Everyone who sees you knows. Eliminated birds aren't passive observers — they actively shape the endgame through crowd cheers, creating emotional investment in who wins even after they're out. Gangs now have a direct incentive to field the strongest royale fighter, since their win translates into 5 minutes of territorial dominance. A gang that wins the royale AND immediately launches a Crow Cartel defense using the 1.5× bonus is playing BIRD CITY at its highest level. Pure SOCIAL + SPECTACLE + PROGRESSION energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -1804,9 +1832,13 @@ Built the Territory Control System on top of the existing upstream code:
 - Multi-bird Wanted system: track top 2 most-wanted simultaneously (two Bounty Hunters chase two separate targets at once)
 - Bird Flu + Wanted interaction: if a cop arrests an infected bird, the cop catches the flu and wanders confused for 5s
 - ~~Seagull Invasion: 8-10 fast seagulls swoop in from the coast every 25-35 min, stealing food items en masse — drive them away by pooping (2 hits each)~~ (DONE Session 50)
-- Bird Royale elimination zone mechanic: winners get Royale Champion badge (session-only, like idol badge) visible on nametag
-- Bird Royale + gang interaction: if your gang wins the royale (last member alive), the gang earns territory control bonus on the zone where the final showdown happened
-- Bird Royale spectator mode: eliminated birds can watch others' screens and throw "crowd cheers" that give small food boosts to surviving birds
+- ~~Bird Royale elimination zone mechanic: winners get Royale Champion badge (session-only, like idol badge) visible on nametag~~ (DONE Session 53)
+- ~~Bird Royale + gang interaction: if your gang wins the royale (last member alive), the gang earns territory control bonus~~ (DONE Session 53)
+- ~~Bird Royale spectator mode: eliminated birds can throw "crowd cheers" that give small food boosts to surviving birds~~ (DONE Session 53)
+- Skill Tree Mastery bonus: unlock ALL 12 skills + earn permanent ✨ MASTER badge on nametag + passive +5% XP gain
+- Skill respec: spend 500 coins at Don Featherstone to reset all skills and refund FP — costly but available (good money sink)
+- Royale Champion + Kingpin interaction: if the Royale Champion becomes Kingpin, they're immune to the first dethronement hit (crown defends crown)
+- Royale Champion daily challenge: "Win Bird Royale" as the rarest daily task (200 XP, 150c)
 - Idol Hall of Fame: persistent leaderboard of all-time Idol winners near the stage
 - Idol daily challenge: "Win Bird City Idol" as a rare daily task
 - ~~Crime wave event: randomly all wanted levels are doubled for 2 minutes; more cops, higher rewards~~ (DONE Session 48)
