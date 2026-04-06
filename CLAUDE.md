@@ -1648,6 +1648,40 @@ The wanted system's ultimate escalation. At Wanted Level 4, a single persistent 
 
 **Creative intent**: The wanted system needed an endgame escalation beyond "more cops spawn." At Level 5, you have 5 cops PLUS a Bounty Hunter that doesn't go off-duty, doesn't get confused by smoke, and has a clear visual presence that other players can see approaching you. The 4-hit-to-stun design creates a risk-reward moment: you see the BH bearing down, you fire 3 rapid hits, he's almost stunned — then a cop arrests you and your combo is wiped. Do you fight back or run? The Contract Cancel at 120c means the Black Market becomes crucial at high wanted levels (now has 6 items). Fog + sewer + Ghost Mode + Contract Cancel = 4 distinct escape tools that reward game knowledge. A Level 5 bird with 3 cops, a SWAT crow, AND a Bounty Hunter hunting them simultaneously is the most CARNAGE moment in the game. Pure CARNAGE + PROGRESSION energy.
 
+**Session 50 — 2026-04-06: Seagull Invasion — Coastal Raiders Strip the Food Supply**
+Every 25-35 minutes, 8-10 fast seagulls (130-150px/s) swoop in from a random coast/map edge and try to steal all the city's food. Each seagull has a 3-state machine: swooping toward the nearest unclaimed food item, stealing (1.5s hover animation with orange feet visible), then carrying the stolen food back to the map edge.
+
+**Seagull mechanics (`server/game.js`):**
+- 2 poop hits to knock out a seagull (+25 XP +8c per hit, +60 XP +20c on kill)
+- Mega poop = instant 1-shot kill
+- Hitting a carrier (1st hit): forces the seagull to drop the food at its current position — bonus loot for the hitting bird!
+- Seagulls are immune to poop while already fleeing (no double-hit abuse)
+- Each seagull independently targets the nearest unclaimed active food item
+- No two seagulls target the same food (coordination logic in swooping state)
+- 90-second invasion window — survivors escape to the coast
+- **If ALL seagulls defeated early**: city-wide +150 XP +60c bonus for every online bird
+- Gazette tracking: "SEAGULL INVASION HITS CITY — COASTAL RAIDERS STRIP FOOD SUPPLIES"
+
+**Visual system (`public/js/sprites.js`, `public/js/main.js`):**
+- Custom `drawSeagull()` sprite: white body, independent wing-flapping animation, grey wingtips, orange beak with red tip spot (realistic gull marking), black eye with white highlight, orange webbed feet visible only when stealing (hovering)
+- HP bar appears when at 1 HP (damaged but alive — 1 more hit to finish)
+- "THIEF! 🍞" pulsing red label above carriers showing what they're carrying
+- "STEALING..." pulsing orange label during the 1.5-second grab animation
+- Seagull raid HUD bar at top-center: count of remaining seagulls + countdown timer, fades yellow at low time
+- Active buffs pill: "🐦 SEAGULL RAID — N left · Xs · POOP THEM!" pulsing blue
+- Minimap: blue-white pulsing dots for swooping seagulls; orange dots for carriers (thieves clearly marked, trackable from anywhere)
+- Minimap counter label in bottom-left corner showing alive/total
+
+**Events & announcements:**
+- `seagull_invasion_start`: screen shake + big blue announcement for all players
+- `seagull_stole_food`: event feed warning when a seagull completes a steal
+- `seagull_hit`: floating "HIT! 1/2" text at seagull position for the shooter
+- `seagull_killed`: city-wide kill callout with XP/coin rewards
+- `seagull_invasion_repelled`: massive screen shake + "ALL birds earn +150XP +60c!" announcement
+- `seagull_invasion_fled`: report how many carriers escaped with food if timer expires
+
+**Creative intent**: The invasion creates a new type of communal threat that's fundamentally different from all existing events. Unlike the Crow Cartel (territory-based, stationary) or Pied Piper (you go to it), the seagulls are ACTIVELY DRAINING the world's food supply in real time. Every second you don't fight back, more food disappears from the map. The race to poop them all down before the 90-second timer is pure cooperative pressure — solo birds can chip away, but organized flocks can wipe the invasion fast and claim the full-repel bonus. The carrier mechanic (orange dots on minimap, loot drops on hit) means tracking a seagull across the city to intercept it is genuinely satisfying. The food depletion creates real urgency: "The seagulls are stealing our stuff!" is an instantly understandable threat. Pure CARNAGE + SOCIAL energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -1707,7 +1741,7 @@ Built the Territory Control System on top of the existing upstream code:
 - Bird Flu + Bounty Hunter interaction: BH can get infected if he catches a flu-carrying bird — wanders confused for 15s (cinematic chaos)
 - Multi-bird Wanted system: track top 2 most-wanted simultaneously (two Bounty Hunters chase two separate targets at once)
 - Bird Flu + Wanted interaction: if a cop arrests an infected bird, the cop catches the flu and wanders confused for 5s
-- Seagull Invasion: 8-10 fast seagulls swoop in from the coast every 25-35 min, stealing food items en masse — drive them away by pooping (2 hits each)
+- ~~Seagull Invasion: 8-10 fast seagulls swoop in from the coast every 25-35 min, stealing food items en masse — drive them away by pooping (2 hits each)~~ (DONE Session 50)
 - Idol Hall of Fame: persistent leaderboard of all-time Idol winners near the stage
 - Idol daily challenge: "Win Bird City Idol" as a rare daily task
 - ~~Crime wave event: randomly all wanted levels are doubled for 2 minutes; more cops, higher rewards~~ (DONE Session 48)
