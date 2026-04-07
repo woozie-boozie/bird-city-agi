@@ -458,6 +458,15 @@ class GameEngine {
     // Takes 4 poop hits to stun (pros have armor). Catches nets 40% coin steal.
     this.bountyHunter = null; // null | { id, x, y, rotation, targetId, targetName, state, stunUntil, offDutyUntil, poopHits, poopHitResetAt, lastCatchAt, spawnedAt, wanderAngle, sewerWanderAngle, fogWanderAngle }
 
+    // === POLICE HELICOPTER ===
+    // Spawns when wanted bird holds Level 5 for 15+ seconds.
+    // Unlike cops or the bounty hunter, the helicopter is AERIAL: it can't be evaded underground,
+    // smoke bombs don't work (airborne surveillance), fog partially blinds it beyond 280px.
+    // Helicopter illuminates the target — their minimap dot is visible to ALL players while
+    // the spotlight is active. Takes 6 poop hits to bring down (mega=2). On crash: city-wide reward.
+    this.policeHelicopter = null; // null | { id, x, y, rotation, targetId, targetName, state, poopHits, poopHitResetAt, lastCatchAt, stunUntil, hoverX, hoverY, lastKnownX, lastKnownY, spawnedAt }
+    this.helicopterLevel5Timer = 0; // ms bird has been at level 5 continuously
+
     // === SEAGULL INVASION ===
     // Every 25-35 minutes, 8-10 fast seagulls swoop in from the coast to steal food en masse.
     // Each seagull swoops toward an active food item, steals it, then flies back to the edge.
@@ -847,6 +856,11 @@ class GameEngine {
       if (this.bountyHunter && this.bountyHunter.targetId === id) {
         this.bountyHunter = null;
       }
+      // Clear police helicopter if it was pursuing the disconnecting bird
+      if (this.policeHelicopter && this.policeHelicopter.targetId === id) {
+        this.policeHelicopter = null;
+        this.helicopterLevel5Timer = 0;
+      }
       this.birds.delete(id);
     }
   }
@@ -1203,6 +1217,7 @@ class GameEngine {
     this._updateWanted(dt, now);
     this._updateCopBirds(dt, now);
     this._updateBountyHunter(dt, now);
+    this._updatePoliceHelicopter(dt, now);
 
     // === Food Truck ===
     this._updateFoodTruck(dt, now);
@@ -2615,6 +2630,35 @@ class GameEngine {
           bird.coins += 50;
           this.events.push({ type: 'bounty_hunter_stunned', birdId: bird.id, birdName: bird.name, x: bh.x, y: bh.y });
         }
+      } else if (hit.target === 'helicopter' && this.policeHelicopter && this.policeHelicopter.state !== 'stunned') {
+        // Poop hit the Police Helicopter! Build up 6 hits to bring it down
+        const heli = this.policeHelicopter;
+        heli.poopHits = (heli.poopHits || 0) + (isMegaPoop ? 2 : 1); // mega poop = 2 hits
+        heli.poopHitResetAt = now + 12000; // reset counter if no hits in 12s
+        xpGain = 35;
+        bird.coins += 12;
+        this.events.push({ type: 'helicopter_hit', birdId: bird.id, birdName: bird.name, hits: heli.poopHits, x: heli.x, y: heli.y });
+
+        if (heli.poopHits >= 6) {
+          // HELICOPTER DOWN! Spectacular crash — reward all online birds
+          heli.state = 'stunned';
+          heli.stunUntil = now + 15000; // 15 second down time before returning
+          heli.poopHits = 0;
+          heli.poopHitResetAt = 0;
+          heli.spotlighting = false;
+          xpGain = 350;
+          bird.coins += 150;
+          // City-wide reward: every online bird gets XP + coins
+          for (const otherBird of this.birds.values()) {
+            if (otherBird.id === bird.id) continue;
+            otherBird.xp += 75;
+            otherBird.coins += 25;
+          }
+          this.events.push({ type: 'helicopter_downed', birdId: bird.id, birdName: bird.name, gangTag: bird.gangTag || null, x: heli.x, y: heli.y });
+          // Gazette: track helicopter downs
+          if (!this.gazetteStats.helicopterDowns) this.gazetteStats.helicopterDowns = [];
+          this.gazetteStats.helicopterDowns.push({ name: bird.name, gangTag: bird.gangTag || null });
+        }
       } else if (hit.target === 'territory_predator' && hit.predator) {
         // Poop hit a territory predator (hawk or cat in their home zone)
         const { predKey, predator } = hit;
@@ -3522,6 +3566,18 @@ class GameEngine {
           if (!isMegaPoop) return { target: 'seagull', seagull: sg };
           allHits.push({ target: 'seagull', seagull: sg });
         }
+      }
+    }
+
+    // Check Police Helicopter (large body — generous hit box so sky fights feel good)
+    if (this.policeHelicopter && this.policeHelicopter.state !== 'stunned') {
+      const hdx = poop.x - this.policeHelicopter.x;
+      const hdy = poop.y - this.policeHelicopter.y;
+      if (Math.sqrt(hdx * hdx + hdy * hdy) < hitRadius + 22) {
+        // Can't be hit by the bird it's targeting while it's spotlighting (too bright to aim) — adds skill requirement
+        // Actually allow it — targeting yourself with good aim should count
+        if (!isMegaPoop) return { target: 'helicopter' };
+        allHits.push({ target: 'helicopter' });
       }
     }
 
@@ -5052,6 +5108,16 @@ class GameEngine {
         targetId: this.bountyHunter.targetId,
         poopHits: this.bountyHunter.poopHits,
         isTargetingMe: this.bountyHunter.targetId === bird.id,
+      } : null,
+      policeHelicopter: this.policeHelicopter ? {
+        x: this.policeHelicopter.x,
+        y: this.policeHelicopter.y,
+        rotation: this.policeHelicopter.rotation,
+        state: this.policeHelicopter.state,
+        targetId: this.policeHelicopter.targetId,
+        poopHits: this.policeHelicopter.poopHits,
+        spotlighting: this.policeHelicopter.spotlighting,
+        isTargetingMe: this.policeHelicopter.targetId === bird.id,
       } : null,
       godfatherRaccoon: this.godfatherRaccoon ? {
         id: this.godfatherRaccoon.id,
@@ -11299,6 +11365,7 @@ class GameEngine {
       crimeWaves:      0,
       copsStunned:     {},  // birdId -> { count, name, gangTag }
       seagullInvasions: 0,
+      helicopterDowns: [],  // [{ name, gangTag }]
     };
   }
 
@@ -11436,6 +11503,16 @@ class GameEngine {
         icon: '🐦',
         headline: `SEAGULL INVASION HITS CITY — COASTAL RAIDERS STRIP FOOD SUPPLIES`,
         subline: `${stats.seagullInvasions} invasion${stats.seagullInvasions > 1 ? 's' : ''} launched from the coast. Birds urged to "poop back immediately."`,
+      });
+    }
+
+    if (stats.helicopterDowns && stats.helicopterDowns.length > 0) {
+      const ace = stats.helicopterDowns[0];
+      const tag = ace.gangTag ? `[${ace.gangTag}] ` : '';
+      headlines.push({
+        icon: '🚁',
+        headline: `POLICE HELICOPTER DOWNED — ${tag}${ace.name} SHOOTS IT OUT OF THE SKY`,
+        subline: 'Air support unit crash-landed in the park. "This has never happened before," says Chief.',
       });
     }
 
@@ -12529,6 +12606,258 @@ class GameEngine {
         birdName: wanted.name,
         coinsStolen: stolen,
         x: bh.x, y: bh.y,
+      });
+    }
+  }
+
+  // ============================================================
+  // POLICE HELICOPTER
+  // ============================================================
+  _updatePoliceHelicopter(dt, now) {
+    // Only relevant when there's a wanted bird
+    if (!this.wantedBirdId) {
+      if (this.policeHelicopter) {
+        this.policeHelicopter = null;
+        this.events.push({ type: 'helicopter_gone', reason: 'no_wanted' });
+      }
+      this.helicopterLevel5Timer = 0;
+      return;
+    }
+
+    const wanted = this.birds.get(this.wantedBirdId);
+    if (!wanted) {
+      this.policeHelicopter = null;
+      this.helicopterLevel5Timer = 0;
+      return;
+    }
+
+    const wantedHeat = this.heatScores.get(this.wantedBirdId) || 0;
+    const wantedLevel = this._getWantedLevel(wantedHeat);
+
+    // Helicopter only active at level 5; despawn if drops below 4
+    if (wantedLevel < 4) {
+      if (this.policeHelicopter) {
+        this.policeHelicopter = null;
+        this.helicopterLevel5Timer = 0;
+        this.events.push({ type: 'helicopter_gone', reason: 'heat_dropped' });
+      }
+      this.helicopterLevel5Timer = 0;
+      return;
+    }
+
+    // Track how long bird has been at level 5 (gate: must hold level 5 for 15s before spawn)
+    if (wantedLevel >= 5) {
+      this.helicopterLevel5Timer += dt * 1000;
+    } else {
+      // Level 4: keep timer but don't increment (helicopter stays once spawned, but needs 15s at L5 to spawn)
+      this.helicopterLevel5Timer = Math.max(0, this.helicopterLevel5Timer - dt * 500);
+    }
+
+    // Spawn helicopter when level 5 has been held 15+ seconds and no helicopter exists
+    if (!this.policeHelicopter && this.helicopterLevel5Timer >= 15000 && wantedLevel >= 5) {
+      // Spawn from a random map edge ~800px from target
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 750 + Math.random() * 200;
+      const x = Math.max(80, Math.min(world.WORLD_WIDTH - 80, wanted.x + Math.cos(angle) * dist));
+      const y = Math.max(80, Math.min(world.WORLD_HEIGHT - 80, wanted.y + Math.sin(angle) * dist));
+      this.policeHelicopter = {
+        id: 'police_helicopter_1',
+        x, y,
+        rotation: Math.atan2(wanted.y - y, wanted.x - x),
+        targetId: this.wantedBirdId,
+        targetName: wanted.name,
+        state: 'pursuing',   // 'pursuing' | 'stunned' | 'hovering' (when target underground/WP)
+        poopHits: 0,
+        poopHitResetAt: 0,
+        lastCatchAt: 0,
+        stunUntil: 0,
+        hoverX: x,           // position to hover at when target is hidden
+        hoverY: y,
+        lastKnownX: wanted.x,
+        lastKnownY: wanted.y,
+        spawnedAt: now,
+        spotlighting: false,  // true when within 200px of target — illuminates target on everyone's minimap
+      };
+      this.events.push({
+        type: 'helicopter_spawned',
+        targetId: this.wantedBirdId,
+        targetName: wanted.name,
+        x, y,
+      });
+      return;
+    }
+
+    if (!this.policeHelicopter) return;
+
+    const heli = this.policeHelicopter;
+
+    // Update target if the most-wanted bird changed
+    if (heli.targetId !== this.wantedBirdId) {
+      heli.targetId = this.wantedBirdId;
+      heli.targetName = wanted.name;
+      heli.poopHits = 0;
+      heli.state = 'pursuing';
+    }
+
+    // Stunned state (downed by poop hits)
+    if (heli.state === 'stunned') {
+      if (now >= heli.stunUntil) {
+        heli.state = 'pursuing';
+        this.events.push({ type: 'helicopter_recovering', targetId: heli.targetId });
+      }
+      // Still move slowly while stunned (drifting/spinning)
+      heli.x += Math.cos(heli.rotation + Math.PI) * 25 * dt;
+      heli.y += Math.sin(heli.rotation + Math.PI) * 25 * dt;
+      heli.x = Math.max(30, Math.min(world.WORLD_WIDTH - 30, heli.x));
+      heli.y = Math.max(30, Math.min(world.WORLD_HEIGHT - 30, heli.y));
+      heli.spotlighting = false;
+      return;
+    }
+
+    // Reset poop hit counter if no hits in 12s
+    if (heli.poopHits > 0 && now > heli.poopHitResetAt) {
+      heli.poopHits = 0;
+    }
+
+    // Witness Protection: helicopter hovers at last known position, can't lock on
+    if (wanted.witnessProtectionUntil > now) {
+      heli.state = 'hovering';
+      heli.hoverX = heli.lastKnownX;
+      heli.hoverY = heli.lastKnownY;
+      heli.spotlighting = false;
+      // Hover at last known position with gentle drift
+      const hx = heli.hoverX - heli.x;
+      const hy = heli.hoverY - heli.y;
+      const hdist = Math.sqrt(hx * hx + hy * hy);
+      if (hdist > 5) {
+        heli.x += (hx / hdist) * 40 * dt;
+        heli.y += (hy / hdist) * 40 * dt;
+      }
+      heli.x = Math.max(30, Math.min(world.WORLD_WIDTH - 30, heli.x));
+      heli.y = Math.max(30, Math.min(world.WORLD_HEIGHT - 30, heli.y));
+      return;
+    }
+
+    // Underground: helicopter can't follow but hovers at the manhole entrance area
+    if (wanted.inSewer) {
+      heli.state = 'hovering';
+      // Update hover position to follow the last above-ground position
+      const hx = heli.lastKnownX - heli.x;
+      const hy = heli.lastKnownY - heli.y;
+      const hdist = Math.sqrt(hx * hx + hy * hy);
+      if (hdist > 10) {
+        heli.x += (hx / hdist) * 50 * dt;
+        heli.y += (hy / hdist) * 50 * dt;
+      }
+      heli.x = Math.max(30, Math.min(world.WORLD_WIDTH - 30, heli.x));
+      heli.y = Math.max(30, Math.min(world.WORLD_HEIGHT - 30, heli.y));
+      heli.spotlighting = false;
+      return;
+    }
+
+    // Back to pursuing after hiding
+    if (heli.state === 'hovering') {
+      heli.state = 'pursuing';
+    }
+
+    // Update last known position (above ground, not in WP)
+    heli.lastKnownX = wanted.x;
+    heli.lastKnownY = wanted.y;
+
+    // Fog: helicopter loses target beyond 280px (airborne but still affected by dense fog)
+    const fogActive = this.weather && this.weather.type === 'fog';
+    const dx = wanted.x - heli.x;
+    const dy = wanted.y - heli.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    if (fogActive && dist > 280) {
+      // Drift toward last known position with angular deviation
+      const lkx = heli.lastKnownX - heli.x;
+      const lky = heli.lastKnownY - heli.y;
+      const lkDist = Math.sqrt(lkx * lkx + lky * lky);
+      if (lkDist > 5) {
+        const driftAngle = Math.atan2(lky, lkx) + (Math.random() - 0.5) * 0.6;
+        heli.x += Math.cos(driftAngle) * 90 * dt;
+        heli.y += Math.sin(driftAngle) * 90 * dt;
+        heli.rotation = driftAngle;
+      }
+      heli.x = Math.max(30, Math.min(world.WORLD_WIDTH - 30, heli.x));
+      heli.y = Math.max(30, Math.min(world.WORLD_HEIGHT - 30, heli.y));
+      heli.spotlighting = false;
+      return;
+    }
+
+    // NOTE: Smoke bomb DOESN'T work on the helicopter — it's airborne and uses heat-signature tracking.
+    // Ghost Mode from Mystery Crate DOES work (40% chance).
+    const ghostActive = wanted.mcGhostModeUntil > now;
+    if (ghostActive && Math.random() < 0.40) {
+      const driftAngle = Math.atan2(dy, dx) + (Math.random() - 0.5) * 1.2;
+      heli.x += Math.cos(driftAngle) * 70 * dt;
+      heli.y += Math.sin(driftAngle) * 70 * dt;
+      heli.x = Math.max(30, Math.min(world.WORLD_WIDTH - 30, heli.x));
+      heli.y = Math.max(30, Math.min(world.WORLD_HEIGHT - 30, heli.y));
+      heli.spotlighting = false;
+      return;
+    }
+
+    // Pursue at 145px/s — fast but not faster than the Bounty Hunter (160px/s)
+    const HELI_SPEED = 145;
+    if (dist > 1) {
+      heli.x += (dx / dist) * HELI_SPEED * dt;
+      heli.y += (dy / dist) * HELI_SPEED * dt;
+      heli.rotation = Math.atan2(dy, dx);
+    }
+    heli.x = Math.max(30, Math.min(world.WORLD_WIDTH - 30, heli.x));
+    heli.y = Math.max(30, Math.min(world.WORLD_HEIGHT - 30, heli.y));
+
+    // Spotlight: helicopter illuminates target when within 200px
+    const wasSpotlighting = heli.spotlighting;
+    heli.spotlighting = dist < 200;
+    if (heli.spotlighting && !wasSpotlighting) {
+      // Just locked spotlight on — announce to target
+      this.events.push({ type: 'helicopter_spotlight_locked', targetId: heli.targetId, targetName: heli.targetName });
+    } else if (!heli.spotlighting && wasSpotlighting) {
+      this.events.push({ type: 'helicopter_spotlight_lost', targetId: heli.targetId });
+    }
+
+    // Catch: close enough and bird not shielded
+    if (dist < 22 && !(wanted.mcRiotShieldUntil > now) && now - heli.lastCatchAt > 10000) {
+      heli.lastCatchAt = now;
+
+      // Ghost Walk skill: 18% chance to evade helicopter catch too
+      if (wanted.skillTreeUnlocked && wanted.skillTreeUnlocked.includes('ghost_walk') && Math.random() < 0.18) {
+        this.events.push({ type: 'ghost_walk_evade', birdId: wanted.id, birdName: wanted.name, x: heli.x, y: heli.y });
+        heli.state = 'stunned';
+        heli.stunUntil = now + 4000; // ghost walk stuns heli too
+        heli.poopHits = 0;
+        return;
+      }
+
+      // Steal 25% of coins (max 250c)
+      const stolen = Math.min(250, Math.max(5, Math.floor(wanted.coins * 0.25)));
+      wanted.coins = Math.max(0, wanted.coins - stolen);
+
+      // Stun the bird (5s base; Iron Wings reduces it)
+      let stunDur = 5000;
+      if (wanted.skillTreeUnlocked && wanted.skillTreeUnlocked.includes('iron_wings')) {
+        stunDur = Math.floor(stunDur * 0.65);
+      }
+      wanted.stunnedUntil = now + stunDur;
+
+      // Wipe combo streak
+      wanted.comboCount = 0;
+      wanted.comboExpiresAt = 0;
+
+      // Slight heat reduction (partial arrest — disrupted, not booked)
+      const currentHeat = this.heatScores.get(wanted.id) || 0;
+      this.heatScores.set(wanted.id, Math.max(0, currentHeat - 20));
+
+      this.events.push({
+        type: 'helicopter_caught',
+        birdId: wanted.id,
+        birdName: wanted.name,
+        coinsStolen: stolen,
+        x: heli.x, y: heli.y,
       });
     }
   }

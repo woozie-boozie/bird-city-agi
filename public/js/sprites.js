@@ -4382,4 +4382,234 @@ window.Sprites = {
 
     ctx.restore();
   },
+
+  // ============================================================
+  // POLICE HELICOPTER — aerial pursuit unit that arrives at Wanted Level 5
+  // ============================================================
+  drawPoliceHelicopter(ctx, x, y, rotation, state, poopHits, spotlighting, now) {
+    ctx.save();
+    ctx.translate(x, y);
+
+    const stunned = state === 'stunned';
+    const hovering = state === 'hovering';
+
+    // Stun: helicopter spins wildly (rapid rotation override)
+    if (stunned) {
+      ctx.rotate(now * 0.008);
+    } else {
+      ctx.rotate(rotation + Math.PI / 2); // point helicopter nose in movement direction
+    }
+
+    // ---- Ground shadow (suggests high altitude) ----
+    ctx.save();
+    ctx.rotate(0); // shadow stays level regardless of rotation
+    const shadowPulse = 0.25 + 0.1 * Math.sin(now * 0.002);
+    ctx.globalAlpha = stunned ? 0.1 : shadowPulse;
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.ellipse(0, 30, 22, 10, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.restore();
+
+    if (stunned) {
+      // Crashed look — tilted, smoking, dark
+      ctx.globalAlpha = 0.6;
+    }
+
+    // ---- Main helicopter body ----
+    // Police blue-white color scheme
+    const bodyColor = stunned ? '#444' : '#1a4fa0'; // dark blue or grey (stunned)
+    const bodyHighlight = stunned ? '#666' : '#2563cc';
+    const bodyBottom = stunned ? '#222' : '#0f2d5c';
+
+    // Main fuselage (oval body)
+    const bodyGrad = ctx.createLinearGradient(-12, -8, 12, 12);
+    bodyGrad.addColorStop(0, bodyHighlight);
+    bodyGrad.addColorStop(0.5, bodyColor);
+    bodyGrad.addColorStop(1, bodyBottom);
+    ctx.fillStyle = bodyGrad;
+    ctx.strokeStyle = stunned ? '#333' : '#0a1f3d';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 14, 9, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // White stripe along the body
+    if (!stunned) {
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.beginPath();
+      ctx.ellipse(0, 1, 10, 3.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // ---- Cockpit window (front bubble) ----
+    const cockpitColor = stunned ? '#333' : (spotlighting ? '#88ccff' : '#b8d4ff');
+    ctx.fillStyle = cockpitColor;
+    if (spotlighting && !stunned) {
+      ctx.shadowColor = '#44aaff';
+      ctx.shadowBlur = 6;
+    }
+    ctx.beginPath();
+    ctx.ellipse(-5, -3, 7, 5, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Cockpit frame
+    ctx.strokeStyle = stunned ? '#222' : '#0a1f3d';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // ---- Tail boom ----
+    ctx.fillStyle = stunned ? '#333' : '#1a4fa0';
+    ctx.strokeStyle = stunned ? '#222' : '#0a1f3d';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(8, -2);
+    ctx.lineTo(22, -1);
+    ctx.lineTo(22, 1);
+    ctx.lineTo(8, 2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // ---- Tail rotor ----
+    const tailRotorAngle = now * 0.03;
+    for (let i = 0; i < 3; i++) {
+      const tr = tailRotorAngle + (i * Math.PI * 2 / 3);
+      ctx.strokeStyle = stunned ? '#555' : '#aaccff';
+      ctx.lineWidth = stunned ? 1 : 1.5;
+      ctx.globalAlpha = stunned ? 0.4 : 0.8;
+      ctx.beginPath();
+      ctx.moveTo(22 + Math.cos(tr) * 1, Math.sin(tr) * 1);
+      ctx.lineTo(22 + Math.cos(tr) * 6, Math.sin(tr) * 6);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = stunned ? 0.6 : 1;
+
+    // ---- Main rotor hub ----
+    ctx.fillStyle = stunned ? '#333' : '#0a1f3d';
+    ctx.beginPath();
+    ctx.arc(0, -10, 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // ---- Main rotor blades (4 blades, fast rotation) ----
+    const rotorAngle = stunned ? now * 0.005 : now * (0.025 + 0.005 * Math.sin(now * 0.001));
+    const numBlades = 4;
+    for (let i = 0; i < numBlades; i++) {
+      const ba = rotorAngle + (i * Math.PI * 2 / numBlades);
+      const blade = stunned ? '#444' : '#aaccff';
+      // Each blade is a thin elongated ellipse
+      ctx.save();
+      ctx.translate(0, -10);
+      ctx.rotate(ba);
+      const bladeGrad = ctx.createLinearGradient(-18, 0, 18, 0);
+      bladeGrad.addColorStop(0, 'transparent');
+      bladeGrad.addColorStop(0.2, blade);
+      bladeGrad.addColorStop(0.8, blade);
+      bladeGrad.addColorStop(1, 'transparent');
+      ctx.fillStyle = bladeGrad;
+      ctx.globalAlpha = stunned ? 0.4 : 0.75;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 18, 2.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = stunned ? 0.6 : 1;
+      ctx.restore();
+    }
+
+    // ---- Landing skids ----
+    ctx.strokeStyle = stunned ? '#333' : '#0a1f3d';
+    ctx.lineWidth = 2;
+    // Left skid
+    ctx.beginPath();
+    ctx.moveTo(-8, 5);
+    ctx.lineTo(-8, 12);
+    ctx.moveTo(-13, 12);
+    ctx.lineTo(-3, 12);
+    ctx.stroke();
+    // Right skid
+    ctx.beginPath();
+    ctx.moveTo(5, 5);
+    ctx.lineTo(5, 12);
+    ctx.moveTo(0, 12);
+    ctx.lineTo(10, 12);
+    ctx.stroke();
+
+    // ---- Police siren lights (red/blue flashing, on either side of body) ----
+    if (!stunned) {
+      const sirenPhase = Math.floor(now / 200) % 2;
+      // Left light
+      ctx.fillStyle = sirenPhase === 0 ? '#ff2222' : '#2244ff';
+      ctx.shadowColor = sirenPhase === 0 ? '#ff0000' : '#0044ff';
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.arc(-10, 3, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+      // Right light
+      ctx.fillStyle = sirenPhase === 0 ? '#2244ff' : '#ff2222';
+      ctx.shadowColor = sirenPhase === 0 ? '#0044ff' : '#ff0000';
+      ctx.beginPath();
+      ctx.arc(10, 3, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    } else {
+      // Stunned: lights flicker weakly
+      const flickerOn = Math.sin(now * 0.03) > 0;
+      if (flickerOn) {
+        ctx.fillStyle = 'rgba(255,100,100,0.5)';
+        ctx.beginPath();
+        ctx.arc(-10, 3, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // ---- POLICE text on side ----
+    if (!stunned) {
+      ctx.save();
+      ctx.rotate(-Math.PI / 2); // text stays readable when helicopter rotates
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 5px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('POLICE', 0, 0);
+      ctx.restore();
+    }
+
+    // ---- HP damage indicator ----
+    if (poopHits > 0) {
+      ctx.save();
+      ctx.rotate(-rotation - Math.PI / 2); // label always faces up
+      const pct = poopHits / 6;
+      const barW = 40;
+      const barX = -barW / 2;
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.fillRect(barX - 1, -32, barW + 2, 7);
+      ctx.fillStyle = pct < 0.5 ? '#ff8800' : '#ff2200';
+      ctx.fillRect(barX, -31, barW * pct, 5);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 0.5;
+      ctx.strokeRect(barX, -31, barW, 5);
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 6px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(`🚁 ${poopHits}/6`, 0, -37);
+      ctx.restore();
+    }
+
+    // ---- Stunned indicator ----
+    if (stunned) {
+      ctx.save();
+      ctx.rotate(-rotation - Math.PI / 2);
+      ctx.font = '14px Arial';
+      ctx.textAlign = 'center';
+      const f = 0.5 + 0.5 * Math.sin(now * 0.01);
+      ctx.globalAlpha = f;
+      ctx.fillText('💥 DOWN!', 0, -30);
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+
+    ctx.restore();
+  },
 };

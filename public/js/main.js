@@ -1570,6 +1570,52 @@
       addEventMessage('🔫 The Bounty Hunter stands down.', '#888');
     }
 
+    // === POLICE HELICOPTER ===
+    if (ev.type === 'helicopter_spawned') {
+      effects.push({ type: 'screen_shake', intensity: 8, duration: 700, time: now });
+      if (ev.targetId === myId) {
+        showAnnouncement('🚁 POLICE HELICOPTER DISPATCHED — YOU\'RE TRACKED FROM ABOVE!', '#1144cc', 5000);
+        addEventMessage('🚁 Helicopter locked on YOU! 6 poop hits to bring it down. Sewer won\'t help!', '#2255dd');
+      } else {
+        addEventMessage('🚁 Police helicopter dispatched — hunting ' + ev.targetName + ' from the sky!', '#3366cc');
+      }
+    }
+    if (ev.type === 'helicopter_hit') {
+      if (ev.birdId === myId) {
+        showAnnouncement('💥 HIT! ' + ev.hits + '/6 — keep firing!', '#ff8800', 1500);
+      }
+      effects.push({ type: 'float_text', text: '💥 ' + ev.hits + '/6', x: ev.x, y: ev.y, color: '#ff8800', time: now });
+    }
+    if (ev.type === 'helicopter_downed') {
+      effects.push({ type: 'screen_shake', intensity: 12, duration: 1000, time: now });
+      const tag = ev.gangTag ? `[${ev.gangTag}] ` : '';
+      if (ev.birdId === myId) {
+        showAnnouncement('🚁💥 HELICOPTER DOWN! +350 XP +150c — LEGENDARY!', '#ffd700', 5000);
+      }
+      addEventMessage(`🚁💥 ${tag}${ev.birdName} SHOT DOWN THE POLICE HELICOPTER! +75 XP +25c for ALL BIRDS!`, '#ffd700');
+    }
+    if (ev.type === 'helicopter_caught') {
+      effects.push({ type: 'screen_shake', intensity: 8, duration: 600, time: now });
+      if (ev.birdId === myId) {
+        showAnnouncement('🚁 HELICOPTER GRABBED YOU! -' + ev.coinsStolen + 'c!', '#ff1100', 4000);
+      } else {
+        addEventMessage('🚁 Helicopter caught ' + ev.birdName + '! -' + ev.coinsStolen + 'c', '#ff4400');
+      }
+    }
+    if (ev.type === 'helicopter_gone') {
+      addEventMessage('🚁 Police helicopter stands down.', '#888');
+    }
+    if (ev.type === 'helicopter_spotlight_locked') {
+      if (ev.targetId === myId) {
+        showAnnouncement('🔦 SPOTLIGHT ON YOU — Visible to ALL players on the map!', '#ff8800', 3000);
+      }
+    }
+    if (ev.type === 'helicopter_recovering') {
+      if (gameState.policeHelicopter && gameState.policeHelicopter.targetId === myId) {
+        addEventMessage('🚁 Police helicopter recovering — it\'s coming back!', '#cc6600');
+      }
+    }
+
     // === COMBO MILESTONE ===
     if (ev.type === 'combo_milestone') {
       const fireCount = ev.combo >= 15 ? '🔥🔥🔥' : ev.combo >= 10 ? '🔥🔥' : '🔥';
@@ -5846,6 +5892,44 @@
       }
     }
 
+    // Police Helicopter (aerial pursuit unit — visible from afar, draws ABOVE most things)
+    if (gameState.policeHelicopter) {
+      const heli = gameState.policeHelicopter;
+      const hsx = heli.x - camera.x + camera.screenW / 2;
+      const hsy = heli.y - camera.y + camera.screenH / 2;
+      const heliMargin = 60;
+      if (hsx > -heliMargin && hsx < camera.screenW + heliMargin && hsy > -heliMargin && hsy < camera.screenH + heliMargin) {
+        // Draw spotlight beam BEFORE the sprite (so sprite renders on top)
+        if (heli.spotlighting && gameState.self && !heli.isTargetingMe === false) {
+          // Spotlight: cone from helicopter downward toward target position
+          const myX = gameState.self.x;
+          const myY = gameState.self.y;
+          if (myX !== undefined) {
+            const tx = myX - camera.x + camera.screenW / 2;
+            const ty = myY - camera.y + camera.screenH / 2;
+            const spotAngle = Math.atan2(ty - hsy, tx - hsx);
+            const spotLen = Math.sqrt((tx - hsx) ** 2 + (ty - hsy) ** 2);
+            ctx.save();
+            ctx.globalAlpha = 0.22 + 0.08 * Math.sin(now * 0.005);
+            const coneGrad = ctx.createRadialGradient(hsx, hsy, 5, hsx, hsy, spotLen + 20);
+            coneGrad.addColorStop(0, 'rgba(180,220,255,0.9)');
+            coneGrad.addColorStop(0.6, 'rgba(140,190,255,0.5)');
+            coneGrad.addColorStop(1, 'rgba(100,160,255,0)');
+            ctx.fillStyle = coneGrad;
+            const halfAngle = 0.18; // cone spread
+            ctx.beginPath();
+            ctx.moveTo(hsx, hsy);
+            ctx.lineTo(hsx + Math.cos(spotAngle - halfAngle) * (spotLen + 20), hsy + Math.sin(spotAngle - halfAngle) * (spotLen + 20));
+            ctx.lineTo(hsx + Math.cos(spotAngle + halfAngle) * (spotLen + 20), hsy + Math.sin(spotAngle + halfAngle) * (spotLen + 20));
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+          }
+        }
+        Sprites.drawPoliceHelicopter(ctx, hsx, hsy, heli.rotation, heli.state, heli.poopHits, heli.spotlighting, now);
+      }
+    }
+
     // Bank Heist overlays (cameras, vault progress, escape van) — drawn before buildings for z-order
     if (gameState.bankHeist) {
       Renderer.drawBankHeist(ctx, camera, gameState.bankHeist, now);
@@ -6744,6 +6828,43 @@
       }
     }
 
+    // Police Helicopter — direction arrow when targeting the player and off-screen
+    if (gameState.policeHelicopter && gameState.policeHelicopter.isTargetingMe && gameState.policeHelicopter.state === 'pursuing') {
+      const heli = gameState.policeHelicopter;
+      const hsx2 = heli.x - camera.x + camera.screenW / 2;
+      const hsy2 = heli.y - camera.y + camera.screenH / 2;
+      const heliOnScreen = hsx2 > 20 && hsx2 < camera.screenW - 20 && hsy2 > 20 && hsy2 < camera.screenH - 20;
+      if (!heliOnScreen) {
+        const heliAngle = Math.atan2(hsy2 - camera.screenH / 2, hsx2 - camera.screenW / 2);
+        const heliArrowDist = Math.min(camera.screenW, camera.screenH) / 2 - 55;
+        const heliAx = camera.screenW / 2 + Math.cos(heliAngle) * heliArrowDist;
+        const heliAy = camera.screenH / 2 + Math.sin(heliAngle) * heliArrowDist;
+        const heliPulse = 0.7 + 0.3 * Math.sin(now * 0.005);
+        const sirenFlash = Math.floor(now / 200) % 2;
+        ctx.save();
+        ctx.translate(heliAx, heliAy);
+        ctx.rotate(heliAngle);
+        ctx.globalAlpha = heliPulse;
+        ctx.fillStyle = sirenFlash === 0 ? '#2244ff' : '#ff2222';
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(20, 0);
+        ctx.lineTo(-10, -10);
+        ctx.lineTo(-5, 0);
+        ctx.lineTo(-10, 10);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 9px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('🚁', 4, 0);
+        ctx.restore();
+      }
+    }
+
     // Cursed Coin — direction arrow and mini HUD bar when coin exists
     if (gameState.self && gameState.self.cursedCoin) {
       const cc = gameState.self.cursedCoin;
@@ -7067,6 +7188,18 @@
         minimapCtx.textAlign = 'center';
         minimapCtx.fillStyle = '#ff0000';
         minimapCtx.fillText('W', wanted.x * msx, wanted.y * msy - 5);
+        // Helicopter spotlight: bright blue ring visible to ALL players when helicopter is spotlighting
+        if (gameState.policeHelicopter && gameState.policeHelicopter.spotlighting) {
+          const spotPulse = 0.5 + 0.5 * Math.sin(now * 0.01);
+          minimapCtx.strokeStyle = `rgba(100,180,255,${0.6 + 0.4 * spotPulse})`;
+          minimapCtx.lineWidth = 2;
+          minimapCtx.beginPath();
+          minimapCtx.arc(wanted.x * msx, wanted.y * msy, 7, 0, Math.PI * 2);
+          minimapCtx.stroke();
+          minimapCtx.font = '6px sans-serif';
+          minimapCtx.fillStyle = '#88ccff';
+          minimapCtx.fillText('🔦', wanted.x * msx, wanted.y * msy - 9);
+        }
       }
     }
 
@@ -7100,6 +7233,37 @@
       minimapCtx.font = '7px sans-serif';
       minimapCtx.textAlign = 'center';
       minimapCtx.fillText('🔫', bh.x * msx, bh.y * msy - 4);
+    }
+
+    // Draw Police Helicopter on minimap (blue/red siren-flashing dot)
+    if (gameState.policeHelicopter && gameState.policeHelicopter.state !== 'stunned' && worldData) {
+      const heli = gameState.policeHelicopter;
+      const mw = minimapCtx.canvas.width;
+      const mh = minimapCtx.canvas.height;
+      const msx = mw / worldData.width;
+      const msy = mh / worldData.height;
+      const heliSirenFlash = Math.floor(now / 200) % 2;
+      minimapCtx.fillStyle = heliSirenFlash === 0 ? '#2244ff' : '#ff2222';
+      minimapCtx.shadowColor = heliSirenFlash === 0 ? '#4466ff' : '#ff4444';
+      minimapCtx.shadowBlur = 6;
+      minimapCtx.beginPath();
+      minimapCtx.arc(heli.x * msx, heli.y * msy, 5, 0, Math.PI * 2);
+      minimapCtx.fill();
+      minimapCtx.shadowBlur = 0;
+      minimapCtx.font = '8px sans-serif';
+      minimapCtx.textAlign = 'center';
+      minimapCtx.fillText('🚁', heli.x * msx, heli.y * msy - 5);
+      // Also: when spotlighting, draw a ring around the targeted bird's minimap dot
+      if (heli.spotlighting && gameState.self) {
+        const tx = gameState.self.x * msx;
+        const ty = gameState.self.y * msy;
+        const spotPulse = 0.5 + 0.5 * Math.sin(now * 0.008);
+        minimapCtx.strokeStyle = `rgba(100,180,255,${spotPulse})`;
+        minimapCtx.lineWidth = 2;
+        minimapCtx.beginPath();
+        minimapCtx.arc(tx, ty, 7, 0, Math.PI * 2);
+        minimapCtx.stroke();
+      }
     }
 
     // Draw food truck on minimap (flashing red during heist)
@@ -7909,6 +8073,24 @@
       } else {
         const hits = gameState.bountyHunter.poopHits || 0;
         html += `<div class="bm-buff-pill" style="background:rgba(100,0,0,0.9);border-color:#cc2200;color:#ff6644;font-weight:bold;animation:pulseRed 0.8s infinite alternate;">🔫 BOUNTY HUNTER ON YOUR TAIL! Poop him: ${hits}/4 hits · Go underground to hide</div>`;
+      }
+    }
+
+    // Police Helicopter targeting indicator
+    if (gameState.policeHelicopter && gameState.policeHelicopter.isTargetingMe) {
+      const heliState = gameState.policeHelicopter.state;
+      if (heliState === 'stunned') {
+        const sirenColor = Math.floor(now / 300) % 2 === 0 ? '#44aaff' : '#ff4466';
+        html += `<div class="bm-buff-pill" style="background:rgba(0,60,0,0.85);border-color:#44ff44;color:#88ff88;">🚁💥 HELICOPTER DOWN! It'll recover soon — run!</div>`;
+      } else if (heliState === 'hovering') {
+        html += `<div class="bm-buff-pill" style="background:rgba(0,30,80,0.85);border-color:#3366cc;color:#88aaff;">🚁 Helicopter circling above — come up and it'll find you</div>`;
+      } else {
+        const hits = gameState.policeHelicopter.poopHits || 0;
+        const spotlit = gameState.policeHelicopter.spotlighting;
+        const bgColor = spotlit ? 'rgba(0,40,120,0.95)' : 'rgba(0,20,80,0.9)';
+        const borderColor = spotlit ? '#66aaff' : '#2244cc';
+        const spotText = spotlit ? ' · 🔦 SPOTLIT — visible to ALL!' : '';
+        html += `<div class="bm-buff-pill" style="background:${bgColor};border-color:${borderColor};color:#88ccff;font-weight:bold;animation:pulseRed 0.8s infinite alternate;">🚁 POLICE HELICOPTER ON YOUR TAIL! Poop it: ${hits}/6 · Sewer won't help!${spotText}</div>`;
       }
     }
 

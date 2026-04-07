@@ -1801,6 +1801,50 @@ Two interlocking features that complete the Skill Tree's long-term identity arc:
 
 **Creative intent**: The Skill Tree was a fantastic progression system (Session 46) but had no endgame. Reaching all 12 unlocks was its own reward but invisible to others. ✨ MASTER fixes that: it's a permanent status signal that says "this bird completed the tree." The respec creates a beautiful tension loop — do you stay mastered and keep the +5% XP and badge, or spend 500c to pivot your build and grind your way back? A P5 LEGEND bird with ✨ MASTER + ⚜️⚜️⚜️⚜️⚜️ above their nametag, raining golden legendary poops while listed on the Hall of Legends — that's the highest-status display in Bird City. Pure PROGRESSION + SPECTACLE energy.
 
+**Session 55 — 2026-04-07: The Police Helicopter — Level 5 Aerial Pursuit**
+The wanted system gets its ultimate escalation. When a bird holds Wanted Level 5 for 15+ seconds, a full police helicopter is dispatched — a massive aerial predator that can't be evaded underground (it hovers at the manhole entrance), smoke bombs don't work (airborne heat-signature tracking), and its searchlight ILLUMINATES the target on EVERY player's minimap simultaneously. The most dramatic chase mechanic in Bird City.
+
+**Helicopter mechanics (`server/game.js`):**
+- Spawns after 15 continuous seconds at Wanted Level 5 — not instant, so brief Level 5 spikes are safe
+- Moves at 145px/s — fast but just below the Bounty Hunter (160px/s), creating a different threat feel
+- **Spotlight**: when within 200px of target → `spotlighting = true` → target gets a blue ring on ALL players' minimaps. Being spotlit is announced to the target ("🔦 SPOTLIGHT ON YOU — Visible to ALL players!")
+- **Underground**: helicopter hovers at last known above-ground position — sewer is a brief respite but not permanent escape  
+- **Fog**: partially confused beyond 280px (airborne optics, not immune)
+- **Smoke bomb**: DOESN'T WORK (heat signature tracking) — unlike cops
+- **Ghost Mode** (Mystery Crate): 40% chance per tick to confuse (same as bounty hunter)
+- **Witness Protection**: helicopter holds last known position for the full 3-minute WP duration  
+- **Takes 6 poop hits to down** (mega poop = 2 hits), 12s hit window before counter resets
+- **Crash reward**: shooter gets +350 XP +150c, EVERY online bird gets +75 XP +25c (city-wide). 15s down time, then recovers
+- **Catch**: within 22px → steals 25% coins (max 250c), stuns 5s (Iron Wings reduces), combo wiped. 10s catch cooldown
+- **Ghost Walk skill**: 18% chance to evade the catch (stuns helicopter for 4s instead)
+- **Despawns** when wanted level drops below Level 4
+
+**Visual system (`public/js/sprites.js`):**
+- Custom `drawPoliceHelicopter()` sprite: police-blue oval fuselage with white stripe, bubble cockpit (glows cyan when spotlighting), animated main rotor (4 blades, spin proportional to speed), tail boom + 3-blade tail rotor, landing skids, alternating red/blue siren lights on each side (200ms flash), "POLICE" text on side
+- Ground shadow ellipse below body (depth cue)
+- Stunned state: body goes grey, blades spin slowly, "💥 DOWN!" pulsing emoji, cockpit dark
+- HP damage bar (orange→red fill) shows when damaged
+
+**Spotlight cone (`public/js/main.js`):**
+- Blue-white radial gradient cone drawn from helicopter position toward target bird in world space
+- Cone subtly pulses in opacity — looks like a real searchlight sweep
+- Only visible when `spotlighting = true` and target is yourself
+
+**Minimap (`public/js/main.js`):**
+- Large flashing blue/red alternating dot (siren colors, 200ms) + 🚁 emoji — unmissable
+- When spotlighting: bright cyan ring + 🔦 drawn around the wanted bird's dot on ALL players' minimaps simultaneously — tracking the target becomes a city-wide activity
+
+**HUD:**
+- Pursuing: `🚁 POLICE HELICOPTER ON YOUR TAIL! Poop it: X/6 · Sewer won't help!` + blue pulsing pill. Spotlit state adds `· 🔦 SPOTLIT — visible to ALL!`
+- Stunned: `🚁💥 HELICOPTER DOWN! It'll recover soon — run!` green pill
+- Hovering: gentle blue reminder pill
+- Direction arrow: blue/red alternating arrow 🚁 points toward helicopter when off-screen (siren color flash)
+
+**Gazette integration:**
+- `helicopterDowns` tracked in `gazetteStats` — "🚁 POLICE HELICOPTER DOWNED — [Name] SHOOTS IT OUT OF THE SKY" headline when it happens
+
+**Creative intent**: The wanted system had great escalation (cops → SWAT → Bounty Hunter) but Level 5 MOST WANTED didn't feel different enough from Level 4. The helicopter COMPLETELY changes Level 5. You're no longer just dodging ground-based pursuers — there's a massive machine tracking you from the SKY, and it TELLS everyone where you are. The spotlight creates a city-wide spectacle: all players see the blue ring on the minimap and know someone is being hunted from above. Going underground buys seconds, not minutes. The 6-hit-to-down mechanic creates a sustained combat interaction — you need to commit to fighting the helicopter. And when it crashes, EVERYONE gets rewarded — making the whole server root for the underbird. Pure CARNAGE + SPECTACLE + SOCIAL energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -1867,10 +1911,16 @@ Built the Territory Control System on top of the existing upstream code:
 - ~~Bird Royale spectator mode: eliminated birds can throw "crowd cheers" that give small food boosts to surviving birds~~ (DONE Session 53)
 - ~~Skill Tree Mastery bonus: unlock ALL 12 skills + earn permanent ✨ MASTER badge on nametag + passive +5% XP gain~~ (DONE Session 54)
 - ~~Skill respec: spend 500 coins at Don Featherstone to reset all skills and refund FP — costly but available (good money sink)~~ (DONE Session 54)
+- ~~Police Helicopter — Level 5 aerial pursuit: spotlight illuminates target on all minimaps, 6 hits to down, city-wide reward on crash~~ (DONE Session 55)
 - Royale Champion + Kingpin interaction: if the Royale Champion becomes Kingpin, they're immune to the first dethronement hit (crown defends crown)
 - Royale Champion daily challenge: "Win Bird Royale" as the rarest daily task (200 XP, 150c)
 - Idol Hall of Fame: persistent leaderboard of all-time Idol winners near the stage
 - Idol daily challenge: "Win Bird City Idol" as a rare daily task
+- Helicopter daily challenge: "Ace Pilot — bring down the police helicopter" (250 XP, 120c)
+- Bird Flu + Bounty Hunter: if BH catches an infected bird, BH wanders confused for 15s
+- Bird Flu + Cop: if a cop arrests an infected bird, the cop catches the flu and wanders confused for 5s
+- Helicopter + Fog: Announce to targeted bird when helicopter loses their trail in fog ("🌫️ Helicopter lost you in the fog! Move fast!")
+- Donut Shop NPC: a cop standing near a donut shop who can be bribed to reduce wanted level, or ambushed for big XP
 - ~~Crime wave event: randomly all wanted levels are doubled for 2 minutes; more cops, higher rewards~~ (DONE Session 48)
 - ~~Bounty Hunter Bird — persistent manhunter NPC at Wanted Level 4+, 4 hits to stun, Contract Cancel at Black Market~~ (DONE Session 49)
 - ~~Race power-ups: speed boost gates on the track~~ (DONE Session 30)
