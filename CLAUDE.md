@@ -1845,6 +1845,37 @@ The wanted system gets its ultimate escalation. When a bird holds Wanted Level 5
 
 **Creative intent**: The wanted system had great escalation (cops → SWAT → Bounty Hunter) but Level 5 MOST WANTED didn't feel different enough from Level 4. The helicopter COMPLETELY changes Level 5. You're no longer just dodging ground-based pursuers — there's a massive machine tracking you from the SKY, and it TELLS everyone where you are. The spotlight creates a city-wide spectacle: all players see the blue ring on the minimap and know someone is being hunted from above. Going underground buys seconds, not minutes. The 6-hit-to-down mechanic creates a sustained combat interaction — you need to commit to fighting the helicopter. And when it crashes, EVERYONE gets rewarded — making the whole server root for the underbird. Pure CARNAGE + SPECTACLE + SOCIAL energy.
 
+**Session 56 — 2026-04-07: The Donut Shop — Bribe or Ambush the Snacking Cop**
+Bird City just got its most GTA moment yet. A cheerful pink donut shop sits on the north road (x:1620, y:750), and a plump Donut Cop patrols outside — cycling between eating (distracted, glorious) and alert (on duty, boring). The city's most bribeable man.
+
+**The Donut Cop state machine:**
+- **Alert** (25-40s): Standard cop awareness. Poop on him for 45 XP + 15c + 8s stun
+- **Eating** (10-15s): Hunched over a donut, totally oblivious. The fun window.
+  - **AMBUSH**: poop on him while eating = 80 XP + 30c + 15s stun + city-wide callout "ambushed the Donut Cop mid-snack!"
+  - **BRIBE**: press [D] while eating = pay 50c per wanted star to drop 1 full wanted level
+- **Stunned**: dazed with orbiting stars, dropped donut on ground — immune to further hits until recovery
+
+**Bribe mechanic (money sink + heat reduction):**
+- Cost scales with current wanted level: 1 star = 50c, 2 stars = 100c, 3 stars = 150c, up to 250c
+- Drops exactly 1 wanted star — targeted but not infinite (can't bribe all the way from 5 to 0 in one go)
+- City-wide event feed: "🍩 [Bird] bribed the Donut Cop to look the other way!"
+- Fail messages: too far, not eating, already clean, insufficient coins
+
+**Visual spectacle:**
+- Cheerful pink pastel building with hot-pink neon sign, big 🍩 emojis, "OPEN 24/7" flashing sign
+- Cop sprite: round navy-blue body, gold star badge, police cap, three states:
+  - Alert: alert eyes, arms at sides, leg-walking animation
+  - Eating: squinty happy eyes, big smile, right arm extended holding an animated wobbling donut with sprinkles
+  - Stunned: X eyes, 3 orbiting ⭐ stars, dropped donut on ground below
+- Proximity prompt changes dynamically: green "Ambush/Bribe" when eating, blue "wait for eating" when alert, gold "recovering" when stunned
+- **Minimap**: 🍩 dot — bright green pulse when eating (your window!), grey when alert, gold when stunned
+
+**New daily challenges (added to the pool):**
+- 🍩 **Sugar Rush**: Poop on the Donut Cop while he's eating (×2) — 200 XP, 90c
+- 🍩 **Cop Briber**: Bribe the Donut Cop to reduce your heat (×2) — 160 XP, 80c
+
+**Creative intent**: This is peak GTA 1 energy — a cop too distracted with his snack to notice you. The bribe mechanic is the most satisfying money sink added yet: you're actively SPENDING coins to escape the law, with a social callout so the whole city knows you "bought" your freedom. The ambush reward (80 XP, 30c) is premium for a single poop but requires TIMING — you have to spot the green minimap dot, race to the shop, and poop him in the eating window. The alternating 10-40s windows create perfect tension: you arrive alert, wait nervously, the green "EATING" indicator flashes, you strike. Pure CARNAGE + DISCOVERY + PROGRESSION energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -1934,3 +1965,16 @@ Built the Territory Control System on top of the existing upstream code:
 - ~~Raccoon boss: "The Godfather Raccoon" — giant alpha raccoon that steals from players directly~~ (DONE Session 10)
 - ~~Arena/colosseum PvP zone~~ (DONE Session 11)
 - ~~Food truck heists (multiplayer coordinated robbery)~~ (DONE Session 12)
+- ~~Donut Shop NPC: a cop standing near a donut shop who can be bribed to reduce wanted level, or ambushed for big XP~~ (DONE Session 56)
+- Donut Cop daily challenge: "Cop Briber" (bribe 2×) + "Sugar Rush" (ambush 2×) — ADDED Session 56
+- Helicopter daily challenge: "Ace Pilot — bring down the police helicopter" (250 XP, 120c)
+- Royale Champion daily challenge: "Win Bird Royale" as the rarest daily task (200 XP, 150c)
+- Idol daily challenge: "Win Bird City Idol" as a rare daily task
+- Bird Flu + Bounty Hunter interaction: if BH catches an infected bird, BH wanders confused for 15s
+- Bird Flu + Cop: if a cop arrests an infected bird, the cop catches the flu and wanders confused for 5s
+- Helicopter + Fog: announce to targeted bird when helicopter loses trail in fog
+- Royale Champion + Kingpin: if Royale Champion becomes Kingpin, immune to first dethronement hit
+- Multi-bird Wanted system: track top 2 most-wanted simultaneously (two Bounty Hunters)
+- Drunk pigeon + crime wave interaction: drunk pigeons drop 2× coins when struck by lightning during crime waves
+- Poop power-up vending machine: spend 20c at a street vending machine for a random single-poop effect (hot sauce poop, sticky poop, rainbow poop cosmetic)
+- Bird Photo Mode: press [P] (tattoo key conflict — maybe [Y]) to screenshot your current moment; ghost camera drifts away from you for 3 seconds, takes a beautiful wide shot, shows UI-free screenshot overlay

@@ -379,6 +379,12 @@ const TATTOO_PARLOR_POS = { x: 640, y: 1840, radius: 100 };
 // Hosts the Bounty Board (Dethronement Pool) — [V] to access
 const CITY_HALL_POS = { x: 1780, y: 1050, radius: 110 };
 
+// Donut Shop — a classic cop hangout on the north road between the park and downtown.
+// A "Donut Cop" patrols outside, cycling between eating (distracted, bribeable, ambushable)
+// and alert (normal cop awareness). Press [D] near him while eating to BRIBE; poop him while
+// eating for double XP/coin ambush reward.
+const DONUT_SHOP_POS = { x: 1620, y: 750, radius: 100 };
+
 // Hall of Legends — grand memorial hall north of the park, between the radio tower and the main road
 // Shows the city's top prestige players as illuminated golden plaques
 // LEGEND birds' golden poop spawns near here; Eagle Feather drop also displayed
@@ -439,5 +445,6 @@ module.exports = {
   HALL_OF_LEGENDS_POS,
   PREDATOR_TERRITORIES,
   IDOL_STAGE_POS,
+  DONUT_SHOP_POS,
   getXPForLevel, getLevelFromXP, getBirdTypeForLevel,
 };

@@ -43,6 +43,7 @@ app.get('/api/world', (req, res) => {
     cityHallPos: world.CITY_HALL_POS,
     hallOfLegendsPos: world.HALL_OF_LEGENDS_POS,
     idolStagePos: world.IDOL_STAGE_POS,
+    donutShopPos: world.DONUT_SHOP_POS,
   });
 });
 

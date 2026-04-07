@@ -4612,4 +4612,257 @@ window.Sprites = {
 
     ctx.restore();
   },
+
+  // ── Donut Cop ──────────────────────────────────────────────────
+  // A plump, jolly cop who patrols outside the Donut Shop. Three states:
+  //   'alert'  — standing straight, watching traffic
+  //   'eating' — hunched over, donut in hand, totally distracted (BRIBEABLE + AMBUSHABLE)
+  //   'stunned' — stars orbiting, dropped donut
+  drawDonutCop(ctx, x, y, state, now) {
+    ctx.save();
+    ctx.translate(x, y);
+
+    const t = now / 1000;
+
+    // Slight body bob
+    const bob = Math.sin(t * (state === 'eating' ? 2.5 : 1.4)) * (state === 'eating' ? 2 : 1);
+    ctx.translate(0, bob);
+
+    // === BODY ===
+    // Uniform body: navy blue roundish cop
+    ctx.fillStyle = '#1a2a6c';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 11, 13, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Uniform stripes (white shirt line at waist)
+    ctx.strokeStyle = '#aaaacc';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(-8, 2);
+    ctx.lineTo(8, 2);
+    ctx.stroke();
+
+    // Gold badge (star shape on chest)
+    ctx.fillStyle = '#ffd700';
+    ctx.shadowColor = '#ffd700';
+    ctx.shadowBlur = 4;
+    ctx.font = 'bold 7px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('★', 0, -2);
+    ctx.shadowBlur = 0;
+
+    // === HEAD ===
+    // Head
+    ctx.fillStyle = '#f4c48a';
+    ctx.beginPath();
+    ctx.arc(0, -18, 9, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Police cap — dark blue with gold band
+    ctx.fillStyle = '#1a2a6c';
+    ctx.beginPath();
+    ctx.ellipse(0, -24, 10, 4, 0, Math.PI, 0); // cap dome
+    ctx.fill();
+    // cap brim
+    ctx.fillStyle = '#111a50';
+    ctx.beginPath();
+    ctx.ellipse(0, -22, 12, 2.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // gold band on cap
+    ctx.fillStyle = '#ffd700';
+    ctx.beginPath();
+    ctx.rect(-10, -24, 20, 2.5);
+    ctx.fill();
+
+    // Eyes
+    if (state === 'stunned') {
+      // X eyes when stunned
+      ctx.strokeStyle = '#555';
+      ctx.lineWidth = 1.5;
+      for (const ex of [-4, 4]) {
+        ctx.beginPath(); ctx.moveTo(ex - 2, -20); ctx.lineTo(ex + 2, -16); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(ex + 2, -20); ctx.lineTo(ex - 2, -16); ctx.stroke();
+      }
+    } else if (state === 'eating') {
+      // Squinty happy eyes (eating)
+      ctx.strokeStyle = '#333';
+      ctx.lineWidth = 1.8;
+      for (const ex of [-4, 4]) {
+        ctx.beginPath();
+        ctx.arc(ex, -17, 2.5, Math.PI + 0.3, -0.3, false);
+        ctx.stroke();
+      }
+      // Big smile
+      ctx.beginPath();
+      ctx.arc(0, -14, 4, 0.2, Math.PI - 0.2);
+      ctx.strokeStyle = '#884400';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    } else {
+      // Alert eyes — wide, watchful
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath(); ctx.arc(-4, -18, 2.5, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(4, -18, 2.5, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#222';
+      ctx.beginPath(); ctx.arc(-4, -18, 1.4, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(4, -18, 1.4, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // === ARMS + DONUT ===
+    if (state === 'eating') {
+      // Right arm extended holding donut — angled up
+      ctx.strokeStyle = '#1a2a6c';
+      ctx.lineWidth = 4;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(9, -4);
+      ctx.quadraticCurveTo(16, -14, 19, -20);
+      ctx.stroke();
+
+      // Donut in hand — full donut at end of arm
+      const dangle = Math.sin(t * 3.5) * 0.15; // gentle wobble
+      ctx.save();
+      ctx.translate(19, -22);
+      ctx.rotate(dangle);
+
+      // Donut ring
+      ctx.beginPath();
+      ctx.arc(0, 0, 6, 0, Math.PI * 2);
+      ctx.fillStyle = '#c8630b';
+      ctx.fill();
+      // Icing
+      ctx.beginPath();
+      ctx.arc(0, 0, 5.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#ff69b4';
+      ctx.fill();
+      // Hole
+      ctx.beginPath();
+      ctx.arc(0, 0, 2.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#f4c48a'; // skin-tone hole (sees through to "hand")
+      ctx.fill();
+      // Sprinkles
+      const sprinkles = [[-3, -3, 0.4], [3, -2, 1.2], [-1, 3, 0.8], [3, 3, 0.3], [-4, 1, 1.0]];
+      for (const [sx, sy, sa] of sprinkles) {
+        ctx.save();
+        ctx.translate(sx, sy);
+        ctx.rotate(sa);
+        ctx.fillStyle = ['#ffcc00', '#44ff88', '#4488ff', '#ff4444', '#ffffff'][Math.floor((sx + sy + 7) % 5)];
+        ctx.fillRect(-1.5, -0.5, 3, 1);
+        ctx.restore();
+      }
+      ctx.restore();
+
+      // Left arm — relaxed at side
+      ctx.strokeStyle = '#1a2a6c';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(-9, -4);
+      ctx.quadraticCurveTo(-14, 4, -12, 10);
+      ctx.stroke();
+
+    } else if (state === 'stunned') {
+      // Arms dropped limp
+      ctx.strokeStyle = '#1a2a6c';
+      ctx.lineWidth = 4;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(-9, -4);
+      ctx.quadraticCurveTo(-14, 6, -11, 14);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(9, -4);
+      ctx.quadraticCurveTo(14, 6, 11, 14);
+      ctx.stroke();
+
+      // Dropped donut on the ground below
+      ctx.save();
+      ctx.translate(14, 16);
+      ctx.rotate(0.8);
+      ctx.beginPath();
+      ctx.arc(0, 0, 5, 0, Math.PI * 2);
+      ctx.fillStyle = '#c8630b';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(0, 0, 4.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#ff69b4';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(0, 0, 2, 0, Math.PI * 2);
+      ctx.fillStyle = '#cccccc';
+      ctx.fill();
+      ctx.restore();
+
+    } else {
+      // Alert — arms at sides, fist on belt
+      ctx.strokeStyle = '#1a2a6c';
+      ctx.lineWidth = 4;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(-9, -4);
+      ctx.quadraticCurveTo(-14, 2, -13, 10);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(9, -4);
+      ctx.quadraticCurveTo(14, 2, 13, 10);
+      ctx.stroke();
+    }
+
+    // === LEGS ===
+    ctx.strokeStyle = '#111a50';
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'round';
+    const legSwing = state === 'eating' ? 0 : Math.sin(t * 1.8) * 4;
+    ctx.beginPath();
+    ctx.moveTo(-4, 12);
+    ctx.lineTo(-6 + legSwing, 24);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(4, 12);
+    ctx.lineTo(6 - legSwing, 24);
+    ctx.stroke();
+
+    // Shoes
+    ctx.fillStyle = '#222';
+    ctx.beginPath();
+    ctx.ellipse(-6 + legSwing, 26, 5, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(6 - legSwing, 26, 5, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // === STUNNED: orbiting stars ===
+    if (state === 'stunned') {
+      const numStars = 3;
+      for (let i = 0; i < numStars; i++) {
+        const angle = t * 2.5 + (i * Math.PI * 2) / numStars;
+        const sx = Math.cos(angle) * 16;
+        const sy = Math.sin(angle) * 8 - 22;
+        ctx.font = '10px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('⭐', sx, sy);
+      }
+    }
+
+    // === STATE LABEL ===
+    ctx.font = 'bold 7px Arial';
+    ctx.textAlign = 'center';
+    if (state === 'eating') {
+      // Pulsing "EATING 🍩" label in green
+      const alpha = 0.7 + 0.3 * Math.sin(t * 3);
+      ctx.fillStyle = `rgba(0, 255, 100, ${alpha})`;
+      ctx.shadowColor = '#00ff66';
+      ctx.shadowBlur = 6;
+      ctx.fillText('😋 EATING', 0, -36);
+      ctx.shadowBlur = 0;
+    } else if (state === 'stunned') {
+      ctx.fillStyle = '#ffcc00';
+      ctx.fillText('💫 STUNNED', 0, -36);
+    } else {
+      ctx.fillStyle = '#aaaaff';
+      ctx.fillText('👮 ON DUTY', 0, -36);
+    }
+
+    ctx.restore();
+  },
 };

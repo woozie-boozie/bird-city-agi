@@ -101,6 +101,10 @@
   let tattooOverlayVisible = false;
   let lastNearTattooParlor = false;
 
+  // === DONUT COP ===
+  const donutCopPrompt = document.getElementById('donutCopPrompt');
+  let lastNearDonutCop = false;
+
   // === CITY HALL BOUNTY BOARD ===
   const bountyBoardOverlay = document.getElementById('bountyBoardOverlay');
   const bbCloseBtn = document.getElementById('bbCloseBtn');
@@ -1616,6 +1620,44 @@
       }
     }
 
+    // === Donut Cop events ===
+    if (ev.type === 'donut_cop_pooped') {
+      effects.push({ type: 'screen_shake', intensity: ev.wasEating ? 6 : 3, duration: 300, time: now });
+      if (ev.birdId === myId) {
+        if (ev.wasEating) {
+          showAnnouncement('🍩💥 AMBUSH! +80 XP +30c — He dropped his donut!', '#44ff88', 3500);
+        } else {
+          showAnnouncement('👮💩 Cop pooped! +45 XP +15c', '#aaaaff', 2500);
+        }
+      }
+      if (ev.wasEating) {
+        const tag = ev.gangTag ? `[${ev.gangTag}] ` : '';
+        addEventMessage(`🍩💥 ${tag}${ev.birdName} ambushed the Donut Cop mid-snack!`, '#44ff88');
+      }
+    }
+    if (ev.type === 'donut_cop_state') {
+      if (ev.state === 'eating') {
+        addEventMessage('🍩 The Donut Cop just got his donut — he\'s distracted! Ambush him or bribe him!', '#44ff88');
+      } else if (ev.state === 'alert') {
+        addEventMessage('👮 The Donut Cop is back on duty.', '#aaaaaa');
+      }
+    }
+    if (ev.type === 'donut_bribe_success') {
+      if (ev.birdId === myId) {
+        showAnnouncement(`🍩💰 BRIBED! -${ev.cost}c → Heat dropped from ⭐${ev.oldLevel} to ⭐${ev.newLevel}!`, '#44ff88', 4000);
+      }
+      const tag = gameState.self && gameState.self.gangTag ? `[${gameState.self.gangTag}] ` : '';
+      addEventMessage(`🍩 ${ev.birdName} bribed the Donut Cop to look the other way! (-${ev.cost}c)`, '#aaffaa');
+    }
+    if (ev.type === 'donut_bribe_fail') {
+      if (ev.birdId === myId) {
+        if (ev.reason === 'too_far') showAnnouncement('👮 Get closer to the cop first!', '#ff6666', 2000);
+        else if (ev.reason === 'not_eating') showAnnouncement('👮 He\'s not eating right now — wait for it!', '#ffaa44', 2000);
+        else if (ev.reason === 'no_heat') showAnnouncement('👮 You\'re clean — no heat to bribe away!', '#88aaff', 2000);
+        else if (ev.reason === 'no_coins') showAnnouncement(`💸 Need ${ev.cost}c to bribe at this wanted level!`, '#ff4444', 2500);
+      }
+    }
+
     // === COMBO MILESTONE ===
     if (ev.type === 'combo_milestone') {
       const fireCount = ev.combo >= 15 ? '🔥🔥🔥' : ev.combo >= 10 ? '🔥🔥' : '🔥';
@@ -2784,6 +2826,14 @@
         SoundEngine.nestSound();
       }
     }
+    // Donut Cop bribe
+    if (e.key.toLowerCase() === 'd') {
+      if (gameState && gameState.donutCop && lastNearDonutCop) {
+        if (gameState.donutCop.state === 'eating') {
+          socket.emit('action', { type: 'donut_bribe' });
+        }
+      }
+    }
     // Black Market toggle
     if (e.key.toLowerCase() === 'b') {
       if (gameState && gameState.blackMarket && lastNearBlackMarket) {
@@ -3671,6 +3721,41 @@
 
     // Refresh open shop coins
     if (bmShopOpen) renderBmShop();
+
+    // Donut Cop proximity check
+    if (gameState.donutCop) {
+      const dc = gameState.donutCop;
+      const dcdx = s.x - dc.x;
+      const dcdy = s.y - dc.y;
+      const dcDist = Math.sqrt(dcdx * dcdx + dcdy * dcdy);
+      const isNear = dcDist < 95;
+      lastNearDonutCop = isNear;
+      if (donutCopPrompt) {
+        if (isNear) {
+          if (dc.state === 'eating') {
+            const wantedLevel = gameState.self ? (gameState.self.wantedLevel || 0) : 0;
+            const bribeCost = wantedLevel > 0 ? 50 * wantedLevel : null;
+            const bribeText = wantedLevel > 0 ? ` · [D] BRIBE (-${bribeCost}c, -1 star)` : ' · Not wanted';
+            donutCopPrompt.textContent = `😋 Cop is EATING! Poop for 2× reward!${bribeText}`;
+            donutCopPrompt.style.background = 'rgba(0,180,80,0.85)';
+            donutCopPrompt.style.display = 'block';
+          } else if (dc.state === 'stunned') {
+            donutCopPrompt.textContent = '💫 Cop is STUNNED — recovering...';
+            donutCopPrompt.style.background = 'rgba(180,150,0,0.85)';
+            donutCopPrompt.style.display = 'block';
+          } else {
+            donutCopPrompt.textContent = '👮 Donut Cop — poop him or wait for eating!';
+            donutCopPrompt.style.background = 'rgba(40,60,160,0.85)';
+            donutCopPrompt.style.display = 'block';
+          }
+        } else {
+          donutCopPrompt.style.display = 'none';
+        }
+      }
+    } else {
+      lastNearDonutCop = false;
+      if (donutCopPrompt) donutCopPrompt.style.display = 'none';
+    }
 
     // Active buffs HUD
     updateActiveBuffsHud();
@@ -5964,6 +6049,14 @@
       Renderer.drawCityHall(ctx, camera, worldData.cityHallPos, poolAmount, !!gameState.nearCityHall, now);
     }
 
+    // Donut Shop + Donut Cop
+    if (worldData && worldData.donutShopPos && gameState.donutCop) {
+      Renderer.drawDonutShop(ctx, camera, worldData.donutShopPos, gameState.donutCop, lastNearDonutCop, now);
+      const dcScreenX = gameState.donutCop.x - camera.x + camera.screenW / 2;
+      const dcScreenY = gameState.donutCop.y - camera.y + camera.screenH / 2;
+      Sprites.drawDonutCop(ctx, dcScreenX, dcScreenY, gameState.donutCop.state, now);
+    }
+
     // Hall of Legends — prestige leaderboard building
     if (worldData && worldData.hallOfLegendsPos) {
       const legendsData = (gameState.self && gameState.self.hallOfLegends) || [];
@@ -6940,6 +7033,11 @@
       minimapCtx.font = 'bold 7px sans-serif';
       minimapCtx.textAlign = 'center';
       minimapCtx.fillText('🎩', dmx, dmy - 4);
+    }
+
+    // Donut Shop on minimap — pink 🍩 dot, color changes with cop state
+    if (worldData && worldData.donutShopPos && gameState.donutCop) {
+      Renderer.drawDonutShopOnMinimap(minimapCtx, worldData.donutShopPos, gameState.donutCop.state, worldData.width, worldData.height);
     }
 
     // Owl Enforcer on minimap — cyan 🦉 dot when active at night

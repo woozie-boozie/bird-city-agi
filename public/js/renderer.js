@@ -3364,4 +3364,112 @@ window.Renderer = {
     minimapCtx.fill();
     minimapCtx.restore();
   },
+
+  // ── Donut Shop Building ─────────────────────────────────────
+  // A cheerful pink/white bakery on the north road. The Donut Cop patrols outside.
+  drawDonutShop(ctx, camera, shopPos, donutCop, nearDonutCop, now) {
+    if (!shopPos) return;
+    const bx = shopPos.x - camera.x + camera.screenW / 2;
+    const by = shopPos.y - camera.y + camera.screenH / 2;
+    const t = now / 1000;
+
+    const pulse = 0.6 + 0.4 * Math.sin(t * 2.0);
+    const signFlicker = 0.8 + 0.2 * Math.sin(t * 9.3) * Math.cos(t * 5.7);
+
+    ctx.save();
+
+    // Drop shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillRect(bx - 56 + 4, by - 70 + 4, 112, 90);
+
+    // Main building — pink pastel
+    ctx.fillStyle = '#ffd6e8';
+    ctx.fillRect(bx - 56, by - 70, 112, 90);
+
+    // Building border — hot pink
+    ctx.strokeStyle = '#ff69b4';
+    ctx.lineWidth = 2.5;
+    ctx.strokeRect(bx - 56, by - 70, 112, 90);
+
+    // Outer glow when player is near
+    if (nearDonutCop) {
+      ctx.shadowColor = '#ff69b4';
+      ctx.shadowBlur = 14 * pulse;
+      ctx.strokeStyle = `rgba(255, 105, 180, ${0.5 * pulse})`;
+      ctx.lineWidth = 7;
+      ctx.strokeRect(bx - 56, by - 70, 112, 90);
+      ctx.shadowBlur = 0;
+    }
+
+    // Sign background — deep pink strip
+    ctx.fillStyle = '#ff69b4';
+    ctx.fillRect(bx - 50, by - 64, 100, 28);
+
+    // Sign border
+    ctx.strokeStyle = '#ffc0d9';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(bx - 50, by - 64, 100, 28);
+
+    // Neon sign text
+    ctx.shadowColor = '#ff1493';
+    ctx.shadowBlur = 8 * signFlicker;
+    ctx.fillStyle = `rgba(255, 255, 255, ${signFlicker})`;
+    ctx.font = 'bold 8px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('🍩 DONUT SHOP', bx, by - 45);
+    ctx.shadowBlur = 0;
+
+    // Big donut emoji on facade
+    ctx.font = '22px serif';
+    ctx.shadowColor = '#ff69b4';
+    ctx.shadowBlur = 6 * pulse;
+    ctx.fillText('🍩', bx - 22, by - 14);
+    ctx.fillText('🍩', bx + 22, by - 14);
+    ctx.shadowBlur = 0;
+
+    // "OPEN 24/7" sign at bottom (flashing)
+    const signAlpha = 0.55 + 0.45 * Math.sin(t * 2.8);
+    ctx.font = 'bold 7px monospace';
+    ctx.fillStyle = `rgba(255, 80, 80, ${signAlpha})`;
+    ctx.fillText('OPEN 24/7', bx, by + 14);
+
+    // Bottom label
+    ctx.font = '9px sans-serif';
+    ctx.fillStyle = '#cc3377';
+    ctx.fillText('🍩 Donut Shop', bx, by + 30);
+
+    ctx.restore();
+  },
+
+  // Draw the Donut Shop/Cop on minimap
+  drawDonutShopOnMinimap(minimapCtx, shopPos, donutCopState, worldWidth, worldHeight) {
+    if (!shopPos) return;
+    const mw = minimapCtx.canvas.width;
+    const mh = minimapCtx.canvas.height;
+    const sx = mw / worldWidth;
+    const sy = mh / worldHeight;
+    const cx = shopPos.x * sx;
+    const cy = shopPos.y * sy;
+
+    const t = Date.now() / 1000;
+    const pulse = 0.7 + 0.3 * Math.sin(t * 3);
+
+    // Color reflects cop state
+    let dotColor = '#aaaaaa'; // alert = grey
+    if (donutCopState === 'eating') dotColor = '#44ff88'; // eating = bright green
+    if (donutCopState === 'stunned') dotColor = '#ffcc00'; // stunned = gold/dazed
+
+    minimapCtx.save();
+    minimapCtx.globalAlpha = donutCopState === 'eating' ? pulse : 0.85;
+    minimapCtx.fillStyle = dotColor;
+    minimapCtx.beginPath();
+    minimapCtx.arc(cx, cy, donutCopState === 'eating' ? 3.5 : 2.5, 0, Math.PI * 2);
+    minimapCtx.fill();
+    minimapCtx.globalAlpha = 1;
+    minimapCtx.font = '7px sans-serif';
+    minimapCtx.fillStyle = '#ff69b4';
+    minimapCtx.textAlign = 'center';
+    minimapCtx.fillText('🍩', cx, cy - 4);
+    minimapCtx.restore();
+  },
 };

@@ -66,6 +66,8 @@ const DAILY_CHALLENGE_POOL = [
   { id: 'piper_stopper',  title: 'Music Critic',    desc: 'Hit the Pied Piper to help drive him away', target: 3, trackType: 'piper_hit',       reward: { xp: 180, coins: 90  } },
   { id: 'cursed_holder',  title: 'Cursed!',         desc: 'Hold the Cursed Coin for 30+ seconds',     target: 1,  trackType: 'cursed_hold',     reward: { xp: 200, coins: 100 } },
   { id: 'coin_thief',     title: 'Coin Thief',      desc: 'Steal the Cursed Coin from another bird',  target: 1,  trackType: 'cursed_steal',    reward: { xp: 150, coins: 75  } },
+  { id: 'donut_ambush',   title: 'Sugar Rush',      desc: 'Poop on the Donut Cop while he\'s eating (x2)', target: 2, trackType: 'donut_cop_hit',  reward: { xp: 200, coins: 90  } },
+  { id: 'donut_briber',   title: 'Cop Briber',      desc: 'Bribe the Donut Cop to reduce your heat (x2)', target: 2, trackType: 'donut_bribe',   reward: { xp: 160, coins: 80  } },
 ];
 
 class GameEngine {
@@ -476,6 +478,20 @@ class GameEngine {
     this.seagullInvasion = null; // null | { seagulls: Map, startedAt, endsAt, repelBonusGiven }
     this.seagullTimer = Date.now() + this._randomRange(25 * 60000, 35 * 60000);
     this._seagullIdCounter = 0;
+
+    // === DONUT COP ===
+    // A perpetually snacking cop outside the Donut Shop (north road area).
+    // Cycles between 'eating' (10-15s, distracted, bribeable/ambushable) and 'alert' (25-40s).
+    // While eating: poop on him for 2× XP + coins (ambush), or press [D] to BRIBE (50c/star → drop 1 wanted star).
+    // While alert: poop on him for normal cop XP/coins + short stun.
+    // Stunned: visually dazed, immune to further hits until recovery.
+    this.donutCop = {
+      x: world.DONUT_SHOP_POS.x - 45,
+      y: world.DONUT_SHOP_POS.y + 20,
+      state: 'alert',           // 'eating' | 'alert' | 'stunned'
+      stateEndsAt: Date.now() + 12000, // first transition to eating in 12s
+      stunUntil: 0,
+    };
 
     // === BIRD ROYALE ===
     // Every 35-50 minutes, a shrinking zone forces all birds toward the city center.
@@ -981,6 +997,11 @@ class GameEngine {
       this._handlePlaceHit(bird, action, now);
     }
 
+    // === Donut Cop Bribe ===
+    if (action.type === 'donut_bribe') {
+      this._handleDonutBribe(bird, now);
+    }
+
     // === Black Market ===
     if (action.type === 'blackmarket_buy') {
       this._handleBlackMarketBuy(bird, action.itemId, now);
@@ -1297,6 +1318,9 @@ class GameEngine {
 
     // === Crime Wave ===
     this._tickCrimeWave(now);
+
+    // === Donut Cop ===
+    this._updateDonutCop(now);
 
     // === Seagull Invasion ===
     this._updateSeagullInvasion(dt, now);
@@ -2630,6 +2654,29 @@ class GameEngine {
           bird.coins += 50;
           this.events.push({ type: 'bounty_hunter_stunned', birdId: bird.id, birdName: bird.name, x: bh.x, y: bh.y });
         }
+      } else if (hit.target === 'donut_cop' && this.donutCop && this.donutCop.state !== 'stunned') {
+        // Poop hit the Donut Cop!
+        const dc = this.donutCop;
+        const wasEating = dc.state === 'eating';
+        if (wasEating) {
+          // AMBUSH! Double XP + coins while he's distracted with his donut
+          xpGain = 80;
+          bird.coins += 30;
+          dc.state = 'stunned';
+          dc.stunUntil = now + 15000; // longer stun — he's shocked
+          this.events.push({ type: 'donut_cop_pooped', birdId: bird.id, birdName: bird.name, gangTag: bird.gangTag || null, wasEating: true, x: dc.x, y: dc.y });
+        } else {
+          // Alert poop — normal cop reward, shorter stun
+          xpGain = 45;
+          bird.coins += 15;
+          dc.state = 'stunned';
+          dc.stunUntil = now + 8000;
+          this.events.push({ type: 'donut_cop_pooped', birdId: bird.id, birdName: bird.name, gangTag: bird.gangTag || null, wasEating: false, x: dc.x, y: dc.y });
+        }
+        // Track daily challenge: only counts the eating ambush
+        if (wasEating) {
+          this._trackDailyProgress(bird, 'donut_cop_hit', 1);
+        }
       } else if (hit.target === 'helicopter' && this.policeHelicopter && this.policeHelicopter.state !== 'stunned') {
         // Poop hit the Police Helicopter! Build up 6 hits to bring it down
         const heli = this.policeHelicopter;
@@ -3566,6 +3613,16 @@ class GameEngine {
           if (!isMegaPoop) return { target: 'seagull', seagull: sg };
           allHits.push({ target: 'seagull', seagull: sg });
         }
+      }
+    }
+
+    // Check Donut Cop (hit while eating = ambush bonus; while alert = normal cop reward; stunned = immune)
+    if (this.donutCop && this.donutCop.state !== 'stunned') {
+      const dcdx = poop.x - this.donutCop.x;
+      const dcdy = poop.y - this.donutCop.y;
+      if (Math.sqrt(dcdx * dcdx + dcdy * dcdy) < hitRadius + 12) {
+        if (!isMegaPoop) return { target: 'donut_cop' };
+        allHits.push({ target: 'donut_cop' });
       }
     }
 
@@ -5683,6 +5740,14 @@ class GameEngine {
         bonusUntil: this.gangRoyaleBonus.bonusUntil,
         isMyGang: bird.gangId === this.gangRoyaleBonus.gangId,
       } : null,
+      // Donut Cop
+      donutCop: {
+        x: this.donutCop.x,
+        y: this.donutCop.y,
+        state: this.donutCop.state,
+        stateEndsAt: this.donutCop.stateEndsAt,
+        stunUntil: this.donutCop.stunUntil,
+      },
     };
   }
 
@@ -13431,6 +13496,97 @@ class GameEngine {
         }, 10000);
       }
     }
+  }
+
+  // ============================================================
+  // DONUT COP SYSTEM
+  // ============================================================
+
+  _updateDonutCop(now) {
+    const dc = this.donutCop;
+    if (!dc) return;
+
+    // Handle stun recovery first
+    if (dc.state === 'stunned' && now >= dc.stunUntil) {
+      dc.state = 'alert';
+      dc.stateEndsAt = now + this._randomRange(20000, 35000); // back on duty
+      this.events.push({ type: 'donut_cop_state', state: 'alert' });
+      return;
+    }
+    if (dc.state === 'stunned') return; // still stunned, nothing to do
+
+    // Transition between eating/alert states
+    if (now >= dc.stateEndsAt) {
+      if (dc.state === 'alert') {
+        dc.state = 'eating';
+        dc.stateEndsAt = now + this._randomRange(10000, 15000); // eat for 10-15s
+        this.events.push({ type: 'donut_cop_state', state: 'eating' });
+      } else if (dc.state === 'eating') {
+        dc.state = 'alert';
+        dc.stateEndsAt = now + this._randomRange(25000, 40000); // alert for 25-40s
+        this.events.push({ type: 'donut_cop_state', state: 'alert' });
+      }
+    }
+  }
+
+  _handleDonutBribe(bird, now) {
+    const dc = this.donutCop;
+    if (!dc) return;
+
+    // Must be near the cop
+    const dx = bird.x - dc.x;
+    const dy = bird.y - dc.y;
+    if (Math.sqrt(dx * dx + dy * dy) > 95) {
+      this.events.push({ type: 'donut_bribe_fail', birdId: bird.id, reason: 'too_far' });
+      return;
+    }
+
+    // Cop must be eating
+    if (dc.state !== 'eating') {
+      this.events.push({ type: 'donut_bribe_fail', birdId: bird.id, reason: 'not_eating' });
+      return;
+    }
+
+    const currentHeat = this.heatScores.get(bird.id) || 0;
+    const wantedLevel = this._getWantedLevel(currentHeat);
+
+    // Nothing to bribe if not wanted
+    if (wantedLevel === 0) {
+      this.events.push({ type: 'donut_bribe_fail', birdId: bird.id, reason: 'no_heat' });
+      return;
+    }
+
+    // Cost: 50c per current wanted star level (1 star=50c, 5 stars=250c)
+    const cost = 50 * wantedLevel;
+    if (bird.coins < cost) {
+      this.events.push({ type: 'donut_bribe_fail', birdId: bird.id, reason: 'no_coins', cost });
+      return;
+    }
+
+    // Calculate heat threshold for the next lower wanted level
+    // Thresholds: 10, 25, 50, 100, 200
+    const THRESHOLDS = [0, 10, 25, 50, 100, 200];
+    const targetLevel = Math.max(0, wantedLevel - 1);
+    // Drop heat to just below the threshold of the current level
+    const newHeat = Math.max(0, THRESHOLDS[wantedLevel] - 1);
+    this.heatScores.set(bird.id, newHeat);
+
+    bird.coins -= cost;
+    bird.xp += 25; // small XP for doing crime correctly
+
+    // Track daily challenge
+    this._trackDailyProgress(bird, 'donut_bribe', 1);
+
+    this.events.push({
+      type: 'donut_bribe_success',
+      birdId: bird.id,
+      birdName: bird.name,
+      cost,
+      oldLevel: wantedLevel,
+      newLevel: targetLevel,
+    });
+
+    console.log(`[DonutCop] ${bird.name} bribed the cop for ${cost}c — heat dropped from ⭐${wantedLevel} to ⭐${targetLevel}`);
   }
 
 }
