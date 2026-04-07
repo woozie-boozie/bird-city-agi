@@ -3442,6 +3442,48 @@ window.Renderer = {
   },
 
   // Draw the Donut Shop/Cop on minimap
+  // === VENDING MACHINES ===
+  drawVendingMachines(ctx, camera, machines, nearMachineIdx, now) {
+    if (!machines || machines.length === 0) return;
+    for (const vm of machines) {
+      const sx = vm.x - camera.x + camera.screenW / 2;
+      const sy = vm.y - camera.y + camera.screenH / 2;
+      const margin = 60;
+      if (sx < -margin || sx > camera.screenW + margin || sy < -margin || sy > camera.screenH + margin) continue;
+      const isNear = nearMachineIdx !== null && nearMachineIdx !== undefined && nearMachineIdx === vm.id;
+      // nearMachineIdx is the full nearVendingMachine object from server, so we check vm.id
+      const nearObj = (typeof nearMachineIdx === 'object' && nearMachineIdx) ? nearMachineIdx : null;
+      const isNearThis = nearObj && nearObj.idx === vm.id;
+      Sprites.drawVendingMachine(ctx, sx, sy, vm.id, isNearThis, nearObj && nearObj.onCooldown, nearObj && nearObj.secsLeft, now);
+    }
+  },
+
+  drawVendingMachinesOnMinimap(minimapCtx, machines, worldWidth, worldHeight) {
+    if (!machines || machines.length === 0) return;
+    const mw = minimapCtx.canvas.width;
+    const mh = minimapCtx.canvas.height;
+    const sx = mw / worldWidth;
+    const sy = mh / worldHeight;
+    const t = Date.now() / 1000;
+    const COLORS = ['#e63946','#2196f3','#9c27b0','#009688','#4caf50'];
+    for (const vm of machines) {
+      const cx = vm.x * sx;
+      const cy = vm.y * sy;
+      const col = COLORS[vm.id % COLORS.length];
+      minimapCtx.save();
+      minimapCtx.fillStyle = col;
+      minimapCtx.globalAlpha = 0.7 + 0.3 * Math.sin(t * 2 + vm.id);
+      minimapCtx.beginPath();
+      minimapCtx.arc(cx, cy, 2.5, 0, Math.PI * 2);
+      minimapCtx.fill();
+      minimapCtx.globalAlpha = 1;
+      minimapCtx.font = '6px sans-serif';
+      minimapCtx.textAlign = 'center';
+      minimapCtx.fillText('🪙', cx, cy - 3);
+      minimapCtx.restore();
+    }
+  },
+
   drawDonutShopOnMinimap(minimapCtx, shopPos, donutCopState, worldWidth, worldHeight) {
     if (!shopPos) return;
     const mw = minimapCtx.canvas.width;

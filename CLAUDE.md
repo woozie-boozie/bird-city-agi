@@ -1876,6 +1876,49 @@ Bird City just got its most GTA moment yet. A cheerful pink donut shop sits on t
 
 **Creative intent**: This is peak GTA 1 energy — a cop too distracted with his snack to notice you. The bribe mechanic is the most satisfying money sink added yet: you're actively SPENDING coins to escape the law, with a social callout so the whole city knows you "bought" your freedom. The ambush reward (80 XP, 30c) is premium for a single poop but requires TIMING — you have to spot the green minimap dot, race to the shop, and poop him in the eating window. The alternating 10-40s windows create perfect tension: you arrive alert, wait nervously, the green "EATING" indicator flashes, you strike. Pure CARNAGE + DISCOVERY + PROGRESSION energy.
 
+**Session 57 — 2026-04-07: Poop Power-Up Vending Machines — Street-Corner Chaos Dispensers**
+5 colorful vending machines planted on road corners across Bird City. Fly within 70px, press [X], spend 20c, and get a random single-use colored poop power. Each effect is visual AND mechanical — you can see what your rival just loaded by the color of their next shot.
+
+**5 Effects (weighted random):**
+- 🌶️ **SPICY** (32%): 38px hit radius (between normal 20px and mega 60px). Orange-red fire poop with a tiny flickering flame above it.
+- 🧊 **FREEZE** (26%): Slows any hit player bird or cop to 40% speed for 4 seconds. Icy blue poop with an animated snowflake. Also combo-wipes the frozen target.
+- 🌈 **RAINBOW** (22%): 3× coins on that poop hit. Hue-cycling rainbow poop — color shifts every frame. 
+- 💚 **TOXIC** (13%): Chains to 1 extra nearest NPC within 80px for free — two targets hit for the price of one. Sickly green dripping poop with animated drip animation.
+- ⚡ **SHOCK** (7%): Stuns any hit player bird for 3.5 seconds (lightning-style). Electric yellow poop with a zigzag bolt. Also triggers the lightning visual effect.
+
+**Vending Machine Locations (on roads, spread across the city):**
+- NW: x:320, y:870 — west stretch of the y:840 horizontal road (residential)
+- N: x:770, y:240 — x:740 vertical road, north end (near park entrance)
+- Center: x:1670, y:1570 — x:1640 × y:1540 road intersection
+- E: x:2570, y:1570 — x:2540 × y:1540 road intersection  
+- SW: x:320, y:2310 — west end of y:2280 road (near docks)
+
+**Mechanics:**
+- 12-second per-bird per-machine cooldown — can't spam, but hopping to a different machine works
+- Can only hold one loaded effect at a time — must fire before reloading
+- Effect is consumed on the next poop fired (can't stockpile)
+- Effect visible to all nearby players as colored poop in flight — tactical reads possible
+
+**Visual system:**
+- Each machine has a unique color (red, blue, purple, teal, green) matching its label emoji
+- Cabinet body, screen showing price (20c) and effect emoji, button, coin slot
+- Near-player glow pulses in machine color when in range
+- Cooldown overlay dims the machine with a countdown timer if you're on cooldown
+- Colored poops: each effect has a distinct visual signature (flame/snowflake/color shift/drip/bolt)
+- Minimap: small colored 🪙 dots at all 5 machine positions
+- Active buff HUD pill shows loaded effect with effect description + "POOP to use!" reminder
+- Proximity prompt changes based on state: loaded, on cooldown, or ready to buy
+
+**Events & announcements:**
+- `vend_success`: personal "[emoji] [NAME] POOP LOADED! Poop to fire it!" + city-wide callout
+- `vend_fail`: personal messages for too_far / cooldown / already_loaded / no_coins
+- `vend_freeze_hit`: personal "FROZEN! Slowed 4s!" for victim; "FREEZE HIT!" for shooter
+- `vend_shock_hit`: personal "SHOCKED! Stunned 3.5s!" for victim + screen shake
+- `vend_rainbow_hit`: personal "+Xc (3×)!" for shooter
+- `vend_toxic_chain`: personal "TOXIC CHAIN! Extra target hit!" for shooter
+
+**Creative intent**: The vending machine hits the DISCOVERY pillar perfectly — players find them exploring street corners. More importantly, it gives every player a cheap 20c skill-shot: do you save it for a cop chase (Freeze to slow pursuit), a money run (Rainbow for 3× coin hit), a crowd (Spicy for wide splash), or revenge (Shock to stun the Kingpin)? The effect is consumed on fire, not on purchase, so there's no "I'll save my shock poop for later" — it fires on your next space press, adding urgency. Two birds both loaded with effects creating a running colored-poop gunfight across the city is pure CARNAGE + SPECTACLE. The machines are also a permanent map landmark that new players discover and return to. Pure CARNAGE + DISCOVERY + PROGRESSION energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -1976,5 +2019,5 @@ Built the Territory Control System on top of the existing upstream code:
 - Royale Champion + Kingpin: if Royale Champion becomes Kingpin, immune to first dethronement hit
 - Multi-bird Wanted system: track top 2 most-wanted simultaneously (two Bounty Hunters)
 - Drunk pigeon + crime wave interaction: drunk pigeons drop 2× coins when struck by lightning during crime waves
-- Poop power-up vending machine: spend 20c at a street vending machine for a random single-poop effect (hot sauce poop, sticky poop, rainbow poop cosmetic)
+- ~~Poop power-up vending machine: spend 20c at a street vending machine for a random single-poop effect~~ (DONE Session 57)
 - Bird Photo Mode: press [P] (tattoo key conflict — maybe [Y]) to screenshot your current moment; ghost camera drifts away from you for 3 seconds, takes a beautiful wide shot, shows UI-free screenshot overlay

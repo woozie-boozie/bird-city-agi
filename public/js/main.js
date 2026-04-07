@@ -105,6 +105,10 @@
   const donutCopPrompt = document.getElementById('donutCopPrompt');
   let lastNearDonutCop = false;
 
+  // === VENDING MACHINE POOP POWER-UPS ===
+  const vendingMachinePrompt = document.getElementById('vendingMachinePrompt');
+  let lastNearVendingMachine = null;
+
   // === CITY HALL BOUNTY BOARD ===
   const bountyBoardOverlay = document.getElementById('bountyBoardOverlay');
   const bbCloseBtn = document.getElementById('bbCloseBtn');
@@ -1642,6 +1646,38 @@
         addEventMessage('👮 The Donut Cop is back on duty.', '#aaaaaa');
       }
     }
+    // === VENDING MACHINE POOP POWER-UPS ===
+    if (ev.type === 'vend_success') {
+      if (ev.birdId === myId) {
+        const msg = `${ev.emoji} ${ev.effectName} POOP LOADED! (-20c) · Poop to fire it!`;
+        showAnnouncement(msg, '#aaddff', 3500);
+      }
+      addEventMessage(`🪙 ${ev.birdName} got ${ev.emoji} ${ev.effectName} poop from the machine!`, '#88bbff');
+    }
+    if (ev.type === 'vend_fail') {
+      if (ev.birdId === myId) {
+        if (ev.reason === 'too_far') showAnnouncement('🪙 Get closer to the machine!', '#ff8866', 2000);
+        else if (ev.reason === 'cooldown') showAnnouncement(`🪙 Machine cooling down: ${ev.secsLeft}s`, '#ff8866', 2000);
+        else if (ev.reason === 'already_loaded') showAnnouncement('🪙 Already loaded a poop power — fire it first!', '#ffaa44', 2000);
+        else if (ev.reason === 'no_coins') showAnnouncement(`🪙 Need ${ev.cost}c to use the machine!`, '#ff4444', 2000);
+      }
+    }
+    if (ev.type === 'vend_freeze_hit') {
+      if (ev.birdId === myId) showAnnouncement('🧊 FROZEN! Slowed to 40% speed for 4s!', '#44aaff', 3000);
+      if (ev.shooterId === myId) showAnnouncement('🧊 FREEZE HIT! Target slowed!', '#88ddff', 2000);
+    }
+    if (ev.type === 'vend_shock_hit') {
+      if (ev.birdId === myId) showAnnouncement('⚡ SHOCKED! Stunned for 3.5s!', '#ffee44', 3000);
+      if (ev.shooterId === myId) showAnnouncement('⚡ SHOCK HIT! Target stunned!', '#ffff88', 2000);
+      effects.push({ type: 'screen_shake', intensity: 4, duration: 250, time: now });
+    }
+    if (ev.type === 'vend_rainbow_hit') {
+      if (ev.birdId === myId) showAnnouncement(`🌈 RAINBOW HIT! +${ev.coins}c (3×)!`, '#ff88ff', 2500);
+    }
+    if (ev.type === 'vend_toxic_chain') {
+      if (ev.birdId === myId) showAnnouncement('💚 TOXIC CHAIN! Extra target hit!', '#88ff88', 2000);
+    }
+
     if (ev.type === 'donut_bribe_success') {
       if (ev.birdId === myId) {
         showAnnouncement(`🍩💰 BRIBED! -${ev.cost}c → Heat dropped from ⭐${ev.oldLevel} to ⭐${ev.newLevel}!`, '#44ff88', 4000);
@@ -2834,6 +2870,12 @@
         }
       }
     }
+    // Vending Machine — [X] to buy a random poop power-up
+    if (e.key.toLowerCase() === 'x') {
+      if (gameState && gameState.self && gameState.self.nearVendingMachine) {
+        socket.emit('action', { type: 'vend_buy', machineIdx: gameState.self.nearVendingMachine.idx });
+      }
+    }
     // Black Market toggle
     if (e.key.toLowerCase() === 'b') {
       if (gameState && gameState.blackMarket && lastNearBlackMarket) {
@@ -3755,6 +3797,31 @@
     } else {
       lastNearDonutCop = false;
       if (donutCopPrompt) donutCopPrompt.style.display = 'none';
+    }
+
+    // Vending Machine proximity
+    const nearVM = s.nearVendingMachine || null;
+    lastNearVendingMachine = nearVM;
+    if (vendingMachinePrompt) {
+      if (nearVM) {
+        const EFFECT_NAMES = { spicy: '🌶️ SPICY', freeze: '🧊 FREEZE', rainbow: '🌈 RAINBOW', toxic: '💚 TOXIC', shock: '⚡ SHOCK' };
+        if (nearVM.alreadyLoaded && s.vpPoopEffect) {
+          const eff = EFFECT_NAMES[s.vpPoopEffect.type] || s.vpPoopEffect.type.toUpperCase();
+          vendingMachinePrompt.innerHTML = `🪙 LOADED: ${eff} — Poop to use it!`;
+          vendingMachinePrompt.style.background = 'rgba(20,120,20,0.9)';
+          vendingMachinePrompt.style.display = 'block';
+        } else if (nearVM.onCooldown) {
+          vendingMachinePrompt.innerHTML = `🪙 VENDING MACHINE — On cooldown: ${nearVM.secsLeft}s`;
+          vendingMachinePrompt.style.background = 'rgba(80,80,80,0.85)';
+          vendingMachinePrompt.style.display = 'block';
+        } else {
+          vendingMachinePrompt.innerHTML = `🪙 POOP MACHINE — Press [X] to buy a random poop power (-20c)`;
+          vendingMachinePrompt.style.background = 'rgba(20,40,120,0.9)';
+          vendingMachinePrompt.style.display = 'block';
+        }
+      } else {
+        vendingMachinePrompt.style.display = 'none';
+      }
     }
 
     // Active buffs HUD
@@ -5624,6 +5691,8 @@
         if (sx > -margin && sx < camera.screenW + margin && sy > -margin && sy < camera.screenH + margin) {
           if (poop.isLegend) {
             Sprites.drawGoldenPoop(ctx, sx, sy, now);
+          } else if (poop.vpEffect) {
+            Sprites.drawColoredPoop(ctx, sx, sy, poop.vpEffect, now);
           } else {
             Sprites.drawPoop(ctx, sx, sy);
           }
@@ -6055,6 +6124,11 @@
       const dcScreenX = gameState.donutCop.x - camera.x + camera.screenW / 2;
       const dcScreenY = gameState.donutCop.y - camera.y + camera.screenH / 2;
       Sprites.drawDonutCop(ctx, dcScreenX, dcScreenY, gameState.donutCop.state, now);
+    }
+
+    // Vending Machines
+    if (worldData && worldData.vendingMachines) {
+      Renderer.drawVendingMachines(ctx, camera, worldData.vendingMachines, gameState.self ? gameState.self.nearVendingMachine : null, now);
     }
 
     // Hall of Legends — prestige leaderboard building
@@ -7038,6 +7112,11 @@
     // Donut Shop on minimap — pink 🍩 dot, color changes with cop state
     if (worldData && worldData.donutShopPos && gameState.donutCop) {
       Renderer.drawDonutShopOnMinimap(minimapCtx, worldData.donutShopPos, gameState.donutCop.state, worldData.width, worldData.height);
+    }
+
+    // Vending Machines on minimap
+    if (worldData && worldData.vendingMachines) {
+      Renderer.drawVendingMachinesOnMinimap(minimapCtx, worldData.vendingMachines, worldData.width, worldData.height);
     }
 
     // Owl Enforcer on minimap — cyan 🦉 dot when active at night
@@ -8233,6 +8312,20 @@
     // Royale Champion badge reminder
     if (s.royaleChampBadge) {
       html += `<div class="bm-buff-pill" style="background:rgba(80,55,0,0.9);border-color:#ffd700;color:#ffd700;">🏆 ROYALE CHAMPION — You are a legend!</div>`;
+    }
+
+    // === VENDING MACHINE active poop effect ===
+    if (s.vpPoopEffect) {
+      const EFFECT_STYLES = {
+        spicy:   { bg: 'rgba(140,30,0,0.9)',   border: '#ff6600', color: '#ffaa44', text: '🌶️ SPICY POOP — +38px radius!',         anim: 'kingpinGlow 0.5s ease-in-out infinite alternate' },
+        freeze:  { bg: 'rgba(0,50,130,0.9)',   border: '#44aaff', color: '#88ddff', text: '🧊 FREEZE POOP — Slows target 4s!',       anim: '' },
+        rainbow: { bg: 'rgba(80,0,120,0.9)',   border: '#ff88ff', color: '#ffaafF', text: '🌈 RAINBOW POOP — 3× coins on hit!',     anim: 'kingpinGlow 0.8s ease-in-out infinite alternate' },
+        toxic:   { bg: 'rgba(0,80,10,0.9)',    border: '#44ff44', color: '#88ff88', text: '💚 TOXIC POOP — Chains to extra target!', anim: '' },
+        shock:   { bg: 'rgba(100,90,0,0.9)',   border: '#ffee44', color: '#ffff88', text: '⚡ SHOCK POOP — Stuns target 3.5s!',      anim: 'kingpinGlow 0.4s ease-in-out infinite alternate' },
+      };
+      const st = EFFECT_STYLES[s.vpPoopEffect.type] || EFFECT_STYLES.spicy;
+      const animStyle = st.anim ? `animation:${st.anim};` : '';
+      html += `<div class="bm-buff-pill" style="background:${st.bg};border-color:${st.border};color:${st.color};font-weight:bold;${animStyle}">${st.text} · POOP to use!</div>`;
     }
 
     el.innerHTML = html;

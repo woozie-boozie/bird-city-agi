@@ -787,6 +787,9 @@ class GameEngine {
       witnessProtectionCooldown: 0,    // timestamp when WP can be purchased again
       // === SKILL TREE MASTERY ===
       skillTreeMaster: saved ? (saved.skill_tree_master || false) : false,
+      // === VENDING MACHINE POOP POWER-UPS ===
+      vpPoopEffect: null,          // { type: 'spicy'|'freeze'|'rainbow'|'toxic'|'shock' } or null
+      vpMachineCooldowns: {},      // machineId → timestamp (last use)
     };
 
     // Determine bird type from XP
@@ -1000,6 +1003,11 @@ class GameEngine {
     // === Donut Cop Bribe ===
     if (action.type === 'donut_bribe') {
       this._handleDonutBribe(bird, now);
+    }
+
+    // === Vending Machine Poop Power-Up ===
+    if (action.type === 'vend_buy') {
+      this._handleVendingBuy(bird, action.machineIdx, now);
     }
 
     // === Black Market ===
@@ -2503,8 +2511,16 @@ class GameEngine {
       const isWedgePoop = !isMegaPoop && bird.formationType === 'WEDGE';
       if (isWedgePoop) poop.isWedge = true;
 
+      // Vending Machine effect — tag poop and consume the effect
+      let vpEffect = null;
+      if (!isMegaPoop && bird.vpPoopEffect) {
+        vpEffect = bird.vpPoopEffect.type;
+        poop.vpEffect = vpEffect;
+        bird.vpPoopEffect = null; // consumed on fire
+      }
+
       // Check what it hit
-      const hit = this._checkPoopHit(poop, isMegaPoop, isWedgePoop);
+      const hit = this._checkPoopHit(poop, isMegaPoop, isWedgePoop, vpEffect);
       poop.hitTarget = hit.target;
 
       this.poops.set(poopId, poop);
@@ -3012,6 +3028,11 @@ class GameEngine {
       }
       // Crime Wave: ×2 all crime coin rewards — high risk, high reward
       if (this.crimeWave && coinGain > 0) coinGain *= 2;
+      // Vending Machine: Rainbow effect — 3× coins on this poop hit
+      if (vpEffect === 'rainbow' && coinGain > 0) {
+        coinGain = Math.floor(coinGain * 3);
+        this.events.push({ type: 'vend_rainbow_hit', birdId: bird.id, coins: coinGain, x: poop.x, y: poop.y });
+      }
       bird.coins += coinGain;
 
       // === COMBO STREAK — chain hits within 8s for escalating XP ===
@@ -3199,6 +3220,83 @@ class GameEngine {
           this.owlEnforcer.alertBirdId = bird.id;
           this.owlEnforcer.chaseTimer = 8.0;
           this.events.push({ type: 'owl_alert', birdId: bird.id, birdName: bird.name, x: this.owlEnforcer.x, y: this.owlEnforcer.y });
+        }
+      }
+
+      // === VENDING MACHINE SPECIAL EFFECTS (applied after main hit processing) ===
+      if (vpEffect && hit.target && hit.target !== 'miss') {
+        // FREEZE: slow any hit target to 40% speed for 4s
+        if (vpEffect === 'freeze') {
+          // Apply hailSlowUntil to hit player birds
+          for (const otherBird of this.birds.values()) {
+            if (otherBird.id === bird.id) continue;
+            const fdx = poop.x - otherBird.x;
+            const fdy = poop.y - otherBird.y;
+            if (Math.sqrt(fdx * fdx + fdy * fdy) < 30) {
+              otherBird.hailSlowUntil = Math.max(otherBird.hailSlowUntil, now + 4000);
+              otherBird.comboCount = 0;
+              otherBird.comboExpiresAt = 0;
+              this.events.push({ type: 'vend_freeze_hit', birdId: otherBird.id, shooterId: bird.id, x: poop.x, y: poop.y });
+              break;
+            }
+          }
+          // Also slow hit cops
+          for (const cop of this.copBirds.values()) {
+            const fdx = poop.x - cop.x;
+            const fdy = poop.y - cop.y;
+            if (Math.sqrt(fdx * fdx + fdy * fdy) < 30) {
+              cop.state = 'stunned';
+              cop.stunnedUntil = Math.max(cop.stunnedUntil, now + 4000); // cops get frozen too
+              break;
+            }
+          }
+        }
+        // SHOCK: stun any nearby player bird or cop for 3.5s (like lightning)
+        if (vpEffect === 'shock') {
+          let stunApplied = false;
+          for (const otherBird of this.birds.values()) {
+            if (otherBird.id === bird.id) continue;
+            const sdx = poop.x - otherBird.x;
+            const sdy = poop.y - otherBird.y;
+            if (Math.sqrt(sdx * sdx + sdy * sdy) < 30) {
+              otherBird.stunnedUntil = Math.max(otherBird.stunnedUntil, now + 3500);
+              otherBird.comboCount = 0;
+              otherBird.comboExpiresAt = 0;
+              this.events.push({ type: 'vend_shock_hit', birdId: otherBird.id, shooterId: bird.id, x: poop.x, y: poop.y });
+              stunApplied = true;
+              break;
+            }
+          }
+          if (!stunApplied) {
+            // Also shock NPCs visually
+            this.events.push({ type: 'lightning', x: poop.x, y: poop.y });
+          }
+        }
+        // TOXIC: chain hit to 1 extra nearest NPC within 80px
+        if (vpEffect === 'toxic') {
+          let bestDist = 80;
+          let chainTarget = null;
+          for (const npc of this.npcs.values()) {
+            const tdx = poop.x - npc.x;
+            const tdy = poop.y - npc.y;
+            const td = Math.sqrt(tdx * tdx + tdy * tdy);
+            if (td < bestDist) {
+              bestDist = td;
+              chainTarget = npc;
+            }
+          }
+          if (chainTarget) {
+            chainTarget.poopedOn++;
+            chainTarget.state = 'fleeing';
+            chainTarget.stateTimer = 3;
+            const ca = Math.random() * Math.PI * 2;
+            chainTarget.targetX = chainTarget.x + Math.cos(ca) * 200;
+            chainTarget.targetY = chainTarget.y + Math.sin(ca) * 200;
+            chainTarget.speed = 80;
+            bird.xp += 10;
+            bird.coins += 3;
+            this.events.push({ type: 'vend_toxic_chain', birdId: bird.id, x: chainTarget.x, y: chainTarget.y });
+          }
         }
       }
 
@@ -3411,8 +3509,10 @@ class GameEngine {
     }
   }
 
-  _checkPoopHit(poop, isMegaPoop, isWedgePoop = false) {
+  _checkPoopHit(poop, isMegaPoop, isWedgePoop = false, vpEffect = null) {
     let hitRadius = isMegaPoop ? 60 : (isWedgePoop ? 33 : 20); // Wedge: +65% wider splash
+    // Vending Machine: Spicy effect — wide splash radius (between normal and mega)
+    if (!isMegaPoop && vpEffect === 'spicy') hitRadius = 38;
     // Skill Tree: Splash Zone — +20% hit radius for the shooter
     const shooter = this.birds.get(poop.birdId);
     if (shooter && shooter.skillTreeUnlocked && shooter.skillTreeUnlocked.includes('splash_zone') && !isMegaPoop) {
@@ -4796,7 +4896,7 @@ class GameEngine {
     const nearbyPoops = [];
     for (const p of this.poops.values()) {
       if (Math.abs(p.x - bird.x) < viewRange && Math.abs(p.y - bird.y) < viewRange) {
-        nearbyPoops.push({ id: p.id, x: p.x, y: p.y, hitTarget: p.hitTarget, isLegend: p.isLegend || false });
+        nearbyPoops.push({ id: p.id, x: p.x, y: p.y, hitTarget: p.hitTarget, isLegend: p.isLegend || false, vpEffect: p.vpEffect || null });
       }
     }
 
@@ -5401,6 +5501,26 @@ class GameEngine {
         const dy = bird.y - ch.y;
         return Math.sqrt(dx * dx + dy * dy) < ch.radius;
       })(),
+      // Vending Machine proximity + active effect
+      nearVendingMachine: (() => {
+        for (const vm of world.VENDING_MACHINES) {
+          const dx = bird.x - vm.x;
+          const dy = bird.y - vm.y;
+          if (Math.sqrt(dx * dx + dy * dy) < 70) {
+            const cooldown = bird.vpMachineCooldowns[vm.id] || 0;
+            return {
+              idx: vm.id,
+              x: vm.x,
+              y: vm.y,
+              onCooldown: now - cooldown < 12000,
+              secsLeft: now - cooldown < 12000 ? Math.ceil((12000 - (now - cooldown)) / 1000) : 0,
+              alreadyLoaded: !!bird.vpPoopEffect,
+            };
+          }
+        }
+        return null;
+      })(),
+      vpPoopEffect: bird.vpPoopEffect || null,
       radioTower: {
         state: this.radioTower.state,
         ownerId: this.radioTower.ownerId,
@@ -13587,6 +13707,70 @@ class GameEngine {
     });
 
     console.log(`[DonutCop] ${bird.name} bribed the cop for ${cost}c — heat dropped from ⭐${wantedLevel} to ⭐${targetLevel}`);
+  }
+
+  // === VENDING MACHINE POOP POWER-UPS ===
+  _handleVendingBuy(bird, machineIdx, now) {
+    const machines = world.VENDING_MACHINES;
+    if (machineIdx === undefined || machineIdx < 0 || machineIdx >= machines.length) return;
+    const machine = machines[machineIdx];
+
+    // Proximity check (70px)
+    const dx = bird.x - machine.x;
+    const dy = bird.y - machine.y;
+    if (Math.sqrt(dx * dx + dy * dy) > 70) {
+      this.events.push({ type: 'vend_fail', birdId: bird.id, reason: 'too_far' });
+      return;
+    }
+
+    // Cooldown check (12s per machine)
+    const lastUse = bird.vpMachineCooldowns[machineIdx] || 0;
+    if (now - lastUse < 12000) {
+      const secsLeft = Math.ceil((12000 - (now - lastUse)) / 1000);
+      this.events.push({ type: 'vend_fail', birdId: bird.id, reason: 'cooldown', secsLeft });
+      return;
+    }
+
+    // Already have an effect queued?
+    if (bird.vpPoopEffect) {
+      this.events.push({ type: 'vend_fail', birdId: bird.id, reason: 'already_loaded' });
+      return;
+    }
+
+    // Cost
+    const COST = 20;
+    if (bird.coins < COST) {
+      this.events.push({ type: 'vend_fail', birdId: bird.id, reason: 'no_coins', cost: COST });
+      return;
+    }
+
+    // Roll random effect (weighted)
+    const roll = Math.random();
+    let effectType;
+    if      (roll < 0.32) effectType = 'spicy';    // 32% — wider splash
+    else if (roll < 0.58) effectType = 'freeze';   // 26% — slows target
+    else if (roll < 0.80) effectType = 'rainbow';  // 22% — 3× coins
+    else if (roll < 0.93) effectType = 'toxic';    // 13% — chain hit
+    else                   effectType = 'shock';    //  7% — stun target
+
+    const EFFECT_EMOJIS = { spicy: '🌶️', freeze: '🧊', rainbow: '🌈', toxic: '💚', shock: '⚡' };
+    const EFFECT_NAMES  = { spicy: 'SPICY', freeze: 'FREEZE', rainbow: 'RAINBOW', toxic: 'TOXIC', shock: 'SHOCK' };
+
+    bird.coins -= COST;
+    bird.vpMachineCooldowns[machineIdx] = now;
+    bird.vpPoopEffect = { type: effectType };
+
+    this.events.push({
+      type: 'vend_success',
+      birdId: bird.id,
+      birdName: bird.name,
+      effectType,
+      emoji: EFFECT_EMOJIS[effectType],
+      effectName: EFFECT_NAMES[effectType],
+      machineIdx,
+    });
+
+    console.log(`[Vending] ${bird.name} got ${EFFECT_EMOJIS[effectType]} ${effectType.toUpperCase()} poop from machine ${machineIdx}`);
   }
 
 }

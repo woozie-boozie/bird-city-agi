@@ -4865,4 +4865,206 @@ window.Sprites = {
 
     ctx.restore();
   },
+
+  // === VENDING MACHINE ===
+  drawVendingMachine(ctx, x, y, machineId, nearPlayer, onCooldown, secsLeft, now) {
+    ctx.save();
+    ctx.translate(x, y);
+    const t = (now || 0) / 1000;
+
+    // Machine colors cycle by id
+    const COLORS = ['#e63946','#2196f3','#9c27b0','#009688','#4caf50'];
+    const EMOJIS = ['🌶️','⚡','🌈','🧊','💚'];
+    const col = COLORS[machineId % COLORS.length];
+
+    // Drop shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath();
+    ctx.ellipse(0, 18, 15, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Cabinet body
+    ctx.fillStyle = col;
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.roundRect(-13, -28, 26, 46, 3);
+    ctx.fill();
+    ctx.stroke();
+
+    // Screen / display area (dark glass)
+    ctx.fillStyle = '#111';
+    ctx.beginPath();
+    ctx.roundRect(-9, -24, 18, 16, 2);
+    ctx.fill();
+
+    // Screen glow — pulses
+    const glow = 0.6 + 0.4 * Math.sin(t * 3 + machineId);
+    ctx.fillStyle = `rgba(255,255,200,${glow * 0.15})`;
+    ctx.beginPath();
+    ctx.roundRect(-9, -24, 18, 16, 2);
+    ctx.fill();
+
+    // Price tag
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 6px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('20c', 0, -13);
+
+    // Selection button row
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.roundRect(-10, -4, 20, 8, 2);
+    ctx.fill();
+    // Big button
+    ctx.fillStyle = '#ff5500';
+    ctx.beginPath();
+    ctx.arc(0, 0, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#cc3300';
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+
+    // Bottom slot / dispenser area
+    ctx.fillStyle = '#222';
+    ctx.beginPath();
+    ctx.roundRect(-8, 8, 16, 7, 1);
+    ctx.fill();
+
+    // Emoji label on screen
+    ctx.font = '9px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(EMOJIS[machineId % EMOJIS.length], 0, -18);
+
+    // "VEND" text side stripe
+    ctx.save();
+    ctx.rotate(-Math.PI / 2);
+    ctx.font = 'bold 4px Arial';
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.fillText('POOP SHOP', 0, -11);
+    ctx.restore();
+
+    // Near-player glow and prompt
+    if (nearPlayer && !onCooldown) {
+      ctx.shadowColor = col;
+      ctx.shadowBlur = 16 + 8 * Math.sin(t * 4);
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(-13, -28, 26, 46, 3);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+
+    // Cooldown overlay
+    if (onCooldown && secsLeft > 0) {
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.beginPath();
+      ctx.roundRect(-13, -28, 26, 46, 3);
+      ctx.fill();
+      ctx.fillStyle = '#ff9900';
+      ctx.font = 'bold 7px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(secsLeft + 's', 0, 0);
+    }
+
+    ctx.restore();
+  },
+
+  // === COLORED POOP VARIANTS (vending machine effects) ===
+  drawColoredPoop(ctx, x, y, vpEffect, now) {
+    const t = (now || 0) / 1000;
+    ctx.save();
+
+    if (vpEffect === 'spicy') {
+      // Orange-red fiery poop
+      ctx.shadowColor = '#ff4400';
+      ctx.shadowBlur = 6;
+      ctx.fillStyle = '#cc2200';
+      ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#ff4400';
+      ctx.beginPath(); ctx.arc(x - 2, y - 1, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#ff7700';
+      ctx.beginPath(); ctx.arc(x + 1, y + 2, 2, 0, Math.PI * 2); ctx.fill();
+      // Tiny flame flicker
+      const fAlpha = 0.7 + 0.3 * Math.sin(t * 15 + x);
+      ctx.fillStyle = `rgba(255,200,0,${fAlpha})`;
+      ctx.beginPath(); ctx.arc(x, y - 6, 2, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+    } else if (vpEffect === 'freeze') {
+      // Icy blue poop
+      ctx.shadowColor = '#44aaff';
+      ctx.shadowBlur = 7;
+      ctx.fillStyle = '#0055cc';
+      ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#3399ff';
+      ctx.beginPath(); ctx.arc(x - 2, y - 1, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#88ddff';
+      ctx.beginPath(); ctx.arc(x + 1, y + 2, 2, 0, Math.PI * 2); ctx.fill();
+      // Snowflake sparkle
+      ctx.strokeStyle = 'rgba(180,230,255,0.8)';
+      ctx.lineWidth = 0.8;
+      for (let i = 0; i < 3; i++) {
+        const a = (i * Math.PI / 3) + t * 2;
+        ctx.beginPath();
+        ctx.moveTo(x + Math.cos(a) * 1, y - 7 + Math.sin(a) * 1);
+        ctx.lineTo(x + Math.cos(a) * 4.5, y - 7 + Math.sin(a) * 4.5);
+        ctx.stroke();
+      }
+      ctx.shadowBlur = 0;
+    } else if (vpEffect === 'rainbow') {
+      // Shimmering rainbow poop — color cycles
+      const hue = ((t * 120) + x * 0.5) % 360;
+      ctx.shadowColor = `hsl(${hue},100%,60%)`;
+      ctx.shadowBlur = 7;
+      ctx.fillStyle = `hsl(${hue},90%,40%)`;
+      ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = `hsl(${(hue + 60) % 360},90%,55%)`;
+      ctx.beginPath(); ctx.arc(x - 2, y - 1, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = `hsl(${(hue + 120) % 360},90%,65%)`;
+      ctx.beginPath(); ctx.arc(x + 1, y + 2, 2, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+    } else if (vpEffect === 'toxic') {
+      // Sickly green dripping poop
+      ctx.shadowColor = '#00ff44';
+      ctx.shadowBlur = 7;
+      ctx.fillStyle = '#116611';
+      ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#22aa22';
+      ctx.beginPath(); ctx.arc(x - 2, y - 1, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#55ee55';
+      ctx.beginPath(); ctx.arc(x + 1, y + 2, 2, 0, Math.PI * 2); ctx.fill();
+      // Drip
+      const drip = (t * 8 + x * 0.3) % 1;
+      ctx.fillStyle = `rgba(40,200,40,${0.6 - drip * 0.5})`;
+      ctx.beginPath(); ctx.arc(x, y + 6 + drip * 4, 1.2, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+    } else if (vpEffect === 'shock') {
+      // Electric yellow poop with sparks
+      ctx.shadowColor = '#ffff00';
+      ctx.shadowBlur = 9;
+      ctx.fillStyle = '#997700';
+      ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#ddcc00';
+      ctx.beginPath(); ctx.arc(x - 2, y - 1, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#ffee44';
+      ctx.beginPath(); ctx.arc(x + 1, y + 2, 2, 0, Math.PI * 2); ctx.fill();
+      // Electric bolt zap
+      const zAlpha = 0.5 + 0.5 * Math.sin(t * 20 + y);
+      ctx.strokeStyle = `rgba(255,255,100,${zAlpha})`;
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(x - 1, y - 8);
+      ctx.lineTo(x + 2, y - 5);
+      ctx.lineTo(x - 2, y - 3);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    } else {
+      // Fallback: normal poop
+      ctx.fillStyle = '#6b4226';
+      ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();
+    }
+
+    ctx.restore();
+  },
 };

@@ -385,6 +385,17 @@ const CITY_HALL_POS = { x: 1780, y: 1050, radius: 110 };
 // eating for double XP/coin ambush reward.
 const DONUT_SHOP_POS = { x: 1620, y: 750, radius: 100 };
 
+// Poop Power-Up Vending Machines — 5 colorful street machines scattered across the city.
+// Fly within 70px and press [X] to buy a random single-use poop effect for 20 coins.
+// Effects: Spicy (wide splash), Freeze (slow target), Rainbow (3× coins), Toxic (chain hit), Shock (stun)
+const VENDING_MACHINES = [
+  { id: 0, x: 320,  y: 870,  label: '🌶️ VENDING'  },  // NW — west stretch of y:840 road
+  { id: 1, x: 770,  y: 240,  label: '⚡ VENDING'   },  // N  — x:740 road, north end by park
+  { id: 2, x: 1670, y: 1570, label: '🌈 VENDING'  },  // Center — road intersection
+  { id: 3, x: 2570, y: 1570, label: '🧊 VENDING'  },  // E  — east road intersection
+  { id: 4, x: 320,  y: 2310, label: '💚 VENDING'  },  // SW — southwest y:2280 road
+];
+
 // Hall of Legends — grand memorial hall north of the park, between the radio tower and the main road
 // Shows the city's top prestige players as illuminated golden plaques
 // LEGEND birds' golden poop spawns near here; Eagle Feather drop also displayed
@@ -446,5 +457,6 @@ module.exports = {
   PREDATOR_TERRITORIES,
   IDOL_STAGE_POS,
   DONUT_SHOP_POS,
+  VENDING_MACHINES,
   getXPForLevel, getLevelFromXP, getBirdTypeForLevel,
 };
