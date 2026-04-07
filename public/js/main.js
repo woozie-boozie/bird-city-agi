@@ -1993,6 +1993,77 @@
       addEventMessage('⚔️ Arena fight cancelled — not enough fighters', '#888');
     }
 
+    // === STREET DUELS ===
+    if (ev.type === 'duel_incoming_challenge') {
+      if (ev.birdId === myId) {
+        showAnnouncement('⚔️ ' + ev.challengerName + ' challenges you to a STREET DUEL!\nPot: ' + ev.pot + 'c · Press [Y] to accept, [ESC] to decline', '#ff6666', 15000);
+        SoundEngine.stunned();
+      }
+    }
+    if (ev.type === 'duel_challenge_sent') {
+      if (ev.birdId === myId) {
+        showTemporaryPrompt('⚔️ Challenge sent to ' + ev.targetName + '! Waiting…', 'streetDuelPrompt', 4000);
+      }
+    }
+    if (ev.type === 'duel_declined') {
+      if (ev.birdId === myId) {
+        showAnnouncement('❌ ' + ev.targetName + ' declined the duel.', '#ff8888', 3000);
+      }
+    }
+    if (ev.type === 'duel_challenge_expired') {
+      if (ev.birdId === myId) {
+        showTemporaryPrompt('⚔️ Duel challenge expired.', 'streetDuelPrompt', 2000);
+      }
+    }
+    if (ev.type === 'duel_fail') {
+      if (ev.birdId === myId) {
+        const msgs = { too_far: 'Too far away to challenge!', no_coins: 'Not enough coins for the stake!', no_challenge: 'No pending challenge.' };
+        showTemporaryPrompt('⚔️ ' + (msgs[ev.reason] || 'Cannot duel right now.'), 'streetDuelPrompt', 2000);
+      }
+    }
+    if (ev.type === 'street_duel_start') {
+      addEventMessage('⚔️ STREET DUEL: ' + ev.challengerName + ' vs ' + ev.targetName + ' (' + ev.pot + 'c pot!)');
+      effects.push({ type: 'screen_shake', time: now, duration: 600, intensity: 8 });
+      if (ev.challengerId === myId || ev.targetId === myId) {
+        showAnnouncement('⚔️ STREET DUEL START!\nPot: ' + ev.pot + 'c · POOP YOUR OPPONENT!', '#ff4444', 4000);
+      }
+    }
+    if (ev.type === 'street_duel_hit') {
+      effects.push({ type: 'splat', x: ev.x, y: ev.y, time: now, duration: 600, radius: 18 });
+      const hp = ev.hp;
+      const hearts = (hp >= 3 ? '❤️❤️❤️' : hp === 2 ? '❤️❤️🖤' : hp === 1 ? '❤️🖤🖤' : '💀💀💀');
+      if (ev.attackerId === myId) {
+        effects.push({ type: 'text', x: ev.x, y: ev.y - 28, time: now, duration: 1400, text: '⚔️ DUEL HIT! ' + hearts, color: '#ff6600', size: 15 });
+      }
+      if (ev.targetId === myId) {
+        effects.push({ type: 'text', x: ev.x, y: ev.y - 28, time: now, duration: 1400, text: '💔 DUEL HIT! ' + hearts, color: '#ff0000', size: 15 });
+        effects.push({ type: 'screen_shake', time: now, duration: 300, intensity: 5 });
+        SoundEngine.stunned();
+      }
+    }
+    if (ev.type === 'street_duel_end') {
+      if (ev.reason === 'draw') {
+        if (ev.challengerId === myId || ev.targetId === myId) {
+          showAnnouncement('🤝 DUEL DRAW! Time\'s up — coins refunded.', '#aaaaff', 4000);
+        }
+        addEventMessage('🤝 DUEL DRAW: ' + ev.challengerName + ' vs ' + ev.targetName + ' — time ran out', '#aaaaff');
+      } else {
+        if (ev.winnerId === myId) {
+          showAnnouncement('🏆 DUEL WIN! ⚔️ +' + ev.pot + 'c +150 XP!', '#ffd700', 5000);
+          effects.push({ type: 'screen_shake', time: now, duration: 800, intensity: 12 });
+        } else if (ev.loserId === myId) {
+          showAnnouncement('💀 DUEL LOSS! ' + (ev.winnerName || '???') + ' knocked you out!', '#ff4444', 4000);
+          effects.push({ type: 'screen_shake', time: now, duration: 600, intensity: 8 });
+        }
+        addEventMessage('⚔️ DUEL WINNER: ' + (ev.winnerName || '???') + ' defeats ' + (ev.loserName || '???') + ' (+' + ev.pot + 'c)!', '#ffd700');
+      }
+    }
+    if (ev.type === 'street_duel_cancelled') {
+      if (ev.opponentId === myId) {
+        showAnnouncement('⚔️ Your opponent disconnected — duel cancelled, coins refunded.', '#ff9999', 3000);
+      }
+    }
+
     // === PIGEON RACING ===
     if (ev.type === 'race_open') {
       const sec = Math.round(Math.max(0, (ev.openUntil - Date.now()) / 1000));
@@ -2813,10 +2884,14 @@
       return;
     }
 
-    // Escape key: close the gazette if it's open
+    // Escape key: close the gazette if it's open; decline duel challenge
     if (e.key === 'Escape') {
       const go = document.getElementById('gazetteOverlay');
       if (go && go.style.display !== 'none') { closeGazette(); return; }
+      // Decline incoming duel challenge
+      if (gameState && gameState.self && gameState.self.incomingChallenge) {
+        socket.emit('action', { type: 'decline_duel' });
+      }
     }
 
     // Bird Home toggle
@@ -2946,6 +3021,24 @@
     // [Z] — Royale Spectator Cheer Panel
     if (e.key.toLowerCase() === 'z') {
       toggleRoyaleCheerPanel();
+    }
+
+    // [Y] — Street Duel: accept incoming challenge OR challenge nearest bird
+    if (e.key.toLowerCase() === 'y') {
+      if (gameState && gameState.self) {
+        const incoming = gameState.self.incomingChallenge;
+        if (incoming) {
+          socket.emit('action', { type: 'accept_duel' });
+        } else if (!gameState.self.streetDuelId) {
+          // Challenge nearest bird within range
+          const nearby = gameState.self.nearbyBirdsForDuel;
+          if (nearby && nearby.length > 0) {
+            socket.emit('action', { type: 'challenge_duel', targetId: nearby[0].id });
+          } else {
+            showTemporaryPrompt('⚔️ No birds nearby to challenge!', 'streetDuelPrompt', 2000);
+          }
+        }
+      }
     }
 
     // Bird City Idol — [I] to enter contest or vote
@@ -3824,6 +3917,9 @@
       }
     }
 
+    // Street Duel HUD
+    updateStreetDuelHud();
+
     // Active buffs HUD
     updateActiveBuffsHud();
 
@@ -3963,6 +4059,100 @@
   // ============================================================
   // FOOD TRUCK HEIST UI — proximity prompt
   // ============================================================
+  // ============================================================
+  // STREET DUEL HUD — incoming challenge + active duel display
+  // ============================================================
+
+  function showTemporaryPrompt(text, elemId, duration) {
+    const el = document.getElementById(elemId);
+    if (!el) return;
+    el.textContent = text;
+    el.style.display = 'block';
+    clearTimeout(el._hideTimer);
+    el._hideTimer = setTimeout(() => { el.style.display = 'none'; }, duration);
+  }
+
+  function updateStreetDuelHud() {
+    if (!gameState || !gameState.self) return;
+    const s = gameState.self;
+    const now = Date.now();
+    const challengeEl = document.getElementById('streetDuelChallenge');
+    const duelHudEl = document.getElementById('streetDuelHud');
+    const duelPromptEl = document.getElementById('streetDuelPrompt');
+
+    // Show/hide incoming challenge overlay
+    if (challengeEl) {
+      const incoming = s.incomingChallenge;
+      if (incoming && incoming.expiresAt > now) {
+        challengeEl.style.display = 'block';
+        const nameEl = document.getElementById('streetDuelChallengerName');
+        const potEl = document.getElementById('streetDuelPot');
+        const timerEl = document.getElementById('streetDuelChallengeTimer');
+        if (nameEl) nameEl.textContent = '⚔️ ' + incoming.challengerName + ' challenges you!';
+        if (potEl) potEl.textContent = '💰 Pot: ' + incoming.pot + 'c';
+        if (timerEl) timerEl.textContent = Math.max(0, Math.ceil((incoming.expiresAt - now) / 1000)) + 's to respond';
+      } else {
+        challengeEl.style.display = 'none';
+      }
+    }
+
+    // Show [Y] challenge prompt if a challengeable bird is nearby (and not in duel)
+    if (duelPromptEl && !s.streetDuelId && !s.incomingChallenge) {
+      const nearby = s.nearbyBirdsForDuel;
+      if (nearby && nearby.length > 0 && duelPromptEl.style.display === 'none') {
+        // Only show if no timer is running
+        if (!duelPromptEl._challengeTarget || duelPromptEl._challengeTarget !== nearby[0].name) {
+          duelPromptEl._challengeTarget = nearby[0].name;
+          duelPromptEl.textContent = '⚔️ Press [Y] to challenge ' + nearby[0].name + ' to a duel';
+          duelPromptEl.style.display = 'block';
+          clearTimeout(duelPromptEl._challengeShowTimer);
+          duelPromptEl._challengeShowTimer = setTimeout(() => {
+            duelPromptEl.style.display = 'none';
+            duelPromptEl._challengeTarget = null;
+          }, 3000);
+        }
+      } else if (!nearby || nearby.length === 0) {
+        duelPromptEl._challengeTarget = null;
+      }
+    } else if (duelPromptEl && (s.streetDuelId || s.incomingChallenge)) {
+      duelPromptEl.style.display = 'none';
+    }
+
+    // Show active duel fight HUD
+    if (duelHudEl) {
+      if (s.streetDuelId && gameState.streetDuels) {
+        const duel = gameState.streetDuels.find(d => d.id === s.streetDuelId);
+        if (duel) {
+          duelHudEl.style.display = 'block';
+          const iAmChallenger = duel.challengerId === s.id;
+          const myId = s.id;
+          const oppId = iAmChallenger ? duel.targetId : duel.challengerId;
+          const oppName = iAmChallenger ? duel.targetName : duel.challengerName;
+          const myHp = duel.hp[myId] || 0;
+          const oppHp = duel.hp[oppId] || 0;
+          const hearts = (n) => (n >= 3 ? '❤️❤️❤️' : n === 2 ? '❤️❤️🖤' : n === 1 ? '❤️🖤🖤' : '💀💀💀');
+          const secsLeft = Math.max(0, Math.ceil((duel.expiresAt - now) / 1000));
+          const myNameEl = document.getElementById('streetDuelMyName');
+          const myHeartsEl = document.getElementById('streetDuelMyHearts');
+          const oppNameEl = document.getElementById('streetDuelOppName');
+          const oppHeartsEl = document.getElementById('streetDuelOppHearts');
+          const timerEl = document.getElementById('streetDuelTimer');
+          const potEl = document.getElementById('streetDuelPotDisplay');
+          if (myNameEl) myNameEl.textContent = s.name;
+          if (myHeartsEl) myHeartsEl.textContent = hearts(myHp);
+          if (oppNameEl) oppNameEl.textContent = oppName;
+          if (oppHeartsEl) oppHeartsEl.textContent = hearts(oppHp);
+          if (timerEl) timerEl.textContent = '⏱ ' + secsLeft + 's · POOP to knock out!';
+          if (potEl) potEl.textContent = '💰 Pot: ' + duel.pot + 'c';
+        } else {
+          duelHudEl.style.display = 'none';
+        }
+      } else {
+        duelHudEl.style.display = 'none';
+      }
+    }
+  }
+
   function updateFoodTruckHeistUI() {
     const heistPrompt = document.getElementById('heistProximityPrompt');
     if (!heistPrompt || !gameState || !gameState.self || !gameState.foodTruck) {
@@ -6346,6 +6536,34 @@
           // Cursed Coin holder indicator
           if (b.hasCursedCoin) {
             Sprites.drawCursedCoinIndicator(ctx, sx, sy, now / 1000, b.cursedCoinIntensity || 0);
+          }
+
+          // Street Duel: red combat aura + hearts above dueling birds
+          if (b.streetDuelId && gameState.streetDuels) {
+            const duel = gameState.streetDuels.find(d => d.id === b.streetDuelId);
+            if (duel) {
+              // Pulsing red combat aura
+              const duelPulse = 0.35 + 0.3 * Math.sin(now * 0.012);
+              ctx.save();
+              ctx.globalAlpha = duelPulse;
+              const duelGrd = ctx.createRadialGradient(sx, sy, 8, sx, sy, 30);
+              duelGrd.addColorStop(0, 'rgba(255,40,40,0.6)');
+              duelGrd.addColorStop(1, 'rgba(200,0,0,0)');
+              ctx.fillStyle = duelGrd;
+              ctx.beginPath();
+              ctx.arc(sx, sy, 30, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.restore();
+              // Hearts above the bird
+              const hp = duel.hp[b.id] || 0;
+              const hearts = (hp >= 3 ? '❤️❤️❤️' : hp === 2 ? '❤️❤️🖤' : hp === 1 ? '❤️🖤🖤' : '💀');
+              ctx.save();
+              ctx.font = '11px sans-serif';
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.fillText(hearts, sx, sy - 52);
+              ctx.restore();
+            }
           }
 
           // Wanted indicator

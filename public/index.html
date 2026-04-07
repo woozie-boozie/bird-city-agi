@@ -222,6 +222,55 @@
   <!-- Arena Fight HUD (shown when player is an active fighter) -->
   <div id="arenaHud" style="display:none"></div>
 
+  <!-- Street Duel incoming challenge notification -->
+  <div id="streetDuelChallenge" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+    background:rgba(30,4,4,0.97);color:#ff6666;font:bold 13px 'Courier New',monospace;
+    padding:16px 22px;border-radius:16px;border:2px solid #cc2222;z-index:150;
+    text-align:center;min-width:280px;max-width:360px;box-shadow:0 0 30px rgba(200,40,40,0.6);">
+    <div style="font-size:15px;margin-bottom:8px;">⚔️ STREET DUEL CHALLENGE</div>
+    <div id="streetDuelChallengerName" style="color:#ffaaaa;font-size:13px;margin-bottom:4px;"></div>
+    <div id="streetDuelPot" style="color:#ffd700;font-size:12px;margin-bottom:12px;"></div>
+    <div style="font-size:10px;color:#ff9999;margin-bottom:12px;">3 hearts each · 45 seconds · winner takes the pot</div>
+    <div style="display:flex;gap:10px;justify-content:center;">
+      <button id="streetDuelAcceptBtn" onclick="socket.emit('action',{type:'accept_duel'})"
+        style="background:#2a4a1a;color:#88ff88;border:1px solid #44aa44;padding:6px 16px;border-radius:8px;cursor:pointer;font:bold 12px 'Courier New',monospace;">
+        ⚔️ ACCEPT [Y]
+      </button>
+      <button id="streetDuelDeclineBtn" onclick="socket.emit('action',{type:'decline_duel'})"
+        style="background:#3a1a1a;color:#ff8888;border:1px solid #882222;padding:6px 16px;border-radius:8px;cursor:pointer;font:bold 12px 'Courier New',monospace;">
+        ✗ DECLINE [ESC]
+      </button>
+    </div>
+    <div id="streetDuelChallengeTimer" style="color:#ff6666;font-size:10px;margin-top:8px;"></div>
+  </div>
+
+  <!-- Street Duel active fight HUD -->
+  <div id="streetDuelHud" style="display:none;position:fixed;bottom:60px;left:50%;transform:translateX(-50%);
+    background:rgba(20,4,4,0.95);color:#ff6666;font:bold 12px 'Courier New',monospace;
+    padding:10px 20px;border-radius:16px;border:2px solid #cc2222;z-index:100;
+    text-align:center;min-width:300px;box-shadow:0 0 20px rgba(200,40,40,0.5);">
+    <div style="font-size:11px;color:#ff9999;margin-bottom:6px;letter-spacing:1px;">⚔️ STREET DUEL</div>
+    <div style="display:flex;align-items:center;justify-content:center;gap:16px;">
+      <div id="streetDuelMyInfo" style="text-align:center;min-width:100px;">
+        <div id="streetDuelMyName" style="color:#ffd700;font-size:10px;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></div>
+        <div id="streetDuelMyHearts" style="font-size:18px;letter-spacing:2px;"></div>
+      </div>
+      <div style="color:#cc4444;font-size:14px;font-weight:bold;">VS</div>
+      <div id="streetDuelOppInfo" style="text-align:center;min-width:100px;">
+        <div id="streetDuelOppName" style="color:#ffaaaa;font-size:10px;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></div>
+        <div id="streetDuelOppHearts" style="font-size:18px;letter-spacing:2px;"></div>
+      </div>
+    </div>
+    <div id="streetDuelTimer" style="color:#ff9999;font-size:10px;margin-top:6px;"></div>
+    <div id="streetDuelPotDisplay" style="color:#ffd700;font-size:10px;"></div>
+  </div>
+
+  <!-- Street Duel challenge sent notification (brief) -->
+  <div id="streetDuelPrompt" style="display:none;position:fixed;bottom:160px;left:50%;transform:translateX(-50%);
+    background:rgba(20,4,4,0.92);color:#ff9999;font:bold 12px 'Courier New',monospace;
+    padding:8px 18px;border-radius:14px;border:1px solid #882222;z-index:80;pointer-events:none;
+    text-align:center;"></div>
+
   <!-- Bank Heist proximity prompt -->
   <div id="bankHeistPrompt" style="display:none"></div>
 

@@ -1919,6 +1919,32 @@ Bird City just got its most GTA moment yet. A cheerful pink donut shop sits on t
 
 **Creative intent**: The vending machine hits the DISCOVERY pillar perfectly — players find them exploring street corners. More importantly, it gives every player a cheap 20c skill-shot: do you save it for a cop chase (Freeze to slow pursuit), a money run (Rainbow for 3× coin hit), a crowd (Spicy for wide splash), or revenge (Shock to stun the Kingpin)? The effect is consumed on fire, not on purchase, so there's no "I'll save my shock poop for later" — it fires on your next space press, adding urgency. Two birds both loaded with effects creating a running colored-poop gunfight across the city is pure CARNAGE + SPECTACLE. The machines are also a permanent map landmark that new players discover and return to. Pure CARNAGE + DISCOVERY + PROGRESSION energy.
 
+**Session 58 — 2026-04-07: Street Duels — Spontaneous 1v1 Poop Fights Anywhere**
+Bird City's most cinematic personal combat mechanic. No arena, no entry fee, no location — just press [Y] near any bird and challenge them to a duel right there on the street. Pure social drama.
+
+**Duel mechanics (`server/game.js`):**
+- Press [Y] within 110px of another bird to send a challenge (they have 15 seconds to accept/decline)
+- Stakes auto-calculated: 25% of each bird's coins (min 30c, max 250c per side) — real money on the line
+- Accept with [Y], decline with [ESC] — clean challenge overlay shows challenger name, pot, and countdown
+- **3 hearts each**: poop hits between the two duelers deal 1 heart damage. First to 0 hearts loses.
+- **Winner takes the full pot** + 150 XP + daily challenge progress toward "Street Fighter"
+- Draw if neither bird falls within 45 seconds — stakes refunded to both sides
+- Disconnect cancels the duel and refunds the opponent
+- Arena conflicts handled: can't challenge while in arena, can't challenge someone already in a duel
+
+**Visual system:**
+- Pulsing red combat aura behind any bird currently in a duel
+- ❤️❤️❤️ heart row above each dueler's head showing their HP — visible to ALL nearby players
+- Dedicated fight HUD at the bottom of the screen shows both birds' names and hearts + countdown timer
+- Incoming challenge notification with large overlay + ACCEPT/DECLINE buttons
+
+**New daily challenges added to pool:**
+- ⚔️ **Street Fighter**: Win 2 street duels (220 XP, 110c)
+- 🚁 **Ace Pilot**: Bring down the police helicopter (250 XP, 120c) — hooks into existing helicopter down event
+- 👑 **Battle Royale**: Win a Bird Royale shrinking-zone event (300 XP, 150c) — hooks into royale winner event
+
+**Creative intent**: The Arena was great for formal PvP — but it required flying to a specific location, paying an entry fee, and waiting. Street Duels are SPONTANEOUS. You're fighting over the Radio Tower, the tension builds, and someone presses [Y] — now it's a 45-second poop battle with real coins at stake, right where you're standing. The challenge window is social drama: the target sees your name and the pot amount. Do they accept and fight for their coins, or flee and lose face? Two gang rivals settling it in the middle of Downtown during a Crime Wave, red auras glowing, hearts ticking down — that's a moment nobody scripted. Pure CARNAGE + SOCIAL energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -2010,8 +2036,8 @@ Built the Territory Control System on top of the existing upstream code:
 - ~~Food truck heists (multiplayer coordinated robbery)~~ (DONE Session 12)
 - ~~Donut Shop NPC: a cop standing near a donut shop who can be bribed to reduce wanted level, or ambushed for big XP~~ (DONE Session 56)
 - Donut Cop daily challenge: "Cop Briber" (bribe 2×) + "Sugar Rush" (ambush 2×) — ADDED Session 56
-- Helicopter daily challenge: "Ace Pilot — bring down the police helicopter" (250 XP, 120c)
-- Royale Champion daily challenge: "Win Bird Royale" as the rarest daily task (200 XP, 150c)
+- ~~Helicopter daily challenge: "Ace Pilot — bring down the police helicopter" (250 XP, 120c)~~ (DONE Session 58)
+- ~~Royale Champion daily challenge: "Win Bird Royale" as the rarest daily task"~~ (DONE Session 58 as "Battle Royale")
 - Idol daily challenge: "Win Bird City Idol" as a rare daily task
 - Bird Flu + Bounty Hunter interaction: if BH catches an infected bird, BH wanders confused for 15s
 - Bird Flu + Cop: if a cop arrests an infected bird, the cop catches the flu and wanders confused for 5s
@@ -2020,4 +2046,10 @@ Built the Territory Control System on top of the existing upstream code:
 - Multi-bird Wanted system: track top 2 most-wanted simultaneously (two Bounty Hunters)
 - Drunk pigeon + crime wave interaction: drunk pigeons drop 2× coins when struck by lightning during crime waves
 - ~~Poop power-up vending machine: spend 20c at a street vending machine for a random single-poop effect~~ (DONE Session 57)
-- Bird Photo Mode: press [P] (tattoo key conflict — maybe [Y]) to screenshot your current moment; ghost camera drifts away from you for 3 seconds, takes a beautiful wide shot, shows UI-free screenshot overlay
+- ~~Street Duels — press [Y] near a rival to challenge them to a spontaneous 1v1 poop fight~~ (DONE Session 58)
+- Bird Photo Mode: press some key to screenshot; ghost camera drifts away for 3s, shows UI-free overlay
+- Duel Betting: spectators near a street duel can place bets on the outcome in real-time
+- Duel Rematch: after a duel ends, both birds get a 10s window to instantly rematch (no re-challenge needed)
+- Street Duel tournament: Don Featherstone organizes a bracket tournament — last winner standing gets massive payout
+- Gazette tracking for duels: "⚔️ [Name] WINS STREET DUEL: defeats [Name] for Xc" headline
+- Idol Hall of Fame: persistent leaderboard of all-time Idol winners near the stage

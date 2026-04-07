@@ -2043,3 +2043,19 @@ html, body {
   padding: 4px 0;
   opacity: 0.7;
 }
+
+/* === STREET DUEL ANIMATIONS === */
+@keyframes duelPulse {
+  0%, 100% { box-shadow: 0 0 20px rgba(200,40,40,0.5); }
+  50% { box-shadow: 0 0 35px rgba(255,80,80,0.9); }
+}
+#streetDuelChallenge {
+  animation: duelPulse 0.8s ease-in-out infinite;
+}
+@keyframes duelFightPulse {
+  0%, 100% { border-color: #cc2222; }
+  50% { border-color: #ff5555; box-shadow: 0 0 28px rgba(255,60,60,0.7); }
+}
+#streetDuelHud {
+  animation: duelFightPulse 1.2s ease-in-out infinite;
+}

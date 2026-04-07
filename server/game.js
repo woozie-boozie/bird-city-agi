@@ -68,6 +68,9 @@ const DAILY_CHALLENGE_POOL = [
   { id: 'coin_thief',     title: 'Coin Thief',      desc: 'Steal the Cursed Coin from another bird',  target: 1,  trackType: 'cursed_steal',    reward: { xp: 150, coins: 75  } },
   { id: 'donut_ambush',   title: 'Sugar Rush',      desc: 'Poop on the Donut Cop while he\'s eating (x2)', target: 2, trackType: 'donut_cop_hit',  reward: { xp: 200, coins: 90  } },
   { id: 'donut_briber',   title: 'Cop Briber',      desc: 'Bribe the Donut Cop to reduce your heat (x2)', target: 2, trackType: 'donut_bribe',   reward: { xp: 160, coins: 80  } },
+  { id: 'street_fighter', title: 'Street Fighter',  desc: 'Win 2 street duels against other birds',        target: 2, trackType: 'duel_win',        reward: { xp: 220, coins: 110 } },
+  { id: 'ace_pilot',      title: 'Ace Pilot',       desc: 'Bring down the police helicopter',              target: 1, trackType: 'helicopter_down',  reward: { xp: 250, coins: 120 } },
+  { id: 'royale_winner',  title: 'Battle Royale',   desc: 'Win a Bird Royale shrinking-zone event',        target: 1, trackType: 'royale_win',       reward: { xp: 300, coins: 150 } },
 ];
 
 class GameEngine {
@@ -503,6 +506,17 @@ class GameEngine {
     this._royaleIdCounter = 0;
     this.gangRoyaleBonus = null; // { gangId, gangTag, gangName, bonusUntil } — 5-min territory bonus for royale-winning gang
 
+    // === STREET DUELS ===
+    // Any bird can challenge a nearby rival to a 1v1 poop duel right in the street.
+    // Press [Y] near another bird to send a challenge. Target has 15s to accept/decline.
+    // 3 hearts each — poop the opponent 3 times to knock them out. Max 45 seconds.
+    // Winner takes the pot (25% of each bird's coins, min 30c, max 250c per side).
+    this.streetDuels = new Map();       // duelId -> { id, challengerId, challengerName, targetId, targetName, state, hp, pot, centerX, centerY, startedAt, expiresAt }
+    this.pendingChallenges = new Map(); // targetBirdId -> { challengerId, challengerName, expiresAt, pot }
+    this.STREET_DUEL_DURATION = 45000;
+    this.STREET_DUEL_CHALLENGE_EXPIRY = 15000;
+    this._duelIdCounter = 0;
+
     // === BIRD CITY GAZETTE ===
     // Every game day cycle (~20 min), a newspaper publishes at dawn recapping the night.
     // Tracks key moments: top combo, most wanted, heists, gang wars, predator kills, etc.
@@ -871,6 +885,28 @@ class GameEngine {
         this.cursedCoin.stealCooldowns = new Map();
         this.events.push({ type: 'cursed_coin_dropped', x: this.cursedCoin.x, y: this.cursedCoin.y, reason: 'disconnect' });
       }
+      // Cancel any pending duel challenge involving this bird
+      this.pendingChallenges.delete(id);
+      for (const [targetId, ch] of this.pendingChallenges) {
+        if (ch.challengerId === id) { this.pendingChallenges.delete(targetId); break; }
+      }
+      // Cancel any active street duel involving this bird
+      if (bird.streetDuelId) {
+        const duel = this.streetDuels.get(bird.streetDuelId);
+        if (duel && duel.state === 'active') {
+          const opponentId = duel.challengerId === id ? duel.targetId : duel.challengerId;
+          const opponent = this.birds.get(opponentId);
+          if (opponent) {
+            opponent.streetDuelId = null;
+            // Refund opponent
+            opponent.coins += duel.pot;
+          }
+          duel.state = 'cancelled';
+          this.events.push({ type: 'street_duel_cancelled', reason: 'disconnect', birdId: id, opponentId });
+          this.streetDuels.delete(bird.streetDuelId);
+        }
+        bird.streetDuelId = null;
+      }
       // Clear bounty hunter if they were hunting the disconnecting bird
       if (this.bountyHunter && this.bountyHunter.targetId === id) {
         this.bountyHunter = null;
@@ -1084,6 +1120,17 @@ class GameEngine {
     }
     if (action.type === 'don_respec') {
       this._handleDonRespec(bird, now);
+    }
+
+    // === Street Duels ===
+    if (action.type === 'challenge_duel') {
+      this._handleChallengeDuel(bird, action.targetId, now);
+    }
+    if (action.type === 'accept_duel') {
+      this._handleAcceptDuel(bird, now);
+    }
+    if (action.type === 'decline_duel') {
+      this._handleDeclineDuel(bird, now);
     }
 
     // === Graffiti Tagging ===
@@ -1335,6 +1382,9 @@ class GameEngine {
 
     // === Bird Royale ===
     this._tickBirdRoyale(dt, now);
+
+    // === Street Duels ===
+    this._tickStreetDuels(now);
   }
 
   // ============================================================
@@ -2718,6 +2768,7 @@ class GameEngine {
             otherBird.coins += 25;
           }
           this.events.push({ type: 'helicopter_downed', birdId: bird.id, birdName: bird.name, gangTag: bird.gangTag || null, x: heli.x, y: heli.y });
+          this._trackDailyProgress(bird, 'helicopter_down', 1);
           // Gazette: track helicopter downs
           if (!this.gazetteStats.helicopterDowns) this.gazetteStats.helicopterDowns = [];
           this.gazetteStats.helicopterDowns.push({ name: bird.name, gangTag: bird.gangTag || null });
@@ -2749,6 +2800,24 @@ class GameEngine {
           // Clear all warnings and hit counts for this predator
           for (const warnings of this.predatorWarnings.values()) warnings[predKey] = null;
           for (const counts of this.predatorHitCounts.values()) counts[predKey] = 0;
+        }
+      } else if (hit.target === 'street_duel_opponent' && hit.duel && hit.opponent) {
+        // Street Duel PvP hit — one hit = one heart lost
+        const duel = hit.duel;
+        const opponentId = hit.opponentId;
+        duel.hp[opponentId]--;
+        xpGain = 45;
+        bird.coins += 12;
+        this.events.push({
+          type: 'street_duel_hit',
+          attackerId: bird.id, attackerName: bird.name,
+          targetId: opponentId, targetName: hit.opponent.name,
+          hp: duel.hp[opponentId],
+          x: poop.x, y: poop.y,
+        });
+        // Check for knockout
+        if (duel.hp[opponentId] <= 0) {
+          this._resolveStreetDuel(duel, bird.id, 'knockout', now);
         }
       } else if (hit.target === 'arena_fighter' && hit.fighter) {
         // Arena PvP damage! One hit = one arena HP lost
@@ -3740,6 +3809,22 @@ class GameEngine {
 
     if (isMegaPoop && allHits.length > 0) {
       return { target: allHits[0].target, npc: allHits[0].npc, allHits };
+    }
+
+    // Check street duel opponents — highest-priority PvP (can hit even without arena)
+    if (!isMegaPoop && shooter && shooter.streetDuelId) {
+      const duel = this.streetDuels.get(shooter.streetDuelId);
+      if (duel && duel.state === 'active') {
+        const opponentId = duel.challengerId === poop.birdId ? duel.targetId : duel.challengerId;
+        const opponent = this.birds.get(opponentId);
+        if (opponent) {
+          const dx = poop.x - opponent.x;
+          const dy = poop.y - opponent.y;
+          if (Math.sqrt(dx * dx + dy * dy) < hitRadius + 14) {
+            return { target: 'street_duel_opponent', duel, opponentId, opponent };
+          }
+        }
+      }
     }
 
     // Check arena fighters (PvP — only single-poop hits, arena must be in 'fighting' state)
@@ -4888,6 +4973,7 @@ class GameEngine {
           hasCursedCoin: this.cursedCoin && this.cursedCoin.state === 'held' && this.cursedCoin.holderId === b.id,
           cursedCoinIntensity: (this.cursedCoin && this.cursedCoin.state === 'held' && this.cursedCoin.holderId === b.id) ? this.cursedCoin.intensity : 0,
           witnessProtectionActive: b.witnessProtectionUntil > now,
+          streetDuelId: b.streetDuelId || null,
         });
       }
     }
@@ -5452,6 +5538,26 @@ class GameEngine {
         // Golden Egg Scramble
         carryingEggId: bird.carryingEggId,
         eggTackleImmunityUntil: bird.eggTackleImmunityUntil,
+        // Street Duel
+        streetDuelId: bird.streetDuelId || null,
+        incomingChallenge: (() => {
+          const ch = this.pendingChallenges.get(bird.id);
+          if (!ch || ch.expiresAt < now) return null;
+          return { challengerName: ch.challengerName, expiresAt: ch.expiresAt, pot: ch.pot };
+        })(),
+        nearbyBirdsForDuel: (() => {
+          if (bird.streetDuelId) return [];
+          const result = [];
+          for (const [otherId, other] of this.birds) {
+            if (otherId === bird.id || other.streetDuelId) continue;
+            const dx = other.x - bird.x;
+            const dy = other.y - bird.y;
+            if (Math.sqrt(dx*dx + dy*dy) < 100) {
+              result.push({ id: otherId, name: other.name, dist: Math.sqrt(dx*dx+dy*dy) });
+            }
+          }
+          return result.sort((a,b) => a.dist - b.dist);
+        })(),
         // Hit contract: is there an active bounty on this bird?
         myHitBounty: this.activeHits.has(bird.id) ? {
           reward: this.activeHits.get(bird.id).reward,
@@ -5533,6 +5639,23 @@ class GameEngine {
         isOwner: this.radioTower.ownerId === bird.id,
       },
       bankHeist: this._getBankHeistStateFor(bird.id),
+      // Street Duels (active duels visible to all nearby players for rendering hearts above combatants)
+      streetDuels: (() => {
+        const result = [];
+        for (const [, duel] of this.streetDuels) {
+          if (duel.state !== 'active') continue;
+          result.push({
+            id: duel.id,
+            challengerId: duel.challengerId,
+            challengerName: duel.challengerName,
+            targetId: duel.targetId,
+            targetName: duel.targetName,
+            hp: { [duel.challengerId]: duel.hp[duel.challengerId], [duel.targetId]: duel.hp[duel.targetId] },
+            expiresAt: duel.expiresAt,
+          });
+        }
+        return result;
+      })(),
       // Sewer layer — only visible when underground
       sewerRats: bird.inSewer
         ? Array.from(this.sewerRats.values()).map(r => ({ id: r.id, x: r.x, y: r.y, rotation: r.rotation, state: r.state }))
@@ -13577,6 +13700,7 @@ class GameEngine {
           });
           // 🏆 Champion Badge — session-only trophy visible on nametag
           winnerBird.royaleChampBadge = true;
+          this._trackDailyProgress(winnerBird, 'royale_win', 1);
 
           // 🗺️ Gang Territory Royale Bonus — 5-min 1.5× capture power for winning gang
           if (winnerBird.gangId) {
@@ -13771,6 +13895,198 @@ class GameEngine {
     });
 
     console.log(`[Vending] ${bird.name} got ${EFFECT_EMOJIS[effectType]} ${effectType.toUpperCase()} poop from machine ${machineIdx}`);
+  }
+
+  // ============================================================
+  // STREET DUEL SYSTEM
+  // ============================================================
+
+  _handleChallengeDuel(challenger, targetId, now) {
+    if (!targetId) return;
+    if (challenger.streetDuelId) return; // already in a duel
+    if (this.arena.fighters.has(challenger.id)) return; // in arena
+    if (this.pendingChallenges.has(challenger.id)) return; // already have incoming challenge
+
+    const target = this.birds.get(targetId);
+    if (!target || target.id === challenger.id) return;
+    if (target.streetDuelId) return; // target already in duel
+    if (this.pendingChallenges.has(target.id)) return; // target already has pending challenge
+
+    // Proximity check
+    const dx = challenger.x - target.x;
+    const dy = challenger.y - target.y;
+    if (Math.sqrt(dx*dx + dy*dy) > 110) {
+      this.events.push({ type: 'duel_fail', birdId: challenger.id, reason: 'too_far' });
+      return;
+    }
+
+    // Calculate pot: 25% of each bird's coins, min 30c each side, max 250c each side
+    const challengerStake = Math.min(250, Math.max(30, Math.floor(challenger.coins * 0.25)));
+    const targetStake = Math.min(250, Math.max(30, Math.floor(target.coins * 0.25)));
+    if (challenger.coins < challengerStake) {
+      this.events.push({ type: 'duel_fail', birdId: challenger.id, reason: 'no_coins' });
+      return;
+    }
+
+    const pot = challengerStake + targetStake;
+    this.pendingChallenges.set(target.id, {
+      challengerId: challenger.id,
+      challengerName: challenger.name,
+      targetStake,
+      challengerStake,
+      pot,
+      expiresAt: now + this.STREET_DUEL_CHALLENGE_EXPIRY,
+    });
+
+    this.events.push({
+      type: 'duel_challenge_sent',
+      birdId: challenger.id,
+      targetName: target.name,
+      pot,
+    });
+    this.events.push({
+      type: 'duel_incoming_challenge',
+      birdId: target.id,
+      challengerName: challenger.name,
+      pot,
+      expiresAt: now + this.STREET_DUEL_CHALLENGE_EXPIRY,
+    });
+  }
+
+  _handleAcceptDuel(bird, now) {
+    const pending = this.pendingChallenges.get(bird.id);
+    if (!pending || pending.expiresAt < now) {
+      this.events.push({ type: 'duel_fail', birdId: bird.id, reason: 'no_challenge' });
+      return;
+    }
+    if (bird.streetDuelId) return;
+
+    const challenger = this.birds.get(pending.challengerId);
+    if (!challenger) {
+      this.pendingChallenges.delete(bird.id);
+      return;
+    }
+
+    // Deduct stakes from both birds
+    if (challenger.coins < pending.challengerStake || bird.coins < pending.targetStake) {
+      this.pendingChallenges.delete(bird.id);
+      this.events.push({ type: 'duel_fail', birdId: bird.id, reason: 'no_coins' });
+      return;
+    }
+    challenger.coins -= pending.challengerStake;
+    bird.coins -= pending.targetStake;
+
+    const duelId = `duel_${++this._duelIdCounter}`;
+    const duel = {
+      id: duelId,
+      challengerId: pending.challengerId,
+      challengerName: pending.challengerName,
+      targetId: bird.id,
+      targetName: bird.name,
+      state: 'active',
+      hp: { [pending.challengerId]: 3, [bird.id]: 3 },
+      pot: pending.pot,
+      centerX: (challenger.x + bird.x) / 2,
+      centerY: (challenger.y + bird.y) / 2,
+      startedAt: now,
+      expiresAt: now + this.STREET_DUEL_DURATION,
+    };
+
+    this.streetDuels.set(duelId, duel);
+    challenger.streetDuelId = duelId;
+    bird.streetDuelId = duelId;
+    this.pendingChallenges.delete(bird.id);
+
+    this.events.push({
+      type: 'street_duel_start',
+      duelId,
+      challengerId: pending.challengerId,
+      challengerName: pending.challengerName,
+      targetId: bird.id,
+      targetName: bird.name,
+      pot: pending.pot,
+    });
+  }
+
+  _handleDeclineDuel(bird, now) {
+    const pending = this.pendingChallenges.get(bird.id);
+    if (!pending) return;
+    this.pendingChallenges.delete(bird.id);
+    this.events.push({
+      type: 'duel_declined',
+      birdId: pending.challengerId,
+      targetName: bird.name,
+    });
+  }
+
+  _resolveStreetDuel(duel, winnerId, reason, now) {
+    if (duel.state !== 'active') return;
+    duel.state = 'resolved';
+
+    const winner = this.birds.get(winnerId);
+    const loserId = duel.challengerId === winnerId ? duel.targetId : duel.challengerId;
+    const loser = this.birds.get(loserId);
+    const loserName = duel.challengerId === loserId ? duel.challengerName : duel.targetName;
+
+    if (winner) {
+      winner.coins += duel.pot;
+      winner.xp += 150;
+      winner.streetDuelId = null;
+      this._trackDailyProgress(winner, 'duel_win', 1);
+    }
+    if (loser) {
+      loser.streetDuelId = null;
+      // Wipe combo on duel loss
+      loser.comboCount = 0;
+    }
+
+    this.events.push({
+      type: 'street_duel_end',
+      duelId: duel.id,
+      winnerId,
+      winnerName: winner ? winner.name : '???',
+      loserId,
+      loserName,
+      pot: duel.pot,
+      reason,
+    });
+
+    this.streetDuels.delete(duel.id);
+  }
+
+  _tickStreetDuels(now) {
+    // Expire pending challenges
+    for (const [targetId, ch] of this.pendingChallenges) {
+      if (ch.expiresAt < now) {
+        this.pendingChallenges.delete(targetId);
+        this.events.push({ type: 'duel_challenge_expired', birdId: ch.challengerId, targetName: '' });
+      }
+    }
+
+    // Expire active duels (draw — refund both sides)
+    for (const [, duel] of this.streetDuels) {
+      if (duel.state !== 'active') continue;
+      if (now >= duel.expiresAt) {
+        duel.state = 'draw';
+        const challenger = this.birds.get(duel.challengerId);
+        const target = this.birds.get(duel.targetId);
+        const challengerStake = Math.floor(duel.pot / 2);
+        const targetStake = duel.pot - challengerStake;
+        if (challenger) { challenger.coins += challengerStake; challenger.streetDuelId = null; }
+        if (target) { target.coins += targetStake; target.streetDuelId = null; }
+        this.events.push({
+          type: 'street_duel_end',
+          duelId: duel.id,
+          winnerId: null,
+          winnerName: null,
+          loserId: null,
+          loserName: null,
+          pot: duel.pot,
+          reason: 'draw',
+        });
+        this.streetDuels.delete(duel.id);
+      }
+    }
   }
 
 }
