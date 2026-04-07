@@ -106,12 +106,31 @@ window.Sprites = {
   },
 
   // === NAME TAG ===
-  drawNameTag(ctx, x, y, name, level, type, isPlayer, mafiaTitle, gangTag, gangColor, tattoosEquipped, prestige, eagleFeather, idolBadge, royaleChampBadge) {
+  drawNameTag(ctx, x, y, name, level, type, isPlayer, mafiaTitle, gangTag, gangColor, tattoosEquipped, prestige, eagleFeather, idolBadge, royaleChampBadge, skillTreeMaster) {
     const text = `${name} [Lv.${level}]`;
     ctx.font = 'bold 11px Courier New';
     ctx.textAlign = 'center';
 
     let offsetY = 0; // stack badges upward
+
+    // ✨ Skill Tree Master badge — the topmost badge of all (above prestige)
+    if (skillTreeMaster) {
+      ctx.font = '11px serif';
+      const mStr = '✨ MASTER';
+      const mw = ctx.measureText(mStr).width + 10;
+      ctx.fillStyle = 'rgba(0,30,60,0.93)';
+      ctx.fillRect(x - mw / 2, y - 52 - offsetY, mw, 14);
+      ctx.strokeStyle = '#44eeff';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(x - mw / 2, y - 52 - offsetY, mw, 14);
+      ctx.shadowColor = '#00ddff';
+      ctx.shadowBlur = 8;
+      ctx.fillStyle = '#88ffff';
+      ctx.fillText(mStr, x, y - 41 - offsetY);
+      ctx.shadowBlur = 0;
+      ctx.font = 'bold 11px Courier New';
+      offsetY += 15;
+    }
 
     // Prestige badge — very topmost (above gang tag)
     if (prestige && prestige > 0) {

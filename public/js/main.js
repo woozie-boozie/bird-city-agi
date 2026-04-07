@@ -6056,7 +6056,7 @@
 
           Sprites.drawBird(ctx, sx, sy, b.rotation, b.type, b.wingPhase, isPlayer, b.birdColor || null);
           ctx.globalAlpha = 1; // Always reset after bird draw
-          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0, b.eagleFeather || false, b.idolBadge || false, b.royaleChampBadge || false);
+          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0, b.eagleFeather || false, b.idolBadge || false, b.royaleChampBadge || false, b.skillTreeMaster || false);
 
           // Bird Flu: sneezing emoji indicator above infected birds
           if (b.isFlu) {
@@ -7511,6 +7511,55 @@
         hideDonOverlay();
       });
     });
+
+    // === SKILL RESPEC SECTION ===
+    let respecSectionEl = document.getElementById('donRespecSection');
+    if (!respecSectionEl) {
+      respecSectionEl = document.createElement('div');
+      respecSectionEl.id = 'donRespecSection';
+      const closeRow = document.querySelector('#donOverlay > div:last-child');
+      if (closeRow) donOverlay.insertBefore(respecSectionEl, closeRow);
+      else donOverlay.appendChild(respecSectionEl);
+    }
+
+    const selfData = gameState.self || {};
+    const mySkills = selfData.skillTreeUnlocked || [];
+    const myCoinsNow = selfData.coins || 0;
+    const isMaster = selfData.skillTreeMaster || false;
+    const RESPEC_COST = 500;
+    const canAffordRespec = myCoinsNow >= RESPEC_COST;
+    const hasSkills = mySkills.length > 0;
+    const defs = selfData.skillTreeDefs || {};
+    const fpToRefund = mySkills.reduce((sum, id) => sum + ((defs[id] && defs[id].cost) || 0), 0);
+
+    let respecHtml = `<div style="margin-top:12px;border-top:1px solid #224422;padding-top:10px;">`;
+    respecHtml += `<div style="color:#44ddaa;font-size:11px;font-weight:bold;margin-bottom:4px;">🔄 SKILL RESPEC — 500c</div>`;
+    respecHtml += `<div style="color:#88aa88;font-size:9px;margin-bottom:8px;">Reset your entire skill tree and get all Feather Points back. Mastery badge is lost.</div>`;
+
+    if (!hasSkills) {
+      respecHtml += `<div style="color:#446644;font-size:10px;font-style:italic;">No skills to respec yet.</div>`;
+    } else if (!canAffordRespec) {
+      respecHtml += `<div style="color:#446644;font-size:10px;">Need 500c. You have ${myCoinsNow}c. Earn more and come back.</div>`;
+    } else {
+      const label = isMaster ? '🔄 RESPEC (loses ✨ MASTER)' : '🔄 RESPEC SKILLS';
+      respecHtml += `<div style="display:flex;justify-content:space-between;align-items:center;">`;
+      respecHtml += `<span style="color:#aaddaa;font-size:9px;">Refunds: +${fpToRefund} FP · Costs: 500c</span>`;
+      respecHtml += `<button id="donRespecBtn" style="background:#224422;color:#88ffaa;border:1px solid #44aa44;border-radius:4px;font-size:9px;padding:3px 8px;cursor:pointer;">${label}</button>`;
+      respecHtml += `</div>`;
+    }
+    respecHtml += `</div>`;
+    respecSectionEl.innerHTML = respecHtml;
+
+    const respecBtn = document.getElementById('donRespecBtn');
+    if (respecBtn) {
+      respecBtn.addEventListener('click', () => {
+        if (!socket || !joined) return;
+        const masterWarn = isMaster ? '\n⚠️ You will lose your ✨ MASTER badge!' : '';
+        if (!confirm(`Reset ALL skill tree unlocks for 500c?\n+${fpToRefund} FP will be refunded.${masterWarn}\n\nThis cannot be undone.`)) return;
+        socket.emit('action', { type: 'don_respec' });
+        hideDonOverlay();
+      });
+    }
   }
 
   function renderBmShop() {
@@ -9181,11 +9230,16 @@
     const unlocked = s.skillTreeUnlocked || [];
     const defs = s.skillTreeDefs || {};
 
+    const isMasterNow = s.skillTreeMaster || false;
     const fpDisplay = document.getElementById('skillTreeFpDisplay');
     if (fpDisplay) {
-      fpDisplay.innerHTML = fp > 0
-        ? `<span style="color:#88ff88;font-weight:bold;font-size:14px;">${fp}</span> <span style="color:#aaffaa;">Feather Point${fp !== 1 ? 's' : ''} available</span>`
-        : `<span style="color:#667766;">0 Feather Points · Level up to earn more</span>`;
+      if (isMasterNow) {
+        fpDisplay.innerHTML = `<span style="color:#44eeff;font-weight:bold;font-size:13px;text-shadow:0 0 8px #00ddff;">✨ SKILL TREE MASTERED — All 12 skills unlocked! +5% XP permanently</span>`;
+      } else if (fp > 0) {
+        fpDisplay.innerHTML = `<span style="color:#88ff88;font-weight:bold;font-size:14px;">${fp}</span> <span style="color:#aaffaa;">Feather Point${fp !== 1 ? 's' : ''} available</span>`;
+      } else {
+        fpDisplay.innerHTML = `<span style="color:#667766;">0 Feather Points · Level up to earn more</span>`;
+      }
     }
 
     const branches = [
@@ -9387,8 +9441,22 @@
       return;
     }
     const fp = gameState.self.skillPoints || 0;
-    pill.style.display = fp > 0 ? 'block' : 'none';
-    pill.textContent = `🪶 ${fp} FP — Press [K]`;
+    const isMaster = gameState.self.skillTreeMaster || false;
+    if (isMaster) {
+      pill.style.display = 'block';
+      pill.textContent = '✨ MASTER — [K]';
+      pill.style.color = '#44eeff';
+      pill.style.borderColor = '#00ddff';
+      pill.style.boxShadow = '0 0 6px #00ddff44';
+    } else if (fp > 0) {
+      pill.style.display = 'block';
+      pill.textContent = `🪶 ${fp} FP — Press [K]`;
+      pill.style.color = '';
+      pill.style.borderColor = '';
+      pill.style.boxShadow = '';
+    } else {
+      pill.style.display = 'none';
+    }
     pill.onclick = () => toggleSkillTree();
   }
 
@@ -9401,6 +9469,15 @@
     }
   });
 
+  socket.on('skill_tree_mastered', (data) => {
+    if (data.birdId === socket.id) {
+      triggerScreenShake(14, 1200);
+      showAnnouncement('✨ SKILL TREE MASTERED! All 12 skills unlocked — +5% XP permanently!', '#44eeff', 6000);
+    }
+    const tag = data.gangTag ? `[${data.gangTag}] ` : '';
+    addEventFeedMessage(`✨ ${tag}${data.birdName} MASTERED the Skill Tree! All 12 skills unlocked!`);
+  });
+
   socket.on('skill_tree_fail', (data) => {
     if (data.birdId === socket.id) {
       showAnnouncement(`❌ ${data.reason}`, '#cc4444', 2000);
@@ -9411,6 +9488,20 @@
     if (data.birdId === socket.id) {
       showAnnouncement(`🪶 +${data.gained} Feather Point${data.gained !== 1 ? 's' : ''}! Press [K] to spend`, '#88ff88', 3500);
       if (skillTreeVisible) renderSkillTree();
+    }
+  });
+
+  socket.on('don_respec_done', (data) => {
+    if (data.birdId === socket.id) {
+      showAnnouncement(`🔄 SKILLS RESET! +${data.fpRefunded} FP refunded. Spent ${data.cost}c. Press [K] to rebuild.`, '#ffaa44', 5000);
+      if (skillTreeVisible) renderSkillTree();
+      if (donOverlayVisible) renderDonOverlay();
+    }
+  });
+
+  socket.on('respec_fail', (data) => {
+    if (data.birdId === socket.id) {
+      showAnnouncement(`❌ ${data.reason}`, '#cc4444', 2500);
     }
   });
 

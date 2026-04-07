@@ -1771,6 +1771,36 @@ Three interlocking enhancements that complete the Bird Royale feature's social l
 
 **Creative intent**: These three features complete what Bird Royale was always missing — AFTERMATH identity. Before: you won, got 500 XP + 400c, the HUD cleared, done. Now: you win and wear a 🏆 badge all session. Everyone who sees you knows. Eliminated birds aren't passive observers — they actively shape the endgame through crowd cheers, creating emotional investment in who wins even after they're out. Gangs now have a direct incentive to field the strongest royale fighter, since their win translates into 5 minutes of territorial dominance. A gang that wins the royale AND immediately launches a Crow Cartel defense using the 1.5× bonus is playing BIRD CITY at its highest level. Pure SOCIAL + SPECTACLE + PROGRESSION energy.
 
+**Session 54 — 2026-04-07: Skill Tree Mastery + Skill Respec — Completing the Endgame Arc**
+Two interlocking features that complete the Skill Tree's long-term identity arc: a visible prestige milestone for completionists, and an expensive but meaningful way to rebuild.
+
+**✨ Skill Tree Mastery:**
+- Unlock all 12 skills across all 4 branches → automatically earn the ✨ MASTER badge
+- `bird.skillTreeMaster = true` set server-side when the last skill unlocks — persisted to Firestore as `skill_tree_master`
+- **Permanent passive bonus**: +5% XP on all poop hits (stacks with prestige, combo, Lucky Charm, Signal Boost — a P5 LEGEND MASTER on a 15× combo = every XP multiplier in the game)
+- **✨ MASTER badge** rendered as the topmost element in the nametag stack (above ⚜️ prestige badges) — cyan text, teal glow border, dark blue background. Unmistakable from across the map
+- City-wide announcement + screen shake when mastery triggers: "✨ [MOB] PlayerName MASTERED the Skill Tree! All 12 skills unlocked!"
+- Skill Tree overlay (`[K]`) shows "✨ SKILL TREE MASTERED — All 12 skills unlocked! +5% XP permanently" in cyan at the top instead of the FP counter
+- FP HUD pill changes to "✨ MASTER — [K]" in cyan when mastered and no unspent FP
+- Also fixed: `skill_points` and `skill_tree` now properly persisted in `db.js` (they were missing from `upsertBird`)
+
+**🔄 Skill Respec (at Don Featherstone):**
+- Visit Don Featherstone ([M]) → new "🔄 SKILL RESPEC — 500c" section appears at the bottom of his overlay
+- Shows the exact FP that will be refunded based on your current unlocked skills
+- Cost: 500 coins. Refund: all spent Feather Points returned immediately
+- Mastery badge is lost on respec (you must re-unlock all 12 to regain it)
+- Server validates proximity, coin balance, and that you actually have skills to reset
+- Confirmation dialog with mastery warning: "⚠️ You will lose your ✨ MASTER badge!"
+- This is the game's best money sink: 500c is meaningful for any player level but worth it for a full build pivot
+
+**Why both together:**
+- Mastery gives the skill tree a clear **endgame goal** — not just "unlock what helps now" but "COLLECT THEM ALL for the badge + bonus"
+- Respec gives mastery **stakes** — if you reset, you lose the badge and have to grind back to 12/12
+- Players who respec will feel the loss acutely and either rebuild toward mastery again (long-term engagement) or experiment with a different spec (discovery)
+- The 500c cost means it's a decision, not a button to spam — you think carefully before spending
+
+**Creative intent**: The Skill Tree was a fantastic progression system (Session 46) but had no endgame. Reaching all 12 unlocks was its own reward but invisible to others. ✨ MASTER fixes that: it's a permanent status signal that says "this bird completed the tree." The respec creates a beautiful tension loop — do you stay mastered and keep the +5% XP and badge, or spend 500c to pivot your build and grind your way back? A P5 LEGEND bird with ✨ MASTER + ⚜️⚜️⚜️⚜️⚜️ above their nametag, raining golden legendary poops while listed on the Hall of Legends — that's the highest-status display in Bird City. Pure PROGRESSION + SPECTACLE energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -1835,8 +1865,8 @@ Built the Territory Control System on top of the existing upstream code:
 - ~~Bird Royale elimination zone mechanic: winners get Royale Champion badge (session-only, like idol badge) visible on nametag~~ (DONE Session 53)
 - ~~Bird Royale + gang interaction: if your gang wins the royale (last member alive), the gang earns territory control bonus~~ (DONE Session 53)
 - ~~Bird Royale spectator mode: eliminated birds can throw "crowd cheers" that give small food boosts to surviving birds~~ (DONE Session 53)
-- Skill Tree Mastery bonus: unlock ALL 12 skills + earn permanent ✨ MASTER badge on nametag + passive +5% XP gain
-- Skill respec: spend 500 coins at Don Featherstone to reset all skills and refund FP — costly but available (good money sink)
+- ~~Skill Tree Mastery bonus: unlock ALL 12 skills + earn permanent ✨ MASTER badge on nametag + passive +5% XP gain~~ (DONE Session 54)
+- ~~Skill respec: spend 500 coins at Don Featherstone to reset all skills and refund FP — costly but available (good money sink)~~ (DONE Session 54)
 - Royale Champion + Kingpin interaction: if the Royale Champion becomes Kingpin, they're immune to the first dethronement hit (crown defends crown)
 - Royale Champion daily challenge: "Win Bird Royale" as the rarest daily task (200 XP, 150c)
 - Idol Hall of Fame: persistent leaderboard of all-time Idol winners near the stage

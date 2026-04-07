@@ -760,6 +760,8 @@ class GameEngine {
       // === WITNESS PROTECTION ===
       witnessProtectionUntil: 0,       // timestamp when WP expires
       witnessProtectionCooldown: 0,    // timestamp when WP can be purchased again
+      // === SKILL TREE MASTERY ===
+      skillTreeMaster: saved ? (saved.skill_tree_master || false) : false,
     };
 
     // Determine bird type from XP
@@ -1036,6 +1038,9 @@ class GameEngine {
     // === Skill Tree ===
     if (action.type === 'skill_tree_unlock') {
       this._handleSkillTreeUnlock(bird, action.skillId, now);
+    }
+    if (action.type === 'don_respec') {
+      this._handleDonRespec(bird, now);
     }
 
     // === Graffiti Tagging ===
@@ -2956,6 +2961,8 @@ class GameEngine {
       if (bird.prestige >= 1) {
         xpGain = Math.floor(xpGain * PRESTIGE_XP_MULTS[Math.min(bird.prestige, 5)]);
       }
+      // Skill Tree Mastery: permanent +5% XP bonus for unlocking all 12 skills
+      if (bird.skillTreeMaster) xpGain = Math.floor(xpGain * 1.05);
       bird.xp += xpGain;
 
       // Skill Tree: Double Tap — 20% chance to fire a bonus poop on any hit
@@ -4662,6 +4669,7 @@ class GameEngine {
           eagleFeather: b.eagleFeather || false,
           idolBadge: b.idolBadge || false,
           royaleChampBadge: b.royaleChampBadge || false,
+          skillTreeMaster: b.skillTreeMaster || false,
           isFlu: b.fluUntil > now,
           formationType: b.formationType || null,
           hasCursedCoin: this.cursedCoin && this.cursedCoin.state === 'held' && this.cursedCoin.holderId === b.id,
@@ -5204,6 +5212,7 @@ class GameEngine {
         skillPoints: bird.skillPoints || 0,
         skillTreeUnlocked: bird.skillTreeUnlocked || [],
         skillTreeDefs: SKILL_TREE_DEFS,
+        skillTreeMaster: bird.skillTreeMaster || false,
         // Black Market active items
         bmSpeedUntil: bird.bmSpeedUntil,
         bmMegaPoops: bird.bmMegaPoops,
@@ -5719,6 +5728,7 @@ class GameEngine {
       eagle_feather: bird.eagleFeather || false,
       skill_points: bird.skillPoints || 0,
       skill_tree: JSON.stringify(bird.skillTreeUnlocked || []),
+      skill_tree_master: bird.skillTreeMaster || false,
     }).catch(e => {
       console.error('[GameEngine] Failed to save bird:', e.message);
     });
@@ -5928,8 +5938,65 @@ class GameEngine {
     bird.skillPoints -= def.cost;
     bird.skillTreeUnlocked = bird.skillTreeUnlocked || [];
     bird.skillTreeUnlocked.push(skillId);
+
+    // Check for Skill Tree Mastery (all 12 skills unlocked)
+    const allSkillIds = Object.keys(SKILL_TREE_DEFS);
+    if (!bird.skillTreeMaster && allSkillIds.every(id => bird.skillTreeUnlocked.includes(id))) {
+      bird.skillTreeMaster = true;
+      this.events.push({
+        type: 'skill_tree_mastered',
+        birdId: bird.id,
+        birdName: bird.name,
+        gangTag: bird.gangTag || null,
+      });
+    }
+
     this._saveBird(bird);
-    this.events.push({ type: 'skill_tree_unlocked', birdId: bird.id, birdName: bird.name, skillId, label: def.label, emoji: def.emoji, skillPoints: bird.skillPoints });
+    this.events.push({ type: 'skill_tree_unlocked', birdId: bird.id, birdName: bird.name, skillId, label: def.label, emoji: def.emoji, skillPoints: bird.skillPoints, isMaster: bird.skillTreeMaster });
+  }
+
+  // ============================================================
+  // SKILL RESPEC — Reset all skill tree unlocks at Don Featherstone (500c)
+  // ============================================================
+  _handleDonRespec(bird, now) {
+    const RESPEC_COST = 500;
+
+    // Must be near The Don
+    const dx = bird.x - world.DON_POS.x;
+    const dy = bird.y - world.DON_POS.y;
+    if (Math.sqrt(dx * dx + dy * dy) > 130) {
+      this.events.push({ type: 'respec_fail', birdId: bird.id, reason: 'You must be near Don Featherstone to respec.' });
+      return;
+    }
+    if ((bird.coins || 0) < RESPEC_COST) {
+      this.events.push({ type: 'respec_fail', birdId: bird.id, reason: `Need ${RESPEC_COST}c to respec. You have ${bird.coins || 0}c.` });
+      return;
+    }
+    if (!bird.skillTreeUnlocked || bird.skillTreeUnlocked.length === 0) {
+      this.events.push({ type: 'respec_fail', birdId: bird.id, reason: 'No skills to respec — skill tree is already empty.' });
+      return;
+    }
+
+    // Calculate FP to refund (sum of all unlocked skill costs)
+    const fpRefunded = bird.skillTreeUnlocked.reduce((sum, id) => {
+      const def = SKILL_TREE_DEFS[id];
+      return sum + (def ? def.cost : 0);
+    }, 0);
+
+    bird.coins -= RESPEC_COST;
+    bird.skillPoints = (bird.skillPoints || 0) + fpRefunded;
+    bird.skillTreeUnlocked = [];
+    bird.skillTreeMaster = false;  // mastery is lost on respec
+    this._saveBird(bird);
+
+    this.events.push({
+      type: 'don_respec_done',
+      birdId: bird.id,
+      birdName: bird.name,
+      fpRefunded,
+      skillPoints: bird.skillPoints,
+      cost: RESPEC_COST,
+    });
   }
 
   _handleBuySkill(bird, skillId, now) {

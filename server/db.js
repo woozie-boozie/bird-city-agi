@@ -77,6 +77,9 @@ const db = {
       tattoos_equipped: data.tattoos_equipped || '[]',
       prestige: data.prestige || 0,
       eagle_feather: data.eagle_feather || false,
+      skill_points: data.skill_points || 0,
+      skill_tree: data.skill_tree || '[]',
+      skill_tree_master: data.skill_tree_master || false,
       last_seen: Math.floor(Date.now() / 1000),
     };
     await birdsCol.doc(id).set(docData, { merge: true });
