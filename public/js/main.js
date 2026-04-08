@@ -2357,9 +2357,12 @@
     }
     if (ev.type === 'puddle_drink') {
       if (ev.birdId === myId) {
-        showAnnouncement('💧 REFRESHED! +35 food — thirst quenched for 20s!', '#44aaff', 2500);
-        addEventMessage('💧 You drank from a puddle! +35 food — no thirst drain for 20s', '#44aaff');
+        showAnnouncement('💧 REFRESHED! +35 food — quenched for 20s + speed boost!', '#44aaff', 2500);
+        addEventMessage('💧 You drank from a puddle! +35 food — quenched for 20s + ×1.2 speed for 15s', '#44aaff');
       }
+    }
+    if (ev.type === 'food_spoiled') {
+      addEventMessage(`🥵 The scorching heat spoiled ${ev.count || 'some'} food around the city!`, '#ff8822');
     }
 
     // === WEATHER BETTING EVENTS ===
@@ -8742,6 +8745,10 @@
     if (s.raceBoostUntil && s.raceBoostUntil > now) {
       const secs = Math.max(0, Math.ceil((s.raceBoostUntil - now) / 1000));
       html += '<div class="bm-buff-pill" style="background:rgba(100,90,0,0.85);border-color:#ffff44;color:#ffff44;animation:kingpinGlow 0.4s ease-in-out infinite alternate;">⚡ BOOST ×1.7 — ' + secs + 's</div>';
+    }
+    if (s.puddleBoostUntil && s.puddleBoostUntil > now) {
+      const secs = Math.max(0, Math.ceil((s.puddleBoostUntil - now) / 1000));
+      html += '<div class="bm-buff-pill" style="background:rgba(0,80,120,0.85);border-color:#55ccff;color:#55ccff;animation:kingpinGlow 0.6s ease-in-out infinite alternate;">💧 REFRESHED ×1.2 — ' + secs + 's</div>';
     }
     if (s.myHitBounty) {
       const secsLeft = Math.max(0, Math.ceil((s.myHitBounty.expiresAt - now) / 1000));

@@ -771,6 +771,7 @@ class GameEngine {
       // === WEATHER EFFECTS ===
       hailSlowUntil: 0,     // timestamp when hail slow wears off
       heatQuenchedUntil: 0, // timestamp: if > now, bird drank recently and won't drain food
+      puddleBoostUntil: 0,  // timestamp when puddle speed boost wears off
       // === RACE POWER-UPS ===
       raceBoostUntil: 0,    // timestamp when race boost gate speed buff wears off
       // === GOLDEN EGG SCRAMBLE ===
@@ -2367,6 +2368,11 @@ class GameEngine {
       maxSpeed *= 1.7;
     }
 
+    // Puddle boost: cooled and refreshed, +20% speed
+    if (bird.puddleBoostUntil > now) {
+      maxSpeed *= 1.2;
+    }
+
     // Cursed Coin: holder gets +20% speed (urgent cursed energy)
     if (this.cursedCoin && this.cursedCoin.state === 'held' && this.cursedCoin.holderId === bird.id) {
       maxSpeed *= 1.20;
@@ -3573,6 +3579,7 @@ class GameEngine {
           bird.food += 35;
           bird.xp += 20;
           bird.heatQuenchedUntil = now + 20000; // quenched for 20s — no thirst drain
+          bird.puddleBoostUntil = now + 15000;  // +20% speed for 15s — cooled and refreshed!
           this._trackDailyProgress(bird, 'puddle_drink', 1);
           this.events.push({
             type: 'puddle_drink',
@@ -4177,7 +4184,7 @@ class GameEngine {
       this.weather.hailTimer = now + this._randomRange(2500, 5000);
     }
 
-    // Heatwave: spawn water puddles + drain bird thirst
+    // Heatwave: spawn water puddles + drain bird thirst + spoil food
     if (this.weather.type === 'heatwave') {
       // Spawn puddles periodically up to 6 max
       if (now >= this.weather.heatPuddleTimer && this.heatPuddles.size < 6) {
@@ -4197,6 +4204,24 @@ class GameEngine {
             this.events.push({ type: 'heat_thirst_tick', birdId: b.id });
           }
         }
+      }
+      // Food spoilage: scorching heat spoils ~10% of food every 35-55s
+      if (!this.weather.foodSpoilTimer) this.weather.foodSpoilTimer = now + this._randomRange(35000, 55000);
+      if (now >= this.weather.foodSpoilTimer) {
+        const activeFoods = Array.from(this.foods.values()).filter(f => f.active && f.type !== 'water_puddle' && f.type !== 'pond_fish' && f.type !== 'worm');
+        const spoilCount = Math.min(5, Math.floor(activeFoods.length * 0.10));
+        const spoiled = [];
+        for (let i = 0; i < spoilCount && activeFoods.length > 0; i++) {
+          const idx = Math.floor(Math.random() * activeFoods.length);
+          const food = activeFoods.splice(idx, 1)[0];
+          food.active = false;
+          food.respawnAt = now + this._randomRange(25000, 45000);
+          spoiled.push({ x: food.x, y: food.y });
+        }
+        if (spoiled.length > 0) {
+          this.events.push({ type: 'food_spoiled', count: spoiled.length });
+        }
+        this.weather.foodSpoilTimer = now + this._randomRange(35000, 55000);
       }
     }
 
@@ -5576,9 +5601,10 @@ class GameEngine {
         // Combo streak
         comboCount: bird.comboCount,
         comboExpiresAt: bird.comboExpiresAt,
-        // Weather debuffs
+        // Weather debuffs / buffs
         hailSlowUntil: bird.hailSlowUntil,
         heatQuenchedUntil: bird.heatQuenchedUntil,
+        puddleBoostUntil: bird.puddleBoostUntil,
         // Race boost gate
         raceBoostUntil: bird.raceBoostUntil,
         // Golden Egg Scramble

@@ -2036,6 +2036,24 @@ Three interlocking features that complete the Fighting Championship's social lay
 
 **Creative intent**: The tournament was already a great event but felt private — fighters fought while spectators watched passively. Now spectators have SKIN IN THE GAME every single round. A gang cheering for their fighter while betting 200c on each match is peak SOCIAL energy — and if the fighter loses, the gang lost money too. The leaderboard turns the championship into a long-term prestige track: seeing "BirdName — 7 wins" in the Don overlay makes that bird a celebrity. Two gangs whose fighters are both in the final round, with all gang members betting on opposite sides — that's a moment that defines Bird City sessions. The VIP discount is a satisfying reward for Mafia Rep investment that creates real compounding incentives: grind rep → cheaper tournament entry → more tournaments entered → more wins on the leaderboard. Pure SOCIAL + PROGRESSION + SPECTACLE energy.
 
+**Session 62 — 2026-04-08: Heatwave Upgrades — Food Spoilage + Puddle Speed Boost**
+Two layered improvements to the existing heatwave system that deepen its emergent chaos.
+
+**Food Spoilage (server/game.js):**
+- During heatwaves, ~10% of active food items spoil every 35–55 seconds
+- Spoiled food gets briefly deactivated (25–45s) before respawning — the supply shrinks
+- Skips weather-specific items (water_puddles, pond_fish, worms) — only spoils regular food
+- Fires `food_spoiled` event to all clients: "🥵 The scorching heat spoiled N food around the city!"
+- Creates urgency: the longer the heatwave runs, the scarcer food gets — players who stockpile are punished
+
+**Puddle Speed Boost (server/game.js, client):**
+- Collecting a water puddle now also grants `puddleBoostUntil` — +20% speed for 15 seconds
+- Stacks on top of the existing quench mechanic (no thirst drain for 20s)
+- Speed boost persists even after `heatQuenchedUntil` expires — the cooling lingers
+- **Active buff pill**: "💧 REFRESHED ×1.2 — Xs" cyan pulsing pill in the bottom-right HUD
+
+**Creative intent**: The original heatwave created a survival threat (thirst drain). These additions create a REWARD loop that balances it: the same puddles that quench your thirst now also make you faster. A Most Wanted bird who finds a puddle mid-cop-chase gets a 15-second speed burst — the heatwave just became an escape mechanic. Food spoilage adds a second pressure vector: the city's food economy gets throttled during heatwaves, forcing more competition for the dwindling supply. Rich birds who've been stockpiling food suddenly find their reserves shrinking. Pure CARNAGE + DISCOVERY energy layered on top of the existing heatwave foundation.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
