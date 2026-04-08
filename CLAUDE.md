@@ -1945,6 +1945,30 @@ Bird City's most cinematic personal combat mechanic. No arena, no entry fee, no 
 
 **Creative intent**: The Arena was great for formal PvP — but it required flying to a specific location, paying an entry fee, and waiting. Street Duels are SPONTANEOUS. You're fighting over the Radio Tower, the tension builds, and someone presses [Y] — now it's a 45-second poop battle with real coins at stake, right where you're standing. The challenge window is social drama: the target sees your name and the pot amount. Do they accept and fight for their coins, or flee and lose face? Two gang rivals settling it in the middle of Downtown during a Crime Wave, red auras glowing, hearts ticking down — that's a moment nobody scripted. Pure CARNAGE + SOCIAL energy.
 
+**Session 59 — 2026-04-08: Duel Betting + Rematch System — Street Fights Now Have a Crowd**
+Two interlocking features that complete Street Duels' social layer: a spectator betting market, and an instant rematch window after every knockout.
+
+**Duel Betting (server + client):**
+- When any street duel starts, a 20-second betting window opens city-wide for all non-dueling birds
+- Duel Bet Panel auto-appears (bottom-right corner) showing both fighters with live bet totals and estimated payout odds
+- Bet 10–300c on either fighter — pari-mutuel pool (min 1.5× guaranteed payout for correct bettors)
+- City-wide event feed announces every bet placed ("🎰 BirdName bets 80c on Fighter!")
+- On duel end: winning bettors get proportional share of total pool + 30 XP; losing bettors lose their coins
+- Nobody bet on the winner → full refund for all (rare, fair)
+- Bets refunded on draw (time expiry) and disconnect cancellation — clean lifecycle in all edge cases
+- Server-authoritative: bet amounts validated, coins deducted immediately on placement
+
+**Duel Rematch (server + client):**
+- After any knockout (not draw), both combatants get a 10-second REMATCH window
+- Active buffs HUD shows pulsing orange "🔄 REMATCH vs [Name]? Press [Y] · Xs" pill with countdown
+- Press [Y] or click the pill to accept — opponent sees the same prompt simultaneously
+- If both accept within 10 seconds: instant new duel with fresh recalculated stakes (25% of current coins)
+- Rematch count tracked and displayed: "REMATCH", "REMATCH x2", "REMATCH x3" in city-wide feed
+- New rematch duel also opens a fresh 20-second betting window — crowd can bet again!
+- Rematch cancelled automatically if either bird disconnects or the window expires
+
+**Creative intent**: Duels were great 1v1 moments but private. Now they're SPECTACLES. A duel breaking out in Downtown while 4 other birds rush to bet on the outcome is pure SOCIAL energy. The betting panel creates natural crowd-gathering behavior — spectators track the fight, cheer for their pick, and watch the payout announcement. The rematch window taps into the "one more game" psychology: the loser immediately has a second chance, which creates extended grudge-match sequences. Two gang rivals rematching three times while the whole city bets different amounts each round is peak Bird City drama. Pure SOCIAL + CARNAGE energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -2048,8 +2072,8 @@ Built the Territory Control System on top of the existing upstream code:
 - ~~Poop power-up vending machine: spend 20c at a street vending machine for a random single-poop effect~~ (DONE Session 57)
 - ~~Street Duels — press [Y] near a rival to challenge them to a spontaneous 1v1 poop fight~~ (DONE Session 58)
 - Bird Photo Mode: press some key to screenshot; ghost camera drifts away for 3s, shows UI-free overlay
-- Duel Betting: spectators near a street duel can place bets on the outcome in real-time
-- Duel Rematch: after a duel ends, both birds get a 10s window to instantly rematch (no re-challenge needed)
+- ~~Duel Betting: spectators near a street duel can place bets on the outcome in real-time~~ (DONE Session 59)
+- ~~Duel Rematch: after a duel ends, both birds get a 10s window to instantly rematch (no re-challenge needed)~~ (DONE Session 59)
 - Street Duel tournament: Don Featherstone organizes a bracket tournament — last winner standing gets massive payout
 - Gazette tracking for duels: "⚔️ [Name] WINS STREET DUEL: defeats [Name] for Xc" headline
 - Idol Hall of Fame: persistent leaderboard of all-time Idol winners near the stage
