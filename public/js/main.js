@@ -1105,6 +1105,23 @@
       showAnnouncement('👑🤧 THE KINGPIN HAS THE FLU! ' + ev.name + ' is WEAKENED!', '#ffcc00', 5000);
       addEventMessage('👑🤧 KINGPIN ' + ev.name + ' is infected with bird flu — now\'s your chance!', '#ffcc00');
     }
+    // Bird Flu cross-system: cop infected during arrest
+    if (ev.type === 'flu_cop_infected') {
+      if (ev.birdId === myId) {
+        showAnnouncement('🤧💉 YOUR FLU INFECTED THE COP! 5s of freedom!', '#88ff88', 3000);
+      }
+      const cType = ev.copType === 'swat' ? 'SWAT crow' : 'cop pigeon';
+      addEventMessage('🤧🚔 ' + ev.birdName + '\'s flu spread to the arresting ' + cType + '! It\'s staggering around sick!', '#88ee88');
+      effects.push({ type: 'text', x: ev.x, y: ev.y - 20, time: now, duration: 2000, text: '🤧 FLU INFECTED!', color: '#88ff88', size: 13 });
+    }
+    // Bird Flu cross-system: bounty hunter infected during catch
+    if (ev.type === 'flu_bh_infected') {
+      if (ev.birdId === myId) {
+        showAnnouncement('🤧🔫 YOUR FLU INFECTED THE BOUNTY HUNTER! 15s to escape!', '#88ff88', 4000);
+      }
+      addEventMessage('🤧🔫 ' + ev.birdName + '\'s bird flu dropped the Bounty Hunter! He\'s wandering confused for 15s!', '#88ee88');
+      effects.push({ type: 'text', x: ev.x, y: ev.y - 20, time: now, duration: 2500, text: '🤧 BH SICK!', color: '#88ff88', size: 14 });
+    }
 
     // === PIGEON PIED PIPER EVENTS ===
     if (ev.type === 'piper_appears') {
@@ -2492,16 +2509,23 @@
     }
     if (ev.type === 'drunk_pigeon_coin_shower') {
       // Big screen flash for everyone
-      showAnnouncement('⚡🍺 DRUNK PIGEON ZAPPED — COIN SHOWER!', '#ffd700', 4000);
+      const crimeBonus = ev.crimeWaveBonus;
+      const headerText = crimeBonus ? '⚡🍺🚨 CRIME WAVE PIGEON ZAPPED — 2× COIN SHOWER!' : '⚡🍺 DRUNK PIGEON ZAPPED — COIN SHOWER!';
+      showAnnouncement(headerText, '#ffd700', crimeBonus ? 5000 : 4000);
       const winnerNames = ev.winners.map(w => `${w.name} (+${w.share}c)`).join(', ');
-      addEventMessage(`⚡ Lightning zapped a drunk pigeon! Coins scattered: ${winnerNames || 'nobody nearby'}`, '#ffd700');
-      effects.push({ type: 'text', x: ev.x, y: ev.y, text: '💰 COIN SHOWER!', color: '#ffd700', size: 16, time: performance.now(), duration: 3000 });
-      effects.push({ type: 'screen_shake', intensity: 10, duration: 500, time: performance.now() });
+      const prefix = crimeBonus ? '⚡🚨 CRIME WAVE BOOST: ' : '⚡ ';
+      addEventMessage(prefix + `Lightning zapped a drunk pigeon! Coins scattered: ${winnerNames || 'nobody nearby'}`, '#ffd700');
+      effects.push({ type: 'text', x: ev.x, y: ev.y, text: crimeBonus ? '💰🚨 2× SHOWER!' : '💰 COIN SHOWER!', color: '#ffd700', size: 16, time: performance.now(), duration: 3000 });
+      effects.push({ type: 'screen_shake', intensity: crimeBonus ? 14 : 10, duration: crimeBonus ? 700 : 500, time: performance.now() });
       // Bonus announcement if I was in range
       if (ev.winners && ev.winners.some(w => w.id === myId)) {
         const myWin = ev.winners.find(w => w.id === myId);
-        showAnnouncement(`💰 YOU GOT ${myWin.share}c FROM THE SHOWER!`, '#ffd700', 3000);
+        showAnnouncement(`💰 YOU GOT ${myWin.share}c FROM THE SHOWER!${crimeBonus ? ' (2× CRIME WAVE!)' : ''}`, '#ffd700', 3000);
       }
+    }
+    if (ev.type === 'crime_wave_pigeon_blast_cops') {
+      addEventMessage(`🚨⚡🍺 Crime Wave pigeon blast STUNNED ${ev.count} cop${ev.count > 1 ? 's' : ''}! Chaos reigns!`, '#ff8800');
+      effects.push({ type: 'text', x: ev.x, y: ev.y - 30, text: `🚨 ${ev.count} COP${ev.count > 1 ? 'S' : ''} STUNNED!`, color: '#ff8800', size: 13, time: performance.now(), duration: 2500 });
     }
     if (ev.type === 'drunk_pigeons_gone') {
       addEventMessage('The drunk pigeons passed out and went home at dawn.', '#aaaaaa');
@@ -10108,10 +10132,40 @@
 
     if (!idol) {
       subtitleEl.textContent = 'Next contest coming soon...';
-      bodyEl.innerHTML = `<div style="text-align:center;color:#aa88cc;font-size:10px;padding:10px;">
+      // Build Idol Hall of Fame display
+      const idolLB = (s && s.idolLeaderboard) || [];
+      const myWins = (s && s.myIdolWins) || 0;
+      let hofHtml = `<div style="text-align:center;color:#aa88cc;font-size:10px;padding:8px 0 4px;">
         The stage is quiet for now. Come back soon!<br>
-        <br><span style="color:#cc88ff;">Contest opens every 35-50 minutes.</span>
+        <span style="color:#cc88ff;font-size:9px;">Contest opens every 35-50 minutes.</span>
       </div>`;
+      if (myWins > 0) {
+        hofHtml += `<div style="text-align:center;margin:6px 0;padding:5px;background:rgba(180,100,0,0.2);border:1px solid #886600;border-radius:6px;">
+          <span style="color:#ffd700;font-size:11px;">🎤 Your Idol Wins: <strong>${myWins}</strong></span>
+        </div>`;
+      }
+      hofHtml += `<div style="border-top:1px solid #660099;margin-top:6px;padding-top:8px;">
+        <div style="text-align:center;color:#ff88ff;font-size:10px;font-weight:bold;letter-spacing:1px;margin-bottom:6px;">🎤 IDOL HALL OF FAME 🎤</div>`;
+      if (idolLB.length === 0) {
+        hofHtml += `<div style="text-align:center;color:#664488;font-size:9px;padding:8px;">No all-time champions yet — be the first!</div>`;
+      } else {
+        for (let i = 0; i < idolLB.length; i++) {
+          const entry = idolLB[i];
+          const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i+1}`;
+          const prestigeBadges = ['','⚜️','⚜️⚜️','⚜️⚜️⚜️','⚜️⚜️⚜️⚜️','⚜️⚜️⚜️⚜️⚜️'][Math.min(entry.prestige||0,5)];
+          hofHtml += `<div style="display:flex;justify-content:space-between;align-items:center;
+            padding:4px 8px;margin-bottom:3px;background:rgba(80,0,120,0.3);
+            border-radius:5px;border:1px solid #550077;">
+            <span>${medal} <span style="color:#ff88ff;font-size:10px;">${entry.name}</span>
+              ${entry.gangTag ? `<span style="color:${entry.gangColor||'#ff9944'};font-size:8px;">[${entry.gangTag}]</span>` : ''}
+              ${prestigeBadges ? `<span style="font-size:8px;">${prestigeBadges}</span>` : ''}
+            </span>
+            <span style="color:#ffd700;font-size:10px;font-weight:bold;">${entry.idolWins}🎤</span>
+          </div>`;
+        }
+      }
+      hofHtml += `</div>`;
+      bodyEl.innerHTML = hofHtml;
       return;
     }
 
@@ -10236,6 +10290,22 @@
         </div>`;
       }
       html += `</div>`;
+
+      // Show Hall of Fame snippet at bottom of results
+      const idolLB = (s && s.idolLeaderboard) || [];
+      if (idolLB.length > 0) {
+        html += `<div style="border-top:1px solid #440055;margin-top:8px;padding-top:6px;">
+          <div style="text-align:center;color:#cc88ff;font-size:9px;margin-bottom:4px;">🎤 HALL OF FAME (all-time)</div>`;
+        for (let i = 0; i < Math.min(idolLB.length, 3); i++) {
+          const e = idolLB[i];
+          const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉';
+          html += `<div style="display:flex;justify-content:space-between;font-size:9px;color:#aa88bb;padding:1px 6px;">
+            <span>${medal} ${e.name}${e.gangTag ? ' ['+e.gangTag+']' : ''}</span>
+            <span style="color:#ffd700;">${e.idolWins} wins</span>
+          </div>`;
+        }
+        html += `</div>`;
+      }
       bodyEl.innerHTML = html;
     }
   }

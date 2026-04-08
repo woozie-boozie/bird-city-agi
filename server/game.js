@@ -72,6 +72,7 @@ const DAILY_CHALLENGE_POOL = [
   { id: 'ace_pilot',      title: 'Ace Pilot',       desc: 'Bring down the police helicopter',              target: 1, trackType: 'helicopter_down',  reward: { xp: 250, coins: 120 } },
   { id: 'royale_winner',  title: 'Battle Royale',   desc: 'Win a Bird Royale shrinking-zone event',        target: 1, trackType: 'royale_win',       reward: { xp: 300, coins: 150 } },
   { id: 'champ',          title: 'Fighting Champ',  desc: 'Win the Pigeon Fighting Championship tournament', target: 1, trackType: 'tournament_win',   reward: { xp: 400, coins: 200 } },
+  { id: 'idol_champ',    title: 'Idol Champion',   desc: 'Win the Bird City Idol singing contest',          target: 1, trackType: 'idol_won',         reward: { xp: 250, coins: 120 } },
 ];
 
 class GameEngine {
@@ -311,6 +312,7 @@ class GameEngine {
     this.CITY_HALL_POS = world.CITY_HALL_POS;
     this.HALL_OF_LEGENDS_POS = world.HALL_OF_LEGENDS_POS;
     this._cachedHallOfLegends = [];  // top prestige players for the Hall of Legends
+    this._cachedIdolLeaderboard = []; // top all-time Idol champions
 
     // === BIRD TATTOO PARLOR ===
     this.TATTOO_PARLOR_POS = world.TATTOO_PARLOR_POS;
@@ -827,6 +829,8 @@ class GameEngine {
       // === PIGEON FIGHTING CHAMPIONSHIP ===
       fightingChampBadge: false,   // session-only: won the bracket tournament this session
       tournamentWins: saved ? (saved.tournament_wins || 0) : 0,  // lifetime championship wins (persistent)
+      // === BIRD CITY IDOL HALL OF FAME ===
+      idolWins: saved ? (saved.idol_wins || 0) : 0,   // lifetime idol wins (persistent)
     };
 
     // Determine bird type from XP
@@ -4623,26 +4627,50 @@ class GameEngine {
     if (!this.drunkPigeons.has(dpId)) return;
     this.drunkPigeons.delete(dpId);
 
+    // Crime Wave synergy: if a crime wave is active, the explosion is SUPERCHARGED.
+    // Coins are doubled and nearby cops are stunned by the blast — the ultimate chaos moment.
+    const crimeWaveBonus = !!this.crimeWave;
+    const coinMult = crimeWaveBonus ? 2 : 1;
+
     // Every bird within 250px gets a windfall share of the coins
     const winners = [];
     for (const bird of this.birds.values()) {
       const dx = bird.x - dp.x;
       const dy = bird.y - dp.y;
       if (Math.sqrt(dx * dx + dy * dy) < 250) {
-        const share = Math.floor(dp.coins / 2) + Math.floor(Math.random() * 15);
+        const baseShare = Math.floor(dp.coins / 2) + Math.floor(Math.random() * 15);
+        const share = baseShare * coinMult;
         bird.coins += share;
         bird.xp += 30;
         winners.push({ id: bird.id, name: bird.name, share });
       }
     }
 
+    // Crime Wave: the shockwave stuns all cops within 120px — lightning + drunk pigeon + crime = CHAOS
+    if (crimeWaveBonus) {
+      let copsStunned = 0;
+      for (const cop of this.copBirds.values()) {
+        const dx = cop.x - dp.x;
+        const dy = cop.y - dp.y;
+        if (Math.sqrt(dx * dx + dy * dy) < 120) {
+          cop.state = 'stunned';
+          cop.stunnedUntil = Math.max(cop.stunnedUntil || 0, now + 3000);
+          copsStunned++;
+        }
+      }
+      if (copsStunned > 0) {
+        this.events.push({ type: 'crime_wave_pigeon_blast_cops', count: copsStunned, x: dp.x, y: dp.y });
+      }
+    }
+
     this.events.push({
       type: 'drunk_pigeon_coin_shower',
       x: dp.x, y: dp.y,
-      totalCoins: dp.coins,
+      totalCoins: dp.coins * coinMult,
       winners,
+      crimeWaveBonus,
     });
-    console.log(`[GameEngine] ⚡🍺 Drunk pigeon ZAPPED — coin shower! ${dp.coins}c scattered`);
+    console.log(`[GameEngine] ⚡🍺 Drunk pigeon ZAPPED — coin shower! ${dp.coins * coinMult}c scattered${crimeWaveBonus ? ' (CRIME WAVE ×2!)' : ''}`);
   }
 
   // ============================================================
@@ -5957,6 +5985,9 @@ class GameEngine {
       } : null,
       // Hall of Legends — top prestige players city-wide
       hallOfLegends: this._cachedHallOfLegends || [],
+      // Idol Hall of Fame — top all-time singing contest champions
+      idolLeaderboard: this._cachedIdolLeaderboard || [],
+      myIdolWins: bird.idolWins || 0,
       eagleFeather: bird.eagleFeather || false,
       nearHallOfLegends: (() => {
         const dx = bird.x - this.HALL_OF_LEGENDS_POS.x;
@@ -6239,6 +6270,36 @@ class GameEngine {
       livePrestige.sort((a, b) => (b.prestige - a.prestige) || (b.xp - a.xp));
       this._cachedHallOfLegends = livePrestige.slice(0, 5);
     });
+
+    // Refresh Idol Leaderboard from live birds + Firestore
+    this._refreshIdolLeaderboard();
+  }
+
+  // Refresh the top idol champions leaderboard (call after any idol win)
+  _refreshIdolLeaderboard() {
+    const liveIdolBirds = [];
+    for (const b of this.birds.values()) {
+      if ((b.idolWins || 0) > 0) {
+        liveIdolBirds.push({
+          name: b.name, idolWins: b.idolWins,
+          gangTag: b.gangTag || null, gangColor: b.gangColor || null,
+          prestige: b.prestige || 0, online: true,
+        });
+      }
+    }
+    // Try to merge Firestore offline data
+    firestoreDb.getIdolLeaderboard().then(savedIdols => {
+      const liveNames = new Set(liveIdolBirds.map(b => b.name));
+      const merged = [...liveIdolBirds];
+      for (const s of savedIdols) {
+        if (!liveNames.has(s.name)) merged.push({ ...s, online: false });
+      }
+      merged.sort((a, b) => (b.idolWins || 0) - (a.idolWins || 0));
+      this._cachedIdolLeaderboard = merged.slice(0, 5);
+    }).catch(() => {
+      liveIdolBirds.sort((a, b) => (b.idolWins || 0) - (a.idolWins || 0));
+      this._cachedIdolLeaderboard = liveIdolBirds.slice(0, 5);
+    });
   }
 
   getStats() {
@@ -6286,6 +6347,7 @@ class GameEngine {
       skill_tree: JSON.stringify(bird.skillTreeUnlocked || []),
       skill_tree_master: bird.skillTreeMaster || false,
       tournament_wins: bird.tournamentWins || 0,
+      idol_wins: bird.idolWins || 0,
     }).catch(e => {
       console.error('[GameEngine] Failed to save bird:', e.message);
     });
@@ -8761,6 +8823,22 @@ class GameEngine {
         }
       }
 
+      // Bird Flu infection: cop caught an infected bird and now staggers around sick
+      if (cop.state === 'flu_confused') {
+        if (now >= cop.fluConfusedUntil) {
+          cop.state = 'pursuing';
+          cop.fluWanderAngle = undefined;
+        } else {
+          // Stagger around randomly — too sick to chase
+          cop.fluWanderAngle = ((cop.fluWanderAngle !== undefined ? cop.fluWanderAngle : Math.random() * Math.PI * 2) + (Math.random() - 0.5) * 2.0);
+          cop.x += Math.cos(cop.fluWanderAngle) * cop.speed * 0.35 * dt;
+          cop.y += Math.sin(cop.fluWanderAngle) * cop.speed * 0.35 * dt;
+          cop.x = Math.max(10, Math.min(world.WORLD_WIDTH - 10, cop.x));
+          cop.y = Math.max(10, Math.min(world.WORLD_HEIGHT - 10, cop.y));
+          continue;
+        }
+      }
+
       // Smoke bomb: cops wander in a confused circle instead of chasing
       if (smokeActive) {
         cop.smokeWanderAngle = (cop.smokeWanderAngle || Math.random() * Math.PI * 2) + dt * 0.8;
@@ -8855,9 +8933,24 @@ class GameEngine {
           x: cop.x, y: cop.y,
         });
 
-        // After arrest cop goes off-duty for 8s
-        cop.state = 'stunned';
-        cop.stunnedUntil = now + 8000;
+        // Bird Flu cross-system: if the arrested bird is infected, cop catches the flu!
+        // The cop immediately becomes sick and staggers around confused for 5s.
+        // This creates a beautiful counter-play: being infected is actually a WEAPON against cops.
+        if (wanted.fluUntil > now) {
+          cop.state = 'flu_confused';
+          cop.fluConfusedUntil = now + 5000;
+          cop.fluWanderAngle = undefined;
+          this.events.push({
+            type: 'flu_cop_infected',
+            birdId: wanted.id, birdName: wanted.name,
+            copType: cop.type,
+            x: cop.x, y: cop.y,
+          });
+        } else {
+          // Normal: after arrest cop goes off-duty for 8s
+          cop.state = 'stunned';
+          cop.stunnedUntil = now + 8000;
+        }
       }
     }
   }
@@ -12461,6 +12554,11 @@ class GameEngine {
         winnerBird.coins += 300;
         winnerBird.xp += 250;
         winnerBird.idolBadge = true;
+        // Idol Hall of Fame: increment lifetime win counter + daily challenge tracking
+        winnerBird.idolWins = (winnerBird.idolWins || 0) + 1;
+        this._trackDailyProgress(winnerBird, 'idol_won', 1);
+        // Refresh idol leaderboard to include this win immediately
+        this._refreshIdolLeaderboard();
       }
 
       // Reward runners-up
@@ -13109,6 +13207,21 @@ class GameEngine {
         coinsStolen: stolen,
         x: bh.x, y: bh.y,
       });
+
+      // Bird Flu cross-system: if the caught bird was infected, the Bounty Hunter gets sick!
+      // He's a professional but even pros aren't immune to the Bird Flu.
+      // 15 seconds of confused wandering — a significant escape window for the target.
+      if (wanted.fluUntil > now) {
+        bh.state = 'off_duty';
+        bh.offDutyUntil = now + 15000;
+        bh.wanderAngle = Math.random() * Math.PI * 2;
+        this.events.push({
+          type: 'flu_bh_infected',
+          birdId: wanted.id,
+          birdName: wanted.name,
+          x: bh.x, y: bh.y,
+        });
+      }
     }
   }
 

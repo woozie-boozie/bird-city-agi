@@ -81,6 +81,7 @@ const db = {
       skill_tree: data.skill_tree || '[]',
       skill_tree_master: data.skill_tree_master || false,
       tournament_wins: data.tournament_wins || 0,
+      idol_wins: data.idol_wins || 0,
       last_seen: Math.floor(Date.now() / 1000),
     };
     await birdsCol.doc(id).set(docData, { merge: true });
@@ -239,6 +240,28 @@ const db = {
           eagleFeather: data.eagle_feather || false,
           gangTag: data.gang_tag || null,
           gangColor: data.gang_color || null,
+        });
+      }
+    });
+    return results.slice(0, 5);
+  },
+
+  /**
+   * Get the Idol Hall of Fame — top all-time Idol singing contest winners.
+   * Returns top 5 with name, idol_wins, gang_tag, gang_color, prestige.
+   */
+  async getIdolLeaderboard() {
+    const snapshot = await birdsCol.orderBy('idol_wins', 'desc').limit(10).get();
+    const results = [];
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      if ((data.idol_wins || 0) > 0) {
+        results.push({
+          name: data.name,
+          idolWins: data.idol_wins || 0,
+          gangTag: data.gang_tag || null,
+          gangColor: data.gang_color || null,
+          prestige: data.prestige || 0,
         });
       }
     });

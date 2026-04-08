@@ -2054,6 +2054,39 @@ Two layered improvements to the existing heatwave system that deepen its emergen
 
 **Creative intent**: The original heatwave created a survival threat (thirst drain). These additions create a REWARD loop that balances it: the same puddles that quench your thirst now also make you faster. A Most Wanted bird who finds a puddle mid-cop-chase gets a 15-second speed burst — the heatwave just became an escape mechanic. Food spoilage adds a second pressure vector: the city's food economy gets throttled during heatwaves, forcing more competition for the dwindling supply. Rich birds who've been stockpiling food suddenly find their reserves shrinking. Pure CARNAGE + DISCOVERY energy layered on top of the existing heatwave foundation.
 
+**Session 63 — 2026-04-08: Cross-System Chaos — Flu Counter-Play, Crime Wave Pigeon Bomb, Idol Hall of Fame**
+Four interlocking additions that weave existing systems together into a richer web of emergent chaos.
+
+**Bird Flu × Cop Infection (the killer counter-play):**
+- When a cop arrests an infected bird → the cop immediately catches the flu and enters 'flu_confused' state for 5 full seconds
+- Flu-confused cops stagger erratically at half-speed, completely unable to chase or arrest anyone
+- This creates a beautiful role-reversal: being SICK is now a WEAPON. Let yourself get arrested and the cop who busted you immediately becomes useless for 5 seconds — the ultimate troll move. You respawn, cop is staggering, and you're free.
+- New event: `flu_cop_infected` → personal "YOUR FLU INFECTED THE COP! 5s of freedom!" + city-wide callout
+
+**Bird Flu × Bounty Hunter Infection:**
+- When the Bounty Hunter catches an infected bird → BH goes off-duty for 15 full seconds (confused wandering)
+- Even professionals get sick. A Level 5 Most Wanted bird using their flu as a shield against the BH is a genuinely dramatic moment
+- New event: `flu_bh_infected` → personal "YOUR FLU INFECTED THE BOUNTY HUNTER! 15s to escape!" announcement
+
+**Drunk Pigeon × Crime Wave × Lightning (the supercharged chaos moment):**
+- During an active Crime Wave, when lightning strikes a drunk pigeon → coin scatter is DOUBLED (coinMult × 2)
+- AND the shockwave stuns every cop within 120px for 3 seconds (the blast knocks them off their feet)
+- New event: `crime_wave_pigeon_blast_cops` → floating "🚨 N COPS STUNNED!" text + event feed
+- The drunk pigeon coin shower announcement upgrades to "⚡🍺🚨 CRIME WAVE PIGEON ZAPPED — 2× COIN SHOWER!" with bigger screen shake
+- Three systems converging simultaneously (crime wave + storm lightning + drunk pigeon) into one explosive moment is peak CARNAGE CITY emergence
+
+**Idol Hall of Fame (completing the Idol system's long-term arc):**
+- `idolWins` field added to bird data — persistent in Firestore, tracks lifetime Idol wins across all sessions
+- When you win Bird City Idol: `idolWins` incremented, `_trackDailyProgress` for `idol_won`, leaderboard refreshes immediately
+- New `_cachedIdolLeaderboard` (top-5 all-time idol champions) built from live birds + Firestore data via `getIdolLeaderboard()` in db.js
+- Displayed inside the Idol overlay when no contest is active — shows gold 🎤 medals, gang tags, prestige badges, all-time win count per bird
+- Also shows as a compact 3-entry footer at the bottom of Results phase ("HALL OF FAME — all-time")
+- Your own lifetime win count shown in gold at the top of the idle-state overlay
+- **New daily challenge**: "Idol Champion — Win the Bird City Idol contest" (250 XP, 120c) — added to `DAILY_CHALLENGE_POOL`
+- Completing the challenge is genuinely rare (must enter AND win a contest) — the hardest social daily
+
+**Creative intent**: These four additions take Bird City's existing chaos and make it DEEPER without adding new systems. The flu interactions create genuine "wait, I can USE being sick?!" moments — turning a debuff into a weapon. The crime wave pigeon bomb is the ultimate "three-systems-collide" spectacle: a criminal running from cops during a crime wave, a storm rages overhead, a drunk pigeon staggers nearby, lightning strikes the pigeon — and suddenly 2× coins rain down while every nearby cop staggers sick. That chain of events requires no scripting. The Idol Hall of Fame turns a fun periodic event into a long-term prestige track: seeing "[SKY] BirdName — 4 wins" in the idle overlay makes that bird a legend. Pure CARNAGE + SOCIAL + DISCOVERY + PROGRESSION energy — the city's systems now have genuine synergies.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -2147,13 +2180,14 @@ Built the Territory Control System on top of the existing upstream code:
 - Donut Cop daily challenge: "Cop Briber" (bribe 2×) + "Sugar Rush" (ambush 2×) — ADDED Session 56
 - ~~Helicopter daily challenge: "Ace Pilot — bring down the police helicopter" (250 XP, 120c)~~ (DONE Session 58)
 - ~~Royale Champion daily challenge: "Win Bird Royale" as the rarest daily task"~~ (DONE Session 58 as "Battle Royale")
-- Idol daily challenge: "Win Bird City Idol" as a rare daily task
-- Bird Flu + Bounty Hunter interaction: if BH catches an infected bird, BH wanders confused for 15s
-- Bird Flu + Cop: if a cop arrests an infected bird, the cop catches the flu and wanders confused for 5s
+- ~~Idol daily challenge: "Win Bird City Idol" as a rare daily task~~ (DONE Session 63)
+- ~~Bird Flu + Bounty Hunter interaction: if BH catches an infected bird, BH wanders confused for 15s~~ (DONE Session 63)
+- ~~Bird Flu + Cop: if a cop arrests an infected bird, the cop catches the flu and wanders confused for 5s~~ (DONE Session 63)
+- ~~Drunk pigeon + crime wave interaction: drunk pigeons drop 2× coins when struck by lightning during crime waves~~ (DONE Session 63 — also stuns nearby cops)
+- ~~Idol Hall of Fame: persistent leaderboard of all-time Idol winners near the stage~~ (DONE Session 63)
 - Helicopter + Fog: announce to targeted bird when helicopter loses trail in fog
 - Royale Champion + Kingpin: if Royale Champion becomes Kingpin, immune to first dethronement hit
 - Multi-bird Wanted system: track top 2 most-wanted simultaneously (two Bounty Hunters)
-- Drunk pigeon + crime wave interaction: drunk pigeons drop 2× coins when struck by lightning during crime waves
 - ~~Poop power-up vending machine: spend 20c at a street vending machine for a random single-poop effect~~ (DONE Session 57)
 - ~~Street Duels — press [Y] near a rival to challenge them to a spontaneous 1v1 poop fight~~ (DONE Session 58)
 - Bird Photo Mode: press some key to screenshot; ghost camera drifts away for 3s, shows UI-free overlay
@@ -2161,7 +2195,6 @@ Built the Territory Control System on top of the existing upstream code:
 - ~~Duel Rematch: after a duel ends, both birds get a 10s window to instantly rematch (no re-challenge needed)~~ (DONE Session 59)
 - ~~Street Duel tournament: Don Featherstone organizes a bracket tournament — last winner standing gets massive payout~~ (DONE Session 60)
 - Gazette tracking for duels: "⚔️ [Name] WINS STREET DUEL: defeats [Name] for Xc" headline
-- Idol Hall of Fame: persistent leaderboard of all-time Idol winners near the stage
 - ~~Tournament spectator betting: extend duel betting panel to cover all active tournament duels simultaneously (city-wide bracket gambling)~~ (DONE Session 61)
 - ~~Fighting Championship leaderboard: track all-time tournament wins per bird (show in Hall of Legends or Don overlay)~~ (DONE Session 61)
 - ~~Tournament entry discount for Mafia Capos/Dons: high-rep birds pay 50c instead of 100c~~ (DONE Session 61)
