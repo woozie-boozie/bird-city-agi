@@ -1969,6 +1969,43 @@ Two interlocking features that complete Street Duels' social layer: a spectator 
 
 **Creative intent**: Duels were great 1v1 moments but private. Now they're SPECTACLES. A duel breaking out in Downtown while 4 other birds rush to bet on the outcome is pure SOCIAL energy. The betting panel creates natural crowd-gathering behavior — spectators track the fight, cheer for their pick, and watch the payout announcement. The rematch window taps into the "one more game" psychology: the loser immediately has a second chance, which creates extended grudge-match sequences. Two gang rivals rematching three times while the whole city bets different amounts each round is peak Bird City drama. Pure SOCIAL + CARNAGE energy.
 
+**Session 60 — 2026-04-08: Pigeon Fighting Championship — Don Featherstone's Bracket Tournament**
+The ultimate structured combat event. Don Featherstone now hosts a full bracket tournament every 25-35 minutes. Pay 100c to enter, get paired into rounds of forced street duels, last bird standing wins the entire pot + 500 XP + a 🥊 CHAMPION badge on their nametag.
+
+**Tournament flow (`server/game.js`):**
+- Every 25-35 minutes a 45-second signup window opens city-wide with a screen shake announcement
+- Birds fly to Don Featherstone and press [M] → "JOIN TOURNAMENT — 100c" button appears in his overlay
+- Min 3, max 8 entrants (fewer than 3 = cancelled + refunded)
+- Signup closes → Round 1 immediately starts: all entrants shuffled and paired into simultaneous street duels
+- Tournament duels are **force-started** — no challenge/accept needed (both birds automatically enter)
+- Tournament duels use 60-second timers; on timeout a random winner is chosen (no draws allowed in brackets)
+- After all round duels resolve: winners advance to next round; odd number = one bird gets a bye
+- Rounds continue until 1 bird remains — that bird is the champion
+- **Champion reward**: entire pot + 500 XP + `fightingChampBadge = true` (session badge) + daily challenge progress
+- New daily challenge: "Fighting Champ" — win the Pigeon Fighting Championship (400 XP, 200c) — the rarest task
+
+**Bracket mechanics (clean bracket management):**
+- `this.tournament` tracks: state, entrants, pot, round, bracket, survivors, champion
+- `this._startTournamentRound(now)` shuffles survivors, creates all match pairs, calls `_forceTournamentDuel()` for each
+- `_forceTournamentDuel()` creates a street duel directly (bypasses challenge flow), marks it with `isTournamentDuel: true`
+- `_resolveStreetDuel()` detects tournament duels and calls `_onTournamentMatchResult()` instead of normal reward logic
+- `_tickStreetDuels()` handles timeout for tournament duels: random winner instead of draw
+- Offline entrant = auto-forfeit (opponent advances without fighting)
+- If an existing regular duel was happening: it gets cancelled and refunded before the tournament duel starts
+
+**Visual & UX:**
+- Active buffs HUD shows live tournament status: signup countdown + entrant count, OR fight prompt showing opponent name and pot
+- Don overlay gains a "🥊 FIGHTING CHAMPIONSHIP" section showing: signup window + entrant list, or live bracket with match results
+- Don proximity prompt flashes orange "🥊 Press [M] — TOURNAMENT SIGNUP OPEN!" when signup is active
+- 🥊 CHAMPION badge renders above other session badges in the nametag stack (orange glow, dark red background)
+- City-wide announcements for: signup open, each entrant joining, round start (with full bracket), match results, champion crowned
+- Gazette tracking: "🥊 FIGHTING CHAMPIONSHIP: [Name] WINS THE BRACKET!" headline if tournament occurred this cycle
+
+**Gazette integration:**
+- `gazetteStats.tournamentWinner` tracked per cycle — prints as a headline in the Bird City Gazette at dawn
+
+**Creative intent**: The game had spontaneous 1v1 duels and betting, but no structured championship event. The tournament fills the gap between individual combat (duels) and team events (royale, raids). It fires every 25-35 minutes — frequent enough that you'll encounter one mid-session. The Don as tournament organizer is perfect character fit: he watches 8 birds beat each other up while taking the house cut in vibes. A gang sending their strongest fighter to the championship while the rest bet on them is peak SOCIAL + CARNAGE. The 🥊 badge on the winner's nametag signals to every player they beat: "this bird just won a bracket." Pure SOCIAL + CARNAGE + SPECTACLE energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -2074,6 +2111,11 @@ Built the Territory Control System on top of the existing upstream code:
 - Bird Photo Mode: press some key to screenshot; ghost camera drifts away for 3s, shows UI-free overlay
 - ~~Duel Betting: spectators near a street duel can place bets on the outcome in real-time~~ (DONE Session 59)
 - ~~Duel Rematch: after a duel ends, both birds get a 10s window to instantly rematch (no re-challenge needed)~~ (DONE Session 59)
-- Street Duel tournament: Don Featherstone organizes a bracket tournament — last winner standing gets massive payout
+- ~~Street Duel tournament: Don Featherstone organizes a bracket tournament — last winner standing gets massive payout~~ (DONE Session 60)
 - Gazette tracking for duels: "⚔️ [Name] WINS STREET DUEL: defeats [Name] for Xc" headline
 - Idol Hall of Fame: persistent leaderboard of all-time Idol winners near the stage
+- Tournament spectator betting: extend duel betting panel to cover all active tournament duels simultaneously (city-wide bracket gambling)
+- Fighting Championship leaderboard: track all-time tournament wins per bird (show in Hall of Legends or Don overlay)
+- Tournament entry discount for Mafia Capos/Dons: high-rep birds pay 50c instead of 100c
+- Gazette tracking for tournaments: already done (Session 60) — also track runner-up name
+- Double-elimination tournament option: losers get a second chance bracket

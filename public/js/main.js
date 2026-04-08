@@ -1336,6 +1336,56 @@
       addEventMessage(`🗺️ [${ev.gangTag}] ${ev.gangName} wins Bird Royale! 1.5× territory power for 5 min!`, '#ffd700');
     }
 
+    // === PIGEON FIGHTING CHAMPIONSHIP EVENTS ===
+    if (ev.type === 'tournament_open') {
+      const secsLeft = Math.ceil((ev.signupUntil - now) / 1000);
+      showAnnouncement(`🥊 DON FEATHERSTONE'S FIGHTING CHAMPIONSHIP!\n${ev.entryFee}c entry · 45s signup · Visit The Don at the Docks!\nPress [M] near The Don to JOIN`, '#ff8844', 8000);
+      addEventMessage(`🥊 FIGHTING CHAMPIONSHIP signup open! ${ev.entryFee}c entry — fly to Don Featherstone!`, '#ff8844');
+      effects.push({ type: 'screen_shake', intensity: 7, duration: 500, time: now });
+      updateTournamentHud();
+    }
+    if (ev.type === 'tournament_joined') {
+      addEventMessage(`🥊 ${ev.birdName} enters the Championship! (${ev.entrantCount}/8 · pot: ${ev.pot}c)`, '#ffaa44');
+      if (ev.birdId === myId) {
+        showAnnouncement(`🥊 YOU'RE IN THE TOURNAMENT!\n${ev.entrantCount}/8 birds entered · Pot: ${ev.pot}c\nWinner takes all + 500 XP!`, '#ff8844', 5000);
+      }
+      updateTournamentHud();
+    }
+    if (ev.type === 'tournament_join_fail' && ev.birdId === myId) {
+      const msgs = {
+        not_open: 'No tournament signup open right now.',
+        closed: 'Signup window has closed.',
+        too_far: 'You need to be near Don Featherstone!',
+        full: 'Tournament is full (8/8 birds).',
+        already_entered: 'You\'re already signed up!',
+        no_coins: `Not enough coins. Need ${gameState.tournament ? gameState.tournament.entryFee : 100}c.`,
+      };
+      showAnnouncement(`🥊 ${msgs[ev.reason] || 'Cannot join tournament.'}`, '#ff4444', 3000);
+    }
+    if (ev.type === 'tournament_cancelled') {
+      showAnnouncement(`🥊 Tournament cancelled — not enough entrants. Coins refunded.`, '#888888', 4000);
+      addEventMessage('🥊 Fighting Championship cancelled. Not enough birds signed up.', '#888888');
+      updateTournamentHud();
+    }
+    if (ev.type === 'tournament_round_start') {
+      const roundLabel = `ROUND ${ev.round}`;
+      let matchStr = ev.bracket.map(m => m.bye ? `${m.bird1Name} (BYE)` : `${m.bird1Name} vs ${m.bird2Name}`).join(' · ');
+      showAnnouncement(`🥊 CHAMPIONSHIP ${roundLabel}!\n${matchStr}\nPOOP your opponent 3 times to advance!`, '#ff8844', 7000);
+      addEventMessage(`🥊 CHAMPIONSHIP ROUND ${ev.round}: ${matchStr}`, '#ff8844');
+      effects.push({ type: 'screen_shake', intensity: 8, duration: 500, time: now });
+      updateTournamentHud();
+    }
+    if (ev.type === 'tournament_match_result') {
+      addEventMessage(`🥊 Round ${ev.round}: ${ev.winnerName} DEFEATS ${ev.loserName}! ➜ ADVANCES`, '#ff8844');
+    }
+    if (ev.type === 'tournament_ended') {
+      const tag = ev.gangTag ? `[${ev.gangTag}] ` : '';
+      showAnnouncement(`🥊 FIGHTING CHAMPION!\n${tag}${ev.championName} WINS THE CHAMPIONSHIP!\n+500 XP · +${ev.pot}c pot · 🥊 BADGE UNLOCKED`, '#ff6600', 10000);
+      addEventMessage(`🥊🏆 ${tag}${ev.championName} IS THE PIGEON FIGHTING CHAMPION! (${ev.rounds} rounds · ${ev.pot}c prize)`, '#ff6600');
+      effects.push({ type: 'screen_shake', intensity: 14, duration: 900, time: now });
+      updateTournamentHud();
+    }
+
     // === BOSS EVENTS ===
     if (ev.type === 'boss_spawn') {
       SoundEngine.bossSpawn();
@@ -3824,6 +3874,14 @@
     if (!gameState.nearDon && lastNearDon) {
       donProximityPrompt.style.display = 'none';
       if (donOverlayVisible) hideDonOverlay();
+    }
+    // Update Don prompt text — mention tournament when signup is open
+    if (gameState.nearDon) {
+      const tourOpen = gameState.tournament && gameState.tournament.state === 'signup' && !gameState.tournament.isEntered;
+      donProximityPrompt.innerHTML = tourOpen
+        ? '🥊 Press <kbd>M</kbd> — TOURNAMENT SIGNUP OPEN!'
+        : '🎩 Press <kbd>M</kbd> to meet The Don';
+      donProximityPrompt.style.color = tourOpen ? '#ff9944' : '';
     }
     lastNearDon = !!gameState.nearDon;
 
@@ -6641,7 +6699,7 @@
 
           Sprites.drawBird(ctx, sx, sy, b.rotation, b.type, b.wingPhase, isPlayer, b.birdColor || null);
           ctx.globalAlpha = 1; // Always reset after bird draw
-          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0, b.eagleFeather || false, b.idolBadge || false, b.royaleChampBadge || false, b.skillTreeMaster || false);
+          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0, b.eagleFeather || false, b.idolBadge || false, b.royaleChampBadge || false, b.skillTreeMaster || false, b.fightingChampBadge || false);
 
           // Bird Flu: sneezing emoji indicator above infected birds
           if (b.isFlu) {
@@ -8110,6 +8168,18 @@
   // ============================================================
   // PIGEON MAFIA DON OVERLAY
   // ============================================================
+  function openDonOverlay() {
+    if (!gameState || !gameState.nearDon) return;
+    showDonOverlay();
+  }
+
+  function updateTournamentHud() {
+    // Force refresh of active buffs pill (which includes tournament status)
+    if (typeof updateActiveBuffsHud === 'function') updateActiveBuffsHud();
+    // Refresh Don overlay if open
+    if (donOverlayVisible) renderDonOverlay();
+  }
+
   function showDonOverlay() {
     if (!gameState || !gameState.nearDon) return;
     donOverlayVisible = true;
@@ -8261,6 +8331,73 @@
         if (!confirm(`Reset ALL skill tree unlocks for 500c?\n+${fpToRefund} FP will be refunded.${masterWarn}\n\nThis cannot be undone.`)) return;
         socket.emit('action', { type: 'don_respec' });
         hideDonOverlay();
+      });
+    }
+
+    // === FIGHTING CHAMPIONSHIP SECTION ===
+    let tournamentSectionEl = document.getElementById('donTournamentSection');
+    if (!tournamentSectionEl) {
+      tournamentSectionEl = document.createElement('div');
+      tournamentSectionEl.id = 'donTournamentSection';
+      const closeRow = document.querySelector('#donOverlay > div:last-child');
+      if (closeRow) donOverlay.insertBefore(tournamentSectionEl, closeRow);
+      else donOverlay.appendChild(tournamentSectionEl);
+    }
+
+    const t = gameState.tournament;
+    const myCoinsForTour = selfData.coins || 0;
+    let tourHtml = `<div style="margin-top:12px;border-top:1px solid #663300;padding-top:10px;">`;
+    tourHtml += `<div style="color:#ff8844;font-size:11px;font-weight:bold;margin-bottom:4px;">🥊 FIGHTING CHAMPIONSHIP</div>`;
+
+    if (!t || t.state === 'idle' || t.state === 'done') {
+      const nextSec = t ? Math.max(0, Math.ceil((t.nextAt - Date.now()) / 1000)) : 0;
+      const nextMin = Math.ceil(nextSec / 60);
+      tourHtml += `<div style="color:#886655;font-size:9px;">Next tournament in ~${nextMin > 0 ? nextMin + 'm' : 'soon'}. Entry: 100c. Last bird standing wins the pot!</div>`;
+      if (t && t.champion) {
+        const champTag = t.champion.gangTag ? `[${t.champion.gangTag}] ` : '';
+        tourHtml += `<div style="color:#ff9944;font-size:10px;margin-top:4px;">🏆 Last champion: ${champTag}${t.champion.name}</div>`;
+      }
+    } else if (t.state === 'signup') {
+      const secsLeft = Math.max(0, Math.ceil((t.signupUntil - Date.now()) / 1000));
+      tourHtml += `<div style="color:#ffcc88;font-size:10px;margin-bottom:6px;">🔔 SIGNUP OPEN — ${secsLeft}s left · ${t.entrantCount}/8 birds entered · Pot: ${t.pot}c</div>`;
+      if (t.entrantCount > 0) {
+        tourHtml += `<div style="color:#cc9966;font-size:9px;margin-bottom:6px;">Entrants: ${t.entrants.map(e => e.name).join(', ')}</div>`;
+      }
+      if (t.isEntered) {
+        tourHtml += `<div style="color:#44ff88;font-size:10px;font-weight:bold;">✅ YOU'RE IN! Good luck, fighter.</div>`;
+      } else if (myCoinsForTour < t.entryFee) {
+        tourHtml += `<div style="color:#886644;font-size:9px;">Need ${t.entryFee}c to enter. You have ${myCoinsForTour}c.</div>`;
+      } else {
+        tourHtml += `<button id="donTournamentJoinBtn" style="background:#662200;color:#ffaa44;border:1.5px solid #ff6622;border-radius:6px;font-size:10px;padding:5px 14px;cursor:pointer;font-weight:bold;">🥊 JOIN TOURNAMENT — ${t.entryFee}c</button>`;
+      }
+    } else if (t.state === 'fighting') {
+      tourHtml += `<div style="color:#ffaa44;font-size:10px;font-weight:bold;margin-bottom:4px;">⚔️ ROUND ${t.round} IN PROGRESS — Pot: ${t.pot}c</div>`;
+      if (t.bracket) {
+        for (const m of t.bracket) {
+          const winner = m.winner ? t.entrants.find(e => e.birdId === m.winner) : null;
+          const winnerName = winner ? winner.name : (m.winner ? '???' : null);
+          if (m.bye) {
+            tourHtml += `<div style="color:#888;font-size:9px;">• ${m.bird1Name} (BYE ➜ advances)</div>`;
+          } else if (winnerName) {
+            tourHtml += `<div style="color:#88ff88;font-size:9px;">✅ ${winnerName} WINS vs ${m.bird1Name === winnerName ? m.bird2Name : m.bird1Name}</div>`;
+          } else {
+            const b1IsMe = m.bird1Id === myId;
+            const b2IsMe = m.bird2Id === myId;
+            const style = (b1IsMe || b2IsMe) ? 'color:#ff9966;font-weight:bold' : 'color:#cc8844';
+            tourHtml += `<div style="${style};font-size:9px;">🥊 ${m.bird1Name} vs ${m.bird2Name}${(b1IsMe || b2IsMe) ? ' ← YOU' : ''}</div>`;
+          }
+        }
+      }
+    }
+
+    tourHtml += `</div>`;
+    tournamentSectionEl.innerHTML = tourHtml;
+
+    const joinBtn = document.getElementById('donTournamentJoinBtn');
+    if (joinBtn) {
+      joinBtn.addEventListener('click', () => {
+        if (!socket || !joined) return;
+        socket.emit('action', { type: 'don_tournament_join' });
       });
     }
   }
@@ -8674,6 +8811,34 @@
     // Royale Champion badge reminder
     if (s.royaleChampBadge) {
       html += `<div class="bm-buff-pill" style="background:rgba(80,55,0,0.9);border-color:#ffd700;color:#ffd700;">🏆 ROYALE CHAMPION — You are a legend!</div>`;
+    }
+
+    // Fighting Champion badge reminder
+    if (s.fightingChampBadge) {
+      html += `<div class="bm-buff-pill" style="background:rgba(80,30,0,0.9);border-color:#ff8800;color:#ffaa44;font-weight:bold;">🥊 FIGHTING CHAMPION — The Don's favourite!</div>`;
+    }
+
+    // Tournament signup open — nudge player toward The Don
+    if (gameState.tournament && gameState.tournament.state === 'signup') {
+      const t = gameState.tournament;
+      const secsLeft = Math.max(0, Math.ceil((t.signupUntil - now) / 1000));
+      if (!t.isEntered) {
+        html += `<div class="bm-buff-pill" style="background:rgba(80,25,0,0.9);border-color:#ff8844;color:#ffcc88;font-weight:bold;animation:kingpinGlow 0.8s ease-in-out infinite alternate;cursor:pointer;" onclick="openDonOverlay()">🥊 TOURNAMENT SIGNUP — ${t.entrantCount}/8 · ${secsLeft}s · [M] at Don to join</div>`;
+      } else {
+        html += `<div class="bm-buff-pill" style="background:rgba(50,30,0,0.9);border-color:#cc6633;color:#ffaa66;">🥊 ENTERED TOURNAMENT — ${t.entrantCount}/8 birds · Pot: ${t.pot}c · ${secsLeft}s</div>`;
+      }
+    }
+
+    // Tournament fighting — show current status
+    if (gameState.tournament && gameState.tournament.state === 'fighting') {
+      const t = gameState.tournament;
+      const myMatch = t.bracket && t.bracket.find(m => (m.bird1Id === myId || m.bird2Id === myId) && !m.bye);
+      if (myMatch && !myMatch.winner) {
+        const opponentName = myMatch.bird1Id === myId ? myMatch.bird2Name : myMatch.bird1Name;
+        html += `<div class="bm-buff-pill" style="background:rgba(100,20,0,0.95);border-color:#ff4400;color:#ff9966;font-weight:bold;animation:pulseRed 0.6s infinite alternate;">🥊 ROUND ${t.round} — POOP ${opponentName} 3 TIMES! Championship pot: ${t.pot}c</div>`;
+      } else if (t.isEntered) {
+        html += `<div class="bm-buff-pill" style="background:rgba(50,30,0,0.85);border-color:#cc7722;color:#ffbb55;">🥊 ROUND ${t.round} FIGHTING — ${t.bracket ? t.bracket.filter(m => !m.winner && !m.bye).length : '?'} matches left…</div>`;
+      }
     }
 
     // === VENDING MACHINE active poop effect ===
