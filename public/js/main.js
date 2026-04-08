@@ -2022,10 +2022,15 @@
       }
     }
     if (ev.type === 'street_duel_start') {
-      addEventMessage('⚔️ STREET DUEL: ' + ev.challengerName + ' vs ' + ev.targetName + ' (' + ev.pot + 'c pot!)');
+      const rematchLabel = ev.isRematch ? (ev.rematchCount > 1 ? ` (REMATCH x${ev.rematchCount})` : ' (REMATCH)') : '';
+      addEventMessage('⚔️ STREET DUEL' + rematchLabel + ': ' + ev.challengerName + ' vs ' + ev.targetName + ' (' + ev.pot + 'c pot!) · 🎰 Bet on a fighter!');
       effects.push({ type: 'screen_shake', time: now, duration: 600, intensity: 8 });
       if (ev.challengerId === myId || ev.targetId === myId) {
-        showAnnouncement('⚔️ STREET DUEL START!\nPot: ' + ev.pot + 'c · POOP YOUR OPPONENT!', '#ff4444', 4000);
+        const title = ev.isRematch ? '🔄 REMATCH START!' : '⚔️ STREET DUEL START!';
+        showAnnouncement(title + '\nPot: ' + ev.pot + 'c · POOP YOUR OPPONENT!', '#ff4444', 4000);
+      } else {
+        // Show non-duelers that they can bet
+        showTemporaryPrompt('⚔️ DUEL: ' + ev.challengerName + ' vs ' + ev.targetName + ' · 🎰 Bet window opens!', 'streetDuelPrompt', 4000);
       }
     }
     if (ev.type === 'street_duel_hit') {
@@ -2061,6 +2066,63 @@
     if (ev.type === 'street_duel_cancelled') {
       if (ev.opponentId === myId) {
         showAnnouncement('⚔️ Your opponent disconnected — duel cancelled, coins refunded.', '#ff9999', 3000);
+      }
+    }
+
+    // === DUEL BETTING ===
+    if (ev.type === 'duel_bet_placed') {
+      addEventMessage('🎰 ' + ev.birdName + ' bets ' + ev.amount + 'c on ' + ev.onName + ' in the street duel!', '#ffcc44');
+      // If it was my bet, show confirmation
+      if (ev.birdId === myId) {
+        showTemporaryPrompt('🎰 Bet placed: ' + ev.amount + 'c on ' + ev.onName + '!', 'streetDuelPrompt', 3000);
+      }
+    }
+    if (ev.type === 'duel_bet_fail') {
+      if (ev.birdId === myId) {
+        const msgs = {
+          no_duel: 'No active duel found.',
+          dueler: 'You can\'t bet on your own duel!',
+          window_closed: 'Betting window is closed.',
+          already_bet: 'Already placed a bet on this duel.',
+          invalid_amount: 'Bet must be 10–300 coins.',
+          no_coins: 'Not enough coins to bet.',
+          invalid_fighter: 'Invalid fighter selection.',
+        };
+        showTemporaryPrompt('🎰 ' + (msgs[ev.reason] || 'Cannot bet right now.'), 'streetDuelPrompt', 2500);
+      }
+    }
+    if (ev.type === 'duel_bet_results') {
+      if (ev.results) {
+        for (const r of ev.results) {
+          if (r.birdId === myId) {
+            if (r.refund) {
+              showAnnouncement('🎰 Duel bet refunded — nobody bet on the winner.', '#aaaaff', 4000);
+            } else if (r.won) {
+              showAnnouncement('🎰 DUEL BET WIN! +' + r.payout + 'c profit ' + (r.profit > 0 ? '(+' + r.profit + 'c)!' : ''), '#ffd700', 5000);
+              addEventMessage('🎰 ' + r.birdName + ' bet on ' + ev.winnerName + ' and won +' + r.payout + 'c!', '#ffd700');
+            } else {
+              showAnnouncement('🎰 Duel bet lost — ' + r.betAmount + 'c gone.', '#ff7777', 3000);
+            }
+          } else if (r.won) {
+            addEventMessage('🎰 ' + r.birdName + ' won their duel bet: +' + r.payout + 'c!', '#ffcc44');
+          }
+        }
+      }
+    }
+
+    // === DUEL REMATCH ===
+    if (ev.type === 'duel_rematch_available') {
+      if (ev.bird1Id === myId || ev.bird2Id === myId) {
+        const opponentName = ev.bird1Id === myId ? '' : '';
+        showAnnouncement('🔄 REMATCH? Press [Y] to go again! (10 seconds)', '#ff9966', 10000);
+      }
+    }
+    if (ev.type === 'duel_rematch_accepted_by') {
+      addEventMessage('🔄 ' + ev.birdName + ' accepted the rematch!', '#ff9966');
+    }
+    if (ev.type === 'duel_rematch_fail') {
+      if (ev.bird1Id === myId || ev.bird2Id === myId) {
+        showTemporaryPrompt('🔄 Rematch failed — not enough coins.', 'streetDuelPrompt', 2000);
       }
     }
 
@@ -3023,11 +3085,16 @@
       toggleRoyaleCheerPanel();
     }
 
-    // [Y] — Street Duel: accept incoming challenge OR challenge nearest bird
+    // [Y] — Street Duel: accept rematch OR accept incoming challenge OR challenge nearest bird
     if (e.key.toLowerCase() === 'y') {
       if (gameState && gameState.self) {
+        const rematch = gameState.self.duelRematch;
         const incoming = gameState.self.incomingChallenge;
-        if (incoming) {
+        if (rematch && !rematch.iAccepted) {
+          // Accept the rematch first
+          socket.emit('action', { type: 'accept_rematch' });
+          showTemporaryPrompt('🔄 Rematch accepted! Waiting for opponent…', 'streetDuelPrompt', 3000);
+        } else if (incoming) {
           socket.emit('action', { type: 'accept_duel' });
         } else if (!gameState.self.streetDuelId) {
           // Challenge nearest bird within range
@@ -3920,6 +3987,9 @@
     // Street Duel HUD
     updateStreetDuelHud();
 
+    // Duel Bet Panel (spectators)
+    updateDuelBetPanel();
+
     // Active buffs HUD
     updateActiveBuffsHud();
 
@@ -4152,6 +4222,80 @@
       }
     }
   }
+
+  // ============================================================
+  // DUEL BET PANEL — spectator betting on active street duels
+  // ============================================================
+  let _duelBetAmount = 50; // remember last bet amount
+
+  function updateDuelBetPanel() {
+    const el = document.getElementById('duelBetPanel');
+    if (!el || !gameState || !gameState.self) { if (el) el.style.display = 'none'; return; }
+    const s = gameState.self;
+    const now = Date.now();
+    const db = s.duelBetting;
+
+    if (!db || db.windowUntil <= now) {
+      el.style.display = 'none';
+      return;
+    }
+
+    const secsLeft = Math.max(0, Math.ceil((db.windowUntil - now) / 1000));
+    const total = db.total || 0;
+
+    // Odds display
+    const odds1 = total > 0 ? ((total / Math.max(db.bets1 || 1, 1)).toFixed(1) + '×') : '?';
+    const odds2 = total > 0 ? ((total / Math.max(db.bets2 || 1, 1)).toFixed(1) + '×') : '?';
+
+    let html = '';
+    html += '<div style="color:#ff6666;font-size:13px;text-align:center;margin-bottom:6px;letter-spacing:1px;">🎰 BET ON THE DUEL</div>';
+    html += '<div style="color:#ff9999;font-size:10px;text-align:center;margin-bottom:8px;">⏱ ' + secsLeft + 's · pool: ' + total + 'c</div>';
+
+    if (db.myBet) {
+      // Already bet
+      const onName = db.myBet.onId === db.fighter1Id ? db.fighter1Name : db.fighter2Name;
+      html += '<div style="background:rgba(60,20,0,0.8);border:1px solid #ff8800;border-radius:8px;padding:6px 8px;text-align:center;color:#ffcc66;font-size:11px;">';
+      html += '✅ Bet: ' + db.myBet.amount + 'c on <b>' + onName + '</b><br>';
+      html += '<span style="color:#ffaa44;font-size:10px;">Waiting for duel result…</span>';
+      html += '</div>';
+    } else {
+      // Betting interface
+      html += '<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">';
+      html += '<input id="duelBetAmountInput" type="number" min="10" max="300" value="' + _duelBetAmount + '" ';
+      html += 'style="width:70px;background:rgba(40,0,0,0.8);color:#ffaaaa;border:1px solid #882222;border-radius:6px;padding:3px 6px;font:bold 11px \'Courier New\',monospace;text-align:center;" ';
+      html += 'oninput="window._duelBetAmountInput=this.value" />';
+      html += '<span style="color:#ff9999;font-size:10px;">coins (10–300)</span>';
+      html += '</div>';
+
+      // Fighter 1 button
+      html += '<button onclick="window._placeDuelBet(\'' + db.duelId + '\',\'' + db.fighter1Id + '\')" ';
+      html += 'style="display:block;width:100%;margin-bottom:5px;background:rgba(20,40,80,0.9);color:#88aaff;';
+      html += 'border:1px solid #4466aa;padding:6px 8px;border-radius:8px;cursor:pointer;font:bold 11px \'Courier New\',monospace;text-align:left;">';
+      html += '🥊 ' + db.fighter1Name + '<br>';
+      html += '<span style="color:#aabbdd;font-size:10px;">' + (db.bets1 || 0) + 'c bet · ' + odds1 + ' payout</span>';
+      html += '</button>';
+
+      // Fighter 2 button
+      html += '<button onclick="window._placeDuelBet(\'' + db.duelId + '\',\'' + db.fighter2Id + '\')" ';
+      html += 'style="display:block;width:100%;background:rgba(80,20,20,0.9);color:#ffaaaa;';
+      html += 'border:1px solid #aa4444;padding:6px 8px;border-radius:8px;cursor:pointer;font:bold 11px \'Courier New\',monospace;text-align:left;">';
+      html += '🥊 ' + db.fighter2Name + '<br>';
+      html += '<span style="color:#ddbbbb;font-size:10px;">' + (db.bets2 || 0) + 'c bet · ' + odds2 + ' payout</span>';
+      html += '</button>';
+    }
+
+    el.innerHTML = html;
+    el.style.display = 'block';
+  }
+
+  // Global helper called from inline buttons
+  window._placeDuelBet = function(duelId, onId) {
+    const inputEl = document.getElementById('duelBetAmountInput');
+    const rawVal = inputEl ? parseInt(inputEl.value) : _duelBetAmount;
+    const amount = Math.max(10, Math.min(300, isNaN(rawVal) ? 50 : rawVal));
+    _duelBetAmount = amount;
+    socket.emit('action', { type: 'bet_on_duel', duelId, onId, amount });
+  };
 
   function updateFoodTruckHeistUI() {
     const heistPrompt = document.getElementById('heistProximityPrompt');
@@ -8544,6 +8688,19 @@
       const st = EFFECT_STYLES[s.vpPoopEffect.type] || EFFECT_STYLES.spicy;
       const animStyle = st.anim ? `animation:${st.anim};` : '';
       html += `<div class="bm-buff-pill" style="background:${st.bg};border-color:${st.border};color:${st.color};font-weight:bold;${animStyle}">${st.text} · POOP to use!</div>`;
+    }
+
+    // === DUEL REMATCH pill ===
+    if (s.duelRematch) {
+      const rm = s.duelRematch;
+      const secsLeft = Math.max(0, Math.ceil((rm.expiresAt - now) / 1000));
+      if (secsLeft > 0) {
+        if (rm.iAccepted) {
+          html += `<div class="bm-buff-pill" style="background:rgba(60,30,0,0.9);border-color:#ff9966;color:#ffcc88;">🔄 REMATCH ACCEPTED — waiting for ${rm.opponentName}… ${secsLeft}s</div>`;
+        } else {
+          html += `<div class="bm-buff-pill" style="background:rgba(80,30,0,0.9);border-color:#ff6633;color:#ffaa66;font-weight:bold;animation:kingpinGlow 0.6s ease-in-out infinite alternate;cursor:pointer;" onclick="socket.emit('action',{type:'accept_rematch'})">🔄 REMATCH vs ${rm.opponentName}? Press [Y] · ${secsLeft}s</div>`;
+        }
+      }
     }
 
     el.innerHTML = html;

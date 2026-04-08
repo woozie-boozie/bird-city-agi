@@ -511,8 +511,9 @@ class GameEngine {
     // Press [Y] near another bird to send a challenge. Target has 15s to accept/decline.
     // 3 hearts each — poop the opponent 3 times to knock them out. Max 45 seconds.
     // Winner takes the pot (25% of each bird's coins, min 30c, max 250c per side).
-    this.streetDuels = new Map();       // duelId -> { id, challengerId, challengerName, targetId, targetName, state, hp, pot, centerX, centerY, startedAt, expiresAt }
+    this.streetDuels = new Map();       // duelId -> { id, challengerId, challengerName, targetId, targetName, state, hp, pot, centerX, centerY, startedAt, expiresAt, bets, betWindowUntil, rematchCount }
     this.pendingChallenges = new Map(); // targetBirdId -> { challengerId, challengerName, expiresAt, pot }
+    this.rematchPending = new Map();    // key(`${min_id}_${max_id}`) -> { bird1Id, bird1Name, bird2Id, bird2Name, bird1Accept, bird2Accept, expiresAt, rematchCount }
     this.STREET_DUEL_DURATION = 45000;
     this.STREET_DUEL_CHALLENGE_EXPIRY = 15000;
     this._duelIdCounter = 0;
@@ -890,6 +891,10 @@ class GameEngine {
       for (const [targetId, ch] of this.pendingChallenges) {
         if (ch.challengerId === id) { this.pendingChallenges.delete(targetId); break; }
       }
+      // Cancel any pending rematch involving this bird
+      for (const [key, rm] of this.rematchPending) {
+        if (rm.bird1Id === id || rm.bird2Id === id) { this.rematchPending.delete(key); break; }
+      }
       // Cancel any active street duel involving this bird
       if (bird.streetDuelId) {
         const duel = this.streetDuels.get(bird.streetDuelId);
@@ -900,6 +905,13 @@ class GameEngine {
             opponent.streetDuelId = null;
             // Refund opponent
             opponent.coins += duel.pot;
+          }
+          // Refund all bettors on disconnect cancel
+          if (duel.bets && duel.bets.size > 0) {
+            for (const [bid, bet] of duel.bets) {
+              const b = this.birds.get(bid);
+              if (b) b.coins += bet.amount;
+            }
           }
           duel.state = 'cancelled';
           this.events.push({ type: 'street_duel_cancelled', reason: 'disconnect', birdId: id, opponentId });
@@ -1131,6 +1143,12 @@ class GameEngine {
     }
     if (action.type === 'decline_duel') {
       this._handleDeclineDuel(bird, now);
+    }
+    if (action.type === 'bet_on_duel') {
+      this._handleDuelBet(bird, action, now);
+    }
+    if (action.type === 'accept_rematch') {
+      this._handleDuelRematch(bird, now);
     }
 
     // === Graffiti Tagging ===
@@ -5581,6 +5599,43 @@ class GameEngine {
         // Witness Protection
         witnessProtectionUntil: bird.witnessProtectionUntil || 0,
         witnessProtectionCooldown: bird.witnessProtectionCooldown || 0,
+        // Duel Betting — spectators see open betting windows
+        duelBetting: (() => {
+          if (bird.streetDuelId) return null; // duelers don't see betting panel
+          for (const [, duel] of this.streetDuels) {
+            if (duel.state !== 'active') continue;
+            if (!duel.betWindowUntil || duel.betWindowUntil <= now) continue;
+            const bets1 = duel.bets ? [...duel.bets.values()].filter(b => b.onId === duel.challengerId).reduce((s, b) => s + b.amount, 0) : 0;
+            const bets2 = duel.bets ? [...duel.bets.values()].filter(b => b.onId === duel.targetId).reduce((s, b) => s + b.amount, 0) : 0;
+            const myBet = duel.bets ? duel.bets.get(bird.id) : null;
+            return {
+              duelId: duel.id,
+              windowUntil: duel.betWindowUntil,
+              fighter1Id: duel.challengerId,
+              fighter1Name: duel.challengerName,
+              fighter2Id: duel.targetId,
+              fighter2Name: duel.targetName,
+              bets1,
+              bets2,
+              total: bets1 + bets2,
+              myBet: myBet ? { amount: myBet.amount, onId: myBet.onId } : null,
+            };
+          }
+          return null;
+        })(),
+        // Duel Rematch — post-duel 10-second window to instantly rematch
+        duelRematch: (() => {
+          for (const [, rm] of this.rematchPending) {
+            if (rm.bird1Id !== bird.id && rm.bird2Id !== bird.id) continue;
+            if (rm.expiresAt < now) continue;
+            return {
+              expiresAt: rm.expiresAt,
+              opponentName: rm.bird1Id === bird.id ? rm.bird2Name : rm.bird1Name,
+              iAccepted: rm.bird1Id === bird.id ? rm.bird1Accept : rm.bird2Accept,
+            };
+          }
+          return null;
+        })(),
       },
       // Kingpin state (global — for minimap and visual targeting)
       kingpin: this.kingpin ? (() => {
@@ -5644,6 +5699,8 @@ class GameEngine {
         const result = [];
         for (const [, duel] of this.streetDuels) {
           if (duel.state !== 'active') continue;
+          const bets1 = duel.bets ? [...duel.bets.values()].filter(b => b.onId === duel.challengerId).reduce((s, b) => s + b.amount, 0) : 0;
+          const bets2 = duel.bets ? [...duel.bets.values()].filter(b => b.onId === duel.targetId).reduce((s, b) => s + b.amount, 0) : 0;
           result.push({
             id: duel.id,
             challengerId: duel.challengerId,
@@ -5652,6 +5709,10 @@ class GameEngine {
             targetName: duel.targetName,
             hp: { [duel.challengerId]: duel.hp[duel.challengerId], [duel.targetId]: duel.hp[duel.targetId] },
             expiresAt: duel.expiresAt,
+            betWindowUntil: duel.betWindowUntil || 0,
+            bets1,
+            bets2,
+            rematchCount: duel.rematchCount || 0,
           });
         }
         return result;
@@ -13990,6 +14051,10 @@ class GameEngine {
       centerY: (challenger.y + bird.y) / 2,
       startedAt: now,
       expiresAt: now + this.STREET_DUEL_DURATION,
+      // Betting window — spectators can bet for 20s after duel starts
+      bets: new Map(),            // birdId -> { amount, onId, birdName }
+      betWindowUntil: now + 20000,
+      rematchCount: 0,            // increments with each rematch
     };
 
     this.streetDuels.set(duelId, duel);
@@ -14051,6 +14116,59 @@ class GameEngine {
       reason,
     });
 
+    // === Process duel bets ===
+    if (duel.bets && duel.bets.size > 0 && winnerId) {
+      const winningBets = [...duel.bets.entries()].filter(([, b]) => b.onId === winnerId);
+      const losingBets  = [...duel.bets.entries()].filter(([, b]) => b.onId !== winnerId);
+      const totalPool = [...duel.bets.values()].reduce((s, b) => s + b.amount, 0);
+      const totalWinningAmount = winningBets.reduce((s, [, b]) => s + b.amount, 0);
+      const betResults = [];
+
+      if (winningBets.length === 0) {
+        // Nobody bet on the winner — full refund
+        for (const [bid, bet] of duel.bets) {
+          const b = this.birds.get(bid);
+          if (b) b.coins += bet.amount;
+          betResults.push({ birdId: bid, birdName: bet.birdName, betAmount: bet.amount, payout: bet.amount, profit: 0, won: false, refund: true });
+        }
+        this.events.push({ type: 'duel_bet_results', duelId: duel.id, winnerName: winner ? winner.name : '???', noWinners: true, results: betResults });
+      } else {
+        // Winners split pool proportionally (min 1.5× guaranteed)
+        for (const [bid, bet] of winningBets) {
+          const b = this.birds.get(bid);
+          const payout = Math.max(Math.floor(bet.amount * 1.5), Math.floor(totalPool * bet.amount / totalWinningAmount));
+          if (b) { b.coins += payout; b.xp += 30; }
+          betResults.push({ birdId: bid, birdName: bet.birdName, betAmount: bet.amount, payout, profit: payout - bet.amount, won: true });
+        }
+        for (const [bid, bet] of losingBets) {
+          betResults.push({ birdId: bid, birdName: bet.birdName, betAmount: bet.amount, payout: 0, profit: -bet.amount, won: false });
+        }
+        this.events.push({ type: 'duel_bet_results', duelId: duel.id, winnerName: winner ? winner.name : '???', noWinners: false, results: betResults });
+      }
+    }
+
+    // === Offer rematch (only for knockouts, both birds still online) ===
+    if (reason === 'knockout' && winner && loser) {
+      const rematchKey = [winnerId, loserId].sort().join('_');
+      this.rematchPending.set(rematchKey, {
+        bird1Id: winnerId,
+        bird1Name: winner.name,
+        bird2Id: loserId,
+        bird2Name: loser.name,
+        bird1Accept: false,
+        bird2Accept: false,
+        expiresAt: now + 10000,
+        rematchCount: (duel.rematchCount || 0) + 1,
+      });
+      this.events.push({
+        type: 'duel_rematch_available',
+        bird1Id: winnerId,
+        bird2Id: loserId,
+        expiresAt: now + 10000,
+        rematchCount: (duel.rematchCount || 0) + 1,
+      });
+    }
+
     this.streetDuels.delete(duel.id);
   }
 
@@ -14063,7 +14181,7 @@ class GameEngine {
       }
     }
 
-    // Expire active duels (draw — refund both sides)
+    // Expire active duels (draw — refund both sides + refund bettors)
     for (const [, duel] of this.streetDuels) {
       if (duel.state !== 'active') continue;
       if (now >= duel.expiresAt) {
@@ -14074,6 +14192,13 @@ class GameEngine {
         const targetStake = duel.pot - challengerStake;
         if (challenger) { challenger.coins += challengerStake; challenger.streetDuelId = null; }
         if (target) { target.coins += targetStake; target.streetDuelId = null; }
+        // Refund all bets on a draw
+        if (duel.bets && duel.bets.size > 0) {
+          for (const [bid, bet] of duel.bets) {
+            const b = this.birds.get(bid);
+            if (b) b.coins += bet.amount;
+          }
+        }
         this.events.push({
           type: 'street_duel_end',
           duelId: duel.id,
@@ -14086,6 +14211,145 @@ class GameEngine {
         });
         this.streetDuels.delete(duel.id);
       }
+    }
+
+    // Expire pending rematches
+    for (const [key, rm] of this.rematchPending) {
+      if (rm.expiresAt < now) {
+        this.rematchPending.delete(key);
+      }
+    }
+  }
+
+  // ============================================================
+  // DUEL BETTING SYSTEM
+  // ============================================================
+
+  _handleDuelBet(bird, action, now) {
+    const { duelId, onId, amount } = action;
+    const duel = this.streetDuels.get(duelId);
+    if (!duel || duel.state !== 'active') {
+      this.events.push({ type: 'duel_bet_fail', birdId: bird.id, reason: 'no_duel' });
+      return;
+    }
+    if (duel.challengerId === bird.id || duel.targetId === bird.id) {
+      this.events.push({ type: 'duel_bet_fail', birdId: bird.id, reason: 'dueler' });
+      return;
+    }
+    if (!duel.betWindowUntil || duel.betWindowUntil <= now) {
+      this.events.push({ type: 'duel_bet_fail', birdId: bird.id, reason: 'window_closed' });
+      return;
+    }
+    if (duel.bets.has(bird.id)) {
+      this.events.push({ type: 'duel_bet_fail', birdId: bird.id, reason: 'already_bet' });
+      return;
+    }
+    if (onId !== duel.challengerId && onId !== duel.targetId) {
+      this.events.push({ type: 'duel_bet_fail', birdId: bird.id, reason: 'invalid_fighter' });
+      return;
+    }
+    const betAmount = Math.floor(Math.max(10, Math.min(300, Number(amount) || 0)));
+    if (betAmount < 10) {
+      this.events.push({ type: 'duel_bet_fail', birdId: bird.id, reason: 'invalid_amount' });
+      return;
+    }
+    if (bird.coins < betAmount) {
+      this.events.push({ type: 'duel_bet_fail', birdId: bird.id, reason: 'no_coins' });
+      return;
+    }
+
+    bird.coins -= betAmount;
+    duel.bets.set(bird.id, { amount: betAmount, onId, birdName: bird.name });
+
+    const bets1 = [...duel.bets.values()].filter(b => b.onId === duel.challengerId).reduce((s, b) => s + b.amount, 0);
+    const bets2 = [...duel.bets.values()].filter(b => b.onId === duel.targetId).reduce((s, b) => s + b.amount, 0);
+
+    this.events.push({
+      type: 'duel_bet_placed',
+      birdId: bird.id,
+      birdName: bird.name,
+      duelId,
+      onId,
+      onName: onId === duel.challengerId ? duel.challengerName : duel.targetName,
+      amount: betAmount,
+      bets1,
+      bets2,
+    });
+  }
+
+  // ============================================================
+  // DUEL REMATCH SYSTEM
+  // ============================================================
+
+  _handleDuelRematch(bird, now) {
+    for (const [key, rm] of this.rematchPending) {
+      if (rm.expiresAt < now) { this.rematchPending.delete(key); continue; }
+      if (rm.bird1Id !== bird.id && rm.bird2Id !== bird.id) continue;
+
+      // Already accepted?
+      const myAlreadyAccepted = rm.bird1Id === bird.id ? rm.bird1Accept : rm.bird2Accept;
+      if (myAlreadyAccepted) return;
+
+      if (rm.bird1Id === bird.id) rm.bird1Accept = true;
+      else rm.bird2Accept = true;
+
+      this.events.push({ type: 'duel_rematch_accepted_by', birdId: bird.id, birdName: bird.name });
+
+      // If both accepted: create the rematch duel
+      if (rm.bird1Accept && rm.bird2Accept) {
+        this.rematchPending.delete(key);
+
+        const b1 = this.birds.get(rm.bird1Id);
+        const b2 = this.birds.get(rm.bird2Id);
+        if (!b1 || !b2 || b1.streetDuelId || b2.streetDuelId) {
+          this.events.push({ type: 'duel_rematch_fail', reason: 'unavailable', bird1Id: rm.bird1Id, bird2Id: rm.bird2Id });
+          return;
+        }
+
+        const stake1 = Math.min(250, Math.max(30, Math.floor(b1.coins * 0.25)));
+        const stake2 = Math.min(250, Math.max(30, Math.floor(b2.coins * 0.25)));
+        if (b1.coins < stake1 || b2.coins < stake2) {
+          this.events.push({ type: 'duel_rematch_fail', reason: 'no_coins', bird1Id: rm.bird1Id, bird2Id: rm.bird2Id });
+          return;
+        }
+        b1.coins -= stake1;
+        b2.coins -= stake2;
+
+        const duelId = `duel_${++this._duelIdCounter}`;
+        const rematchDuel = {
+          id: duelId,
+          challengerId: rm.bird1Id,
+          challengerName: rm.bird1Name,
+          targetId: rm.bird2Id,
+          targetName: rm.bird2Name,
+          state: 'active',
+          hp: { [rm.bird1Id]: 3, [rm.bird2Id]: 3 },
+          pot: stake1 + stake2,
+          centerX: (b1.x + b2.x) / 2,
+          centerY: (b1.y + b2.y) / 2,
+          startedAt: now,
+          expiresAt: now + this.STREET_DUEL_DURATION,
+          bets: new Map(),
+          betWindowUntil: now + 20000,
+          rematchCount: rm.rematchCount,
+        };
+        this.streetDuels.set(duelId, rematchDuel);
+        b1.streetDuelId = duelId;
+        b2.streetDuelId = duelId;
+
+        this.events.push({
+          type: 'street_duel_start',
+          duelId,
+          challengerId: rm.bird1Id,
+          challengerName: rm.bird1Name,
+          targetId: rm.bird2Id,
+          targetName: rm.bird2Name,
+          pot: stake1 + stake2,
+          isRematch: true,
+          rematchCount: rm.rematchCount,
+        });
+      }
+      return;
     }
   }
 

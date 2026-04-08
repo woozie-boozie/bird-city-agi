@@ -271,6 +271,14 @@
     padding:8px 18px;border-radius:14px;border:1px solid #882222;z-index:80;pointer-events:none;
     text-align:center;"></div>
 
+  <!-- Duel Betting Panel — appears for spectators during an active duel's 20s betting window -->
+  <!-- Positioned at bottom-right to avoid conflicting with race bet panel (top-right) and weather bet panel (top-left) -->
+  <div id="duelBetPanel" style="display:none;position:fixed;bottom:120px;right:14px;
+    background:rgba(20,4,4,0.97);color:#ffaaaa;font:bold 12px 'Courier New',monospace;
+    padding:10px 14px;border-radius:14px;border:2px solid #cc2222;z-index:75;
+    min-width:220px;max-width:280px;box-shadow:0 0 22px rgba(200,40,40,0.4);">
+  </div>
+
   <!-- Bank Heist proximity prompt -->
   <div id="bankHeistPrompt" style="display:none"></div>
 
