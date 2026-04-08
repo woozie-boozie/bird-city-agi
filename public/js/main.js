@@ -1345,20 +1345,23 @@
       updateTournamentHud();
     }
     if (ev.type === 'tournament_joined') {
-      addEventMessage(`🥊 ${ev.birdName} enters the Championship! (${ev.entrantCount}/8 · pot: ${ev.pot}c)`, '#ffaa44');
+      const vipNote = ev.hasVipDiscount ? ` 🎖 VIP ${ev.feePaid}c` : '';
+      addEventMessage(`🥊 ${ev.birdName} enters the Championship! (${ev.entrantCount}/8 · pot: ${ev.pot}c${vipNote})`, '#ffaa44');
       if (ev.birdId === myId) {
-        showAnnouncement(`🥊 YOU'RE IN THE TOURNAMENT!\n${ev.entrantCount}/8 birds entered · Pot: ${ev.pot}c\nWinner takes all + 500 XP!`, '#ff8844', 5000);
+        const vipMsg = ev.hasVipDiscount ? `\n🎖 Capo Discount applied — paid ${ev.feePaid}c!` : '';
+        showAnnouncement(`🥊 YOU'RE IN THE TOURNAMENT!\n${ev.entrantCount}/8 birds entered · Pot: ${ev.pot}c\nWinner takes all + 500 XP!${vipMsg}`, '#ff8844', 5000);
       }
       updateTournamentHud();
     }
     if (ev.type === 'tournament_join_fail' && ev.birdId === myId) {
+      const neededCoins = ev.needed || (gameState.tournament ? gameState.tournament.entryFee : 100);
       const msgs = {
         not_open: 'No tournament signup open right now.',
         closed: 'Signup window has closed.',
         too_far: 'You need to be near Don Featherstone!',
         full: 'Tournament is full (8/8 birds).',
         already_entered: 'You\'re already signed up!',
-        no_coins: `Not enough coins. Need ${gameState.tournament ? gameState.tournament.entryFee : 100}c.`,
+        no_coins: `Not enough coins. Need ${neededCoins}c.`,
       };
       showAnnouncement(`🥊 ${msgs[ev.reason] || 'Cannot join tournament.'}`, '#ff4444', 3000);
     }
@@ -1369,9 +1372,13 @@
     }
     if (ev.type === 'tournament_round_start') {
       const roundLabel = `ROUND ${ev.round}`;
+      const nonByeMatches = ev.bracket.filter(m => !m.bye);
       let matchStr = ev.bracket.map(m => m.bye ? `${m.bird1Name} (BYE)` : `${m.bird1Name} vs ${m.bird2Name}`).join(' · ');
       showAnnouncement(`🥊 CHAMPIONSHIP ${roundLabel}!\n${matchStr}\nPOOP your opponent 3 times to advance!`, '#ff8844', 7000);
       addEventMessage(`🥊 CHAMPIONSHIP ROUND ${ev.round}: ${matchStr}`, '#ff8844');
+      if (nonByeMatches.length > 0) {
+        addEventMessage(`🎰 SPECTATORS: Bet on Round ${ev.round} — check bottom-left panel! 20s window!`, '#ffcc44');
+      }
       effects.push({ type: 'screen_shake', intensity: 8, duration: 500, time: now });
       updateTournamentHud();
     }
@@ -1380,7 +1387,9 @@
     }
     if (ev.type === 'tournament_ended') {
       const tag = ev.gangTag ? `[${ev.gangTag}] ` : '';
-      showAnnouncement(`🥊 FIGHTING CHAMPION!\n${tag}${ev.championName} WINS THE CHAMPIONSHIP!\n+500 XP · +${ev.pot}c pot · 🥊 BADGE UNLOCKED`, '#ff6600', 10000);
+      const selfWins = (gameState.self && gameState.self.tournamentWins) || 0;
+      const winCountNote = ev.championId === myId && selfWins > 0 ? `\n🏆 Career wins: ${selfWins}` : '';
+      showAnnouncement(`🥊 FIGHTING CHAMPION!\n${tag}${ev.championName} WINS THE CHAMPIONSHIP!\n+500 XP · +${ev.pot}c pot · 🥊 BADGE UNLOCKED${winCountNote}`, '#ff6600', 10000);
       addEventMessage(`🥊🏆 ${tag}${ev.championName} IS THE PIGEON FIGHTING CHAMPION! (${ev.rounds} rounds · ${ev.pot}c prize)`, '#ff6600');
       effects.push({ type: 'screen_shake', intensity: 14, duration: 900, time: now });
       updateTournamentHud();
@@ -4048,6 +4057,9 @@
     // Duel Bet Panel (spectators)
     updateDuelBetPanel();
 
+    // Tournament Bet Panel (spectators during championship rounds)
+    updateTournamentBetPanel();
+
     // Active buffs HUD
     updateActiveBuffsHud();
 
@@ -4352,6 +4364,92 @@
     const rawVal = inputEl ? parseInt(inputEl.value) : _duelBetAmount;
     const amount = Math.max(10, Math.min(300, isNaN(rawVal) ? 50 : rawVal));
     _duelBetAmount = amount;
+    socket.emit('action', { type: 'bet_on_duel', duelId, onId, amount });
+  };
+
+  // ============================================================
+  // TOURNAMENT SPECTATOR BETTING PANEL
+  // ============================================================
+  let _tournamentBetAmount = 50;
+
+  function updateTournamentBetPanel() {
+    const el = document.getElementById('tournamentBetPanel');
+    if (!el || !gameState || !gameState.self) { if (el) el.style.display = 'none'; return; }
+    const tb = gameState.tournamentBetting;
+    const now = Date.now();
+
+    if (!tb || tb.length === 0) {
+      el.style.display = 'none';
+      return;
+    }
+
+    // Filter to matches still within the bet window
+    const openMatches = tb.filter(m => m.windowUntil > now);
+    if (openMatches.length === 0) {
+      el.style.display = 'none';
+      return;
+    }
+
+    const round = openMatches[0].round || 1;
+    const secsLeft = Math.max(0, Math.ceil((Math.min(...openMatches.map(m => m.windowUntil)) - now) / 1000));
+
+    let html = '';
+    html += `<div style="color:#ffcc44;font-size:13px;text-align:center;margin-bottom:4px;letter-spacing:1px;">🥊 ROUND ${round} BETTING</div>`;
+    html += `<div style="color:#ffaa66;font-size:10px;text-align:center;margin-bottom:8px;">⏱ ${secsLeft}s · Bet on any match!</div>`;
+
+    // Amount input
+    html += '<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">';
+    html += `<input id="tournamentBetAmountInput" type="number" min="10" max="300" value="${_tournamentBetAmount}" `;
+    html += 'style="width:70px;background:rgba(40,20,0,0.8);color:#ffdd88;border:1px solid #886622;border-radius:6px;padding:3px 6px;font:bold 11px \'Courier New\',monospace;text-align:center;" ';
+    html += 'oninput="window._tournamentBetAmountInput=this.value" />';
+    html += '<span style="color:#ffaa66;font-size:10px;">coins (10–300)</span>';
+    html += '</div>';
+
+    for (const match of openMatches) {
+      const total = match.total || 0;
+      const odds1 = total > 0 ? ((total / Math.max(match.bets1 || 1, 1)).toFixed(1) + '×') : '?';
+      const odds2 = total > 0 ? ((total / Math.max(match.bets2 || 1, 1)).toFixed(1) + '×') : '?';
+
+      if (match.myBet) {
+        const onName = match.myBet.onId === match.fighter1Id ? match.fighter1Name : match.fighter2Name;
+        html += `<div style="background:rgba(60,30,0,0.8);border:1px solid #cc8800;border-radius:8px;padding:6px 8px;margin-bottom:6px;text-align:center;color:#ffcc66;font-size:11px;">`;
+        html += `✅ <b>${match.fighter1Name} vs ${match.fighter2Name}</b><br>`;
+        html += `Bet: ${match.myBet.amount}c on <b>${onName}</b> · Pool: ${total}c`;
+        html += `</div>`;
+      } else {
+        html += `<div style="margin-bottom:6px;">`;
+        html += `<div style="color:#ffaa44;font-size:9px;margin-bottom:3px;text-align:center;">— ${match.fighter1Name} vs ${match.fighter2Name} · Pool: ${total}c —</div>`;
+        // Fighter 1 button
+        html += `<button onclick="window._placeTournamentBet('${match.duelId}','${match.fighter1Id}')" `;
+        html += `style="display:block;width:100%;margin-bottom:4px;background:rgba(20,40,80,0.9);color:#88aaff;`;
+        html += `border:1px solid #4466aa;padding:5px 8px;border-radius:7px;cursor:pointer;font:bold 11px 'Courier New',monospace;text-align:left;">`;
+        html += `🥊 ${match.fighter1Name}<br>`;
+        html += `<span style="color:#aabbdd;font-size:10px;">${match.bets1 || 0}c bet · ${odds1} payout</span>`;
+        html += `</button>`;
+        // Fighter 2 button
+        html += `<button onclick="window._placeTournamentBet('${match.duelId}','${match.fighter2Id}')" `;
+        html += `style="display:block;width:100%;background:rgba(80,20,20,0.9);color:#ffaaaa;`;
+        html += `border:1px solid #aa4444;padding:5px 8px;border-radius:7px;cursor:pointer;font:bold 11px 'Courier New',monospace;text-align:left;">`;
+        html += `🥊 ${match.fighter2Name}<br>`;
+        html += `<span style="color:#ddbbbb;font-size:10px;">${match.bets2 || 0}c bet · ${odds2} payout</span>`;
+        html += `</button>`;
+        html += `</div>`;
+      }
+    }
+
+    el.innerHTML = html;
+    el.style.display = 'block';
+
+    const inputEl = document.getElementById('tournamentBetAmountInput');
+    if (inputEl) inputEl.addEventListener('change', () => { _tournamentBetAmount = parseInt(inputEl.value) || 50; });
+  }
+
+  window._placeTournamentBet = function(duelId, onId) {
+    const inputEl = document.getElementById('tournamentBetAmountInput');
+    const rawVal = inputEl ? parseInt(inputEl.value) : _tournamentBetAmount;
+    const amount = Math.max(10, Math.min(300, isNaN(rawVal) ? 50 : rawVal));
+    _tournamentBetAmount = amount;
+    // Reuse the same duel_bet action — the server validates it's not a fighter betting on themselves
     socket.emit('action', { type: 'bet_on_duel', duelId, onId, amount });
   };
 
@@ -7508,6 +7606,7 @@
     updateRaceUI();
     updateRaceBettingPanel();
     updateWeatherBetPanel(now);
+    updateTournamentBetPanel();
     updateSewerUI(now);
 
     // Minimap (now includes activeEvent and cat)
@@ -8346,13 +8445,17 @@
 
     const t = gameState.tournament;
     const myCoinsForTour = selfData.coins || 0;
+    const myMafiaRep = selfData.mafiaRep || 0;
+    const hasVip = t && t.hasVipDiscount;
+    const effectiveFee = t ? (t.vipFee || t.entryFee) : 100;
     let tourHtml = `<div style="margin-top:12px;border-top:1px solid #663300;padding-top:10px;">`;
     tourHtml += `<div style="color:#ff8844;font-size:11px;font-weight:bold;margin-bottom:4px;">🥊 FIGHTING CHAMPIONSHIP</div>`;
 
     if (!t || t.state === 'idle' || t.state === 'done') {
       const nextSec = t ? Math.max(0, Math.ceil((t.nextAt - Date.now()) / 1000)) : 0;
       const nextMin = Math.ceil(nextSec / 60);
-      tourHtml += `<div style="color:#886655;font-size:9px;">Next tournament in ~${nextMin > 0 ? nextMin + 'm' : 'soon'}. Entry: 100c. Last bird standing wins the pot!</div>`;
+      const feeNote = hasVip ? `<span style="color:#ffd700;"> · VIP: ${effectiveFee}c 🎖</span>` : '';
+      tourHtml += `<div style="color:#886655;font-size:9px;">Next tournament in ~${nextMin > 0 ? nextMin + 'm' : 'soon'}. Entry: ${t ? t.entryFee : 100}c${feeNote}. Last bird standing wins the pot!</div>`;
       if (t && t.champion) {
         const champTag = t.champion.gangTag ? `[${t.champion.gangTag}] ` : '';
         tourHtml += `<div style="color:#ff9944;font-size:10px;margin-top:4px;">🏆 Last champion: ${champTag}${t.champion.name}</div>`;
@@ -8365,10 +8468,12 @@
       }
       if (t.isEntered) {
         tourHtml += `<div style="color:#44ff88;font-size:10px;font-weight:bold;">✅ YOU'RE IN! Good luck, fighter.</div>`;
-      } else if (myCoinsForTour < t.entryFee) {
-        tourHtml += `<div style="color:#886644;font-size:9px;">Need ${t.entryFee}c to enter. You have ${myCoinsForTour}c.</div>`;
+      } else if (myCoinsForTour < effectiveFee) {
+        const discountNote = hasVip ? ` (VIP 🎖: ${effectiveFee}c)` : '';
+        tourHtml += `<div style="color:#886644;font-size:9px;">Need ${effectiveFee}c${discountNote} to enter. You have ${myCoinsForTour}c.</div>`;
       } else {
-        tourHtml += `<button id="donTournamentJoinBtn" style="background:#662200;color:#ffaa44;border:1.5px solid #ff6622;border-radius:6px;font-size:10px;padding:5px 14px;cursor:pointer;font-weight:bold;">🥊 JOIN TOURNAMENT — ${t.entryFee}c</button>`;
+        const discountNote = hasVip ? ` <span style="color:#ffd700;font-size:9px;">(🎖 Capo Discount!)</span>` : '';
+        tourHtml += `<button id="donTournamentJoinBtn" style="background:#662200;color:#ffaa44;border:1.5px solid #ff6622;border-radius:6px;font-size:10px;padding:5px 14px;cursor:pointer;font-weight:bold;">🥊 JOIN TOURNAMENT — ${effectiveFee}c${hasVip ? ' 🎖' : ''}</button>${discountNote}`;
       }
     } else if (t.state === 'fighting') {
       tourHtml += `<div style="color:#ffaa44;font-size:10px;font-weight:bold;margin-bottom:4px;">⚔️ ROUND ${t.round} IN PROGRESS — Pot: ${t.pot}c</div>`;
@@ -8389,6 +8494,29 @@
         }
       }
     }
+
+    // === CHAMPIONSHIP LEADERBOARD ===
+    const leaderboard = gameState.championshipLeaderboard || [];
+    const myWins = selfData.tournamentWins || 0;
+    tourHtml += `<div style="margin-top:10px;border-top:1px dashed #663300;padding-top:8px;">`;
+    tourHtml += `<div style="color:#ffaa66;font-size:10px;font-weight:bold;margin-bottom:4px;">🏆 ALL-TIME CHAMPIONS</div>`;
+    if (leaderboard.length === 0) {
+      tourHtml += `<div style="color:#664433;font-size:9px;font-style:italic;">No champions yet — be the first!</div>`;
+    } else {
+      leaderboard.forEach((entry, i) => {
+        const medals = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣'];
+        const tag = entry.gangTag ? `[${entry.gangTag}] ` : '';
+        const prestigeDots = entry.prestige > 0 ? ' ' + '⚜️'.repeat(Math.min(entry.prestige, 3)) : '';
+        const champ = entry.fightingChampBadge ? ' 🥊' : '';
+        tourHtml += `<div style="color:${i === 0 ? '#ffd700' : '#cc9966'};font-size:9px;">`;
+        tourHtml += `${medals[i] || '•'} ${tag}${entry.name}${prestigeDots}${champ} — ${entry.wins} win${entry.wins !== 1 ? 's' : ''}`;
+        tourHtml += `</div>`;
+      });
+    }
+    if (myWins > 0) {
+      tourHtml += `<div style="color:#44ff88;font-size:9px;margin-top:4px;">Your wins: ${myWins} 🥊</div>`;
+    }
+    tourHtml += `</div>`;
 
     tourHtml += `</div>`;
     tournamentSectionEl.innerHTML = tourHtml;
@@ -8838,6 +8966,13 @@
         html += `<div class="bm-buff-pill" style="background:rgba(100,20,0,0.95);border-color:#ff4400;color:#ff9966;font-weight:bold;animation:pulseRed 0.6s infinite alternate;">🥊 ROUND ${t.round} — POOP ${opponentName} 3 TIMES! Championship pot: ${t.pot}c</div>`;
       } else if (t.isEntered) {
         html += `<div class="bm-buff-pill" style="background:rgba(50,30,0,0.85);border-color:#cc7722;color:#ffbb55;">🥊 ROUND ${t.round} FIGHTING — ${t.bracket ? t.bracket.filter(m => !m.winner && !m.bye).length : '?'} matches left…</div>`;
+      } else if (gameState.tournamentBetting && gameState.tournamentBetting.length > 0) {
+        // Spectator: there are open tournament bets!
+        const openCount = gameState.tournamentBetting.filter(m => m.windowUntil > now).length;
+        const alreadyBet = gameState.tournamentBetting.some(m => m.myBet);
+        if (openCount > 0 && !alreadyBet) {
+          html += `<div class="bm-buff-pill" style="background:rgba(60,30,0,0.9);border-color:#cc8800;color:#ffcc44;font-weight:bold;animation:kingpinGlow 0.7s ease-in-out infinite alternate;">🥊 CHAMPIONSHIP BETTING OPEN! ${openCount} match${openCount !== 1 ? 'es' : ''} — check bottom-left!</div>`;
+        }
       }
     }
 

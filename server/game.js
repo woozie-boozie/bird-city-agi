@@ -825,6 +825,7 @@ class GameEngine {
       vpMachineCooldowns: {},      // machineId → timestamp (last use)
       // === PIGEON FIGHTING CHAMPIONSHIP ===
       fightingChampBadge: false,   // session-only: won the bracket tournament this session
+      tournamentWins: saved ? (saved.tournament_wins || 0) : 0,  // lifetime championship wins (persistent)
     };
 
     // Determine bird type from XP
@@ -5800,6 +5801,7 @@ class GameEngine {
       } : null,
       mafiaRep: bird.mafiaRep || 0,
       mafiaTitle: this._getMafiaTitle(bird.mafiaRep || 0),
+      tournamentWins: bird.tournamentWins || 0,
       // Daily challenges
       dailyChallenges: this.dailyChallenges.map(c => ({
         id: c.id,
@@ -6098,7 +6100,53 @@ class GameEngine {
         isInMatch: this.tournament.bracket.some(m => (m.bird1Id === bird.id || m.bird2Id === bird.id) && !m.bye && !m.winner),
         champion: this.tournament.champion,
         entryFee: this.tournament.entryFee,
+        vipFee: (bird.mafiaRep || 0) >= 15 ? Math.floor(this.tournament.entryFee / 2) : this.tournament.entryFee,
+        hasVipDiscount: (bird.mafiaRep || 0) >= 15,
       },
+      // Tournament Spectator Betting — list of active tournament duels with open bet windows
+      tournamentBetting: (() => {
+        // Fighters in a tournament duel cannot see the betting panel
+        const myDuel = bird.streetDuelId ? this.streetDuels.get(bird.streetDuelId) : null;
+        if (myDuel && myDuel.isTournamentDuel) return null;
+        if (this.tournament.state !== 'fighting') return null;
+        const activeBets = [];
+        for (const [, duel] of this.streetDuels) {
+          if (!duel.isTournamentDuel) continue;
+          if (duel.state !== 'active') continue;
+          if (!duel.betWindowUntil || duel.betWindowUntil <= now) continue;
+          const bets1 = duel.bets ? [...duel.bets.values()].filter(b => b.onId === duel.challengerId).reduce((s, b) => s + b.amount, 0) : 0;
+          const bets2 = duel.bets ? [...duel.bets.values()].filter(b => b.onId === duel.targetId).reduce((s, b) => s + b.amount, 0) : 0;
+          const myBet = duel.bets ? duel.bets.get(bird.id) : null;
+          activeBets.push({
+            duelId: duel.id,
+            windowUntil: duel.betWindowUntil,
+            fighter1Id: duel.challengerId,
+            fighter1Name: duel.challengerName,
+            fighter2Id: duel.targetId,
+            fighter2Name: duel.targetName,
+            bets1,
+            bets2,
+            total: bets1 + bets2,
+            myBet: myBet ? { amount: myBet.amount, onId: myBet.onId } : null,
+            round: duel.tournamentRound,
+          });
+        }
+        return activeBets.length > 0 ? activeBets : null;
+      })(),
+      // Championship leaderboard — top fighters by all-time tournament wins (from connected birds)
+      championshipLeaderboard: (() => {
+        return [...this.birds.values()]
+          .filter(b => (b.tournamentWins || 0) > 0)
+          .sort((a, b) => (b.tournamentWins || 0) - (a.tournamentWins || 0))
+          .slice(0, 5)
+          .map(b => ({
+            name: b.name,
+            gangTag: b.gangTag || null,
+            wins: b.tournamentWins || 0,
+            prestige: b.prestige || 0,
+            fightingChampBadge: b.fightingChampBadge || false,
+          }));
+      })(),
     };
   }
 
@@ -6211,6 +6259,7 @@ class GameEngine {
       skill_points: bird.skillPoints || 0,
       skill_tree: JSON.stringify(bird.skillTreeUnlocked || []),
       skill_tree_master: bird.skillTreeMaster || false,
+      tournament_wins: bird.tournamentWins || 0,
     }).catch(e => {
       console.error('[GameEngine] Failed to save bird:', e.message);
     });
@@ -14176,6 +14225,35 @@ class GameEngine {
         tournamentRound: this.tournament.round,
       });
       this._onTournamentMatchResult(winnerId, duel.challengerId, duel.targetId, now);
+
+      // === Pay out tournament duel spectator bets ===
+      if (duel.bets && duel.bets.size > 0) {
+        const winningBets = [...duel.bets.entries()].filter(([, b]) => b.onId === winnerId);
+        const losingBets  = [...duel.bets.entries()].filter(([, b]) => b.onId !== winnerId);
+        const totalPool = [...duel.bets.values()].reduce((s, b) => s + b.amount, 0);
+        const totalWinningAmount = winningBets.reduce((s, [, b]) => s + b.amount, 0);
+        const betResults = [];
+        if (winningBets.length === 0) {
+          for (const [bid, bet] of duel.bets) {
+            const b = this.birds.get(bid);
+            if (b) b.coins += bet.amount;
+            betResults.push({ birdId: bid, birdName: bet.birdName, betAmount: bet.amount, payout: bet.amount, profit: 0, won: false, refund: true });
+          }
+          this.events.push({ type: 'duel_bet_results', duelId: duel.id, winnerName: winner ? winner.name : '???', noWinners: true, results: betResults });
+        } else {
+          for (const [bid, bet] of winningBets) {
+            const b = this.birds.get(bid);
+            const payout = Math.max(Math.floor(bet.amount * 1.5), Math.floor(totalPool * bet.amount / totalWinningAmount));
+            if (b) { b.coins += payout; b.xp += 30; }
+            betResults.push({ birdId: bid, birdName: bet.birdName, betAmount: bet.amount, payout, profit: payout - bet.amount, won: true });
+          }
+          for (const [bid, bet] of losingBets) {
+            betResults.push({ birdId: bid, birdName: bet.birdName, betAmount: bet.amount, payout: 0, profit: -bet.amount, won: false });
+          }
+          this.events.push({ type: 'duel_bet_results', duelId: duel.id, winnerName: winner ? winner.name : '???', noWinners: false, results: betResults });
+        }
+      }
+
       this.streetDuels.delete(duel.id);
       return;
     }
@@ -14512,8 +14590,10 @@ class GameEngine {
           champBird.coins += t.pot;
           champBird.xp += 500;
           champBird.fightingChampBadge = true;
+          champBird.tournamentWins = (champBird.tournamentWins || 0) + 1;
           this._trackDailyProgress(champBird, 'tournament_win', 1);
           this._trackDailyProgress(champBird, 'duel_win', 1);
+          this._saveBird(champBird);
         }
 
         // Gazette tracking
@@ -14575,13 +14655,16 @@ class GameEngine {
       this.events.push({ type: 'tournament_join_fail', birdId: bird.id, reason: 'already_entered' });
       return;
     }
-    if (bird.coins < t.entryFee) {
-      this.events.push({ type: 'tournament_join_fail', birdId: bird.id, reason: 'no_coins' });
+    // VIP discount: Made Bird (rep 15+) pays half price — respects their criminal investment
+    const effectiveFee = (bird.mafiaRep || 0) >= 15 ? Math.floor(t.entryFee / 2) : t.entryFee;
+    const hasVipDiscount = effectiveFee < t.entryFee;
+    if (bird.coins < effectiveFee) {
+      this.events.push({ type: 'tournament_join_fail', birdId: bird.id, reason: 'no_coins', needed: effectiveFee });
       return;
     }
 
-    bird.coins -= t.entryFee;
-    t.pot += t.entryFee;
+    bird.coins -= effectiveFee;
+    t.pot += effectiveFee;
     t.entrants.push({ birdId: bird.id, name: bird.name, gangTag: bird.gangTag || null });
 
     this.events.push({
@@ -14592,6 +14675,8 @@ class GameEngine {
       entrantCount: t.entrants.length,
       pot: t.pot,
       signupUntil: t.signupUntil,
+      feePaid: effectiveFee,
+      hasVipDiscount,
     });
   }
 

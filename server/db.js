@@ -80,6 +80,7 @@ const db = {
       skill_points: data.skill_points || 0,
       skill_tree: data.skill_tree || '[]',
       skill_tree_master: data.skill_tree_master || false,
+      tournament_wins: data.tournament_wins || 0,
       last_seen: Math.floor(Date.now() / 1000),
     };
     await birdsCol.doc(id).set(docData, { merge: true });
