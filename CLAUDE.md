@@ -2006,6 +2006,36 @@ The ultimate structured combat event. Don Featherstone now hosts a full bracket 
 
 **Creative intent**: The game had spontaneous 1v1 duels and betting, but no structured championship event. The tournament fills the gap between individual combat (duels) and team events (royale, raids). It fires every 25-35 minutes — frequent enough that you'll encounter one mid-session. The Don as tournament organizer is perfect character fit: he watches 8 birds beat each other up while taking the house cut in vibes. A gang sending their strongest fighter to the championship while the rest bet on them is peak SOCIAL + CARNAGE. The 🥊 badge on the winner's nametag signals to every player they beat: "this bird just won a bracket." Pure SOCIAL + CARNAGE + SPECTACLE energy.
 
+**Session 61 — 2026-04-08: Tournament Spectator Betting + Championship Leaderboard + VIP Discount**
+Three interlocking features that complete the Fighting Championship's social layer — turning it from a private combat event into a city-wide spectacle everyone is invested in.
+
+**Tournament Spectator Betting:**
+- When each championship round starts, a 20-second betting window opens for all non-fighting spectators
+- A gold betting panel appears at bottom-left showing every active match simultaneously (not just one — all of them)
+- Spectators bet 10–300c on any fighter across any open match — same pari-mutuel payout system as duel/race betting (min 1.5× guaranteed)
+- Multiple simultaneous matches shown as separate bet cards in one panel — a 4-bird bracket = 2 match cards
+- Bets paid out immediately when each match resolves (separate pool per match)
+- City-wide event feed nudges spectators with "SPECTATORS: Bet on Round X — check bottom-left panel! 20s window!"
+- Active buffs HUD shows pulsing "CHAMPIONSHIP BETTING OPEN!" pill for non-fighters when bet windows are active
+- Full reuse of existing `duel_bet` action and `duel_bet_results` event — spectator betting wires naturally into the same code path
+
+**Fighting Championship Leaderboard:**
+- `tournamentWins` field added to bird data — persistent in Firestore across sessions
+- Every championship win increments the winner's all-time career win count
+- Don Featherstone overlay gains "🏆 ALL-TIME CHAMPIONS" section showing top 5 career winners (name, gang tag, prestige, win count)
+- Your own career win count shown in the leaderboard section
+- Championship win announcement now shows career total for the winner: "Career wins: 7"
+- Builds a genuine long-term prestige track — a bird with 7 wins is a celebrity
+
+**VIP Entry Discount:**
+- Birds with Mafia Rep ≥ 15 (Made Bird tier or above) pay 50c instead of 100c to enter the championship
+- Shown in the Don overlay during signup as "🎖 Capo Discount" with the reduced price
+- City-wide event feed notes the VIP discount when a high-rep bird enters ("🥊 BirdName enters the Championship! VIP 50c 🎖")
+- Personal announcement for the entering bird confirms the discount was applied
+- Rewarding criminal reputation grinders with a tangible gameplay benefit
+
+**Creative intent**: The tournament was already a great event but felt private — fighters fought while spectators watched passively. Now spectators have SKIN IN THE GAME every single round. A gang cheering for their fighter while betting 200c on each match is peak SOCIAL energy — and if the fighter loses, the gang lost money too. The leaderboard turns the championship into a long-term prestige track: seeing "BirdName — 7 wins" in the Don overlay makes that bird a celebrity. Two gangs whose fighters are both in the final round, with all gang members betting on opposite sides — that's a moment that defines Bird City sessions. The VIP discount is a satisfying reward for Mafia Rep investment that creates real compounding incentives: grind rep → cheaper tournament entry → more tournaments entered → more wins on the leaderboard. Pure SOCIAL + PROGRESSION + SPECTACLE energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -2114,8 +2144,8 @@ Built the Territory Control System on top of the existing upstream code:
 - ~~Street Duel tournament: Don Featherstone organizes a bracket tournament — last winner standing gets massive payout~~ (DONE Session 60)
 - Gazette tracking for duels: "⚔️ [Name] WINS STREET DUEL: defeats [Name] for Xc" headline
 - Idol Hall of Fame: persistent leaderboard of all-time Idol winners near the stage
-- Tournament spectator betting: extend duel betting panel to cover all active tournament duels simultaneously (city-wide bracket gambling)
-- Fighting Championship leaderboard: track all-time tournament wins per bird (show in Hall of Legends or Don overlay)
-- Tournament entry discount for Mafia Capos/Dons: high-rep birds pay 50c instead of 100c
+- ~~Tournament spectator betting: extend duel betting panel to cover all active tournament duels simultaneously (city-wide bracket gambling)~~ (DONE Session 61)
+- ~~Fighting Championship leaderboard: track all-time tournament wins per bird (show in Hall of Legends or Don overlay)~~ (DONE Session 61)
+- ~~Tournament entry discount for Mafia Capos/Dons: high-rep birds pay 50c instead of 100c~~ (DONE Session 61)
 - Gazette tracking for tournaments: already done (Session 60) — also track runner-up name
 - Double-elimination tournament option: losers get a second chance bracket
