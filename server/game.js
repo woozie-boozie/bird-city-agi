@@ -476,6 +476,11 @@ class GameEngine {
     // and "Cosmic Fish" appear at the Sacred Pond with tripled rewards.
     this.aurora = null; // null | { startedAt, endsAt, intensity: 0–1 }
     this.auroraTriggeredThisNight = false; // prevent re-triggering same night
+    // Shooting Star: rare event during aurora — a star streaks across the sky and lands at a
+    // world position. First bird within 60px wins a Mystery Crate-tier item.
+    this.shootingStar = null; // null | { x, y, spawnedAt, expiresAt, streakAngle }
+    this.shootingStarTriggeredThisAurora = false;
+    this.shootingStarScheduledAt = null;
 
     // === BOUNTY HUNTER ===
     // Persistent manhunter NPC that spawns when any bird reaches Wanted Level 4+.
@@ -1409,8 +1414,9 @@ class GameEngine {
     // === Day/Night Cycle ===
     this._updateDayNight(dt, now);
 
-    // === Aurora Borealis ===
+    // === Aurora Borealis + Shooting Star ===
     this._updateAurora(dt, now);
+    this._tickShootingStar(now);
 
     // === Underground Sewer ===
     this._updateSewerRats(dt, now);
@@ -3219,7 +3225,7 @@ class GameEngine {
         if (comboMult > 1.0) xpGain = Math.floor(xpGain * comboMult);
         // City-wide shoutout at milestones
         if (combo === 5 || combo === 10 || combo === 15 || combo === 20) {
-          this.events.push({ type: 'combo_milestone', birdId: bird.id, birdName: bird.name, combo });
+          this.events.push({ type: 'combo_milestone', birdId: bird.id, birdName: bird.name, combo, auroraActive: !!this.aurora });
         }
         // Gazette tracking: record top combo this cycle
         if (combo > this.gazetteStats.topCombo.count) {
@@ -6202,6 +6208,14 @@ class GameEngine {
       aurora: this.aurora ? {
         endsAt: this.aurora.endsAt,
         intensity: this.aurora.intensity,
+      } : null,
+      // Shooting Star (aurora event)
+      shootingStar: this.shootingStar ? {
+        x: this.shootingStar.x,
+        y: this.shootingStar.y,
+        spawnedAt: this.shootingStar.spawnedAt,
+        expiresAt: this.shootingStar.expiresAt,
+        streakAngle: this.shootingStar.streakAngle,
       } : null,
       // City Lockdown — available in self state for HUD rendering
       cityLockdown: this.cityLockdown ? {
@@ -13129,6 +13143,9 @@ class GameEngine {
     // Holder earns +500 XP for surviving the full curse
     holder.xp += 500;
 
+    // Aurora bonus: during Aurora Borealis, coin scatter is DOUBLED — the sacred sky blesses the explosion
+    const auroraDoubled = !!this.aurora;
+
     // Scatter lost coins to all nearby birds proportionally
     const nearbyBirds = [];
     for (const bird of this.birds.values()) {
@@ -13141,12 +13158,13 @@ class GameEngine {
     }
 
     const rewards = [];
-    if (nearbyBirds.length > 0 && lostCoins > 0) {
-      const share = Math.floor(lostCoins / nearbyBirds.length);
+    const effectiveLostCoins = auroraDoubled ? lostCoins * 2 : lostCoins;
+    if (nearbyBirds.length > 0 && effectiveLostCoins > 0) {
+      const share = Math.floor(effectiveLostCoins / nearbyBirds.length);
       for (const b of nearbyBirds) {
         const earned = Math.max(1, share + Math.floor(Math.random() * 5));
         b.coins += earned;
-        b.xp += 50;
+        b.xp += auroraDoubled ? 80 : 50;
         rewards.push({ birdId: b.id, birdName: b.name, coins: earned });
       }
     }
@@ -13157,6 +13175,7 @@ class GameEngine {
       holderName: holder.name,
       holderGangTag: holder.gangTag || null,
       lostCoins,
+      auroraDoubled,
       rewards,
       x: holder.x,
       y: holder.y,
@@ -13709,6 +13728,14 @@ class GameEngine {
     // Track for gazette
     if (!this.gazetteStats.auroraCount) this.gazetteStats.auroraCount = 0;
     this.gazetteStats.auroraCount++;
+    // Schedule shooting star: 30% chance, fires 15-50s into the aurora
+    this.shootingStarTriggeredThisAurora = false;
+    this.shootingStar = null;
+    if (Math.random() < 0.30) {
+      this.shootingStarScheduledAt = now + this._randomRange(15000, 50000);
+    } else {
+      this.shootingStarScheduledAt = null;
+    }
   }
 
   _spawnCosmicFish() {
@@ -13737,6 +13764,11 @@ class GameEngine {
         this.foods.delete(fishId);
         this.pondFishIds.delete(fishId);
       }
+      // Clean up any unclaimed shooting star
+      if (this.shootingStar) {
+        this.events.push({ type: 'shooting_star_expired', x: this.shootingStar.x, y: this.shootingStar.y });
+        this.shootingStar = null;
+      }
       return;
     }
     // Spawn cosmic fish periodically during aurora (keep 2 in pond at all times)
@@ -13747,6 +13779,157 @@ class GameEngine {
     if (cosmicCount < 2 && Math.random() < 0.005) { // ~0.5% chance per tick = ~2.5% per second
       this._spawnCosmicFish();
     }
+    // Fire scheduled shooting star
+    if (!this.shootingStarTriggeredThisAurora && this.shootingStarScheduledAt && now >= this.shootingStarScheduledAt) {
+      this._spawnShootingStar(now);
+    }
+  }
+
+  // ============================================================
+  // ============================================================
+  // SHOOTING STAR — Rare aurora event, Mystery Crate-tier reward
+  // ============================================================
+
+  _spawnShootingStar(now) {
+    this.shootingStarTriggeredThisAurora = true;
+    const LANDING_SPOTS = [
+      { x: 1200, y: 1200 }, // park center
+      { x: 2350, y: 580 },  // mall top-right
+      { x: 280,  y: 300 },  // residential NW
+      { x: 2520, y: 1800 }, // downtown
+      { x: 1400, y: 2500 }, // docks
+      { x: 760,  y: 700 },  // cafe district
+      { x: 1900, y: 380 },  // north corridor
+      { x: 380,  y: 1750 }, // west side
+      { x: 1500, y: 900 },  // central north
+    ];
+    const spot = LANDING_SPOTS[Math.floor(Math.random() * LANDING_SPOTS.length)];
+    // Small random offset so it never lands in the exact same pixel
+    const x = Math.max(150, Math.min(world.WORLD_WIDTH - 150, spot.x + (Math.random() - 0.5) * 200));
+    const y = Math.max(150, Math.min(world.WORLD_HEIGHT - 150, spot.y + (Math.random() - 0.5) * 200));
+    // Streak comes from a random upper direction (top edge of screen)
+    const streakAngle = -Math.PI / 2 + (Math.random() - 0.5) * (Math.PI / 2); // ~-90° ± 45°
+    this.shootingStar = {
+      id: 'ss_' + Date.now(),
+      x,
+      y,
+      spawnedAt: now,
+      expiresAt: now + 45000, // 45-second claim window
+      streakAngle,
+    };
+    this.events.push({
+      type: 'shooting_star_spawn',
+      x,
+      y,
+      streakAngle,
+      spawnedAt: now,
+      expiresAt: this.shootingStar.expiresAt,
+    });
+    if (!this.gazetteStats.shootingStars) this.gazetteStats.shootingStars = 0;
+    this.gazetteStats.shootingStars++;
+  }
+
+  _tickShootingStar(now) {
+    if (!this.shootingStar) return;
+    // Expire
+    if (now >= this.shootingStar.expiresAt) {
+      this.events.push({ type: 'shooting_star_expired', x: this.shootingStar.x, y: this.shootingStar.y });
+      this.shootingStar = null;
+      return;
+    }
+    // Auto-collect: first non-stunned, above-ground bird within 60px
+    for (const bird of this.birds.values()) {
+      if (bird.stunnedUntil > now) continue;
+      if (bird.inSewer) continue;
+      const dx = bird.x - this.shootingStar.x;
+      const dy = bird.y - this.shootingStar.y;
+      if (Math.sqrt(dx * dx + dy * dy) < 60) {
+        this._claimShootingStar(bird, now);
+        return;
+      }
+    }
+  }
+
+  _claimShootingStar(bird, now) {
+    const star = this.shootingStar;
+    this.shootingStar = null;
+
+    // Pick a Mystery Crate-tier item using the same weighted pool
+    let roll = Math.random() * this.MYSTERY_CRATE_TOTAL_WEIGHT;
+    let item = this.MYSTERY_CRATE_ITEMS[this.MYSTERY_CRATE_ITEMS.length - 1];
+    for (const candidate of this.MYSTERY_CRATE_ITEMS) {
+      if (roll < candidate.weight) { item = candidate; break; }
+      roll -= candidate.weight;
+    }
+
+    // Apply item effect (mirrors _claimMysteryCrate)
+    switch (item.id) {
+      case 'nuke_poop':
+        bird.mcNukePoop = true;
+        break;
+      case 'jet_wings':
+        bird.mcJetWingsUntil = now + 15000;
+        break;
+      case 'coin_cache': {
+        const coins = 250 + Math.floor(Math.random() * 200);
+        bird.coins += coins;
+        this._trackDailyProgress(bird, 'coins_earned', coins);
+        item = { ...item, coinsAwarded: coins };
+        break;
+      }
+      case 'riot_shield':
+        bird.mcRiotShieldUntil = now + 12000;
+        break;
+      case 'lightning_rod':
+        bird.mcLightningRodUntil = now + 20000;
+        break;
+      case 'coin_magnet':
+        bird.mcMagnetUntil = now + 10000;
+        bird.mcMagnetLastPull = 0;
+        break;
+      case 'ghost_mode':
+        bird.mcGhostModeUntil = now + 15000;
+        break;
+      case 'twister_bomb':
+        for (const other of this.birds.values()) {
+          if (other.id === bird.id) continue;
+          const dx = other.x - bird.x;
+          const dy = other.y - bird.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < 200) {
+            const pushAngle = dist > 1 ? Math.atan2(dy, dx) : Math.random() * Math.PI * 2;
+            other.x = Math.max(50, Math.min(world.WORLD_WIDTH - 50, other.x + Math.cos(pushAngle) * 300));
+            other.y = Math.max(50, Math.min(world.WORLD_HEIGHT - 50, other.y + Math.sin(pushAngle) * 300));
+            other.stunnedUntil = now + 1200;
+            other.comboCount = 0;
+            other.comboExpiresAt = 0;
+          }
+        }
+        break;
+      case 'diamond_poop':
+        bird.mcDiamondPoopUntil = now + 20000;
+        break;
+      case 'broken_crate':
+        bird.coins += 75;
+        this._trackDailyProgress(bird, 'coins_earned', 75);
+        break;
+    }
+
+    this.events.push({
+      type: 'shooting_star_claimed',
+      birdId: bird.id,
+      birdName: bird.name,
+      gangTag: bird.gangTag || null,
+      item: {
+        id: item.id,
+        emoji: item.emoji,
+        name: item.name,
+        desc: item.desc,
+        coinsAwarded: item.coinsAwarded,
+      },
+      x: star.x,
+      y: star.y,
+    });
   }
 
   // ============================================================

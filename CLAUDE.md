@@ -2194,6 +2194,37 @@ The most visually breathtaking moment in Bird City. Every night has a 30% chance
 
 **Creative intent**: The Aurora fills the DISCOVERY + SPECTACLE pillars in a way nothing else does. It's the first purely beautiful thing in Bird City — no threat, no danger, just divine light. The moment you're flying through the dark city at night and the sky suddenly erupts in green and violet ribbons is genuinely surprising and beautiful. The gameplay bonuses (XP boost + extended combo + cosmic fish loot) make the aurora worth staying up for — it's a reward for night play that makes night feel special rather than just dangerous. The 30% chance means it happens somewhat regularly but never feels routine. A P5 LEGEND bird running a 15× combo under the aurora with Lucky Charm + Signal Boost active hits astronomical XP numbers. Pure DISCOVERY + SPECTACLE + PROGRESSION energy.
 
+**Session 67 — 2026-04-09: Shooting Star Event + Aurora Cross-System Synergies**
+Three interlocking additions that complete the Aurora Borealis' DISCOVERY potential and weave it into other systems for richer emergent moments.
+
+**Shooting Star Event (`server/game.js`, `public/js/renderer.js`, `public/js/main.js`):**
+- When Aurora starts, a 30% chance to schedule a Shooting Star between 15–50 seconds later
+- The star fires as a world event: a bright white/gold streak blazes across the sky (screen-space, 2.2-second animation) and lands at a randomized world position
+- City-wide announcement + minimap pulsing 🌠 gold dot at the landing site
+- Direction arrow points toward landing site when off-screen
+- HUD countdown bar shows 45-second claim window
+- **First bird to fly within 60px auto-collects a Mystery Crate-tier item** (same 10-item weighted pool)
+- If nobody reaches it in 45 seconds: "The Shooting Star faded..." event
+- Aurora ends → any unclaimed star expires
+
+**Visual design:**
+- Screen-space streak: bright elongated glow with additive blending, bright core + outer halo, travels from off-screen to the landing position over 2.2 seconds, ends with an expanding impact flash
+- World-space landing marker: pulsing 8-pointed star burst with orbiting sparkles, "🌠 FLY HERE!" label, gold radial glow halo, rotates slowly to signal it's claimable
+- Minimap: pulsing yellow 🌠 dot at landing position
+
+**Aurora + Cursed Coin cross-system interaction:**
+- If the Cursed Coin explodes during an active Aurora, the coin scatter to nearby birds is **DOUBLED** — the sacred sky amplifies the chaos
+- Scatter recipients also earn +80 XP instead of +50 XP per reward
+- Explosion announcement notes "✨ AURORA doubles the coin scatter!" in teal
+- 36 coin shower particles vs 20 normal — the screen erupts with coins
+
+**Aurora + Combo x20 sacred flash:**
+- When any bird lands their 20th combo hit under the Aurora, a personal aurora-colored screen bloom fires — a radial teal/cyan gradient flash that fades over 800ms
+- Unique "✨🔥 COMBO x20 UNDER THE AURORA! The sky responds to your rampage!" personal announcement in teal
+- City-wide event feed callout in teal — everyone sees the sacred achievement
+
+**Creative intent**: The Shooting Star is the aurora's missing surprise — the first time you experience the aurora and see a star blazing across the ribbons and landing nearby, the DISCOVERY moment is genuine. It's a race with no button presses: just awareness (did you spot the minimap dot?) and speed (can you get there first?). The reward is the full Mystery Crate pool, so the star is worth sprinting for. The Aurora + Cursed Coin combo creates the most spectacular coin explosion in the game — a coin holder who managed to survive 4 minutes of the curse while the aurora was raging overhead deserves a doubled shower. The combo flash makes hitting x20 under the aurora feel cosmically different from hitting it in daylight. Three systems (aurora + coin + combo) now have beautiful emergent intersections. Pure DISCOVERY + SPECTACLE energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -2318,8 +2349,12 @@ Built the Territory Control System on top of the existing upstream code:
 - Double-elimination tournament: losers bracket gives everyone a second chance (complex but satisfying)
 - Bird Photo Mode: freeze camera for 3 seconds, UI hides, "SNAP" — shareable screenshot moment
 - ~~Aurora Borealis night spectacle: 30% chance each night, colored light ribbons, +25% XP, extended combos, Cosmic Fish at Sacred Pond~~ (DONE Session 66)
-- Aurora + Cursed Coin combo: if someone grabs the Cursed Coin during aurora, explosion coin shower is doubled
-- Aurora + Combo milestone: hitting 20× combo under the aurora triggers a personal aurora-hued screen flash
-- Shooting Star event: rare (5% chance during aurora) — a shooting star crosses the sky and the first bird to "catch" it by flying to its landing spot earns a Mystery Crate-tier item
+- ~~Aurora + Cursed Coin combo: if someone grabs the Cursed Coin during aurora, explosion coin shower is doubled~~ (DONE Session 67)
+- ~~Aurora + Combo milestone: hitting 20× combo under the aurora triggers a personal aurora-hued screen flash~~ (DONE Session 67)
+- ~~Shooting Star event: rare (30% chance during aurora) — a shooting star crosses the sky and the first bird to "catch" it by flying to its landing spot earns a Mystery Crate-tier item~~ (DONE Session 67)
 - Seasonal events: longer-term city transformations (snow in "winter", cherry blossoms in "spring")
 - Graffiti mural system: large multi-building art pieces that require a whole gang to paint
+- Aurora + Gang War: if a gang war erupts during the aurora, all kills give 2× gang war XP — sacred sky amplifies the violence
+- Shooting Star daily challenge: "Stargazer — catch a Shooting Star during the Aurora" (300 XP, 150c) — the rarest weather challenge
+- Comet Trail: a P5 LEGEND bird who catches the Shooting Star leaves a brief golden comet trail behind them for 30 seconds
+- Night Market: a special vendor that only appears during Aurora nights, selling rare cosmetics for cosmic fish (the aurora's currency)

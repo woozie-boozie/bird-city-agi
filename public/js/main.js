@@ -1226,15 +1226,18 @@
       effects.push({ type: 'screen_shake', intensity: 15, duration: 900, time: now });
       const tag = ev.holderGangTag ? `[${ev.holderGangTag}] ` : '';
       const isMe = ev.holderId === myId;
+      const auroraMsg = ev.auroraDoubled ? '\n✨ AURORA doubles the coin scatter!' : '';
       if (isMe) {
-        showAnnouncement(`💀 THE CURSE EXPLODES!\nYou lost ${ev.lostCoins}c — but earned +500 XP for surviving!\nCoins scattered to nearby birds!`, '#ff0033', 6000);
+        showAnnouncement(`💀 THE CURSE EXPLODES!${auroraMsg}\nYou lost ${ev.lostCoins}c — but earned +500 XP for surviving!\nCoins scattered to nearby birds!`, ev.auroraDoubled ? '#88ffcc' : '#ff0033', 6000);
       } else {
-        showAnnouncement(`💀 CURSE EXPLOSION!\n${tag}${ev.holderName} took the full brunt! Coins scattered!`, '#ff3366', 5000);
+        showAnnouncement(`💀 CURSE EXPLOSION!${auroraMsg}\n${tag}${ev.holderName} took the full brunt! Coins scattered!`, ev.auroraDoubled ? '#88ffcc' : '#ff3366', 5000);
       }
-      addEventMessage(`💀 💥 CURSE EXPLODES on ${tag}${ev.holderName}! −${ev.lostCoins}c scattered to ${ev.rewards.length} birds!`, '#ff0033');
-      // Coin shower for nearby birds
+      const doubledNote = ev.auroraDoubled ? ' ✨ AURORA DOUBLES THE SCATTER!' : '';
+      addEventMessage(`💀 💥 CURSE EXPLODES on ${tag}${ev.holderName}! −${ev.lostCoins}c scattered to ${ev.rewards.length} birds!${doubledNote}`, ev.auroraDoubled ? '#88ffcc' : '#ff0033');
+      // Coin shower for nearby birds (more particles if aurora doubled)
+      const particleCount = ev.auroraDoubled ? 36 : 20;
       if (ev.rewards && ev.rewards.length > 0) {
-        for (let i = 0; i < Math.min(20, ev.rewards.length * 3); i++) {
+        for (let i = 0; i < Math.min(particleCount, ev.rewards.length * 3); i++) {
           effects.push({
             type: 'coin_particle',
             x: camera.screenW / 2 + (Math.random() - 0.5) * 300,
@@ -1249,7 +1252,7 @@
       // Show personal reward
       const myReward = ev.rewards && ev.rewards.find(r => r.birdId === myId);
       if (myReward) {
-        showAnnouncement(`💀 COIN SHOWER! +${myReward.coins}c from the curse explosion!`, '#ffcc00', 4000);
+        showAnnouncement(`${ev.auroraDoubled ? '✨ AURORA ' : ''}💀 COIN SHOWER! +${myReward.coins}c from the curse explosion!`, '#ffcc00', 4000);
       }
     }
 
@@ -1287,7 +1290,32 @@
     }
     if (ev.type === 'aurora_end') {
       addEventMessage('✨ The Aurora fades... The sky returns to ordinary night.', '#55bbaa');
+      window._shootingStarData = null; // clean up if aurora ends with unclaimed star
     }
+
+    // === SHOOTING STAR (rare aurora event) ===
+    if (ev.type === 'shooting_star_spawn') {
+      window._shootingStarData = { x: ev.x, y: ev.y, spawnedAt: ev.spawnedAt, expiresAt: ev.expiresAt, streakAngle: ev.streakAngle };
+      effects.push({ type: 'screen_shake', intensity: 4, duration: 400, time: now });
+      showAnnouncement('🌠 SHOOTING STAR!\nRace to the landing site — Mystery item awaits!', '#ffffaa', 6000);
+      addEventMessage('🌠 A SHOOTING STAR streaks across the aurora sky! First bird to the landing site wins a cosmic reward!', '#ffffaa');
+    }
+    if (ev.type === 'shooting_star_claimed') {
+      window._shootingStarData = null;
+      if (ev.birdId === myId) {
+        showAnnouncement(`🌠 STAR CLAIMED! You got: ${ev.item.emoji} ${ev.item.name}!`, '#ffffaa', 5000);
+        addEventMessage(`🌠 You caught the Shooting Star and got ${ev.item.emoji} ${ev.item.name}!`, '#ffffaa');
+        effects.push({ type: 'screen_shake', intensity: 10, duration: 600, time: now });
+      } else {
+        const tag = ev.gangTag ? `[${ev.gangTag}] ` : '';
+        addEventMessage(`🌠 ${tag}${ev.birdName} caught the Shooting Star → ${ev.item.emoji} ${ev.item.name}!`, '#ffee88');
+      }
+    }
+    if (ev.type === 'shooting_star_expired') {
+      window._shootingStarData = null;
+      addEventMessage('🌠 The Shooting Star faded... Nobody reached the landing site in time.', '#887755');
+    }
+
     // Cosmic fish caught (triple loot — aurora only)
     if (ev.type === 'cosmic_fish_caught' && ev.birdId === myId) {
       showAnnouncement(`✨ COSMIC FISH! +${ev.coins}c +${ev.xp} XP`, '#88ffcc', 3500);
@@ -1863,8 +1891,16 @@
       if (ev.birdId === myId) {
         showAnnouncement(fireCount + ' COMBO x' + ev.combo + '! ' + fireCount, '#ff8c00', 2500);
         effects.push({ type: 'screen_shake', intensity: Math.min(6, Math.floor(ev.combo / 5)), duration: 300, time: now });
+        // Aurora + Combo x20: sacred sky flash — rare cinematic moment
+        if (ev.combo === 20 && ev.auroraActive) {
+          effects.push({ type: 'aurora_combo_flash', time: now, duration: 800 });
+          showAnnouncement('✨🔥 COMBO x20 UNDER THE AURORA! 🔥✨\nThe sky responds to your rampage!', '#88ffcc', 4000);
+        }
       }
       addEventMessage(fireCount + ' ' + ev.birdName + ' is ON FIRE! x' + ev.combo + ' combo!', '#ff8c00');
+      if (ev.combo === 20 && ev.auroraActive) {
+        addEventMessage('✨🔥 ' + ev.birdName + ' hits x20 combo UNDER THE AURORA — the city trembles!', '#88ffcc');
+      }
     }
 
     // === FOOD TRUCK / HEIST EVENTS ===
@@ -6859,6 +6895,12 @@
       Renderer.drawMysteryCrate(ctx, camera, _mc, now);
     }
 
+    // Shooting Star landing marker (aurora event)
+    const _ss = gameState.self && gameState.self.shootingStar;
+    if (_ss) {
+      Renderer.drawShootingStarLanding(ctx, camera, _ss, now);
+    }
+
     // Pigeon Pied Piper
     if (gameState.self && gameState.self.piper) {
       Renderer.drawPiedPiper(ctx, camera, gameState.self.piper, now);
@@ -7295,6 +7337,11 @@
       Renderer.drawAurora(ctx, camera, gameState.dayTime, gameState.aurora);
     }
 
+    // Shooting Star streak (screen-space, drawn ON TOP of aurora for full spectacle)
+    if (window._shootingStarData) {
+      Renderer.drawShootingStarStreak(ctx, camera, window._shootingStarData, now);
+    }
+
     // Weather effects (screen-space, drawn over day/night overlay)
     // Use gameState.weather as authoritative source (server-synced each tick)
     drawWeather(ctx, camera, now, gameState.weather || weatherState);
@@ -7637,6 +7684,69 @@
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText('?', 4, 0);
+        ctx.restore();
+      }
+      ctx.restore();
+    }
+
+    // Shooting Star — direction arrow + countdown bar (when landing site is off-screen)
+    const _ssHud = gameState.self && gameState.self.shootingStar;
+    if (_ssHud) {
+      const ssx = _ssHud.x - camera.x + camera.screenW / 2;
+      const ssy = _ssHud.y - camera.y + camera.screenH / 2;
+      const ssTimeLeft = Math.max(0, _ssHud.expiresAt - now);
+      const ssOnScreen = ssx > 40 && ssx < camera.screenW - 40 && ssy > 40 && ssy < camera.screenH - 40;
+      const ssFrac = ssTimeLeft / 45000;
+      const ssPulse = 0.7 + 0.3 * Math.sin(now * 0.007);
+      // HUD countdown bar (at barY=99 to avoid overlapping mystery crate bar at 82)
+      const ssBarW = 160, ssBarH = 12;
+      const ssBarX = camera.screenW / 2 - ssBarW / 2;
+      const ssBarY = 100;
+      ctx.save();
+      ctx.globalAlpha = 0.88;
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.beginPath();
+      ctx.roundRect(ssBarX - 40, ssBarY - 16, ssBarW + 80, ssBarH + 28, 8);
+      ctx.fill();
+      ctx.fillStyle = '#ffffaa';
+      ctx.font = 'bold 11px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(`🌠 SHOOTING STAR — ${Math.ceil(ssTimeLeft / 1000)}s`, camera.screenW / 2, ssBarY - 3);
+      ctx.fillStyle = 'rgba(255,255,100,0.15)';
+      ctx.beginPath();
+      ctx.roundRect(ssBarX, ssBarY + 2, ssBarW, ssBarH, 4);
+      ctx.fill();
+      ctx.fillStyle = ssFrac > 0.4 ? '#ffffaa' : (ssFrac > 0.2 ? '#ffcc44' : '#ff8833');
+      ctx.beginPath();
+      ctx.roundRect(ssBarX, ssBarY + 2, ssBarW * ssFrac, ssBarH, 4);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      // Direction arrow if landing site is off-screen
+      if (!ssOnScreen) {
+        const angle = Math.atan2(ssy - camera.screenH / 2, ssx - camera.screenW / 2);
+        const arrowDist = Math.min(camera.screenW, camera.screenH) / 2 - 55;
+        const ax = camera.screenW / 2 + Math.cos(angle) * arrowDist;
+        const ay = camera.screenH / 2 + Math.sin(angle) * arrowDist;
+        ctx.save();
+        ctx.translate(ax, ay);
+        ctx.rotate(angle);
+        ctx.globalAlpha = 0.85 * ssPulse;
+        ctx.fillStyle = '#ffffaa';
+        ctx.strokeStyle = '#664400';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(20, 0);
+        ctx.lineTo(-10, -10);
+        ctx.lineTo(-5, 0);
+        ctx.lineTo(-10, 10);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#332200';
+        ctx.font = 'bold 9px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('🌠', 4, 0);
         ctx.restore();
       }
       ctx.restore();
@@ -8005,6 +8115,28 @@
     // Mystery Crate on minimap
     if (gameState.self && gameState.self.mysteryCrate && worldData) {
       Renderer.drawMysteryCrateOnMinimap(minimapCtx, worldData, gameState.self.mysteryCrate, now);
+    }
+
+    // Shooting Star landing site on minimap — pulsing gold star dot
+    if (gameState.self && gameState.self.shootingStar && worldData) {
+      const ss = gameState.self.shootingStar;
+      const mw = minimapCtx.canvas.width;
+      const mh = minimapCtx.canvas.height;
+      const px = ss.x * mw / worldData.width;
+      const py = ss.y * mh / worldData.height;
+      const pulse = 0.4 + 0.6 * Math.abs(Math.sin(now * 0.008));
+      minimapCtx.save();
+      minimapCtx.shadowColor = '#ffffaa';
+      minimapCtx.shadowBlur = 8 + 4 * pulse;
+      minimapCtx.fillStyle = `rgba(255, 255, 150, ${0.7 + 0.3 * pulse})`;
+      minimapCtx.beginPath();
+      minimapCtx.arc(px, py, 4 + pulse * 2, 0, Math.PI * 2);
+      minimapCtx.fill();
+      minimapCtx.shadowBlur = 0;
+      minimapCtx.font = '8px sans-serif';
+      minimapCtx.textAlign = 'center';
+      minimapCtx.fillText('🌠', px, py - 5);
+      minimapCtx.restore();
     }
 
     // Pied Piper on minimap — rainbow pulsing dot
@@ -8496,6 +8628,32 @@
         if (age < fx.duration) {
           const alpha = Math.min(0.08, 0.08 * (1 - age / fx.duration));
           ctx.fillStyle = 'rgba(255, 215, 0, ' + alpha + ')';
+          ctx.fillRect(0, 0, camera.screenW, camera.screenH);
+        }
+      }
+    }
+
+    // Aurora combo flash — teal/cyan screen bloom when x20 combo lands under Aurora Borealis
+    for (const fx of effects) {
+      if (fx.type === 'aurora_combo_flash') {
+        const age = now - fx.time;
+        if (age < fx.duration) {
+          // Two-phase: quick bright flash then gentle teal glow fade
+          const t = age / fx.duration;
+          let alpha;
+          if (t < 0.25) {
+            alpha = 0.45 * (t / 0.25); // fast ramp up
+          } else {
+            alpha = 0.45 * (1 - (t - 0.25) / 0.75); // slow fade out
+          }
+          const grad = ctx.createRadialGradient(
+            camera.screenW / 2, camera.screenH / 2, 0,
+            camera.screenW / 2, camera.screenH / 2, Math.max(camera.screenW, camera.screenH) * 0.7
+          );
+          grad.addColorStop(0, `rgba(136, 255, 204, ${alpha})`);   // bright teal center
+          grad.addColorStop(0.5, `rgba(80, 200, 180, ${alpha * 0.6})`);
+          grad.addColorStop(1, `rgba(40, 100, 120, 0)`);
+          ctx.fillStyle = grad;
           ctx.fillRect(0, 0, camera.screenW, camera.screenH);
         }
       }

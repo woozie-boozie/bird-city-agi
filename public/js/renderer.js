@@ -3123,6 +3123,183 @@ window.Renderer = {
   },
 
   // ============================================================
+  // SHOOTING STAR — Landing marker (world-space) + Streak (screen-space)
+  // ============================================================
+
+  drawShootingStarLanding(ctx, camera, starData, now) {
+    if (!starData) return;
+    const sx = starData.x - camera.x + camera.screenW / 2;
+    const sy = starData.y - camera.y + camera.screenH / 2;
+    if (sx < -80 || sx > camera.screenW + 80 || sy < -80 || sy > camera.screenH + 80) return;
+
+    const t = now / 1000;
+    const pulse = 0.5 + 0.5 * Math.sin(t * 4.5);
+    const timeLeft = Math.max(0, starData.expiresAt - now);
+    const urgency = timeLeft < 10000 ? 1 - timeLeft / 10000 : 0;
+
+    ctx.save();
+
+    // Outer glow halo — expands and contracts
+    const haloR = 55 + 15 * pulse;
+    const haloGrad = ctx.createRadialGradient(sx, sy, 0, sx, sy, haloR);
+    haloGrad.addColorStop(0, `rgba(255, 255, 180, ${0.3 + 0.15 * pulse})`);
+    haloGrad.addColorStop(0.5, `rgba(200, 255, 140, ${0.15 + 0.08 * pulse})`);
+    haloGrad.addColorStop(1, 'rgba(100, 200, 100, 0)');
+    ctx.fillStyle = haloGrad;
+    ctx.beginPath();
+    ctx.arc(sx, sy, haloR, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 8-pointed star burst
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(t * 0.8);
+    const starPoints = 8;
+    const outerR = 20 + 5 * pulse;
+    const innerR = 8;
+    ctx.beginPath();
+    for (let i = 0; i < starPoints * 2; i++) {
+      const r = i % 2 === 0 ? outerR : innerR;
+      const angle = (i / (starPoints * 2)) * Math.PI * 2;
+      if (i === 0) ctx.moveTo(Math.cos(angle) * r, Math.sin(angle) * r);
+      else ctx.lineTo(Math.cos(angle) * r, Math.sin(angle) * r);
+    }
+    ctx.closePath();
+    const starGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, outerR);
+    starGrad.addColorStop(0, '#ffffff');
+    starGrad.addColorStop(0.3, '#ffffaa');
+    starGrad.addColorStop(1, '#ffcc44');
+    ctx.fillStyle = starGrad;
+    ctx.shadowColor = '#ffffaa';
+    ctx.shadowBlur = 12 + 8 * pulse;
+    ctx.fill();
+    ctx.restore();
+
+    // Inner bright core dot
+    ctx.shadowColor = '#ffffff';
+    ctx.shadowBlur = 8;
+    ctx.fillStyle = `rgba(255, 255, 255, ${0.85 + 0.15 * pulse})`;
+    ctx.beginPath();
+    ctx.arc(sx, sy, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // 4 sparkle particles orbiting the core
+    for (let i = 0; i < 4; i++) {
+      const ang = t * 2.2 + (i / 4) * Math.PI * 2;
+      const r = 28 + 6 * Math.sin(t * 3 + i);
+      const px = sx + Math.cos(ang) * r;
+      const py = sy + Math.sin(ang) * r;
+      ctx.fillStyle = `rgba(255, 255, 160, ${0.5 + 0.4 * Math.sin(t * 5 + i * 2)})`;
+      ctx.beginPath();
+      ctx.arc(px, py, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Label "🌠 CLAIM IT!" pulsing above the marker
+    const labelAlpha = urgency > 0 ? (0.7 + 0.3 * Math.sin(now * 0.015)) : (0.7 + 0.3 * pulse);
+    ctx.globalAlpha = labelAlpha;
+    ctx.font = 'bold 12px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ffffaa';
+    ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+    ctx.lineWidth = 3;
+    ctx.strokeText('🌠 FLY HERE!', sx, sy - 42);
+    ctx.fillText('🌠 FLY HERE!', sx, sy - 42);
+    ctx.globalAlpha = 1;
+
+    ctx.restore();
+  },
+
+  drawShootingStarStreak(ctx, camera, starData, now) {
+    if (!starData) return;
+    const elapsed = now - starData.spawnedAt;
+    const STREAK_DUR = 2200; // ms for streak animation
+    if (elapsed > STREAK_DUR + 500) return; // already done
+
+    const progress = Math.min(1, elapsed / STREAK_DUR);
+
+    // Landing position in screen space
+    const landSx = starData.x - camera.x + camera.screenW / 2;
+    const landSy = starData.y - camera.y + camera.screenH / 2;
+
+    // Origin: the star comes from a direction based on streakAngle, starting far off-screen
+    const ORIGIN_DIST = Math.max(camera.screenW, camera.screenH) * 1.4;
+    const fromAngle = starData.streakAngle + Math.PI; // opposite of landing direction
+    const fromX = landSx + Math.cos(fromAngle) * ORIGIN_DIST;
+    const fromY = landSy + Math.sin(fromAngle) * ORIGIN_DIST;
+
+    // Current star head position (lerp from far away to landing)
+    const headX = fromX + (landSx - fromX) * progress;
+    const headY = fromY + (landSy - fromY) * progress;
+
+    // Tail start: 15–20% behind the head along the trajectory
+    const TAIL_FRAC = 0.18;
+    const tailStartProgress = Math.max(0, progress - TAIL_FRAC);
+    const tailX = fromX + (landSx - fromX) * tailStartProgress;
+    const tailY = fromY + (landSy - fromY) * tailStartProgress;
+
+    ctx.save();
+
+    if (progress < 1.0) {
+      // Draw the streak: bright core line with glowing halo
+      const alpha = progress < 0.08 ? progress / 0.08 : 1.0; // fast fade in
+
+      // Outer glow
+      ctx.globalCompositeOperation = 'lighter';
+      const trailGrad = ctx.createLinearGradient(tailX, tailY, headX, headY);
+      trailGrad.addColorStop(0, 'rgba(255, 255, 200, 0)');
+      trailGrad.addColorStop(0.6, `rgba(255, 255, 180, ${0.25 * alpha})`);
+      trailGrad.addColorStop(1, `rgba(255, 255, 255, ${0.7 * alpha})`);
+      ctx.strokeStyle = trailGrad;
+      ctx.lineWidth = 8;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(tailX, tailY);
+      ctx.lineTo(headX, headY);
+      ctx.stroke();
+
+      // Bright core
+      const coreGrad = ctx.createLinearGradient(tailX, tailY, headX, headY);
+      coreGrad.addColorStop(0, 'rgba(255, 255, 255, 0)');
+      coreGrad.addColorStop(0.7, `rgba(255, 255, 220, ${0.6 * alpha})`);
+      coreGrad.addColorStop(1, `rgba(255, 255, 255, ${alpha})`);
+      ctx.strokeStyle = coreGrad;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(tailX, tailY);
+      ctx.lineTo(headX, headY);
+      ctx.stroke();
+
+      // Star head sparkle point
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+      ctx.shadowColor = '#ffffaa';
+      ctx.shadowBlur = 15 + 5 * Math.sin(now * 0.05);
+      ctx.beginPath();
+      ctx.arc(headX, headY, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    } else {
+      // Landing impact: bright flash that fades
+      const impactAge = elapsed - STREAK_DUR;
+      const impactFrac = Math.min(1, impactAge / 500);
+      const impactAlpha = 1 - impactFrac;
+      const impactR = 30 + 60 * impactFrac;
+      ctx.globalCompositeOperation = 'lighter';
+      const impGrad = ctx.createRadialGradient(landSx, landSy, 0, landSx, landSy, impactR);
+      impGrad.addColorStop(0, `rgba(255, 255, 220, ${0.8 * impactAlpha})`);
+      impGrad.addColorStop(1, 'rgba(255, 255, 180, 0)');
+      ctx.fillStyle = impGrad;
+      ctx.beginPath();
+      ctx.arc(landSx, landSy, impactR, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+  },
+
+  // ============================================================
   // BIRD CITY IDOL — Stage drawing
   // ============================================================
 
