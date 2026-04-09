@@ -1696,6 +1696,110 @@ html, body {
 }
 .bm-close:hover { color: #cc44ff; }
 
+/* Night Market Overlay (aurora-only) */
+#nightMarketOverlay {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(4, 14, 22, 0.97);
+  border: 2px solid #00ccaa;
+  border-radius: 12px;
+  padding: 18px 22px 14px;
+  color: #ddf;
+  font-family: 'Courier New', monospace;
+  z-index: 200;
+  min-width: 320px;
+  max-width: 90vw;
+  box-shadow: 0 0 30px rgba(0, 200, 170, 0.5), 0 0 60px rgba(80, 0, 200, 0.2);
+  flex-direction: column;
+}
+.nm-header {
+  font-size: 20px;
+  font-weight: bold;
+  color: #44ffdd;
+  text-align: center;
+  letter-spacing: 3px;
+  margin-bottom: 2px;
+  text-shadow: 0 0 12px rgba(0, 220, 180, 0.9);
+}
+.nm-tagline {
+  font-size: 11px;
+  color: #778;
+  text-align: center;
+  margin-bottom: 8px;
+  font-style: italic;
+}
+.nm-fish-display {
+  font-size: 14px;
+  color: #44ffcc;
+  text-align: right;
+  margin-bottom: 10px;
+}
+.nm-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid rgba(0, 180, 150, 0.4);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 7px;
+  background: rgba(0, 40, 50, 0.6);
+  transition: background 0.15s;
+}
+.nm-item:hover {
+  background: rgba(0, 70, 80, 0.7);
+}
+.nm-item-emoji {
+  font-size: 22px;
+  flex-shrink: 0;
+}
+.nm-item-info {
+  flex: 1;
+}
+.nm-item-name {
+  font-size: 13px;
+  font-weight: bold;
+  color: #55eedd;
+}
+.nm-item-desc {
+  font-size: 11px;
+  color: #9ab;
+  margin-top: 2px;
+}
+.nm-buy-btn {
+  background: linear-gradient(135deg, #006655, #00aa88);
+  color: #fff;
+  border: 1px solid #00ddaa;
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  font-weight: bold;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: opacity 0.15s;
+}
+.nm-buy-btn:hover {
+  background: linear-gradient(135deg, #008877, #00ccaa);
+}
+.nm-buy-btn.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background: #333;
+  border-color: #555;
+}
+.nm-close {
+  text-align: center;
+  margin-top: 10px;
+  font-size: 12px;
+  color: #556;
+  cursor: pointer;
+  padding: 4px;
+}
+.nm-close:hover { color: #44ffdd; }
+
 /* Active Buffs HUD (bottom-right corner) */
 #activeBuffsHud {
   position: fixed;

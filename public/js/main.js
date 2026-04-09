@@ -216,6 +216,17 @@
     { id: 'lucky_charm',  name: 'Lucky Charm',    desc: '2x XP for 5 full minutes',     cost: 150, emoji: '🍀' },
   ];
 
+  // Night Market state (aurora-only)
+  let nightMarketOpen = false;
+  let lastNearNightMarket = false;
+  const NM_CATALOG = [
+    { id: 'aurora_veil',    name: 'Aurora Veil',    desc: 'Plumage shimmers aurora colors for 5 min',      fishCost: 2, emoji: '🔮' },
+    { id: 'starlight_ammo', name: 'Starlight Ammo', desc: 'Next 5 poops: comet trail + 50% XP each',       fishCost: 3, emoji: '✨' },
+    { id: 'moonstone',      name: 'Moonstone',      desc: '2× coin gains from poop hits for 3 min',         fishCost: 2, emoji: '🌙' },
+    { id: 'comet_rush',     name: 'Comet Rush',     desc: '+30% speed + rainbow trail for 2 min',           fishCost: 2, emoji: '☄️' },
+    { id: 'cosmic_bomb',    name: 'Cosmic Bomb',    desc: 'INSTANT: stuns all birds 180px, steals 8% coins',fishCost: 4, emoji: '💫' },
+  ];
+
   // Bird Home UI state
   let birdHomeVisible = false;
   let activeEquipSlot = 0;
@@ -2049,6 +2060,39 @@
       if (ev.birdId === myId) {
         addEventMessage('❌ ' + ev.reason, '#ff4444');
       }
+
+    // === NIGHT MARKET EVENTS ===
+    } else if (ev.type === 'night_market_open') {
+      addEventMessage('✨ The Night Market awakens near the Sacred Pond! Spend Cosmic Fish for rare aurora items. Press [L] nearby.', '#00e5cc');
+    } else if (ev.type === 'night_market_close') {
+      addEventMessage('🌙 The Night Market fades as the aurora ends.', '#7c3aed');
+      closeNightMarket();
+    } else if (ev.type === 'night_market_purchased') {
+      if (ev.birdId === myId) {
+        showAnnouncement(ev.emoji + ' ' + ev.itemName + ' (-' + ev.fishCost + ' 🐟)', '#00e5cc', 2500);
+        addEventMessage(`You bought ${ev.itemName} from the Night Market! (${ev.cosmicFishRemaining} fish remain)`, '#00e5cc');
+        renderNightMarketUI(); // refresh fish count
+      }
+    } else if (ev.type === 'night_market_fail') {
+      if (ev.birdId === myId) {
+        addEventMessage('❌ ' + ev.reason, '#ff4444');
+      }
+    } else if (ev.type === 'cosmic_fish_caught') {
+      if (ev.birdId === myId) {
+        showFloatingText(`🐟 +1 Cosmic Fish!`, ev.x, ev.y, '#00ffcc');
+        addEventMessage(`✨ Caught a Cosmic Fish! +${ev.coins}c +${ev.xp} XP (${ev.cosmicFishCount} fish total)`, '#00ffcc');
+      }
+    } else if (ev.type === 'cosmic_bomb_blast') {
+      if (ev.birdId === myId) {
+        showAnnouncement(`💫 COSMIC BOMB! Hit ${ev.targetsHit} bird${ev.targetsHit !== 1 ? 's' : ''}! +${ev.xp} XP`, '#7c3aed', 3000);
+      }
+      if (ev.targetsHit > 0) {
+        addEventMessage(`💫 ${ev.birdName} used a Cosmic Bomb — ${ev.targetsHit} birds sent flying!`, '#a855f7');
+      }
+    } else if (ev.type === 'cosmic_bomb_hit') {
+      if (ev.birdId === myId) {
+        showAnnouncement(`💫 COSMIC BOMBED! -${ev.stolen}c stunned!`, '#ff4444', 2000);
+      }
     }
 
     // === PIGEONHOLE SLOTS CASINO EVENTS ===
@@ -3228,6 +3272,14 @@
         toggleBlackMarketShop();
       }
     }
+    // Night Market toggle [L] — only near the stall during aurora
+    if (e.key.toLowerCase() === 'l') {
+      if (nightMarketOpen) {
+        closeNightMarket();
+      } else if (gameState && gameState.nightMarket && lastNearNightMarket) {
+        openNightMarket();
+      }
+    }
     // Don overlay toggle
     if (e.key.toLowerCase() === 'm') {
       if (donOverlayVisible) {
@@ -4190,6 +4242,22 @@
 
     // Refresh open shop coins
     if (bmShopOpen) renderBmShop();
+
+    // Night Market proximity check
+    if (gameState.nightMarket) {
+      const nmdx = s.x - gameState.nightMarket.x;
+      const nmdy = s.y - gameState.nightMarket.y;
+      const nmDist = Math.sqrt(nmdx * nmdx + nmdy * nmdy);
+      const isNearNM = nmDist < 110;
+      if (isNearNM !== lastNearNightMarket) {
+        lastNearNightMarket = isNearNM;
+        if (!isNearNM && nightMarketOpen) closeNightMarket();
+      }
+    } else {
+      lastNearNightMarket = false;
+      if (nightMarketOpen) closeNightMarket();
+    }
+    if (nightMarketOpen) renderNightMarketUI();
 
     // Donut Cop proximity check
     if (gameState.donutCop) {
@@ -6743,6 +6811,12 @@
       }
     }
 
+    // Night Market (aurora-only mystical stall near Sacred Pond)
+    if (gameState.nightMarket) {
+      const isNear = !!(gameState.self && gameState.self.nearNightMarket);
+      Renderer.drawNightMarket(ctx, gameState.nightMarket, camera, isNear, now);
+    }
+
     // Cop Birds (wanted system enforcement)
     if (gameState.cops) {
       for (const cop of gameState.cops) {
@@ -7032,6 +7106,48 @@
                 ctx.stroke();
                 ctx.restore();
               }
+            }
+          }
+
+          // Night Market: Aurora Veil — hue-cycling shimmer aura around the bird
+          if (b.auroraVeilUntil && b.auroraVeilUntil > now) {
+            const veilHue = (now * 0.08 + (b.id ? parseInt(b.id.slice(-4), 16) : 0) * 0.01) % 360;
+            const veilPulse = 0.3 + 0.2 * Math.sin(now * 0.004);
+            ctx.save();
+            ctx.globalAlpha = veilPulse;
+            const veilGrd = ctx.createRadialGradient(sx, sy, 4, sx, sy, 30);
+            veilGrd.addColorStop(0, `hsla(${veilHue}, 100%, 65%, 0.6)`);
+            veilGrd.addColorStop(0.5, `hsla(${(veilHue + 60) % 360}, 100%, 65%, 0.3)`);
+            veilGrd.addColorStop(1, `hsla(${(veilHue + 120) % 360}, 100%, 65%, 0)`);
+            ctx.fillStyle = veilGrd;
+            ctx.beginPath();
+            ctx.arc(sx, sy, 30, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+          }
+
+          // Night Market: Comet Rush — rainbow trail behind bird
+          if (b.cometRushUntil && b.cometRushUntil > now && b.vx !== undefined) {
+            const spd = Math.sqrt((b.vx || 0) * (b.vx || 0) + (b.vy || 0) * (b.vy || 0));
+            if (spd > 15) {
+              const trailLen = Math.min(50, spd * 0.35);
+              const tnx = -(b.vx / spd);
+              const tny = -(b.vy / spd);
+              const trailHue = (now * 0.15 + (b.id ? parseInt(b.id.slice(-4), 16) : 0)) % 360;
+              ctx.save();
+              ctx.globalAlpha = 0.55;
+              const tGrd = ctx.createLinearGradient(sx, sy, sx + tnx * trailLen, sy + tny * trailLen);
+              tGrd.addColorStop(0, `hsla(${trailHue}, 100%, 70%, 0.8)`);
+              tGrd.addColorStop(0.5, `hsla(${(trailHue + 90) % 360}, 100%, 65%, 0.4)`);
+              tGrd.addColorStop(1, `hsla(${(trailHue + 180) % 360}, 100%, 60%, 0)`);
+              ctx.strokeStyle = tGrd;
+              ctx.lineWidth = 6;
+              ctx.lineCap = 'round';
+              ctx.beginPath();
+              ctx.moveTo(sx, sy);
+              ctx.lineTo(sx + tnx * trailLen, sy + tny * trailLen);
+              ctx.stroke();
+              ctx.restore();
             }
           }
 
@@ -8435,6 +8551,11 @@
       minimapCtx.fill();
     }
 
+    // Night Market on minimap (teal ✨ dot when aurora is active)
+    if (gameState.nightMarket && worldData) {
+      Renderer.drawNightMarketOnMinimap(minimapCtx, gameState.nightMarket, worldData.width, worldData.height);
+    }
+
     // Draw Godfather Raccoon on minimap (pulsing gold/purple dot)
     if (gameState.godfatherRaccoon && worldData) {
       const mw = minimapCtx.canvas.width;
@@ -9052,6 +9173,76 @@
   }
 
   // ============================================================
+  // NIGHT MARKET UI (aurora-only mystical stall near Sacred Pond)
+  // ============================================================
+  function openNightMarket() {
+    if (!gameState || !gameState.nightMarket || !lastNearNightMarket) return;
+    nightMarketOpen = true;
+    const el = document.getElementById('nightMarketOverlay');
+    if (el) { el.style.display = 'flex'; }
+    for (const k in keys) keys[k] = false;
+    syncInput();
+    renderNightMarketUI();
+  }
+
+  function closeNightMarket() {
+    nightMarketOpen = false;
+    const el = document.getElementById('nightMarketOverlay');
+    if (el) el.style.display = 'none';
+  }
+
+  function renderNightMarketUI() {
+    if (!gameState || !gameState.self) return;
+    const s = gameState.self;
+    const fish = s.cosmicFishCount || 0;
+    const now = Date.now();
+
+    const fishEl = document.getElementById('nmFishCount');
+    if (fishEl) fishEl.textContent = fish + ' 🐟';
+
+    const itemsEl = document.getElementById('nmItemsList');
+    if (!itemsEl) return;
+    let html = '';
+    for (const item of NM_CATALOG) {
+      const canAfford = fish >= item.fishCost;
+      const isInstant = item.id === 'cosmic_bomb';
+      // Show active timer if buff is running
+      let activeLabel = '';
+      if (item.id === 'aurora_veil' && s.auroraVeilUntil > now) {
+        const sLeft = Math.ceil((s.auroraVeilUntil - now) / 1000);
+        activeLabel = ` <span style="color:#00ffcc;font-size:9px;">ACTIVE ${sLeft}s</span>`;
+      } else if (item.id === 'starlight_ammo' && s.starlightAmmo > 0) {
+        activeLabel = ` <span style="color:#ffe066;font-size:9px;">${s.starlightAmmo} left</span>`;
+      } else if (item.id === 'moonstone' && s.moonstoneUntil > now) {
+        const sLeft = Math.ceil((s.moonstoneUntil - now) / 1000);
+        activeLabel = ` <span style="color:#c084fc;font-size:9px;">ACTIVE ${sLeft}s</span>`;
+      } else if (item.id === 'comet_rush' && s.cometRushUntil > now) {
+        const sLeft = Math.ceil((s.cometRushUntil - now) / 1000);
+        activeLabel = ` <span style="color:#38bdf8;font-size:9px;">ACTIVE ${sLeft}s</span>`;
+      }
+
+      html += `<div class="nm-item">`;
+      html += `<div class="nm-item-emoji">${item.emoji}</div>`;
+      html += `<div class="nm-item-info">`;
+      html += `<div class="nm-item-name">${item.name}${activeLabel}</div>`;
+      html += `<div class="nm-item-desc">${item.desc}</div>`;
+      html += `</div>`;
+      html += `<button class="nm-buy-btn${canAfford ? '' : ' disabled'}" data-item="${item.id}">${item.fishCost} 🐟</button>`;
+      html += `</div>`;
+    }
+    itemsEl.innerHTML = html;
+
+    itemsEl.querySelectorAll('.nm-buy-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (btn.classList.contains('disabled')) return;
+        if (socket && joined) {
+          socket.emit('action', { type: 'night_market_buy', itemId: btn.dataset.item });
+        }
+      });
+    });
+  }
+
+  // ============================================================
   // DAILY CHALLENGES PANEL
   // ============================================================
   function showDailyPanel() {
@@ -9514,6 +9705,30 @@
           html += `<div class="bm-buff-pill" style="background:rgba(80,30,0,0.9);border-color:#ff6633;color:#ffaa66;font-weight:bold;animation:kingpinGlow 0.6s ease-in-out infinite alternate;cursor:pointer;" onclick="socket.emit('action',{type:'accept_rematch'})">🔄 REMATCH vs ${rm.opponentName}? Press [Y] · ${secsLeft}s</div>`;
         }
       }
+    }
+
+    // === NIGHT MARKET active buff pills ===
+    if (s.auroraVeilUntil && s.auroraVeilUntil > now) {
+      const secs = Math.ceil((s.auroraVeilUntil - now) / 1000);
+      const minsLeft = Math.floor(secs / 60);
+      const secsR = secs % 60;
+      html += `<div class="bm-buff-pill" style="background:rgba(0,60,80,0.9);border-color:#00e5cc;color:#80ffee;animation:kingpinGlow 1.5s ease-in-out infinite alternate;">🔮 AURORA VEIL — ${minsLeft}m ${secsR}s · Shimmering plumage!</div>`;
+    }
+    if (s.starlightAmmo && s.starlightAmmo > 0) {
+      html += `<div class="bm-buff-pill" style="background:rgba(60,50,0,0.9);border-color:#ffe066;color:#fff8aa;animation:kingpinGlow 0.6s ease-in-out infinite alternate;font-weight:bold;">✨ STARLIGHT ×${s.starlightAmmo} — +50% XP · POOP to use!</div>`;
+    }
+    if (s.moonstoneUntil && s.moonstoneUntil > now) {
+      const secs = Math.ceil((s.moonstoneUntil - now) / 1000);
+      html += `<div class="bm-buff-pill" style="background:rgba(60,0,100,0.9);border-color:#c084fc;color:#e9d5ff;animation:kingpinGlow 1.2s ease-in-out infinite alternate;">🌙 MOONSTONE — ${secs}s · 2× coins per poop!</div>`;
+    }
+    if (s.cometRushUntil && s.cometRushUntil > now) {
+      const secs = Math.ceil((s.cometRushUntil - now) / 1000);
+      html += `<div class="bm-buff-pill" style="background:rgba(0,40,100,0.9);border-color:#38bdf8;color:#7dd3fc;animation:kingpinGlow 0.5s ease-in-out infinite alternate;font-weight:bold;">☄️ COMET RUSH — ${secs}s · +30% speed · Rainbow trail!</div>`;
+    }
+
+    // Night Market proximity nudge — show when near but overlay closed
+    if (gameState.nightMarket && lastNearNightMarket && !nightMarketOpen) {
+      html += `<div class="bm-buff-pill" style="background:rgba(0,50,50,0.85);border-color:#00e5cc;color:#80ffee;cursor:pointer;" onclick="openNightMarket()">✨ NIGHT MARKET NEARBY — [L] to browse (${s.cosmicFishCount || 0} 🐟)</div>`;
     }
 
     el.innerHTML = html;
@@ -11120,6 +11335,16 @@
   });
 
   document.getElementById('skillTreeCloseBtn').addEventListener('click', hideSkillTree);
+
+  // Night Market close button
+  const nmCloseBtnEl = document.getElementById('nmCloseBtn');
+  if (nmCloseBtnEl) {
+    nmCloseBtnEl.addEventListener('click', closeNightMarket);
+  }
+
+  // Expose Night Market functions globally for dynamic onclick pills
+  window.openNightMarket = openNightMarket;
+  window.closeNightMarket = closeNightMarket;
 
   // ============================================================
   // INIT

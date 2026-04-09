@@ -73,6 +73,8 @@ const DAILY_CHALLENGE_POOL = [
   { id: 'royale_winner',  title: 'Battle Royale',   desc: 'Win a Bird Royale shrinking-zone event',        target: 1, trackType: 'royale_win',       reward: { xp: 300, coins: 150 } },
   { id: 'champ',          title: 'Fighting Champ',  desc: 'Win the Pigeon Fighting Championship tournament', target: 1, trackType: 'tournament_win',   reward: { xp: 400, coins: 200 } },
   { id: 'idol_champ',    title: 'Idol Champion',   desc: 'Win the Bird City Idol singing contest',          target: 1, trackType: 'idol_won',         reward: { xp: 250, coins: 120 } },
+  { id: 'stargazer',     title: 'Stargazer',        desc: 'Catch a Shooting Star during the Aurora',         target: 1, trackType: 'shooting_star_caught', reward: { xp: 300, coins: 150 } },
+  { id: 'night_shopper', title: 'Night Shopper',    desc: 'Buy any item from the Aurora Night Market',       target: 1, trackType: 'night_market_buy',     reward: { xp: 180, coins: 90  } },
 ];
 
 class GameEngine {
@@ -234,6 +236,16 @@ class GameEngine {
       { id: 'smoke_bomb',       name: 'Smoke Bomb',        desc: 'Cops lose you for 15 seconds',            cost: 80,  emoji: '💨' },
       { id: 'lucky_charm',      name: 'Lucky Charm',       desc: '2x XP for 5 full minutes',               cost: 150, emoji: '🍀' },
       { id: 'contract_cancel',  name: 'Contract Cancel',   desc: 'Bounty Hunter stands down for 60s',       cost: 120, emoji: '🔫' },
+    ];
+
+    // === NIGHT MARKET (aurora-only mystical stall near the Sacred Pond) ===
+    this.NIGHT_MARKET_POS = { x: 1260, y: 1100 }; // just east of the Sacred Pond (pond is at 1050,1100)
+    this.NIGHT_MARKET_CATALOG = [
+      { id: 'aurora_veil',    name: 'Aurora Veil',    desc: 'Your plumage shimmers with aurora colors for 5 min',     fishCost: 2, emoji: '🔮' },
+      { id: 'starlight_ammo', name: 'Starlight Ammo', desc: 'Next 5 poops: comet trails + 50% XP each',              fishCost: 3, emoji: '✨' },
+      { id: 'moonstone',      name: 'Moonstone',      desc: '2× coin gains from all poop hits for 3 min',            fishCost: 2, emoji: '🌙' },
+      { id: 'comet_rush',     name: 'Comet Rush',     desc: '+30% speed + rainbow trail for 2 min',                  fishCost: 2, emoji: '☄️' },
+      { id: 'cosmic_bomb',    name: 'Cosmic Bomb',    desc: 'Blast stuns all birds in 180px for 2s + steals 8% coins', fishCost: 4, emoji: '💫' },
     ];
 
     // === BANK HEIST (multi-phase cooperative heist event) ===
@@ -481,6 +493,9 @@ class GameEngine {
     this.shootingStar = null; // null | { x, y, spawnedAt, expiresAt, streakAngle }
     this.shootingStarTriggeredThisAurora = false;
     this.shootingStarScheduledAt = null;
+    // Night Market: mystical stall near the Sacred Pond, open only during Aurora Borealis.
+    // Uses "Cosmic Fish" as currency (session-only, earned by catching cosmic fish at the pond).
+    this.nightMarket = null; // null when closed | { x, y } when open
 
     // === BOUNTY HUNTER ===
     // Persistent manhunter NPC that spawns when any bird reaches Wanted Level 4+.
@@ -789,6 +804,12 @@ class GameEngine {
       bmMegaPoops: 0,
       bmSmokeBombUntil: 0,
       bmDoubleXpUntil: 0,
+      // Night Market (aurora-only) — session-only fish currency + items
+      cosmicFishCount: 0,     // session-only: incremented when catching cosmic fish
+      auroraVeilUntil: 0,     // aurora shimmer plumage effect
+      starlightAmmo: 0,       // count of starlight-powered poop shots remaining
+      moonstoneUntil: 0,      // 2× coin gains from poop hits
+      cometRushUntil: 0,      // +30% speed + rainbow trail
       // === COMBO STREAK ===
       comboCount: 0,        // current consecutive hit streak
       comboExpiresAt: 0,    // timestamp when combo resets if no new hit
@@ -1111,6 +1132,11 @@ class GameEngine {
       this._handleBlackMarketBuy(bird, action.itemId, now);
     }
 
+    // === Night Market (aurora-only) ===
+    if (action.type === 'night_market_buy') {
+      this._handleNightMarketBuy(bird, action.itemId, now);
+    }
+
     // === Pigeonhole Slots Casino ===
     if (action.type === 'slots_spin') {
       this._handleSlotsSpin(bird, now);
@@ -1414,9 +1440,10 @@ class GameEngine {
     // === Day/Night Cycle ===
     this._updateDayNight(dt, now);
 
-    // === Aurora Borealis + Shooting Star ===
+    // === Aurora Borealis + Shooting Star + Night Market ===
     this._updateAurora(dt, now);
     this._tickShootingStar(now);
+    this._updateNightMarket(now);
 
     // === Underground Sewer ===
     this._updateSewerRats(dt, now);
@@ -2410,6 +2437,11 @@ class GameEngine {
       maxSpeed *= 1.20;
     }
 
+    // Night Market: Comet Rush — blazing +30% speed
+    if (bird.cometRushUntil > now) {
+      maxSpeed *= 1.30;
+    }
+
     // Mystery Crate: Jet Wings — blazing fast
     if (bird.mcJetWingsUntil > now) {
       maxSpeed *= 3.5;
@@ -3207,6 +3239,10 @@ class GameEngine {
         coinGain = Math.floor(coinGain * 3);
         this.events.push({ type: 'vend_rainbow_hit', birdId: bird.id, coins: coinGain, x: poop.x, y: poop.y });
       }
+      // Night Market: Moonstone — 2× coin gains for 3 min
+      if (bird.moonstoneUntil > now && coinGain > 0) {
+        coinGain = Math.floor(coinGain * 2);
+      }
       bird.coins += coinGain;
 
       // === COMBO STREAK — chain hits within 8s for escalating XP ===
@@ -3241,6 +3277,13 @@ class GameEngine {
       if (this.idolXpBoostUntil > now) xpGain = Math.floor(xpGain * 1.5);
       // Aurora Borealis: sacred sky event gives +25% XP to ALL birds
       if (this.aurora) xpGain = Math.floor(xpGain * 1.25);
+      // Night Market: Starlight Ammo — +50% XP on this hit (consumes 1 charge)
+      let isStarlightShot = false;
+      if (bird.starlightAmmo > 0 && hit.target && hit.target !== 'miss' && hit.target !== 'none') {
+        xpGain = Math.floor(xpGain * 1.5);
+        bird.starlightAmmo--;
+        isStarlightShot = true;
+      }
       // Idol: track performance hits for contestants during open phase
       if (this.birdIdol && this.birdIdol.state === 'open' && this.birdIdol.contestants.has(poop.birdId) && hit.target !== 'miss') {
         this.birdIdol.contestants.get(poop.birdId).performanceHits++;
@@ -3493,6 +3536,7 @@ class GameEngine {
         hitTarget: hit.target, xp: xpGain,
         isMegaPoop,
         combo: bird.comboCount,
+        isStarlightShot: isStarlightShot || false,
       });
 
       // Persist
@@ -3665,16 +3709,19 @@ class GameEngine {
           fish.active = false;
           this.pondFishIds.delete(fishId);
           const isCosmic = fish.type === 'cosmic_fish';
-          // Cosmic fish (aurora only) give triple rewards
+          // Cosmic fish (aurora only) give triple rewards + 1 Cosmic Fish currency for Night Market
           const coinBonus = isCosmic ? 120 : 40;
           const xpBonus  = isCosmic ? 240 : 80;
           const foodBonus = isCosmic ? 75 : 25;
           bird.coins += coinBonus;
           bird.xp += xpBonus;
           bird.food += foodBonus;
+          if (isCosmic) {
+            bird.cosmicFishCount = (bird.cosmicFishCount || 0) + 1;
+          }
           this._trackDailyProgress(bird, 'coins_earned', coinBonus);
           const evType = isCosmic ? 'cosmic_fish_caught' : 'pond_fish_caught';
-          this.events.push({ type: evType, birdId: bird.id, name: bird.name, coins: coinBonus, xp: xpBonus, x: fish.x, y: fish.y, isCosmic });
+          this.events.push({ type: evType, birdId: bird.id, name: bird.name, coins: coinBonus, xp: xpBonus, x: fish.x, y: fish.y, isCosmic, cosmicFishCount: bird.cosmicFishCount });
           const fId = fishId;
           setTimeout(() => { this.foods.delete(fId); }, 10000);
           // Check level up from XP
@@ -5168,6 +5215,8 @@ class GameEngine {
           skillTreeMaster: b.skillTreeMaster || false,
           isFlu: b.fluUntil > now,
           formationType: b.formationType || null,
+          auroraVeilUntil: b.auroraVeilUntil || 0,
+          cometRushUntil: b.cometRushUntil || 0,
           hasCursedCoin: this.cursedCoin && this.cursedCoin.state === 'held' && this.cursedCoin.holderId === b.id,
           cursedCoinIntensity: (this.cursedCoin && this.cursedCoin.state === 'held' && this.cursedCoin.holderId === b.id) ? this.cursedCoin.intensity : 0,
           witnessProtectionActive: b.witnessProtectionUntil > now,
@@ -5624,6 +5673,7 @@ class GameEngine {
       dayTime: this.dayTime,
       dayPhase: this.dayPhase,
       blackMarket: this.blackMarket ? { x: this.blackMarket.x, y: this.blackMarket.y } : null,
+      nightMarket: this.nightMarket ? { x: this.nightMarket.x, y: this.nightMarket.y } : null,
       arena: {
         state: this.arena.state,
         pot: this.arena.pot,
@@ -5744,6 +5794,18 @@ class GameEngine {
         bmMegaPoops: bird.bmMegaPoops,
         bmSmokeBombUntil: bird.bmSmokeBombUntil,
         bmDoubleXpUntil: bird.bmDoubleXpUntil,
+        // Night Market items
+        cosmicFishCount: bird.cosmicFishCount || 0,
+        auroraVeilUntil: bird.auroraVeilUntil || 0,
+        starlightAmmo: bird.starlightAmmo || 0,
+        moonstoneUntil: bird.moonstoneUntil || 0,
+        cometRushUntil: bird.cometRushUntil || 0,
+        nearNightMarket: (() => {
+          if (!this.nightMarket) return false;
+          const dx = bird.x - this.nightMarket.x;
+          const dy = bird.y - this.nightMarket.y;
+          return Math.sqrt(dx*dx + dy*dy) < 110;
+        })(),
         // Combo streak
         comboCount: bird.comboCount,
         comboExpiresAt: bird.comboExpiresAt,
@@ -8027,6 +8089,89 @@ class GameEngine {
 
     this.events.push({ type: 'blackmarket_purchased', birdId: bird.id, itemId, itemName: item.name, cost: item.cost, emoji: item.emoji });
     console.log(`[GameEngine] 🐀 ${bird.name} bought ${item.name} for ${item.cost}c`);
+  }
+
+  // ============================================================
+  // NIGHT MARKET (aurora-only mystical stall near the Sacred Pond)
+  // ============================================================
+  _updateNightMarket(now) {
+    const auroraActive = !!this.aurora;
+    const wasOpen = this.nightMarket !== null;
+
+    if (auroraActive && !wasOpen) {
+      this.nightMarket = { x: this.NIGHT_MARKET_POS.x, y: this.NIGHT_MARKET_POS.y };
+      this.events.push({ type: 'night_market_open', x: this.nightMarket.x, y: this.nightMarket.y });
+      console.log('[GameEngine] ✨ Night Market OPENED (aurora active)');
+    } else if (!auroraActive && wasOpen) {
+      this.nightMarket = null;
+      this.events.push({ type: 'night_market_close' });
+      console.log('[GameEngine] ✨ Night Market CLOSED (aurora ended)');
+    }
+  }
+
+  _handleNightMarketBuy(bird, itemId, now) {
+    if (!this.nightMarket) {
+      this.events.push({ type: 'night_market_fail', birdId: bird.id, reason: 'The Night Market only opens during the Aurora Borealis.' });
+      return;
+    }
+    const dx = bird.x - this.nightMarket.x;
+    const dy = bird.y - this.nightMarket.y;
+    if (Math.sqrt(dx * dx + dy * dy) > 110) {
+      this.events.push({ type: 'night_market_fail', birdId: bird.id, reason: 'Fly closer to the Night Market.' });
+      return;
+    }
+    const item = this.NIGHT_MARKET_CATALOG.find(i => i.id === itemId);
+    if (!item) return;
+
+    const fishCount = bird.cosmicFishCount || 0;
+    if (fishCount < item.fishCost) {
+      this.events.push({ type: 'night_market_fail', birdId: bird.id, reason: `Need ${item.fishCost} Cosmic Fish. You have ${fishCount}.` });
+      return;
+    }
+
+    bird.cosmicFishCount -= item.fishCost;
+
+    switch (itemId) {
+      case 'aurora_veil':
+        bird.auroraVeilUntil = now + 300000; // 5 min
+        break;
+      case 'starlight_ammo':
+        bird.starlightAmmo = (bird.starlightAmmo || 0) + 5;
+        break;
+      case 'moonstone':
+        bird.moonstoneUntil = now + 180000; // 3 min
+        break;
+      case 'comet_rush':
+        bird.cometRushUntil = now + 120000; // 2 min
+        break;
+      case 'cosmic_bomb': {
+        // Instant area blast: stun all nearby birds + steal 8% coins
+        let targetsHit = 0;
+        for (const other of this.birds.values()) {
+          if (other.id === bird.id) continue;
+          const odx = other.x - bird.x;
+          const ody = other.y - bird.y;
+          if (Math.sqrt(odx * odx + ody * ody) < 180) {
+            other.stunnedUntil = now + 2000;
+            other.comboCount = 0;
+            other.comboExpiresAt = 0;
+            const stolen = Math.min(200, Math.floor(other.coins * 0.08));
+            other.coins = Math.max(0, other.coins - stolen);
+            bird.coins += stolen;
+            this.events.push({ type: 'cosmic_bomb_hit', birdId: other.id, birdName: other.name, stolen, x: other.x, y: other.y });
+            targetsHit++;
+          }
+        }
+        const xpGain = 50 + targetsHit * 80;
+        bird.xp += xpGain;
+        this.events.push({ type: 'cosmic_bomb_blast', birdId: bird.id, birdName: bird.name, gangTag: bird.gangTag || null, targetsHit, xp: xpGain, x: bird.x, y: bird.y });
+        break;
+      }
+    }
+
+    this._trackDailyProgress(bird, 'night_market_buy', 1);
+    this.events.push({ type: 'night_market_purchased', birdId: bird.id, itemId, itemName: item.name, fishCost: item.fishCost, emoji: item.emoji, cosmicFishRemaining: bird.cosmicFishCount });
+    console.log(`[GameEngine] ✨ ${bird.name} bought ${item.name} for ${item.fishCost} fish`);
   }
 
   // ============================================================
@@ -13915,6 +14060,7 @@ class GameEngine {
         break;
     }
 
+    this._trackDailyProgress(bird, 'shooting_star_caught', 1);
     this.events.push({
       type: 'shooting_star_claimed',
       birdId: bird.id,

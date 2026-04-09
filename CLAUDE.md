@@ -2225,6 +2225,52 @@ Three interlocking additions that complete the Aurora Borealis' DISCOVERY potent
 
 **Creative intent**: The Shooting Star is the aurora's missing surprise — the first time you experience the aurora and see a star blazing across the ribbons and landing nearby, the DISCOVERY moment is genuine. It's a race with no button presses: just awareness (did you spot the minimap dot?) and speed (can you get there first?). The reward is the full Mystery Crate pool, so the star is worth sprinting for. The Aurora + Cursed Coin combo creates the most spectacular coin explosion in the game — a coin holder who managed to survive 4 minutes of the curse while the aurora was raging overhead deserves a doubled shower. The combo flash makes hitting x20 under the aurora feel cosmically different from hitting it in daylight. Three systems (aurora + coin + combo) now have beautiful emergent intersections. Pure DISCOVERY + SPECTACLE energy.
 
+**Session 68 — 2026-04-09: Aurora Night Market — Sacred Cosmic Shop**
+The Aurora Borealis now has its own economy. A mystical market stall materializes near the Sacred Pond (x:1260, y:1100) the moment the aurora appears, and vanishes with it at dawn. Birds spend Cosmic Fish — a session-only currency earned by catching the rare glowing fish in the Sacred Pond during aurora nights — on five powerful items unavailable anywhere else.
+
+**The Cosmic Fish Economy:**
+- Catching a Cosmic Fish now also increments `cosmicFishCount` (session-only, resets on reconnect) in addition to the regular +120c/+240 XP/+75 food reward
+- Fish count displayed in the Night Market overlay and the active proximity pill
+- This creates a new aurora-specific economy: the aurora is more valuable than ever (fish → currency → powerful items)
+
+**Five Night Market Items (bought with 🐟 Cosmic Fish):**
+- 🔮 **Aurora Veil** (2 🐟): Your plumage shimmers with cycling hue aurora colors for 5 minutes — a pure visual flex that makes you unmistakable on the battlefield. All nearby players see the hue-cycling shimmer aura around you.
+- ✨ **Starlight Ammo** (3 🐟): Your next 5 poop shots leave comet trails and deal +50% XP each. Stacks multiplicatively with combo, Lucky Charm, Signal Boost, Prestige. Each shot consumed on fire.
+- 🌙 **Moonstone** (2 🐟): 2× coin gains on ALL poop hits for 3 full minutes. Stacks with territory tax, Sticky Claws skill, prestige coin bonuses — the richest birds stack this with everything.
+- ☄️ **Comet Rush** (2 🐟): +30% max speed + rainbow trail behind your bird for 2 minutes. The trail is visible to all nearby players — the city knows you're blitzing.
+- 💫 **Cosmic Bomb** (4 🐟): Instant — stuns all birds within 180px for 2 seconds and steals 8% of their coins, split to you. Use it in a crowd for massive chaos and coin theft.
+
+**Server mechanics (`server/game.js`):**
+- `this.nightMarket = null` — becomes `{ x, y }` when aurora is active, null when not
+- `_updateNightMarket(now)`: opens/closes in sync with `this.aurora` — no separate timer needed
+- `_handleNightMarketBuy(bird, itemId, now)`: proximity check (110px), fish deduction, effect application
+- Speed chain: Comet Rush adds `maxSpeed *= 1.30` after all other multipliers
+- Coin chain: Moonstone doubles `coinGain` in `_checkPoopHit` before territorial bonuses
+- XP chain: Starlight Ammo applies ×1.5 to the next hit's XP and decrements the counter
+- Cosmic Bomb: fires `cosmic_bomb_blast` event; all birds within 180px get stunned + lose 8% coins (capped at 120c per victim), coins transferred to caster
+- `nightMarket` field included in global state snapshot; `nearNightMarket` computed in self-snapshot (110px threshold)
+- 2 new daily challenges: **Stargazer** (catch a Shooting Star, 300 XP/150c) and **Night Shopper** (buy any Night Market item, 180 XP/90c)
+
+**Visual system (`public/js/renderer.js`):**
+- `drawNightMarket()`: pulsing teal/violet aurora aura behind the stall, triangular canopy with sparkle-edge detail, decorative curtain fringe, animated floating sparkles orbiting the tent, hue-cycling "✨ NIGHT MARKET" sign, "[L] Open Night Market" prompt when near
+- `drawNightMarketOnMinimap()`: teal hue-cycling pulsing ✨ dot at stall position
+
+**Client effects (`public/js/main.js`):**
+- Aurora Veil: hue-cycling radial gradient aura drawn before bird sprite for any bird with active `auroraVeilUntil` — works on ALL nearby birds (other-birds snapshot includes the field)
+- Comet Rush: rainbow gradient trail drawn along velocity vector when `cometRushUntil` is active — also works on other birds
+- [L] key toggles the Night Market overlay when near the stall
+- `renderNightMarketUI()`: shows fish count, all 5 items with costs, active timer/charges labels, buy buttons that emit socket action
+- Active buffs HUD pills for all 4 time-based effects + proximity nudge pill
+
+**Events & announcements:**
+- `night_market_open`: teal city-wide "✨ NIGHT MARKET is open near the Sacred Pond! Press [L] to shop. Cost: Cosmic Fish 🐟"
+- `night_market_close`: "🌙 The Night Market fades as the aurora ends."
+- `night_market_purchased`: city-wide callout "[emoji] [Name] bought [Item] at the Night Market!"
+- `night_market_fail`: personal error messages (not_near, no_aurora, insufficient_fish)
+- `cosmic_bomb_blast`: personal announcement for caster + floating text at blast position; `cosmic_bomb_hit` for victims
+
+**Creative intent**: The aurora was already the most beautiful visual event in Bird City. Now it's also the most economically important. A night when the aurora fires AND you've been catching Cosmic Fish is suddenly a money-printing opportunity: Moonstone + Starlight Ammo + lucky Combo = XP/coin explosion. The Cosmic Bomb turns a peaceful fishing session into a chaotic PvP ambush. The Aurora Veil is pure status — flying around with a shimmering aurora-hued glow while listed on the Hall of Legends is the highest visual prestige in the game. And the Night Market only existing during aurora nights means players now actively WANT the aurora to appear — it's no longer just beautiful, it's profitable. Pure DISCOVERY + PROGRESSION + SPECTACLE energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -2357,4 +2403,5 @@ Built the Territory Control System on top of the existing upstream code:
 - Aurora + Gang War: if a gang war erupts during the aurora, all kills give 2× gang war XP — sacred sky amplifies the violence
 - Shooting Star daily challenge: "Stargazer — catch a Shooting Star during the Aurora" (300 XP, 150c) — the rarest weather challenge
 - Comet Trail: a P5 LEGEND bird who catches the Shooting Star leaves a brief golden comet trail behind them for 30 seconds
-- Night Market: a special vendor that only appears during Aurora nights, selling rare cosmetics for cosmic fish (the aurora's currency)
+- ~~Night Market: a special vendor that only appears during Aurora nights, selling rare cosmetics for cosmic fish (the aurora's currency)~~ (DONE Session 68)
+- ~~Shooting Star daily challenge: "Stargazer — catch a Shooting Star during the Aurora" (300 XP, 150c) — the rarest weather challenge~~ (DONE Session 68)

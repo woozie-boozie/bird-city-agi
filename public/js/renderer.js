@@ -3823,4 +3823,140 @@ window.Renderer = {
     minimapCtx.fillText('🍩', cx, cy - 4);
     minimapCtx.restore();
   },
+
+  // ============================================================
+  // NIGHT MARKET — Mystical stall near Sacred Pond, aurora-only
+  // ============================================================
+  drawNightMarket(ctx, marketPos, camera, isNear, now) {
+    if (!marketPos) return;
+    const px = marketPos.x - camera.x + camera.screenW / 2;
+    const py = marketPos.y - camera.y + camera.screenH / 2;
+    const t = now / 1000;
+
+    ctx.save();
+
+    // Pulsing aurora aura behind the stall
+    const auraAlpha = 0.18 + 0.10 * Math.sin(t * 1.4);
+    const auraGrad = ctx.createRadialGradient(px, py + 4, 8, px, py + 4, 52);
+    auraGrad.addColorStop(0, `rgba(0,255,200,${auraAlpha * 1.5})`);
+    auraGrad.addColorStop(0.5, `rgba(100,60,255,${auraAlpha})`);
+    auraGrad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = auraGrad;
+    ctx.beginPath();
+    ctx.ellipse(px, py + 4, 52, 36, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Tent/stall structure
+    // Canopy (triangular tent top in teal/violet gradient)
+    const canopyGrad = ctx.createLinearGradient(px - 30, py - 28, px + 30, py - 5);
+    canopyGrad.addColorStop(0, '#00e5cc');
+    canopyGrad.addColorStop(0.5, '#7c3aed');
+    canopyGrad.addColorStop(1, '#06b6d4');
+    ctx.fillStyle = canopyGrad;
+    ctx.beginPath();
+    ctx.moveTo(px - 32, py - 4);
+    ctx.lineTo(px, py - 30);
+    ctx.lineTo(px + 32, py - 4);
+    ctx.closePath();
+    ctx.fill();
+
+    // Canopy border sparkle edge
+    ctx.strokeStyle = `rgba(255,255,255,${0.5 + 0.3 * Math.sin(t * 2)})`;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Stall counter (wooden plank base)
+    ctx.fillStyle = '#2d1a4a';
+    ctx.fillRect(px - 28, py - 4, 56, 20);
+    ctx.strokeStyle = '#7c3aed';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(px - 28, py - 4, 56, 20);
+
+    // Draping curtain fringe at canopy bottom
+    for (let i = 0; i < 7; i++) {
+      const fx = px - 27 + i * 9;
+      const fLen = 6 + 3 * Math.sin(t * 2.5 + i * 0.9);
+      ctx.fillStyle = i % 2 === 0 ? '#00e5cc' : '#a855f7';
+      ctx.beginPath();
+      ctx.ellipse(fx, py - 4 + fLen / 2, 3, fLen / 2, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Glowing star items on counter (decorative)
+    const stars = ['✨', '🔮', '🌙'];
+    ctx.font = '9px sans-serif';
+    ctx.textAlign = 'center';
+    for (let i = 0; i < 3; i++) {
+      const ix = px - 16 + i * 16;
+      const iy = py + 5;
+      const starAlpha = 0.7 + 0.3 * Math.sin(t * 1.8 + i * 1.1);
+      ctx.globalAlpha = starAlpha;
+      ctx.fillText(stars[i], ix, iy);
+    }
+    ctx.globalAlpha = 1;
+
+    // Animated floating sparkles around the tent
+    for (let i = 0; i < 5; i++) {
+      const angle = t * 1.2 + i * (Math.PI * 2 / 5);
+      const radius = 30 + 6 * Math.sin(t + i * 0.7);
+      const sx2 = px + Math.cos(angle) * radius;
+      const sy2 = py - 8 + Math.sin(angle) * radius * 0.4;
+      const alpha2 = 0.4 + 0.4 * Math.sin(t * 2 + i * 1.3);
+      ctx.globalAlpha = alpha2;
+      ctx.fillStyle = i % 2 === 0 ? '#00ffcc' : '#c084fc';
+      ctx.beginPath();
+      ctx.arc(sx2, sy2, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // Sign above tent
+    ctx.fillStyle = `rgba(0,0,0,0.65)`;
+    ctx.beginPath();
+    ctx.roundRect(px - 34, py - 46, 68, 14, 4);
+    ctx.fill();
+    ctx.fillStyle = `hsl(${(t * 60) % 360}, 100%, 80%)`;
+    ctx.font = 'bold 8px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('✨ NIGHT MARKET', px, py - 36);
+
+    // Proximity prompt
+    if (isNear) {
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.beginPath();
+      ctx.roundRect(px - 44, py + 18, 88, 13, 4);
+      ctx.fill();
+      ctx.fillStyle = '#a5f3fc';
+      ctx.font = '8px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('[L] Open Night Market', px, py + 28);
+    }
+
+    ctx.restore();
+  },
+
+  drawNightMarketOnMinimap(minimapCtx, marketPos, worldWidth, worldHeight) {
+    if (!marketPos) return;
+    const mw = minimapCtx.canvas.width;
+    const mh = minimapCtx.canvas.height;
+    const sx = mw / worldWidth;
+    const sy = mh / worldHeight;
+    const cx = marketPos.x * sx;
+    const cy = marketPos.y * sy;
+    const t = Date.now() / 1000;
+    const pulse = 0.6 + 0.4 * Math.sin(t * 2);
+
+    minimapCtx.save();
+    // Teal hue-cycling glow
+    minimapCtx.globalAlpha = pulse;
+    minimapCtx.fillStyle = `hsl(${170 + 30 * Math.sin(t)}, 100%, 60%)`;
+    minimapCtx.beginPath();
+    minimapCtx.arc(cx, cy, 3.5, 0, Math.PI * 2);
+    minimapCtx.fill();
+    minimapCtx.globalAlpha = 1;
+    minimapCtx.font = '7px sans-serif';
+    minimapCtx.textAlign = 'center';
+    minimapCtx.fillText('✨', cx, cy - 4);
+    minimapCtx.restore();
+  },
 };
