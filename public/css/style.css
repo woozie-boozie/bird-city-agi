@@ -1458,6 +1458,85 @@ html, body {
 }
 
 /* ============================================================
+   MOST WANTED BOARD — persistent top-3 criminal tracker
+   ============================================================ */
+#mostWantedBoard {
+  position: fixed;
+  top: 44px;  /* just below wantedHud (which is ~34px tall) */
+  left: 10px;
+  background: rgba(10, 0, 0, 0.82);
+  border: 2px solid rgba(220, 40, 0, 0.7);
+  border-radius: 10px;
+  padding: 6px 10px;
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  pointer-events: none;
+  z-index: 49;
+  min-width: 160px;
+  max-width: 210px;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+}
+#mostWantedBoard.mwb-lockdown-active {
+  border-color: rgba(255, 100, 0, 0.9);
+  animation: lockdownBoardPulse 0.8s ease-in-out infinite alternate;
+}
+@keyframes lockdownBoardPulse {
+  from { box-shadow: 0 0 6px rgba(255,80,0,0.4); }
+  to   { box-shadow: 0 0 16px rgba(255,80,0,0.9); }
+}
+.mwb-title {
+  color: #ff4444;
+  font-weight: bold;
+  font-size: 10px;
+  letter-spacing: 1px;
+  margin-bottom: 4px;
+}
+.mwb-lockdown {
+  background: rgba(200,50,0,0.35);
+  border-radius: 4px;
+  color: #ff8844;
+  font-size: 9px;
+  font-weight: bold;
+  text-align: center;
+  padding: 2px 4px;
+  margin-bottom: 4px;
+  animation: pulseRed 0.7s infinite alternate;
+}
+.mwb-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 3px;
+  color: #ffcc88;
+}
+.mwb-row.mwb-me {
+  color: #ffff88;
+  font-weight: bold;
+}
+.mwb-medal { font-size: 10px; flex-shrink: 0; }
+.mwb-name {
+  flex: 1;
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mwb-stars { font-size: 8px; flex-shrink: 0; }
+.mwb-heat-bar {
+  width: 32px;
+  height: 4px;
+  background: rgba(60,0,0,0.6);
+  border-radius: 2px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.mwb-heat-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.5s;
+}
+
+/* ============================================================
    COMBO STREAK HUD
    ============================================================ */
 #comboHud {
@@ -1489,7 +1568,7 @@ html, body {
   to   { box-shadow: 0 0 20px rgba(255, 100, 0, 1.0); }
 }
 
-/* Predator danger HUD */
+/* Predator danger HUD — positioned below mostWantedBoard dynamically via JS, base fallback */
 #predatorHud {
   position: fixed;
   top: 56px;

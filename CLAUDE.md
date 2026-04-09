@@ -2087,6 +2087,46 @@ Four interlocking additions that weave existing systems together into a richer w
 
 **Creative intent**: These four additions take Bird City's existing chaos and make it DEEPER without adding new systems. The flu interactions create genuine "wait, I can USE being sick?!" moments — turning a debuff into a weapon. The crime wave pigeon bomb is the ultimate "three-systems-collide" spectacle: a criminal running from cops during a crime wave, a storm rages overhead, a drunk pigeon staggers nearby, lightning strikes the pigeon — and suddenly 2× coins rain down while every nearby cop staggers sick. That chain of events requires no scripting. The Idol Hall of Fame turns a fun periodic event into a long-term prestige track: seeing "[SKY] BirdName — 4 wins" in the idle overlay makes that bird a legend. Pure CARNAGE + SOCIAL + DISCOVERY + PROGRESSION energy — the city's systems now have genuine synergies.
 
+**Session 64 — 2026-04-09: City Lockdown + Most Wanted Board + National Guard**
+The wanted system gets its greatest escalation yet. Three interlocking features that turn multi-player criminal chaos into a true city-wide EMERGENCY.
+
+**Most Wanted Board (always-visible HUD):**
+- New `#mostWantedBoard` panel sits just below the Wanted Level HUD (top-left) at all times when ANY bird has heat
+- Shows top-3 wanted criminals ranked by heat: name, gang tag, star level, and a live heat bar
+- The board is visible to ALL players — not just the criminals. Creating city-wide awareness of who's hot
+- Your own entry highlighted in gold with "👈" indicator — you see yourself in the rogues' gallery
+- When City Lockdown is active: board pulses orange with a "🚨 CITY LOCKDOWN Xs" countdown pill
+- Updated every server tick as heat levels change — completely live
+
+**City Lockdown (triggered when 3+ birds hit Level 3+ simultaneously):**
+- Server tracks `this.wantedTopThree` (top-3 criminals by heat) and counts Level 3+ birds each tick
+- When 3+ birds are simultaneously at Wanted Level 3+: `city_lockdown_start` fires → 90-second lockdown begins
+- 3-minute cooldown prevents rapid re-triggering after a lockdown ends
+- **Reward bonus**: all crime coin gains × 1.5 during lockdown — the city in chaos rewards the bold
+- Military-themed visual: orange-red screen tint + animated yellow/black hazard warning stripes on screen edges + "CITY LOCKDOWN" bar at top with countdown
+- Active buffs HUD shows the lockdown pill for all players
+- Gazette integration: lockdown gets its own headline "🪖 CITY LOCKDOWN DECLARED — NATIONAL GUARD DEPLOYED"
+
+**National Guard Agents (3 elite units deployed per lockdown):**
+- When lockdown starts and 3 wantedTopThree exist: 3 National Guard agents spawn from map edges, each assigned to one of the top-3 criminals
+- Olive-green tactical gear, red beret, gold star insignia on chest — custom `drawNationalGuard()` sprite
+- **Stats**: 135px/s speed (= police helicopter, serious threat), require 5 poop hits to stun (toughest enemy in the game), catch steals 20% coins (max 200c) + 3.5s stun
+- Re-target when their criminal escapes/clears heat — pivot to next wantedTopThree entry
+- Fog partial blindness at >220px, sewer blocks them (can't follow underground)
+- Ghost Walk skill: 18% evade chance
+- **Rewards**: 40 XP + 15c per poop hit, 150 XP + 60c on stun — the biggest poop hit reward in the game
+- Gold/olive pulsing 🪖 dots on minimap, off-screen direction arrow, active buffs pill warning for targeted birds
+- Stunned state: X-eyes, orbiting stars, greyed-out, immune to further hits
+
+**Emergent chaos this creates:**
+- Low-wanted birds watching three criminals simultaneously on the Most Wanted Board: "If I hit one poop, I become #4 — do I dare?"
+- The lockdown announcement lets EVERY player know the city just escalated
+- Getting stunned by a National Guard agent while at max combo + bounty on your head + helicopter circling = peak CARNAGE CITY chaos
+- The 90-second lockdown with 1.5× crime rewards creates a risk-reward sprint: "I know it's dangerous, but the payouts are incredible right now"
+- Three simultaneous elite pursuers targeting three different birds = coordinated police action that's never happened before
+
+**Creative intent**: The wanted system was great at creating one dramatic chase (the #1 most-wanted bird). This makes MULTIPLE simultaneous criminals equally dramatic. The Most Wanted Board makes every player aware of who's hot — creating social pressure, bounty competition, and spectator interest. The City Lockdown is a player-TRIGGERED emergency (not random like Crime Wave) — meaning the community collectively creates the chaos by all choosing to be criminals at once. The National Guard is the first enemy that's genuinely HARDER to stun than the helicopter (5 hits vs 6, but ground-based = can't evade underground). Pure CARNAGE + SOCIAL + SPECTACLE energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -2187,7 +2227,7 @@ Built the Territory Control System on top of the existing upstream code:
 - ~~Idol Hall of Fame: persistent leaderboard of all-time Idol winners near the stage~~ (DONE Session 63)
 - Helicopter + Fog: announce to targeted bird when helicopter loses trail in fog
 - Royale Champion + Kingpin: if Royale Champion becomes Kingpin, immune to first dethronement hit
-- Multi-bird Wanted system: track top 2 most-wanted simultaneously (two Bounty Hunters)
+- ~~Multi-bird Wanted system: track top 2 most-wanted simultaneously (two Bounty Hunters)~~ (DONE Session 64 — tracks top 3, full Most Wanted Board, National Guard deployed on 3+ criminals)
 - ~~Poop power-up vending machine: spend 20c at a street vending machine for a random single-poop effect~~ (DONE Session 57)
 - ~~Street Duels — press [Y] near a rival to challenge them to a spontaneous 1v1 poop fight~~ (DONE Session 58)
 - Bird Photo Mode: press some key to screenshot; ghost camera drifts away for 3s, shows UI-free overlay
@@ -2200,3 +2240,8 @@ Built the Territory Control System on top of the existing upstream code:
 - ~~Tournament entry discount for Mafia Capos/Dons: high-rep birds pay 50c instead of 100c~~ (DONE Session 61)
 - Gazette tracking for tournaments: already done (Session 60) — also track runner-up name
 - Double-elimination tournament option: losers get a second chance bracket
+- Helicopter + Fog + Lockdown synergy: helicopter loses trail faster in fog during lockdown, creating a rare "fog saves everyone" moment
+- National Guard + Gang War: during lockdown, NG targets all birds with active gang war kills — turns wars deadly
+- City Lockdown betting: birds can bet on whether the next lockdown will occur within X minutes
+- Most Wanted board interaction: click a name on the Most Wanted Board to instantly place a 100c hit contract via shortcut
+- NG friendly fire: if NG agent is accidentally caught in a lightning strike, it stuns them — weather chaos extends to law enforcement

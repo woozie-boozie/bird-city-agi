@@ -5085,4 +5085,133 @@ window.Sprites = {
 
     ctx.restore();
   },
+
+  // National Guard agent — elite military police, deployed during City Lockdown.
+  // Bigger, tougher than SWAT: olive-green tactical gear, gold star insignia, red beret.
+  drawNationalGuard(ctx, x, y, rotation, state, poopHits, t) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rotation + Math.PI / 2);
+
+    const alpha = state === 'stunned' ? 0.5 : 1.0;
+    ctx.globalAlpha = alpha;
+
+    // Body — olive drab military green
+    const bodyColor = state === 'stunned' ? '#666' : '#4a6741';
+    ctx.fillStyle = bodyColor;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 13, 15, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Tactical vest — darker green with gold trim
+    ctx.fillStyle = state === 'stunned' ? '#555' : '#3d5438';
+    ctx.fillRect(-8, -6, 16, 10);
+
+    // Gold star insignia (center chest)
+    if (state !== 'stunned') {
+      ctx.fillStyle = '#ffd700';
+      ctx.shadowColor = '#ffd700';
+      ctx.shadowBlur = 4;
+      // 5-point star
+      ctx.save();
+      ctx.translate(0, -1);
+      ctx.scale(0.55, 0.55);
+      ctx.beginPath();
+      for (let i = 0; i < 5; i++) {
+        const ang = (i * Math.PI * 2 / 5) - Math.PI / 2;
+        const angIn = ang + Math.PI / 5;
+        if (i === 0) ctx.moveTo(Math.cos(ang) * 10, Math.sin(ang) * 10);
+        else ctx.lineTo(Math.cos(ang) * 10, Math.sin(ang) * 10);
+        ctx.lineTo(Math.cos(angIn) * 4, Math.sin(angIn) * 4);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+      ctx.shadowBlur = 0;
+    }
+
+    // Red beret — tilted to right
+    ctx.fillStyle = state === 'stunned' ? '#555' : '#a01010';
+    ctx.beginPath();
+    ctx.ellipse(3, -13, 9, 5, 0.4, 0, Math.PI * 2);
+    ctx.fill();
+    // Beret detail
+    ctx.fillStyle = state === 'stunned' ? '#666' : '#7a0808';
+    ctx.beginPath();
+    ctx.ellipse(3, -13, 6, 3, 0.4, 0, Math.PI);
+    ctx.fill();
+
+    // Eyes — sharp eagle-eyed look
+    const eyeColor = state === 'stunned' ? '#999' : '#ffcc44';
+    ctx.fillStyle = eyeColor;
+    if (state === 'stunned') {
+      // X eyes when stunned
+      ctx.strokeStyle = '#999';
+      ctx.lineWidth = 1.5;
+      for (const [ex, ey] of [[-4, -8], [4, -8]]) {
+        ctx.beginPath(); ctx.moveTo(ex-2, ey-2); ctx.lineTo(ex+2, ey+2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(ex+2, ey-2); ctx.lineTo(ex-2, ey+2); ctx.stroke();
+      }
+    } else {
+      if (state !== 'stunned') {
+        ctx.shadowColor = '#ffcc44';
+        ctx.shadowBlur = 5;
+      }
+      ctx.beginPath(); ctx.arc(-4, -8, 2.5, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(4, -8, 2.5, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
+    // Wings — camo pattern
+    const wingPhase = Math.sin(t * 5) * 0.2;
+    ctx.fillStyle = state === 'stunned' ? '#555' : '#3d5438';
+    ctx.save();
+    ctx.rotate(-0.4 + wingPhase);
+    ctx.beginPath();
+    ctx.ellipse(-14, 4, 12, 6, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    ctx.save();
+    ctx.rotate(0.4 - wingPhase);
+    ctx.beginPath();
+    ctx.ellipse(14, 4, 12, 6, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Stunned stars
+    if (state === 'stunned') {
+      for (let i = 0; i < 3; i++) {
+        const sa = (t * 3 + i * Math.PI * 2 / 3);
+        const sx2 = Math.cos(sa) * 16;
+        const sy2 = Math.sin(sa) * 8 - 16;
+        ctx.fillStyle = `hsl(${(t * 100 + i * 120) % 360}, 100%, 70%)`;
+        ctx.font = '8px serif';
+        ctx.fillText('⭐', sx2 - 4, sy2);
+      }
+    }
+
+    // Hit progress bar (when being attacked: shows N/5 dots)
+    if (poopHits > 0 && state !== 'stunned') {
+      const barW = 32;
+      const barX = -barW / 2;
+      const barY = 18;
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(barX, barY, barW, 6);
+      ctx.fillStyle = '#ffcc00';
+      for (let i = 0; i < 5; i++) {
+        const dotX = barX + 3 + i * 6;
+        ctx.fillStyle = i < poopHits ? '#ffd700' : '#333';
+        ctx.beginPath();
+        ctx.arc(dotX + 1.5, barY + 3, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = '#ffd700';
+      ctx.font = 'bold 7px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${poopHits}/5`, 0, barY + 14);
+    }
+
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  },
 };

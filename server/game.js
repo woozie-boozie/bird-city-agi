@@ -154,6 +154,15 @@ class GameEngine {
     // 10 = ⭐, 25 = ⭐⭐ (1 cop), 50 = ⭐⭐⭐ (2 cops), 100 = ⭐⭐⭐⭐ (3 cops + SWAT), 200 = ⭐⭐⭐⭐⭐ (SWAT hawk + bounty)
     this.WANTED_THRESHOLDS = [10, 25, 50, 100, 200];
 
+    // === MOST WANTED BOARD + CITY LOCKDOWN ===
+    // Tracks the top-3 most wanted birds city-wide (visible to all players on a persistent HUD).
+    // City Lockdown triggers when 3+ birds simultaneously hit Wanted Level 3+.
+    // During lockdown: 1.5× crime coin rewards, extra cops, and 3 National Guard units deploy.
+    this.wantedTopThree = [];    // [{ birdId, name, gangTag, heat, level }, ...] — top-3 sorted by heat
+    this.cityLockdown = null;    // null | { startedAt, endsAt, triggerCount, ngSpawnDone }
+    this.nationalGuard = new Map(); // id -> NG agent state (elite cop variant targeting top-3 criminals)
+    this._ngIdCounter = 0;
+
     // === FOOD TRUCK ===
     this.foodTruck = null;
     this.foodTruckSpawnTimer = Date.now() + this._randomRange(180000, 300000); // 3-5 min
@@ -1341,6 +1350,8 @@ class GameEngine {
     this._updateCopBirds(dt, now);
     this._updateBountyHunter(dt, now);
     this._updatePoliceHelicopter(dt, now);
+    this._updateCityLockdown(dt, now);
+    this._updateNationalGuard(dt, now);
 
     // === Food Truck ===
     this._updateFoodTruck(dt, now);
@@ -2828,6 +2839,26 @@ class GameEngine {
           if (!this.gazetteStats.helicopterDowns) this.gazetteStats.helicopterDowns = [];
           this.gazetteStats.helicopterDowns.push({ name: bird.name, gangTag: bird.gangTag || null });
         }
+      } else if (hit.target === 'national_guard' && hit.ngId) {
+        // Poop hit a National Guard agent! Need 5 hits to stun (they're tough)
+        const ng = this.nationalGuard.get(hit.ngId);
+        if (ng && ng.state !== 'stunned') {
+          ng.poopHits = (ng.poopHits || 0) + (isMegaPoop ? 2 : 1);
+          ng.poopHitResetAt = now + 10000;
+          xpGain = 40;
+          bird.coins += 15;
+          this.events.push({ type: 'ng_hit', birdId: bird.id, birdName: bird.name, hits: ng.poopHits, ngId: ng.id, x: ng.x, y: ng.y });
+          if (ng.poopHits >= 5) {
+            // Stunned! National Guard goes down for 12 seconds
+            ng.state = 'stunned';
+            ng.stunUntil = now + 12000;
+            ng.poopHits = 0;
+            ng.poopHitResetAt = 0;
+            xpGain = 150;
+            bird.coins += 60;
+            this.events.push({ type: 'ng_stunned', birdId: bird.id, birdName: bird.name, ngId: ng.id, x: ng.x, y: ng.y });
+          }
+        }
       } else if (hit.target === 'territory_predator' && hit.predator) {
         // Poop hit a territory predator (hawk or cat in their home zone)
         const { predKey, predator } = hit;
@@ -3152,6 +3183,8 @@ class GameEngine {
       }
       // Crime Wave: ×2 all crime coin rewards — high risk, high reward
       if (this.crimeWave && coinGain > 0) coinGain *= 2;
+      // City Lockdown: ×1.5 crime coin rewards — city in chaos, crime pays
+      if (this.cityLockdown && coinGain > 0) coinGain = Math.floor(coinGain * 1.5);
       // Vending Machine: Rainbow effect — 3× coins on this poop hit
       if (vpEffect === 'rainbow' && coinGain > 0) {
         coinGain = Math.floor(coinGain * 3);
@@ -3919,6 +3952,16 @@ class GameEngine {
       const bdy = poop.y - bh.y;
       if (Math.sqrt(bdx * bdx + bdy * bdy) < hitRadius + 10) {
         return { target: 'bounty_hunter' };
+      }
+    }
+
+    // Check National Guard agents (5 hits to stun — elite tough target)
+    for (const [ngId, ng] of this.nationalGuard) {
+      if (ng.state === 'stunned') continue;
+      const ngdx = poop.x - ng.x;
+      const ngdy = poop.y - ng.y;
+      if (Math.sqrt(ngdx * ngdx + ngdy * ngdy) < hitRadius + 10) {
+        return { target: 'national_guard', ngId };
       }
     }
 
@@ -5438,6 +5481,25 @@ class GameEngine {
         };
       })(),
       wantedBirdId: this.wantedBirdId,
+      // Most Wanted Board + City Lockdown
+      wantedTopThree: this.wantedTopThree,
+      cityLockdown: this.cityLockdown ? {
+        endsAt: this.cityLockdown.endsAt,
+        triggerCount: this.cityLockdown.triggerCount,
+      } : null,
+      nationalGuard: (() => {
+        const nearby = [];
+        for (const ng of this.nationalGuard.values()) {
+          const dx = ng.x - bird.x;
+          const dy = ng.y - bird.y;
+          if (Math.sqrt(dx * dx + dy * dy) < 800) {
+            nearby.push({ id: ng.id, x: ng.x, y: ng.y, rotation: ng.rotation, state: ng.state, targetId: ng.targetId, poopHits: ng.poopHits });
+          }
+        }
+        return nearby;
+      })(),
+      // Minimap: all national guard positions
+      allNationalGuard: Array.from(this.nationalGuard.values()).map(ng => ({ id: ng.id, x: ng.x, y: ng.y, state: ng.state, targetId: ng.targetId })),
       foodTruck: foodTruckState,
       raccoons: nearbyRaccoons,
       drunkPigeons: nearbyDrunkPigeons,
@@ -6086,6 +6148,12 @@ class GameEngine {
       crimeWave: this.crimeWave ? {
         endsAt: this.crimeWave.endsAt,
       } : null,
+      // City Lockdown — available in self state for HUD rendering
+      cityLockdown: this.cityLockdown ? {
+        endsAt: this.cityLockdown.endsAt,
+        triggerCount: this.cityLockdown.triggerCount,
+      } : null,
+      isNGTarget: Array.from(this.nationalGuard.values()).some(ng => ng.targetId === bird.id),
       // Seagull Invasion
       seagullInvasion: this.seagullInvasion ? {
         endsAt: this.seagullInvasion.endsAt,
@@ -11947,6 +12015,7 @@ class GameEngine {
       mysteryCrateItems: [],// [{ itemName, emoji, birdName }]
       fluOutbreaks:    0,
       crimeWaves:      0,
+      cityLockdowns:   0,   // city lockdowns triggered this cycle
       copsStunned:     {},  // birdId -> { count, name, gangTag }
       seagullInvasions: 0,
       helicopterDowns: [],  // [{ name, gangTag }]
@@ -12075,7 +12144,13 @@ class GameEngine {
       });
     }
 
-    if (stats.crimeWaves > 0) {
+    if (stats.cityLockdowns > 0) {
+      headlines.push({
+        icon: '🪖',
+        headline: `CITY LOCKDOWN DECLARED — NATIONAL GUARD DEPLOYED`,
+        subline: `Three criminals at large simultaneously. The National Guard stormed the streets. Nobody felt safe.`,
+      });
+    } else if (stats.crimeWaves > 0) {
       headlines.push({
         icon: '🚨',
         headline: `CRIME WAVE ERUPTS — CITY DESCENDS INTO LAWLESSNESS`,
@@ -13509,6 +13584,186 @@ class GameEngine {
     if (this.crimeWave && now >= this.crimeWave.endsAt) {
       this.crimeWave = null;
       this.events.push({ type: 'crime_wave_end' });
+    }
+  }
+
+  // ============================================================
+  // CITY LOCKDOWN + MOST WANTED BOARD
+  // When 3+ birds simultaneously reach Wanted Level 3+, the city
+  // goes into a 90-second lockdown: 1.5× crime rewards, extra cops,
+  // and National Guard elite units deploy against each criminal.
+  // ============================================================
+
+  _updateCityLockdown(dt, now) {
+    // Rebuild top-3 wanted list every frame (heatScores is small, so this is cheap)
+    // Count birds at level 3+ for lockdown trigger
+    const criminals = [];
+    for (const [birdId, heat] of this.heatScores) {
+      const bird = this.birds.get(birdId);
+      if (!bird) continue;
+      const level = this._getWantedLevel(heat);
+      if (level >= 1) {
+        criminals.push({ birdId, name: bird.name, gangTag: bird.gangTag || null, heat, level });
+      }
+    }
+    // Sort descending by heat, take top 3
+    criminals.sort((a, b) => b.heat - a.heat);
+    this.wantedTopThree = criminals.slice(0, 3);
+
+    // Lockdown: trigger when 3+ birds are at level 3+ simultaneously
+    const level3Count = criminals.filter(c => c.level >= 3).length;
+    const lockdownCooldownExpired = !this.lastLockdownEnd || (now - this.lastLockdownEnd > 180000); // 3 min cooldown
+
+    if (!this.cityLockdown && level3Count >= 3 && lockdownCooldownExpired) {
+      // Initiate lockdown
+      this.cityLockdown = {
+        startedAt: now,
+        endsAt: now + 90000, // 90 seconds
+        triggerCount: level3Count,
+        ngSpawnDone: false,
+      };
+      this.gazetteStats.cityLockdowns = (this.gazetteStats.cityLockdowns || 0) + 1;
+      this.events.push({ type: 'city_lockdown_start', count: level3Count });
+      console.log(`[Lockdown] City Lockdown initiated — ${level3Count} criminals at Wanted 3+`);
+    }
+
+    // Check if lockdown should end
+    if (this.cityLockdown) {
+      if (now >= this.cityLockdown.endsAt || level3Count < 1) {
+        // End lockdown — clear all national guard
+        this.nationalGuard.clear();
+        this.cityLockdown = null;
+        this.lastLockdownEnd = now;
+        this.events.push({ type: 'city_lockdown_end' });
+        console.log('[Lockdown] City Lockdown ended');
+        return;
+      }
+
+      // Spawn National Guard once per lockdown (3 agents, one per top criminal)
+      if (!this.cityLockdown.ngSpawnDone && this.wantedTopThree.length >= 3) {
+        this.cityLockdown.ngSpawnDone = true;
+        const edgePositions = [
+          { x: this._randomRange(200, 800),  y: 50 },
+          { x: this._randomRange(2200, 2800), y: 50 },
+          { x: 50,  y: this._randomRange(1000, 2000) },
+        ];
+        for (let i = 0; i < Math.min(3, this.wantedTopThree.length); i++) {
+          const criminal = this.wantedTopThree[i];
+          const spawnPos = edgePositions[i];
+          const ngId = 'ng_' + (++this._ngIdCounter);
+          this.nationalGuard.set(ngId, {
+            id: ngId,
+            x: spawnPos.x,
+            y: spawnPos.y,
+            rotation: 0,
+            targetId: criminal.birdId,
+            targetName: criminal.name,
+            state: 'pursuing',   // 'pursuing' | 'stunned' | 'off_duty'
+            speed: 135,          // faster than SWAT (145px/s = same, they're equal threat)
+            poopHits: 0,         // need 5 poop hits to stun (tough)
+            poopHitResetAt: 0,
+            stunUntil: 0,
+            lastCatchAt: 0,
+            wanderAngle: Math.random() * Math.PI * 2,
+          });
+        }
+        this.events.push({ type: 'national_guard_deployed', count: this.nationalGuard.size });
+      }
+    }
+  }
+
+  _updateNationalGuard(dt, now) {
+    if (this.nationalGuard.size === 0) return;
+
+    for (const [ngId, ng] of this.nationalGuard) {
+      // Remove if target disconnected or wanted level cleared
+      const target = this.birds.get(ng.targetId);
+      if (!target || (this.heatScores.get(ng.targetId) || 0) < this.WANTED_THRESHOLDS[2]) {
+        // Target no longer criminal enough — pick a new target from wantedTopThree
+        const newTarget = this.wantedTopThree.find(c => c.level >= 3 &&
+          !Array.from(this.nationalGuard.values()).some(other => other.id !== ngId && other.targetId === c.birdId));
+        if (newTarget) {
+          ng.targetId = newTarget.birdId;
+          ng.targetName = newTarget.name;
+        } else {
+          this.nationalGuard.delete(ngId);
+          continue;
+        }
+      }
+
+      const targetBird = this.birds.get(ng.targetId);
+      if (!targetBird) continue;
+
+      // Reset stun
+      if (ng.state === 'stunned' && now >= ng.stunUntil) {
+        ng.state = 'pursuing';
+        ng.poopHits = 0;
+      }
+      if (ng.state !== 'pursuing') continue;
+
+      // Fog: partially confused at >220px
+      let effectiveSpeed = ng.speed;
+      if (this.weather && this.weather.type === 'fog' && this.weather.intensity > 0.3) {
+        const fdx = ng.x - targetBird.x;
+        const fdy = ng.y - targetBird.y;
+        if (Math.sqrt(fdx * fdx + fdy * fdy) > 220) {
+          effectiveSpeed *= 0.6;
+        }
+      }
+
+      // Underground: hover at manhole like bounty hunter (can't follow)
+      if (targetBird.inSewer) {
+        // Hover in place, slight drift
+        ng.wanderAngle += (Math.random() - 0.5) * 0.4;
+        ng.x += Math.cos(ng.wanderAngle) * effectiveSpeed * 0.3 * dt;
+        ng.y += Math.sin(ng.wanderAngle) * effectiveSpeed * 0.3 * dt;
+        ng.x = Math.max(50, Math.min(this.worldWidth - 50, ng.x));
+        ng.y = Math.max(50, Math.min(this.worldHeight - 50, ng.y));
+        continue;
+      }
+
+      // Move toward target
+      const dx = targetBird.x - ng.x;
+      const dy = targetBird.y - ng.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > 1) {
+        ng.rotation = Math.atan2(dy, dx);
+        const moveSpeed = Math.min(effectiveSpeed * dt, dist);
+        ng.x += (dx / dist) * moveSpeed;
+        ng.y += (dy / dist) * moveSpeed;
+      }
+      ng.x = Math.max(50, Math.min(this.worldWidth - 50, ng.x));
+      ng.y = Math.max(50, Math.min(this.worldHeight - 50, ng.y));
+
+      // Catch: within 22px AND cooldown expired
+      if (dist < 22 && now - ng.lastCatchAt > 8000) {
+        ng.lastCatchAt = now;
+        // Steal 20% of coins (max 200c)
+        const stolen = Math.min(200, Math.floor(targetBird.coins * 0.20));
+        targetBird.coins = Math.max(0, targetBird.coins - stolen);
+        // Stun target 3.5s (Iron Wings skill reduces)
+        let stunDur = 3500;
+        if (targetBird.skillTreeUnlocked && targetBird.skillTreeUnlocked.includes('iron_wings')) {
+          stunDur = Math.floor(stunDur * 0.65);
+        }
+        targetBird.stunnedUntil = now + stunDur;
+        // Wipe combo
+        targetBird.comboCount = 0;
+        targetBird.comboExpiresAt = 0;
+        // Ghost Walk: 18% evade chance
+        let evaded = false;
+        if (targetBird.skillTreeUnlocked && targetBird.skillTreeUnlocked.includes('ghost_walk')) {
+          if (Math.random() < 0.18) {
+            evaded = true;
+            ng.stunUntil = now + 3000;
+            ng.state = 'stunned';
+            this.events.push({ type: 'ghost_walk_evade', birdId: targetBird.id });
+          }
+        }
+        if (!evaded) {
+          this.events.push({ type: 'ng_caught', birdId: targetBird.id, ngId, stolen, targetName: targetBird.name });
+        }
+      }
     }
   }
 

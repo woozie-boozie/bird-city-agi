@@ -1619,6 +1619,40 @@
       }
     }
 
+    // === CITY LOCKDOWN EVENTS ===
+    if (ev.type === 'city_lockdown_start') {
+      effects.push({ type: 'screen_shake', intensity: 12, duration: 800, time: now });
+      showAnnouncement('🚨 CITY LOCKDOWN! ' + ev.count + ' CRIMINALS ON THE LOOSE! · 1.5× CRIME REWARDS', '#ff1a1a', 5000);
+      addEventMessage('🚨 CITY LOCKDOWN DECLARED — ' + ev.count + ' birds at 3+ stars! National Guard deploying!', '#ff4444');
+    }
+    if (ev.type === 'city_lockdown_end') {
+      showAnnouncement('🚔 LOCKDOWN LIFTED — City breathes again.', '#4488ff', 3000);
+      addEventMessage('🚔 City Lockdown ended. National Guard stands down.', '#4488ff');
+    }
+    if (ev.type === 'national_guard_deployed') {
+      addEventMessage('🪖 ' + ev.count + ' National Guard agents DEPLOYED — elite pursuit units!', '#ff8800');
+    }
+    if (ev.type === 'ng_hit') {
+      if (ev.birdId === myId) {
+        showAnnouncement('💥 NG HIT! ' + ev.hits + '/5 — 5 hits to stun!', '#ff8800', 1500);
+      }
+      effects.push({ type: 'float_text', text: '💥 ' + ev.hits + '/5', x: ev.x, y: ev.y, color: '#ff8800', time: now });
+    }
+    if (ev.type === 'ng_stunned') {
+      effects.push({ type: 'screen_shake', intensity: 6, duration: 400, time: now });
+      if (ev.birdId === myId) {
+        showAnnouncement('🪖💫 NATIONAL GUARD DOWN! +150 XP +60c!', '#4ade80', 3000);
+      }
+      addEventMessage('🪖💫 ' + ev.birdName + ' STUNNED a National Guard agent! +150 XP', '#4ade80');
+    }
+    if (ev.type === 'ng_caught') {
+      if (ev.birdId === myId) {
+        showAnnouncement('🪖 CAUGHT BY NATIONAL GUARD! −' + ev.stolen + 'c!', '#ff0000', 3000);
+      }
+      effects.push({ type: 'float_text', text: '🪖 −' + ev.stolen + 'c', x: 0, y: 0, color: '#ff4444', time: now });
+      addEventMessage('🪖 National Guard apprehended ' + ev.targetName + '! −' + ev.stolen + 'c', '#ff4444');
+    }
+
     // === BOUNTY HUNTER EVENTS ===
     if (ev.type === 'bounty_hunter_spawned') {
       effects.push({ type: 'screen_shake', intensity: 6, duration: 500, time: now });
@@ -3733,6 +3767,39 @@
         const copText = copCount > 0 ? ' 🚔' + copCount : '';
         const cwText = gameState.self.crimeWave ? ' 🚨×2' : '';
         wantedHud.textContent = '🚨 ' + stars + ' ' + labels[wLevel] + copText + cwText;
+      }
+    }
+
+    // Most Wanted Board — city-wide persistent top-3 criminal tracker
+    const mwBoard = document.getElementById('mostWantedBoard');
+    if (mwBoard) {
+      const topThree = gameState.wantedTopThree;
+      if (!topThree || topThree.length === 0) {
+        mwBoard.style.display = 'none';
+      } else {
+        mwBoard.style.display = 'block';
+        const lockdown = gameState.cityLockdown;
+        const lockdownText = lockdown ? `<div class="mwb-lockdown">🚨 CITY LOCKDOWN ${Math.ceil((lockdown.endsAt - Date.now()) / 1000)}s</div>` : '';
+        const rows = topThree.map((c, i) => {
+          const medals = ['🥇', '🥈', '🥉'];
+          const stars = '⭐'.repeat(c.level);
+          const isMe = gameState.self && c.birdId === gameState.self.id;
+          const meText = isMe ? ' 👈' : '';
+          const tag = c.gangTag ? `<span style="color:#aaa;font-size:9px">[${c.gangTag}]</span> ` : '';
+          const heatBar = Math.min(100, Math.round((c.heat / 200) * 100));
+          return `<div class="mwb-row${isMe ? ' mwb-me' : ''}">
+            <span class="mwb-medal">${medals[i]}</span>
+            <span class="mwb-name">${tag}${c.name}${meText}</span>
+            <span class="mwb-stars">${stars}</span>
+            <div class="mwb-heat-bar"><div class="mwb-heat-fill" style="width:${heatBar}%;background:${c.level >= 4 ? '#ff3300' : c.level >= 3 ? '#ff6600' : '#ffaa00'}"></div></div>
+          </div>`;
+        }).join('');
+        mwBoard.innerHTML = `<div class="mwb-title">🔴 MOST WANTED</div>${lockdownText}${rows}`;
+        if (lockdown) {
+          mwBoard.classList.add('mwb-lockdown-active');
+        } else {
+          mwBoard.classList.remove('mwb-lockdown-active');
+        }
       }
     }
 
@@ -6563,6 +6630,27 @@
       }
     }
 
+    // National Guard agents (elite military police during City Lockdown)
+    if (gameState.nationalGuard && gameState.nationalGuard.length > 0) {
+      for (const ng of gameState.nationalGuard) {
+        const ngsx = ng.x - camera.x + camera.screenW / 2;
+        const ngsy = ng.y - camera.y + camera.screenH / 2;
+        if (ngsx > -margin - 50 && ngsx < camera.screenW + margin + 50 && ngsy > -margin - 50 && ngsy < camera.screenH + margin + 50) {
+          Sprites.drawNationalGuard(ctx, ngsx, ngsy, ng.rotation, ng.state, ng.poopHits, now / 1000);
+          // NG label
+          ctx.save();
+          ctx.fillStyle = '#ffd700';
+          ctx.font = 'bold 9px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.shadowColor = '#000';
+          ctx.shadowBlur = 3;
+          ctx.fillText('🪖 NAT. GUARD', ngsx, ngsy - 28);
+          ctx.shadowBlur = 0;
+          ctx.restore();
+        }
+      }
+    }
+
     // Police Helicopter (aerial pursuit unit — visible from afar, draws ABOVE most things)
     if (gameState.policeHelicopter) {
       const heli = gameState.policeHelicopter;
@@ -7219,6 +7307,75 @@
       ctx.beginPath();
       ctx.roundRect(cwBarX, cwBarY + 4, cwBarW * cwFrac, cwBarH, 5);
       ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+
+    // === CITY LOCKDOWN OVERLAY ===
+    if (gameState.cityLockdown) {
+      const cl = gameState.cityLockdown;
+      const clTimeLeft = Math.max(0, cl.endsAt - now);
+      const clTotal = 90000;
+      const clFrac = clTimeLeft / clTotal;
+
+      // Military red-orange siren pulse
+      const clPulse = 0.5 + 0.5 * Math.abs(Math.sin(now * 0.0045));
+      ctx.save();
+      ctx.globalAlpha = 0.07 + 0.05 * clPulse;
+      ctx.fillStyle = '#cc2200';
+      ctx.fillRect(0, 0, camera.screenW, camera.screenH);
+      ctx.globalAlpha = 1;
+      ctx.restore();
+
+      // Warning-stripe vignette at screen edges (yellow/black hazard stripes)
+      const stripePhase = (now * 0.0006) % 1;
+      ctx.save();
+      ctx.globalAlpha = 0.08 + 0.04 * clPulse;
+      for (let i = -10; i < 30; i++) {
+        const px = (i + stripePhase) * (camera.screenW / 20);
+        ctx.fillStyle = (i % 2 === 0) ? '#ffcc00' : '#000';
+        ctx.fillRect(px, 0, camera.screenW / 20, 8);
+        ctx.fillRect(px, camera.screenH - 8, camera.screenW / 20, 8);
+      }
+      ctx.globalAlpha = 1;
+      ctx.restore();
+
+      // HUD bar (stacks below crime wave bar and seagull bar)
+      const hasCrimeWave2 = gameState.self && gameState.self.crimeWave;
+      const hasSeagull2 = gameState.seagullInvasion;
+      let clBarY = 132;
+      if (hasCrimeWave2) clBarY += 43;
+      if (hasSeagull2) clBarY += 43;
+
+      const clBarW = 210, clBarH = 14;
+      const clBarX = camera.screenW / 2 - clBarW / 2;
+
+      ctx.save();
+      ctx.globalAlpha = 0.93;
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.beginPath();
+      ctx.roundRect(clBarX - 65, clBarY - 18, clBarW + 130, clBarH + 34, 10);
+      ctx.fill();
+
+      const clLabelPulse = 0.75 + 0.25 * Math.sin(now * 0.006);
+      ctx.globalAlpha = clLabelPulse;
+      ctx.fillStyle = '#ff6600';
+      ctx.font = 'bold 11px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(`🚨 CITY LOCKDOWN — ${Math.ceil(clTimeLeft / 1000)}s · 1.5× CRIME REWARDS · NAT. GUARD`, camera.screenW / 2, clBarY - 4);
+
+      ctx.globalAlpha = 0.85;
+      ctx.fillStyle = 'rgba(80,20,0,0.55)';
+      ctx.beginPath();
+      ctx.roundRect(clBarX, clBarY + 4, clBarW, clBarH, 5);
+      ctx.fill();
+
+      // Bar fill — draining orange-red bar
+      ctx.fillStyle = clFrac > 0.5 ? '#ff6600' : clFrac > 0.25 ? '#ff8800' : '#ffcc00';
+      ctx.beginPath();
+      ctx.roundRect(clBarX, clBarY + 4, clBarW * clFrac, clBarH, 5);
+      ctx.fill();
+
       ctx.globalAlpha = 1;
       ctx.restore();
     }
@@ -7956,6 +8113,28 @@
       minimapCtx.font = '7px sans-serif';
       minimapCtx.textAlign = 'center';
       minimapCtx.fillText('🔫', bh.x * msx, bh.y * msy - 4);
+    }
+
+    // Draw National Guard on minimap (gold-green pulsing dots with 🪖)
+    if (gameState.allNationalGuard && gameState.allNationalGuard.length > 0 && worldData) {
+      const mw = minimapCtx.canvas.width;
+      const mh = minimapCtx.canvas.height;
+      const msx = mw / worldData.width;
+      const msy = mh / worldData.height;
+      const ngPulse = Math.sin(now * 0.008) * 0.5 + 0.5;
+      for (const ng of gameState.allNationalGuard) {
+        if (ng.state === 'stunned') continue;
+        minimapCtx.fillStyle = `rgba(${Math.round(160 + 95 * ngPulse)}, 140, 0, 1)`;
+        minimapCtx.shadowColor = '#ffd700';
+        minimapCtx.shadowBlur = 4 + 3 * ngPulse;
+        minimapCtx.beginPath();
+        minimapCtx.arc(ng.x * msx, ng.y * msy, 4, 0, Math.PI * 2);
+        minimapCtx.fill();
+        minimapCtx.shadowBlur = 0;
+        minimapCtx.font = '7px sans-serif';
+        minimapCtx.textAlign = 'center';
+        minimapCtx.fillText('🪖', ng.x * msx, ng.y * msy - 4);
+      }
     }
 
     // Draw Police Helicopter on minimap (blue/red siren-flashing dot)
@@ -8896,6 +9075,17 @@
     if (s.crimeWave) {
       const cwLeft = Math.max(0, Math.ceil((s.crimeWave.endsAt - now) / 1000));
       html += `<div class="bm-buff-pill" style="background:rgba(120,0,0,0.9);border-color:#ff2222;color:#ff6666;font-weight:bold;animation:pulseRed 0.6s infinite alternate;">🚨 CRIME WAVE — ${cwLeft}s · 2× heat &amp; coins!</div>`;
+    }
+
+    // City Lockdown — military emergency
+    if (s.cityLockdown) {
+      const clLeft = Math.max(0, Math.ceil((s.cityLockdown.endsAt - now) / 1000));
+      html += `<div class="bm-buff-pill" style="background:rgba(100,30,0,0.9);border-color:#ff6600;color:#ffaa44;font-weight:bold;animation:pulseRed 0.9s infinite alternate;">🚨 CITY LOCKDOWN — ${clLeft}s · 1.5× crime rewards · NAT. GUARD active!</div>`;
+    }
+
+    // National Guard targeting indicator
+    if (s.isNGTarget) {
+      html += `<div class="bm-buff-pill" style="background:rgba(80,40,0,0.9);border-color:#ffd700;color:#ffcc44;font-weight:bold;animation:pulseRed 0.6s infinite alternate;">🪖 NATIONAL GUARD ON YOUR TAIL! 5 poop hits to stun · ${gameState.nationalGuard ? gameState.nationalGuard.length : 0} agents</div>`;
     }
 
     // Bounty Hunter targeting indicator
