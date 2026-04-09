@@ -701,6 +701,138 @@ window.Renderer = {
     ctx.restore();
   },
 
+  // Draw Aurora Borealis — flowing colored light ribbons across the night sky.
+  // Called in screen-space before the darkness overlay so the ribbons glow through.
+  // auroraData: { endsAt, intensity } from server state (or null)
+  // dayTime: 0–1 (aurora only visible during night phase ~0.45–0.75)
+  drawAurora(ctx, camera, dayTime, auroraData) {
+    if (!auroraData) return;
+
+    // Compute night visibility factor (fades in/out with darkness)
+    let nightAlpha = 0;
+    if (dayTime >= 0.45 && dayTime < 0.55) {
+      nightAlpha = (dayTime - 0.45) / 0.10; // fade in
+    } else if (dayTime >= 0.55 && dayTime < 0.70) {
+      nightAlpha = 1.0;
+    } else if (dayTime >= 0.70 && dayTime < 0.80) {
+      nightAlpha = 1.0 - (dayTime - 0.70) / 0.10; // fade out at dawn
+    }
+    if (nightAlpha <= 0.02) return;
+
+    // Fade near expiry (last 30 seconds)
+    const now = Date.now();
+    const remaining = auroraData.endsAt - now;
+    const fadeFactor = remaining < 30000 ? remaining / 30000 : 1.0;
+    const alpha = nightAlpha * fadeFactor;
+    if (alpha <= 0.02) return;
+
+    const sw = camera.screenW;
+    const sh = camera.screenH;
+    const t = now * 0.0003; // slow time base for animation
+
+    ctx.save();
+
+    // Aurora ribbons — 5 bands of flowing colored light across the top half of the sky
+    const RIBBON_DEFS = [
+      { yBase: 0.05, amplitude: 0.06, speed: 0.8,  hue1: 140, hue2: 160, width: 0.10, bright: 0.9 }, // emerald green core
+      { yBase: 0.12, amplitude: 0.07, speed: 0.55, hue1: 165, hue2: 185, width: 0.08, bright: 0.7 }, // teal
+      { yBase: 0.08, amplitude: 0.05, speed: 1.2,  hue1: 270, hue2: 300, width: 0.07, bright: 0.6 }, // violet
+      { yBase: 0.18, amplitude: 0.05, speed: 0.65, hue1: 150, hue2: 170, width: 0.09, bright: 0.5 }, // soft green-teal
+      { yBase: 0.03, amplitude: 0.04, speed: 1.0,  hue1: 200, hue2: 230, width: 0.06, bright: 0.45 }, // ice blue
+    ];
+
+    for (const ribbon of RIBBON_DEFS) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter'; // additive blending = glowing aurora look
+      ctx.globalAlpha = alpha * ribbon.bright * 0.55;
+
+      // Build a wavy path across the screen width
+      const STEPS = 80;
+      const wHalf = sh * ribbon.width * 0.5;
+
+      for (let pass = 0; pass < 2; pass++) {
+        // Two passes: inner brighter core, outer softer fringe
+        const passAlpha = pass === 0 ? 1.0 : 0.45;
+        const passWidth = pass === 0 ? wHalf * 0.5 : wHalf;
+
+        ctx.beginPath();
+        for (let i = 0; i <= STEPS; i++) {
+          const xFrac = i / STEPS;
+          const px = xFrac * sw;
+          // Sine wave baseline with secondary harmonics for organic ripple
+          const wave = Math.sin(xFrac * 4.5 + t * ribbon.speed) * ribbon.amplitude
+                     + Math.sin(xFrac * 2.1 + t * ribbon.speed * 0.6 + 1.3) * ribbon.amplitude * 0.4;
+          const centerY = (ribbon.yBase + wave) * sh;
+
+          if (i === 0) ctx.moveTo(px, centerY - passWidth);
+          else ctx.lineTo(px, centerY - passWidth);
+        }
+        for (let i = STEPS; i >= 0; i--) {
+          const xFrac = i / STEPS;
+          const px = xFrac * sw;
+          const wave = Math.sin(xFrac * 4.5 + t * ribbon.speed) * ribbon.amplitude
+                     + Math.sin(xFrac * 2.1 + t * ribbon.speed * 0.6 + 1.3) * ribbon.amplitude * 0.4;
+          const centerY = (ribbon.yBase + wave) * sh;
+          ctx.lineTo(px, centerY + passWidth);
+        }
+        ctx.closePath();
+
+        // Horizontal gradient along the ribbon for color variety
+        const grad = ctx.createLinearGradient(0, 0, sw, 0);
+        const h1 = ribbon.hue1 + Math.sin(t * 0.3) * 10;
+        const h2 = ribbon.hue2 + Math.cos(t * 0.25) * 10;
+        grad.addColorStop(0,   `hsla(${h1},    90%, 70%, ${passAlpha})`);
+        grad.addColorStop(0.3, `hsla(${h2},    85%, 75%, ${passAlpha})`);
+        grad.addColorStop(0.6, `hsla(${h1+15}, 88%, 72%, ${passAlpha})`);
+        grad.addColorStop(1,   `hsla(${h2-10}, 90%, 68%, ${passAlpha})`);
+        ctx.fillStyle = grad;
+        ctx.fill();
+      }
+
+      ctx.restore();
+    }
+
+    // Vertical shimmer curtains — thin streaks of light hanging down from the ribbons
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const CURTAIN_COUNT = 18;
+    for (let i = 0; i < CURTAIN_COUNT; i++) {
+      const seed = i * 137.508; // golden angle spacing
+      const cx = ((seed * 0.618) % 1.0) * sw;
+      const curtainT = t * (0.3 + (i % 4) * 0.12) + seed;
+      const curtainX = cx + Math.sin(curtainT) * 30;
+      const curtainLen = sh * (0.12 + Math.sin(seed + t * 0.5) * 0.05);
+      const curtainHue = 140 + (i % 5) * 30 + Math.sin(t + seed) * 15;
+      const curtainAlpha = alpha * (0.08 + Math.sin(t * 1.1 + seed) * 0.04);
+      const cg = ctx.createLinearGradient(curtainX, 0, curtainX, curtainLen);
+      cg.addColorStop(0,   `hsla(${curtainHue}, 85%, 72%, ${curtainAlpha})`);
+      cg.addColorStop(0.6, `hsla(${curtainHue + 20}, 80%, 65%, ${curtainAlpha * 0.5})`);
+      cg.addColorStop(1,   'rgba(0,0,0,0)');
+      ctx.strokeStyle = cg;
+      ctx.lineWidth = 2 + Math.sin(curtainT * 0.7) * 1;
+      ctx.globalAlpha = 1;
+      ctx.beginPath();
+      ctx.moveTo(curtainX, 0);
+      ctx.lineTo(curtainX + Math.sin(curtainT * 1.3) * 15, curtainLen);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // Soft glow at the top of the screen — the sky is lit from above
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const topGlow = ctx.createLinearGradient(0, 0, 0, sh * 0.35);
+    const gHue = 155 + Math.sin(t * 0.2) * 20;
+    topGlow.addColorStop(0,   `hsla(${gHue}, 80%, 50%, ${alpha * 0.25})`);
+    topGlow.addColorStop(0.5, `hsla(${gHue + 30}, 75%, 55%, ${alpha * 0.08})`);
+    topGlow.addColorStop(1,   'rgba(0,0,0,0)');
+    ctx.fillStyle = topGlow;
+    ctx.fillRect(0, 0, sw, sh * 0.35);
+    ctx.restore();
+
+    ctx.restore();
+  },
+
   // Draw day/night overlay with street lamp glow holes
   // Called in screen-space (after ctx.restore() removes world zoom)
   drawDayNight(ctx, camera, zoom, dayTime, streetLamps) {

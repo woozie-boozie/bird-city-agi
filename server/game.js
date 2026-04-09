@@ -469,6 +469,14 @@ class GameEngine {
     this.crimeWave = null;  // null | { startedAt, endsAt }
     this.crimeWaveTimer = Date.now() + this._randomRange(40 * 60000, 60 * 60000);
 
+    // === AURORA BOREALIS ===
+    // A rare, breathtaking night spectacle — colored light ribbons flow across the sky.
+    // Triggers with 30% chance at the start of each night phase. Lasts 4–7 minutes.
+    // While active: +25% XP on all poop hits, combo window extended 8s→12s,
+    // and "Cosmic Fish" appear at the Sacred Pond with tripled rewards.
+    this.aurora = null; // null | { startedAt, endsAt, intensity: 0–1 }
+    this.auroraTriggeredThisNight = false; // prevent re-triggering same night
+
     // === BOUNTY HUNTER ===
     // Persistent manhunter NPC that spawns when any bird reaches Wanted Level 4+.
     // Unlike cops, he never gives up — follows across the whole map, ignores smoke bombs.
@@ -1400,6 +1408,9 @@ class GameEngine {
 
     // === Day/Night Cycle ===
     this._updateDayNight(dt, now);
+
+    // === Aurora Borealis ===
+    this._updateAurora(dt, now);
 
     // === Underground Sewer ===
     this._updateSewerRats(dt, now);
@@ -3196,7 +3207,7 @@ class GameEngine {
       if (hit.target && hit.target !== 'none') {
         const comboActive = now < bird.comboExpiresAt;
         bird.comboCount = comboActive ? bird.comboCount + 1 : 1;
-        bird.comboExpiresAt = now + 8000;
+        bird.comboExpiresAt = now + (this.aurora ? 12000 : 8000); // aurora extends combo window to 12s
         const combo = bird.comboCount;
         // XP bonus: flat multiplier applied to base xpGain
         let comboMult = 1.0;
@@ -3222,6 +3233,8 @@ class GameEngine {
       if (this.radioTower.signalBoostUntil > now) xpGain = Math.floor(xpGain * 1.5);
       // Bird City Idol: winner's boost gives 1.5x XP to ALL birds for 3 minutes
       if (this.idolXpBoostUntil > now) xpGain = Math.floor(xpGain * 1.5);
+      // Aurora Borealis: sacred sky event gives +25% XP to ALL birds
+      if (this.aurora) xpGain = Math.floor(xpGain * 1.25);
       // Idol: track performance hits for contestants during open phase
       if (this.birdIdol && this.birdIdol.state === 'open' && this.birdIdol.contestants.has(poop.birdId) && hit.target !== 'miss') {
         this.birdIdol.contestants.get(poop.birdId).performanceHits++;
@@ -3645,13 +3658,17 @@ class GameEngine {
         if (Math.sqrt(fdx * fdx + fdy * fdy) < 40) {
           fish.active = false;
           this.pondFishIds.delete(fishId);
-          const coinBonus = 40;
-          const xpBonus = 80;
+          const isCosmic = fish.type === 'cosmic_fish';
+          // Cosmic fish (aurora only) give triple rewards
+          const coinBonus = isCosmic ? 120 : 40;
+          const xpBonus  = isCosmic ? 240 : 80;
+          const foodBonus = isCosmic ? 75 : 25;
           bird.coins += coinBonus;
           bird.xp += xpBonus;
-          bird.food += 25;
+          bird.food += foodBonus;
           this._trackDailyProgress(bird, 'coins_earned', coinBonus);
-          this.events.push({ type: 'pond_fish_caught', birdId: bird.id, name: bird.name, coins: coinBonus, x: fish.x, y: fish.y });
+          const evType = isCosmic ? 'cosmic_fish_caught' : 'pond_fish_caught';
+          this.events.push({ type: evType, birdId: bird.id, name: bird.name, coins: coinBonus, xp: xpBonus, x: fish.x, y: fish.y, isCosmic });
           const fId = fishId;
           setTimeout(() => { this.foods.delete(fId); }, 10000);
           // Check level up from XP
@@ -5063,6 +5080,20 @@ class GameEngine {
         for (let i = 0; i < 3; i++) this._spawnPondFish();
         this.pondFishRespawnTimer = Date.now() + 45000;
         this.events.push({ type: 'owl_appears' });
+        // 30% chance of Aurora Borealis — a sacred night spectacle
+        this.auroraTriggeredThisNight = false;
+        if (Math.random() < 0.30) {
+          this._startAurora(now);
+        }
+      }
+      // At dusk: reset aurora trigger flag so each night can have one aurora
+      if (newPhase === 'dusk') {
+        this.auroraTriggeredThisNight = false;
+      }
+      // At day: clear aurora
+      if (newPhase === 'day' && this.aurora) {
+        this.aurora = null;
+        this.events.push({ type: 'aurora_end', message: '✨ The Aurora Borealis fades as dawn approaches...' });
       }
       // At dawn: respawn all street foods to celebrate the new day
       if (newPhase === 'dawn') {
@@ -6166,6 +6197,11 @@ class GameEngine {
       // Crime Wave
       crimeWave: this.crimeWave ? {
         endsAt: this.crimeWave.endsAt,
+      } : null,
+      // Aurora Borealis
+      aurora: this.aurora ? {
+        endsAt: this.aurora.endsAt,
+        intensity: this.aurora.intensity,
       } : null,
       // City Lockdown — available in self state for HUD rendering
       cityLockdown: this.cityLockdown ? {
@@ -12059,6 +12095,7 @@ class GameEngine {
       cityLockdowns:   0,   // city lockdowns triggered this cycle
       copsStunned:     {},  // birdId -> { count, name, gangTag }
       seagullInvasions: 0,
+      auroraCount:     0,   // auroras triggered this cycle
       helicopterDowns: [],  // [{ name, gangTag }]
       tournamentWinner: null, // { name, gangTag, pot }
     };
@@ -12224,6 +12261,14 @@ class GameEngine {
         icon: '🥊',
         headline: `FIGHTING CHAMPIONSHIP: ${tag}${tw.name} WINS THE BRACKET!`,
         subline: `Took home ${tw.pot}c in prize coins. The crowd erupted. Pigeons wept.`,
+      });
+    }
+
+    if (stats.auroraCount > 0) {
+      headlines.push({
+        icon: '✨',
+        headline: 'AURORA BOREALIS LIGHTS UP BIRD CITY SKIES',
+        subline: 'Witnesses describe "divine light ribbons" above the park. Cosmic fish reportedly went wild. Scientists baffled.',
       });
     }
 
@@ -13643,6 +13688,64 @@ class GameEngine {
     if (this.crimeWave && now >= this.crimeWave.endsAt) {
       this.crimeWave = null;
       this.events.push({ type: 'crime_wave_end' });
+    }
+  }
+
+  // ============================================================
+  // AURORA BOREALIS
+  // ============================================================
+  _startAurora(now) {
+    if (this.auroraTriggeredThisNight) return;
+    this.auroraTriggeredThisNight = true;
+    const duration = this._randomRange(4 * 60000, 7 * 60000); // 4–7 minutes
+    this.aurora = { startedAt: now, endsAt: now + duration, intensity: 1.0 };
+    this.events.push({
+      type: 'aurora_start',
+      endsAt: this.aurora.endsAt,
+      message: '✨ AURORA BOREALIS lights up the night sky! +25% XP · Extended Combos · Cosmic Fish appear at the Sacred Pond!',
+    });
+    // Spawn cosmic fish immediately at the pond (bonus fish beyond regular ones)
+    for (let i = 0; i < 2; i++) this._spawnCosmicFish();
+    // Track for gazette
+    if (!this.gazetteStats.auroraCount) this.gazetteStats.auroraCount = 0;
+    this.gazetteStats.auroraCount++;
+  }
+
+  _spawnCosmicFish() {
+    const POND_POSITIONS = [
+      { x: 990, y: 1070 }, { x: 1050, y: 1050 }, { x: 1110, y: 1080 },
+      { x: 1020, y: 1130 }, { x: 1080, y: 1125 },
+    ];
+    const pos = POND_POSITIONS[Math.floor(Math.random() * POND_POSITIONS.length)];
+    const id = 'food_cosmic_fish_' + Date.now() + '_' + Math.floor(Math.random() * 9999);
+    this.foods.set(id, { id, x: pos.x + (Math.random() - 0.5) * 30, y: pos.y + (Math.random() - 0.5) * 20, type: 'cosmic_fish', value: 90, active: true, respawnAt: null });
+    this.pondFishIds.add(id);
+  }
+
+  _updateAurora(dt, now) {
+    if (!this.aurora) return;
+    // Expire aurora
+    if (now >= this.aurora.endsAt) {
+      this.aurora = null;
+      this.events.push({ type: 'aurora_end', message: '✨ The Aurora Borealis fades. The sky returns to ordinary night.' });
+      // Clean up cosmic fish (copy to array first to avoid modifying Set during iteration)
+      const cosmicToRemove = Array.from(this.pondFishIds).filter(id => {
+        const f = this.foods.get(id);
+        return f && f.type === 'cosmic_fish';
+      });
+      for (const fishId of cosmicToRemove) {
+        this.foods.delete(fishId);
+        this.pondFishIds.delete(fishId);
+      }
+      return;
+    }
+    // Spawn cosmic fish periodically during aurora (keep 2 in pond at all times)
+    const cosmicCount = Array.from(this.pondFishIds).filter(id => {
+      const f = this.foods.get(id);
+      return f && f.type === 'cosmic_fish' && f.active;
+    }).length;
+    if (cosmicCount < 2 && Math.random() < 0.005) { // ~0.5% chance per tick = ~2.5% per second
+      this._spawnCosmicFish();
     }
   }
 

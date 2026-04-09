@@ -1279,6 +1279,24 @@
       showAnnouncement('🚔 Crime wave over. The city breathes again.', '#ff8888', 3000);
     }
 
+    // === AURORA BOREALIS EVENTS ===
+    if (ev.type === 'aurora_start') {
+      effects.push({ type: 'screen_shake', intensity: 5, duration: 600, time: now });
+      showAnnouncement('✨ AURORA BOREALIS!\n+25% XP · Extended Combos\nCosmic Fish at the Sacred Pond!', '#88ffcc', 7000);
+      addEventMessage('✨ AURORA BOREALIS lights up the night sky! +25% XP · Extended Combo Windows!', '#88ffcc');
+    }
+    if (ev.type === 'aurora_end') {
+      addEventMessage('✨ The Aurora fades... The sky returns to ordinary night.', '#55bbaa');
+    }
+    // Cosmic fish caught (triple loot — aurora only)
+    if (ev.type === 'cosmic_fish_caught' && ev.birdId === myId) {
+      showAnnouncement(`✨ COSMIC FISH! +${ev.coins}c +${ev.xp} XP`, '#88ffcc', 3500);
+      effects.push({ type: 'text', x: ev.x, y: ev.y, text: `✨ +${ev.coins}c`, color: '#88ffcc', size: 16, time: performance.now(), duration: 2500 });
+    }
+    if (ev.type === 'cosmic_fish_caught' && ev.birdId !== myId) {
+      addEventMessage(`✨ ${ev.name} caught a Cosmic Fish! (+${ev.coins}c +${ev.xp} XP)`, '#88ffcc');
+    }
+
     // === BIRD ROYALE EVENTS ===
     if (ev.type === 'royale_warning' && ev.birdId === myId) {
       effects.push({ type: 'screen_shake', intensity: 12, duration: 1000, time: now });
@@ -6176,6 +6194,34 @@
       ctx.globalAlpha = 1;
       ctx.restore();
     }
+
+    // === AURORA BOREALIS badge (below weather badge or standalone when no weather) ===
+    if (gameState.aurora && gameState.aurora.endsAt > now) {
+      const auLeft = Math.max(0, Math.ceil((gameState.aurora.endsAt - now) / 1000));
+      const auMins = Math.floor(auLeft / 60);
+      const auSecs = auLeft % 60;
+      const auTime = auMins > 0 ? `${auMins}m ${auSecs}s` : `${auLeft}s`;
+      const auPulse = Math.sin(now * 0.003) * 0.15 + 0.85;
+      const auHue = (now * 0.06) % 360;
+      // Position: directly below weather badge, or at same spot if no weather
+      const badgeY = weather && badges[weather.type] ? 34 : 6;
+      ctx.save();
+      ctx.globalAlpha = auPulse * 0.92;
+      ctx.fillStyle = 'rgba(0, 50, 35, 0.82)';
+      ctx.beginPath();
+      ctx.roundRect(sw / 2 + 75, badgeY, 115, 24, 5);
+      ctx.fill();
+      // Hue-cycling border glow
+      ctx.strokeStyle = `hsl(${auHue}, 80%, 65%)`;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.fillStyle = `hsl(${(auHue + 30) % 360}, 90%, 75%)`;
+      ctx.font = 'bold 10px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('✨ AURORA ' + auTime, sw / 2 + 132, badgeY + 16);
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
   }
 
   // ============================================================
@@ -7242,6 +7288,11 @@
     // Day/Night overlay (screen-space, after zoom restore)
     if (gameState.dayTime !== undefined && worldData) {
       Renderer.drawDayNight(ctx, camera, z, gameState.dayTime, worldData.streetLamps);
+    }
+
+    // Aurora Borealis (screen-space, AFTER darkness overlay — additive blending makes it glow through)
+    if (gameState.aurora) {
+      Renderer.drawAurora(ctx, camera, gameState.dayTime, gameState.aurora);
     }
 
     // Weather effects (screen-space, drawn over day/night overlay)
@@ -8364,6 +8415,28 @@
       minimapCtx.fillText('📡', tx, ty - 4);
     }
 
+    // Aurora Borealis — pulsing teal/green glow above the minimap when active
+    if (gameState.aurora && gameState.aurora.endsAt > Date.now()) {
+      const mw = minimapCtx.canvas.width;
+      const mh = minimapCtx.canvas.height;
+      const msx = mw / worldData.width;
+      const msy = mh / worldData.height;
+      // Pond center world coords: ~1050, 1100
+      const px = 1050 * msx;
+      const py = 1100 * msy;
+      const aPulse = Math.sin(performance.now() * 0.004) * 0.4 + 0.6;
+      minimapCtx.save();
+      minimapCtx.fillStyle = `rgba(136, 255, 200, ${aPulse * 0.6})`;
+      minimapCtx.beginPath();
+      minimapCtx.arc(px, py, 5, 0, Math.PI * 2);
+      minimapCtx.fill();
+      minimapCtx.font = 'bold 9px Arial';
+      minimapCtx.textAlign = 'center';
+      minimapCtx.textBaseline = 'middle';
+      minimapCtx.fillText('✨', px, py);
+      minimapCtx.restore();
+    }
+
     // Directional arrow pointing toward active event when off-screen
     if (gameState.activeEvent && gameState.activeEvent.x !== undefined && selfBird) {
       const evX = gameState.activeEvent.x;
@@ -9121,6 +9194,15 @@
       const secsPart = secsLeft % 60;
       const timeStr = minsLeft > 0 ? `${minsLeft}m ${secsPart}s` : `${secsLeft}s`;
       html += `<div class="bm-buff-pill" style="background:rgba(0,30,80,0.9);border-color:#44aaff;color:#88ddff;font-weight:bold;animation:kingpinGlow 1.5s ease-in-out infinite alternate;">🛡 WITNESS PROTECTION — ${timeStr} · Off the grid</div>`;
+    }
+
+    // Aurora Borealis — sacred night spectacle
+    if (s.aurora) {
+      const auLeft = Math.max(0, Math.ceil((s.aurora.endsAt - now) / 1000));
+      const auMins = Math.floor(auLeft / 60);
+      const auSecs = auLeft % 60;
+      const auTime = auMins > 0 ? `${auMins}m ${auSecs}s` : `${auLeft}s`;
+      html += `<div class="bm-buff-pill" style="background:rgba(0,60,40,0.9);border-color:#88ffcc;color:#aaffdd;font-weight:bold;animation:kingpinGlow 1.5s ease-in-out infinite alternate;">✨ AURORA BOREALIS — ${auTime} · +25% XP · Combo 12s</div>`;
     }
 
     // Crime Wave — city-wide danger indicator

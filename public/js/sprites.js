@@ -504,6 +504,59 @@ window.Sprites = {
         ctx.arc(Math.sin(i * 2) * 3, Math.cos(i * 3) * 3, 1.5, 0, Math.PI * 2);
         ctx.fill();
       }
+    } else if (type === 'cosmic_fish') {
+      // Cosmic Fish — rare aurora loot; shimmers with rainbow aurora hues, triple loot
+      const t = Date.now();
+      const pulse = 0.5 + 0.5 * Math.sin(t * 0.008);
+      const hue = (t * 0.05) % 360; // slowly cycling hue
+      // Bright radial aura — bigger than regular fish
+      ctx.save();
+      ctx.shadowBlur = 18;
+      ctx.shadowColor = `hsla(${hue}, 100%, 75%, 0.9)`;
+      ctx.fillStyle = `hsla(${hue}, 90%, 65%, ${0.45 + pulse * 0.25})`;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 14, 9, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      // Fish body — hue-cycling iridescent
+      const bodyHue = (hue + 30) % 360;
+      ctx.fillStyle = `hsla(${bodyHue}, 95%, 72%, 0.95)`;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 9, 5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Shimmer highlight stripe
+      ctx.fillStyle = `rgba(255, 255, 255, ${0.4 + pulse * 0.3})`;
+      ctx.beginPath();
+      ctx.ellipse(1, -1.5, 5, 2, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Tail fin — hue offset
+      const tailHue = (hue + 60) % 360;
+      ctx.fillStyle = `hsla(${tailHue}, 90%, 68%, 0.9)`;
+      ctx.beginPath();
+      ctx.moveTo(-9, 0);
+      ctx.lineTo(-14, -4 - pulse);
+      ctx.lineTo(-14, 4 + pulse);
+      ctx.closePath();
+      ctx.fill();
+      // Glowing eye — white ring + aurora core
+      ctx.fillStyle = `rgba(255, 255, 255, 0.95)`;
+      ctx.beginPath();
+      ctx.arc(5, -1.5, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = `hsl(${hue}, 100%, 60%)`;
+      ctx.beginPath();
+      ctx.arc(5, -1.5, 1.1, 0, Math.PI * 2);
+      ctx.fill();
+      // Orbiting sparkles (2 tiny stars)
+      for (let si = 0; si < 2; si++) {
+        const sa = (t * 0.003 + si * Math.PI) % (Math.PI * 2);
+        const sx = Math.cos(sa) * 11;
+        const sy = Math.sin(sa) * 7;
+        ctx.fillStyle = `hsla(${(hue + si * 120) % 360}, 100%, 85%, ${0.7 + pulse * 0.3})`;
+        ctx.beginPath();
+        ctx.arc(sx, sy, 1.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
     } else if (type === 'pond_fish') {
       // Bioluminescent glowing fish — sacred pond night loot
       const t = Date.now();

@@ -2156,6 +2156,44 @@ Four tight connections between existing systems that make the city feel like a l
 
 **Creative intent**: These four additions take Bird City's rich systems and make them feel CONNECTED. The helicopter-fog escape creates the first moment where weather actively helps the criminal (not just hurts the law). The NG lightning stun makes storm weather dangerous for BOTH sides. The champion shield creates a tangible reward that links two separate systems (royale + kingpin) into a story arc. The quick-hit makes the Most Wanted Board interactive — it was beautiful information, now it's also a weapon. Pure EMERGENT CHAOS + DISCOVERY energy.
 
+**Session 66 — 2026-04-09: Aurora Borealis — Sacred Night Spectacle**
+The most visually breathtaking moment in Bird City. Every night has a 30% chance of triggering the Aurora Borealis — flowing colored light ribbons shimmer across the sky for 4–7 minutes while the city reaps divine rewards.
+
+**Aurora mechanics (`server/game.js`):**
+- 30% chance of aurora at each night phase start. One aurora per night cycle maximum.
+- Duration: 4–7 minutes of active aurora
+- **+25% XP on all poop hits** city-wide — stacks with Lucky Charm, Signal Boost, Prestige, Combo
+- **Combo window extended 8s → 12s** — easier to maintain long streaks while the sky dances
+- City-wide announcement + screen shake on start/end
+- Tracked in gazette: "✨ AURORA BOREALIS LIGHTS UP BIRD CITY SKIES" headline
+
+**Cosmic Fish (Sacred Pond during aurora):**
+- 2 Cosmic Fish immediately spawn at the Sacred Pond when aurora begins
+- During active aurora: up to 2 Cosmic Fish maintained in the pond at all times
+- **Triple rewards vs regular pond fish**: +120c, +240 XP, +75 food (vs 40c/80 XP/25 food)
+- Auto-collect by flying within 40px — no button press, same as regular pond fish
+- Custom sprite: iridescent hue-cycling rainbow fish body, orbiting sparkle stars, glowing eye
+- Cosmic fish are cleaned up when aurora expires or at dawn
+
+**Visual system (`public/js/renderer.js`):**
+- `drawAurora()`: 5 animated ribbon bands using sine-wave wavy paths across the top of the screen
+  - Ribbons in emerald green, teal, violet, soft green-teal, and ice blue
+  - Each ribbon has two passes: bright inner core + wider soft fringe for glow depth
+  - Horizontal gradient along each ribbon shifts hue over time
+  - `globalCompositeOperation = 'lighter'` — additive blending makes ribbons genuinely glow through the night darkness overlay
+- 18 thin vertical shimmer curtains hanging down from the ribbon zone, slowly swaying
+- Full-width soft radial glow at the top of the screen in shifting teal/green
+- All visuals fade in/out with night darkness intensity and fade out in the final 30 seconds
+- Drawn in screen-space AFTER the darkness overlay so the additive glow shines through the dark
+
+**Minimap & HUD:**
+- Pulsing ✨ teal dot at the Sacred Pond position while aurora is active — signals cosmic fish location
+- `✨ AURORA BOREALIS — Xm Ys · +25% XP · Combo 12s` HUD pill in active buffs (teal, slow pulse)
+- `✨ AURORA Xm Ys` badge above the weather badge slot at top-center of screen
+- Badge has live hue-cycling border glow for visual distinctiveness
+
+**Creative intent**: The Aurora fills the DISCOVERY + SPECTACLE pillars in a way nothing else does. It's the first purely beautiful thing in Bird City — no threat, no danger, just divine light. The moment you're flying through the dark city at night and the sky suddenly erupts in green and violet ribbons is genuinely surprising and beautiful. The gameplay bonuses (XP boost + extended combo + cosmic fish loot) make the aurora worth staying up for — it's a reward for night play that makes night feel special rather than just dangerous. The 30% chance means it happens somewhat regularly but never feels routine. A P5 LEGEND bird running a 15× combo under the aurora with Lucky Charm + Signal Boost active hits astronomical XP numbers. Pure DISCOVERY + SPECTACLE + PROGRESSION energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -2279,3 +2317,9 @@ Built the Territory Control System on top of the existing upstream code:
 - Gang War + NG targeting during lockdown: NG re-targets to birds with most gang war kills (deadliest active combatants)
 - Double-elimination tournament: losers bracket gives everyone a second chance (complex but satisfying)
 - Bird Photo Mode: freeze camera for 3 seconds, UI hides, "SNAP" — shareable screenshot moment
+- ~~Aurora Borealis night spectacle: 30% chance each night, colored light ribbons, +25% XP, extended combos, Cosmic Fish at Sacred Pond~~ (DONE Session 66)
+- Aurora + Cursed Coin combo: if someone grabs the Cursed Coin during aurora, explosion coin shower is doubled
+- Aurora + Combo milestone: hitting 20× combo under the aurora triggers a personal aurora-hued screen flash
+- Shooting Star event: rare (5% chance during aurora) — a shooting star crosses the sky and the first bird to "catch" it by flying to its landing spot earns a Mystery Crate-tier item
+- Seasonal events: longer-term city transformations (snow in "winter", cherry blossoms in "spring")
+- Graffiti mural system: large multi-building art pieces that require a whole gang to paint
