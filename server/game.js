@@ -4203,6 +4203,25 @@ class GameEngine {
         }
       }
 
+      // National Guard friendly fire — lightning stuns NG agents!
+      // Even elite law enforcement can't outrun an act of God
+      for (const [ngId, ng] of this.nationalGuard) {
+        if (ng.state === 'stunned') continue; // already down
+        const ngDx = ng.x - lx;
+        const ngDy = ng.y - ly;
+        if (Math.sqrt(ngDx * ngDx + ngDy * ngDy) < 80) {
+          ng.state = 'stunned';
+          ng.stunUntil = now + 4000; // 4-second stun
+          this.events.push({
+            type: 'ng_lightning_stun',
+            ngId,
+            x: ng.x,
+            y: ng.y,
+            targetName: ng.targetName || '???',
+          });
+        }
+      }
+
       this.weather.lightningTimer = now + this._randomRange(8000, 28000);
     }
 
@@ -11241,6 +11260,7 @@ class GameEngine {
     if (richestBird) {
       if (!this.kingpin) {
         // New kingpin!
+        const champShield = !!richestBird.royaleChampBadge;
         this.kingpin = {
           birdId: richestBird.id,
           birdName: richestBird.name,
@@ -11248,6 +11268,7 @@ class GameEngine {
           crownedAt: now,
           hitCount: new Map(),
           lastPassiveReward: now,
+          champShieldActive: champShield, // Royale Champion absorbs the FIRST dethronement hit
         };
         this.gazetteStats.kingpinCount++;
         this.events.push({
@@ -11255,10 +11276,12 @@ class GameEngine {
           birdId: richestBird.id,
           birdName: richestBird.name,
           coins: richestBird.coins,
+          champShield: champShield,
         });
       } else if (this.kingpin.birdId !== richestBird.id) {
         // Richer bird is now online — crown passes automatically (bloodless transfer)
         const oldName = this.kingpin.birdName;
+        const champShield = !!richestBird.royaleChampBadge;
         this.kingpin = {
           birdId: richestBird.id,
           birdName: richestBird.name,
@@ -11266,6 +11289,7 @@ class GameEngine {
           crownedAt: now,
           hitCount: new Map(),
           lastPassiveReward: now,
+          champShieldActive: champShield,
         };
         this.gazetteStats.kingpinCount++;
         this.events.push({
@@ -11274,6 +11298,7 @@ class GameEngine {
           birdName: richestBird.name,
           coins: richestBird.coins,
           oldKingpin: oldName,
+          champShield: champShield,
         });
       } else {
         // Same kingpin — update their coin count
@@ -11314,6 +11339,22 @@ class GameEngine {
     // Small bonus for hitting the kingpin
     attacker.xp += 35;
     attacker.coins += 10;
+
+    // === ROYALE CHAMPION SHIELD — absorbs the very first dethronement hit ===
+    // If the kingpin won Bird Royale this session, they get one free pass
+    if (count === 1 && this.kingpin.champShieldActive) {
+      this.kingpin.champShieldActive = false;
+      // Reset this attacker's hit count — the hit bounced off
+      this.kingpin.hitCount.set(attacker.id, 0);
+      this.events.push({
+        type: 'champ_shield_broke',
+        kingpinName: this.kingpin.birdName,
+        attackerName: attacker.name,
+        kingpinId: this.kingpin.birdId,
+      });
+      // Still give the small bonus (the hit landed, shield just absorbed the dethrone progress)
+      return;
+    }
 
     this.events.push({
       type: 'kingpin_hit',
@@ -13455,12 +13496,27 @@ class GameEngine {
     heli.lastKnownY = wanted.y;
 
     // Fog: helicopter loses target beyond 280px (airborne but still affected by dense fog)
+    // During City Lockdown + fog: helicopter loses trail faster (200px) — rare synergy window
     const fogActive = this.weather && this.weather.type === 'fog';
     const dx = wanted.x - heli.x;
     const dy = wanted.y - heli.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
 
-    if (fogActive && dist > 280) {
+    const fogLossThreshold = (fogActive && this.cityLockdown) ? 200 : 280;
+
+    if (fogActive && dist > fogLossThreshold) {
+      // Track whether we just lost the trail this tick (to fire the escape alert once)
+      if (!heli.fogLostTrail) {
+        heli.fogLostTrail = true;
+        // Fire personal escape alert to the hunted bird
+        const lockdownNote = this.cityLockdown ? ' Lockdown fog is thick — helicopter can\'t see you!' : '';
+        this.events.push({
+          type: 'helicopter_fog_escape',
+          targetId: heli.targetId,
+          lockdownBonus: !!this.cityLockdown,
+          msg: `🌫️ Helicopter LOST YOUR TRAIL in the fog!${lockdownNote} Move fast!`,
+        });
+      }
       // Drift toward last known position with angular deviation
       const lkx = heli.lastKnownX - heli.x;
       const lky = heli.lastKnownY - heli.y;
@@ -13476,6 +13532,9 @@ class GameEngine {
       heli.spotlighting = false;
       return;
     }
+
+    // Reset fog trail loss flag when helicopter is back in range
+    if (heli.fogLostTrail) heli.fogLostTrail = false;
 
     // NOTE: Smoke bomb DOESN'T work on the helicopter — it's airborne and uses heat-signature tracking.
     // Ghost Mode from Mystery Crate DOES work (40% chance).

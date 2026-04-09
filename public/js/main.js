@@ -816,15 +816,17 @@
     // === KINGPIN EVENTS ===
     if (ev.type === 'kingpin_crowned') {
       const selfIsKingpin = ev.birdId === myId;
+      const shieldNote = ev.champShield ? '\n🏆 ROYALE CHAMPION SHIELD — first hit absorbed!' : '';
+      const shieldNoteOther = ev.champShield ? '\n🏆 They have a Champion Shield — takes 4 hits to dethrone!' : '';
       if (selfIsKingpin) {
         screenShake(10, 700);
-        showAnnouncement(`👑 YOU ARE THE KINGPIN!\n${ev.coins}c makes you the richest bird.\nYou earn tribute — but you are a TARGET!`, '#ffd700', 5000);
+        showAnnouncement(`👑 YOU ARE THE KINGPIN!\n${ev.coins}c makes you the richest bird.\nYou earn tribute — but you are a TARGET!${shieldNote}`, '#ffd700', 5000);
       } else if (ev.oldKingpin) {
-        addEventMessage(`👑 ${ev.birdName} seized the crown from ${ev.oldKingpin}! (${ev.coins}c)`, '#ffd700');
-        showAnnouncement(`👑 NEW KINGPIN: ${ev.birdName}!\nPoop them 3× to steal the crown!`, '#ffd700', 4000);
+        addEventMessage(`👑 ${ev.birdName} seized the crown from ${ev.oldKingpin}! (${ev.coins}c)${ev.champShield ? ' 🏆 CHAMPION SHIELD active!' : ''}`, '#ffd700');
+        showAnnouncement(`👑 NEW KINGPIN: ${ev.birdName}!\nPoop them 3× to steal the crown!${shieldNoteOther}`, '#ffd700', 4000);
       } else {
-        addEventMessage(`👑 ${ev.birdName} has been crowned KINGPIN! (${ev.coins}c)`, '#ffd700');
-        showAnnouncement(`👑 KINGPIN: ${ev.birdName}!\nPoop them 3× to dethrone and loot them!`, '#ffd700', 4000);
+        addEventMessage(`👑 ${ev.birdName} has been crowned KINGPIN! (${ev.coins}c)${ev.champShield ? ' 🏆 CHAMPION SHIELD active!' : ''}`, '#ffd700');
+        showAnnouncement(`👑 KINGPIN: ${ev.birdName}!\nPoop them 3× to dethrone and loot them!${shieldNoteOther}`, '#ffd700', 4000);
       }
       effects.push({ type: 'screen_shake', intensity: 6, duration: 400, time: now });
     }
@@ -1728,6 +1730,39 @@
         showAnnouncement('🔦 SPOTLIGHT ON YOU — Visible to ALL players on the map!', '#ff8800', 3000);
       }
     }
+
+    // === HELICOPTER + FOG ESCAPE ===
+    if (ev.type === 'helicopter_fog_escape') {
+      if (ev.targetId === myId) {
+        const color = ev.lockdownBonus ? '#00ff88' : '#44ccff';
+        const extra = ev.lockdownBonus ? '\nLockdown fog is dense — you have MORE TIME!' : '';
+        showAnnouncement(`🌫️ HELICOPTER LOST YOUR TRAIL!\nMove fast before the fog lifts!${extra}`, color, 4500);
+        screenShake(4, 300);
+      }
+    }
+
+    // === NATIONAL GUARD + LIGHTNING FRIENDLY FIRE ===
+    if (ev.type === 'ng_lightning_stun') {
+      // Floating text at the NG position — visible to all nearby
+      effects.push({ type: 'text', x: ev.x, y: ev.y - 30, time: now, duration: 2200,
+        text: '⚡ NG STUNNED!', color: '#ffff44', size: 17 });
+      addEventMessage(`⚡ Lightning struck a National Guard agent! ${ev.targetName ? `(targeting ${ev.targetName})` : ''} — stunned 4s!`, '#ffff44');
+      screenShake(5, 350);
+    }
+
+    // === ROYALE CHAMPION KINGPIN SHIELD BREAKS ===
+    if (ev.type === 'champ_shield_broke') {
+      const isSelf = ev.kingpinId === myId;
+      if (isSelf) {
+        showAnnouncement(`🏆💔 YOUR CHAMPION\'S SHIELD BROKE!\n${ev.attackerName} cracked it — you\'re now vulnerable!`, '#ff8800', 4000);
+        screenShake(8, 500);
+      } else {
+        showAnnouncement(`🏆💔 ${ev.kingpinName}\'s CHAMPION SHIELD BROKE!\nThey are now vulnerable — 3 hits to dethrone!`, '#ff8800', 4000);
+        addEventMessage(`🏆💔 ${ev.kingpinName}'s Royale Champion shield shattered! Now vulnerable to dethronement.`, '#ff8800');
+      }
+      effects.push({ type: 'screen_shake', intensity: 6, duration: 450, time: now });
+    }
+
     if (ev.type === 'helicopter_recovering') {
       if (gameState.policeHelicopter && gameState.policeHelicopter.targetId === myId) {
         addEventMessage('🚁 Police helicopter recovering — it\'s coming back!', '#cc6600');
@@ -3780,6 +3815,7 @@
         mwBoard.style.display = 'block';
         const lockdown = gameState.cityLockdown;
         const lockdownText = lockdown ? `<div class="mwb-lockdown">🚨 CITY LOCKDOWN ${Math.ceil((lockdown.endsAt - Date.now()) / 1000)}s</div>` : '';
+        const myCoinsForHit = gameState.self ? (gameState.self.coins || 0) : 0;
         const rows = topThree.map((c, i) => {
           const medals = ['🥇', '🥈', '🥉'];
           const stars = '⭐'.repeat(c.level);
@@ -3787,14 +3823,30 @@
           const meText = isMe ? ' 👈' : '';
           const tag = c.gangTag ? `<span style="color:#aaa;font-size:9px">[${c.gangTag}]</span> ` : '';
           const heatBar = Math.min(100, Math.round((c.heat / 200) * 100));
+          // Quick-hit button (not for self, need 100c)
+          const hitBtn = (!isMe && myCoinsForHit >= 100)
+            ? `<button class="mwb-hit-btn" data-id="${c.birdId}" data-name="${c.name}" title="Place 100c hit via Don" style="margin-left:4px;background:rgba(120,0,0,0.85);color:#ff8888;border:1px solid #aa2222;border-radius:3px;font-size:8px;padding:1px 4px;cursor:pointer;vertical-align:middle;">💀100c</button>`
+            : '';
           return `<div class="mwb-row${isMe ? ' mwb-me' : ''}">
             <span class="mwb-medal">${medals[i]}</span>
-            <span class="mwb-name">${tag}${c.name}${meText}</span>
+            <span class="mwb-name">${tag}${c.name}${meText}${hitBtn}</span>
             <span class="mwb-stars">${stars}</span>
             <div class="mwb-heat-bar"><div class="mwb-heat-fill" style="width:${heatBar}%;background:${c.level >= 4 ? '#ff3300' : c.level >= 3 ? '#ff6600' : '#ffaa00'}"></div></div>
           </div>`;
         }).join('');
         mwBoard.innerHTML = `<div class="mwb-title">🔴 MOST WANTED</div>${lockdownText}${rows}`;
+        // Wire up quick-hit buttons
+        mwBoard.querySelectorAll('.mwb-hit-btn').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const targetId = btn.dataset.id;
+            const targetName = btn.dataset.name;
+            if (!targetId || !socket || !joined) return;
+            if (!confirm(`Place a 💀 100c hit on ${targetName}?\nFirst bird to poop them 3× claims the bounty!`)) return;
+            socket.emit('action', { type: 'place_hit', targetId });
+            showAnnouncement(`💀 HIT PLACED on ${targetName}!\nFirst to poop them 3× claims the bounty!`, '#ff4444', 3000);
+          });
+        });
         if (lockdown) {
           mwBoard.classList.add('mwb-lockdown-active');
         } else {

@@ -2127,6 +2127,35 @@ The wanted system gets its greatest escalation yet. Three interlocking features 
 
 **Creative intent**: The wanted system was great at creating one dramatic chase (the #1 most-wanted bird). This makes MULTIPLE simultaneous criminals equally dramatic. The Most Wanted Board makes every player aware of who's hot — creating social pressure, bounty competition, and spectator interest. The City Lockdown is a player-TRIGGERED emergency (not random like Crime Wave) — meaning the community collectively creates the chaos by all choosing to be criminals at once. The National Guard is the first enemy that's genuinely HARDER to stun than the helicopter (5 hits vs 6, but ground-based = can't evade underground). Pure CARNAGE + SOCIAL + SPECTACLE energy.
 
+**Session 65 — 2026-04-09: Cross-System Synergies Vol. 2 — Four Interlocking Interactions**
+Four tight connections between existing systems that make the city feel like a living web of cause-and-effect:
+
+**1. Helicopter + Fog Escape Alert:**
+- When the police helicopter loses a bird's trail in fog (target > 280px away), the hunted bird instantly gets a personal "🌫️ HELICOPTER LOST YOUR TRAIL! Move fast!" announcement with screen shake
+- During City Lockdown + fog: the helicopter loses the trail at 200px (tighter fog effect) AND the message notes the lockdown synergy — rare, dramatic triple-event window
+- `heli.fogLostTrail` flag tracks the transition precisely (alert fires once on trail-loss, resets when helicopter gets back in range) — no spam
+
+**2. National Guard + Lightning Friendly Fire:**
+- Storm lightning now checks National Guard agents in addition to birds and drunk pigeons
+- Any NG agent within 80px of a lightning strike is instantly stunned for 4 seconds (same stun logic as for cops hitting the drunk pigeon, but for elite law enforcement)
+- `ng_lightning_stun` event fires: floating "⚡ NG STUNNED!" text at the world position, event feed callout naming the agent's target
+- Creates a beautiful chaos moment: the city is in lockdown, storm is raging, lightning strikes and the elite agent hunting you just got fried — a 4-second window to escape
+
+**3. Royale Champion Kingpin Shield:**
+- When a bird with `royaleChampBadge` (won Bird Royale this session) becomes Kingpin, `champShieldActive = true` is set on the kingpin state
+- First hit from any attacker: shield absorbs the dethronement progress (hit counter resets to 0, shield destroyed), fires `champ_shield_broke` event city-wide
+- "THE CHAMPION'S SHIELD BROKE!" city-wide announcement to all players — attacker sees it bounced, bystanders see the drama
+- Kingpin crowned messages note if a shield is active: "🏆 They have a Champion Shield — takes 4 hits to dethrone!"
+- Creates a compelling narrative: win the royale, take the Kingpin crown, and you start with a layer of protection earned through combat skill
+
+**4. Most Wanted Board Quick-Hit:**
+- The Most Wanted Board (visible top-left whenever anyone is hot) now shows a "💀 100c" button next to each criminal that isn't you
+- Click it → confirm dialog → `place_hit` sent directly — the first true shortcut that bypasses visiting the Don
+- Requires 100c (validated server-side in the existing `place_hit` handler)
+- Closes the loop: board shows who's hot → one click puts a bounty on them → the city hunts
+
+**Creative intent**: These four additions take Bird City's rich systems and make them feel CONNECTED. The helicopter-fog escape creates the first moment where weather actively helps the criminal (not just hurts the law). The NG lightning stun makes storm weather dangerous for BOTH sides. The champion shield creates a tangible reward that links two separate systems (royale + kingpin) into a story arc. The quick-hit makes the Most Wanted Board interactive — it was beautiful information, now it's also a weapon. Pure EMERGENT CHAOS + DISCOVERY energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -2225,8 +2254,8 @@ Built the Territory Control System on top of the existing upstream code:
 - ~~Bird Flu + Cop: if a cop arrests an infected bird, the cop catches the flu and wanders confused for 5s~~ (DONE Session 63)
 - ~~Drunk pigeon + crime wave interaction: drunk pigeons drop 2× coins when struck by lightning during crime waves~~ (DONE Session 63 — also stuns nearby cops)
 - ~~Idol Hall of Fame: persistent leaderboard of all-time Idol winners near the stage~~ (DONE Session 63)
-- Helicopter + Fog: announce to targeted bird when helicopter loses trail in fog
-- Royale Champion + Kingpin: if Royale Champion becomes Kingpin, immune to first dethronement hit
+- ~~Helicopter + Fog: announce to targeted bird when helicopter loses trail in fog~~ (DONE Session 65 — fires once on trail-loss, lockdown+fog tightens threshold to 200px)
+- ~~Royale Champion + Kingpin: if Royale Champion becomes Kingpin, immune to first dethronement hit~~ (DONE Session 65)
 - ~~Multi-bird Wanted system: track top 2 most-wanted simultaneously (two Bounty Hunters)~~ (DONE Session 64 — tracks top 3, full Most Wanted Board, National Guard deployed on 3+ criminals)
 - ~~Poop power-up vending machine: spend 20c at a street vending machine for a random single-poop effect~~ (DONE Session 57)
 - ~~Street Duels — press [Y] near a rival to challenge them to a spontaneous 1v1 poop fight~~ (DONE Session 58)
@@ -2240,8 +2269,13 @@ Built the Territory Control System on top of the existing upstream code:
 - ~~Tournament entry discount for Mafia Capos/Dons: high-rep birds pay 50c instead of 100c~~ (DONE Session 61)
 - Gazette tracking for tournaments: already done (Session 60) — also track runner-up name
 - Double-elimination tournament option: losers get a second chance bracket
-- Helicopter + Fog + Lockdown synergy: helicopter loses trail faster in fog during lockdown, creating a rare "fog saves everyone" moment
+- ~~Helicopter + Fog + Lockdown synergy: helicopter loses trail faster in fog during lockdown~~ (DONE Session 65)
 - National Guard + Gang War: during lockdown, NG targets all birds with active gang war kills — turns wars deadly
 - City Lockdown betting: birds can bet on whether the next lockdown will occur within X minutes
-- Most Wanted board interaction: click a name on the Most Wanted Board to instantly place a 100c hit contract via shortcut
-- NG friendly fire: if NG agent is accidentally caught in a lightning strike, it stuns them — weather chaos extends to law enforcement
+- ~~Most Wanted board interaction: click a name on the Most Wanted Board to instantly place a 100c hit contract via shortcut~~ (DONE Session 65)
+- ~~NG friendly fire: if NG agent is accidentally caught in a lightning strike, it stuns them — weather chaos extends to law enforcement~~ (DONE Session 65)
+- Gazette tracking for duels: "⚔️ [Name] WINS STREET DUEL: defeats [Name] for Xc" — wire into existing street duel result events
+- Royale Champion + Kingpin first-hit immunity visual: show a golden shield flash effect on the Kingpin sprite when shield absorbs a hit
+- Gang War + NG targeting during lockdown: NG re-targets to birds with most gang war kills (deadliest active combatants)
+- Double-elimination tournament: losers bracket gives everyone a second chance (complex but satisfying)
+- Bird Photo Mode: freeze camera for 3 seconds, UI hides, "SNAP" — shareable screenshot moment
