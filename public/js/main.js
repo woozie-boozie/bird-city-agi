@@ -205,6 +205,17 @@
   let lastNearDateCenter = false;
   let flockLobbyVisible = false;
 
+  // Night Market state (aurora bazaar)
+  let nmOverlayOpen = false;
+  let lastNearNightMarket = false;
+  const NM_CATALOG = [
+    { id: 'stardust_cloak',      name: 'Stardust Cloak',      emoji: '🌌', cost: 1, desc: 'Shimmering aurora aura around your bird for 8 min — visible to all', dur: '8 min' },
+    { id: 'comet_trail',         name: 'Comet Trail',          emoji: '☄️',  cost: 2, desc: 'Golden sparkle trail behind your movement for 6 min', dur: '6 min' },
+    { id: 'oracle_eye',          name: 'Oracle Eye',           emoji: '🔮', cost: 2, desc: 'See all hidden items on the minimap for 4 min', dur: '4 min' },
+    { id: 'star_power',          name: 'Star Power',           emoji: '🌟', cost: 3, desc: '+50% all XP and coins for 8 min — stacks with every multiplier', dur: '8 min' },
+    { id: 'constellation_badge', name: 'Constellation Badge',  emoji: '🌌', cost: 5, desc: 'Permanent 🌌 nametag badge — the rarest cosmetic in Bird City', dur: 'Forever' },
+  ];
+
   // Black Market state
   let bmShopOpen = false;
   let lastNearBlackMarket = false;
@@ -214,17 +225,6 @@
     { id: 'disguise_kit', name: 'Disguise Kit',   desc: 'Clears ALL heat instantly',    cost: 100, emoji: '🎭' },
     { id: 'smoke_bomb',   name: 'Smoke Bomb',     desc: 'Cops lose you for 15 seconds', cost: 80,  emoji: '💨' },
     { id: 'lucky_charm',  name: 'Lucky Charm',    desc: '2x XP for 5 full minutes',     cost: 150, emoji: '🍀' },
-  ];
-
-  // Night Market state (aurora-only)
-  let nightMarketOpen = false;
-  let lastNearNightMarket = false;
-  const NM_CATALOG = [
-    { id: 'aurora_veil',    name: 'Aurora Veil',    desc: 'Plumage shimmers aurora colors for 5 min',      fishCost: 2, emoji: '🔮' },
-    { id: 'starlight_ammo', name: 'Starlight Ammo', desc: 'Next 5 poops: comet trail + 50% XP each',       fishCost: 3, emoji: '✨' },
-    { id: 'moonstone',      name: 'Moonstone',      desc: '2× coin gains from poop hits for 3 min',         fishCost: 2, emoji: '🌙' },
-    { id: 'comet_rush',     name: 'Comet Rush',     desc: '+30% speed + rainbow trail for 2 min',           fishCost: 2, emoji: '☄️' },
-    { id: 'cosmic_bomb',    name: 'Cosmic Bomb',    desc: 'INSTANT: stuns all birds 180px, steals 8% coins',fishCost: 4, emoji: '💫' },
   ];
 
   // Bird Home UI state
@@ -1027,46 +1027,17 @@
 
     // === CHAOS EVENTS ===
     if (ev.type === 'chaos_event') {
-      window._lastChaosType = ev.chaosType; // track for end message
       SoundEngine.eventFanfare();
-      effects.push({ type: 'screen_shake', intensity: 8, duration: 500, time: now });
       const names = {
-        npc_flood:     '🚶 NPC FLOOD! Targets everywhere! 30s',
-        car_frenzy:    '🚗 CAR FRENZY! Cars gone wild! 20s',
-        golden_rain:   '🌧️ GOLDEN RAIN! Press E to grab gold! 20s',
-        poop_party:    '🎉 POOP PARTY! FREE MEGA POOP — 20 seconds of CARNAGE!',
-        coin_shower:   '💸 COIN SHOWER! Money rains — fly through coins to collect! 25s',
-        food_festival: '🎊 FOOD FESTIVAL! Free premium food in the park! 30s',
-        blackout:      '⚡ BLACKOUT! The city goes dark — cops are blind! 25s',
-        disco_fever:   '🪩 DISCO FEVER! NPCs worth 3× XP for 20 seconds — DANCE!',
+        npc_flood: 'CHAOS: NPC FLOOD! Targets everywhere!',
+        car_frenzy: 'CHAOS: CAR FRENZY! Cars gone wild!',
+        golden_rain: 'CHAOS: GOLDEN RAIN! Grab the gold!',
       };
-      const colors = {
-        poop_party: '#ff88ff', coin_shower: '#ffd700', food_festival: '#44dd88',
-        blackout: '#4488ff', disco_fever: '#ff44cc',
-      };
-      const color = colors[ev.chaosType] || '#ff4444';
-      showAnnouncement(names[ev.chaosType] || 'CHAOS EVENT!', color, 5000);
-      addEventMessage(names[ev.chaosType] || 'Chaos event triggered!', color);
-      if (ev.chaosType === 'poop_party') {
-        // Extra shake for the wildest event
-        effects.push({ type: 'screen_shake', intensity: 12, duration: 800, time: now });
-      }
+      showAnnouncement(names[ev.chaosType] || 'CHAOS EVENT!', '#ff4444', 4000);
+      addEventMessage(names[ev.chaosType] || 'Chaos event triggered!', '#ff4444');
     }
     if (ev.type === 'chaos_event_end') {
-      const endNames = {
-        poop_party: '🎉 Poop Party over. Back to rationed ammunition.',
-        coin_shower: '💸 The coin shower dries up.',
-        food_festival: '🎊 Food Festival wraps up. Cooks go home.',
-        blackout: '⚡ Power restored. Cops can see again.',
-        disco_fever: '🪩 The music stops. NPCs go back to being boring.',
-      };
-      addEventMessage(endNames[window._lastChaosType] || 'Chaos event ended.', '#888');
-      window._lastChaosType = null;
-    }
-    if (ev.type === 'coin_shower_collect') {
-      if (ev.birdId === myId) {
-        addEventMessage(`💸 +${ev.coins}c from the coin shower!`, '#ffd700');
-      }
+      addEventMessage('Chaos event ended.', '#888');
     }
 
     // === MYSTERY CRATE AIRDROP EVENTS ===
@@ -1322,21 +1293,6 @@
       showAnnouncement('🚔 Crime wave over. The city breathes again.', '#ff8888', 3000);
     }
 
-    // === CRIME DISCO SYNERGY ===
-    if (ev.type === 'crime_disco_start') {
-      effects.push({ type: 'screen_shake', intensity: 12, duration: 1000, time: now });
-      showAnnouncement('🚨🪩 CRIME DISCO!\n5× NPC XP · 3× crime coins\nDance AND commit crimes — at the same time!', '#ff44cc', 8000);
-      addEventMessage('🚨🪩 CRIME DISCO! Crime Wave + Disco Fever = 5× NPC XP + 3× crime coins!', '#ff44cc');
-    }
-
-    // === SEAGULL FESTIVAL RAID ===
-    if (ev.type === 'seagull_festival_raid') {
-      addEventMessage('🦅🎊 Seagulls are raiding the FESTIVAL FOOD! Kill carriers for +35c bonus!', '#ff9933');
-    }
-    if (ev.type === 'seagull_festival_announced') {
-      addEventMessage('🦅🎊 SEAGULL INVASION during a FOOD FESTIVAL — the birds are going for the premium dishes!', '#ff9933');
-    }
-
     // === AURORA BOREALIS EVENTS ===
     if (ev.type === 'aurora_start') {
       effects.push({ type: 'screen_shake', intensity: 5, duration: 600, time: now });
@@ -1373,11 +1329,35 @@
 
     // Cosmic fish caught (triple loot — aurora only)
     if (ev.type === 'cosmic_fish_caught' && ev.birdId === myId) {
-      showAnnouncement(`✨ COSMIC FISH! +${ev.coins}c +${ev.xp} XP`, '#88ffcc', 3500);
-      effects.push({ type: 'text', x: ev.x, y: ev.y, text: `✨ +${ev.coins}c`, color: '#88ffcc', size: 16, time: performance.now(), duration: 2500 });
+      const fishNote = ev.isCosmic ? `\n🐟 You now have ${ev.cosmicFishTotal} Cosmic Fish` : '';
+      showAnnouncement(`✨ COSMIC FISH! +${ev.coins}c +${ev.xp} XP${fishNote}`, '#88ffcc', 3500);
+      effects.push({ type: 'text', x: ev.x, y: ev.y, text: `✨ +${ev.coins}c 🐟+1`, color: '#88ffcc', size: 16, time: performance.now(), duration: 2500 });
     }
     if (ev.type === 'cosmic_fish_caught' && ev.birdId !== myId) {
       addEventMessage(`✨ ${ev.name} caught a Cosmic Fish! (+${ev.coins}c +${ev.xp} XP)`, '#88ffcc');
+    }
+
+    // === NIGHT MARKET EVENTS (aurora bazaar) ===
+    if (ev.type === 'night_market_open') {
+      addEventMessage('✨ THE NIGHT MARKET OPENS near the Sacred Pond! Spend Cosmic Fish for rare items! [Press N]', '#44ffee');
+    }
+    if (ev.type === 'night_market_close') {
+      addEventMessage('✨ The Night Market closes as the Aurora fades...', '#33aaaa');
+    }
+    if (ev.type === 'night_market_purchased' && ev.birdId === myId) {
+      showAnnouncement(`${ev.emoji} ${ev.itemName} UNLOCKED!\n−${ev.cost} Cosmic Fish · ${ev.cosmicFishLeft} remaining`, '#44ffee', 4000);
+      addEventMessage(`✨ You bought ${ev.emoji} ${ev.itemName} from the Night Market!`, '#44ffee');
+      renderNightMarketOverlay(); // refresh fish count
+    }
+    if (ev.type === 'night_market_fail' && ev.birdId === myId) {
+      showAnnouncement(`✨ Night Market: ${ev.reason}`, '#cc6644', 3000);
+    }
+    if (ev.type === 'constellation_badge_earned') {
+      effects.push({ type: 'screen_shake', intensity: 8, duration: 600, time: now });
+      if (ev.birdId === myId) {
+        showAnnouncement('🌌 CONSTELLATION BADGE EARNED!\nThe rarest cosmetic in Bird City — visible on your nametag forever!', '#44ffee', 6000);
+      }
+      addEventMessage(`🌌 ${ev.message}`, '#44ffee');
     }
 
     // === BIRD ROYALE EVENTS ===
@@ -2104,39 +2084,6 @@
       if (ev.birdId === myId) {
         addEventMessage('❌ ' + ev.reason, '#ff4444');
       }
-
-    // === NIGHT MARKET EVENTS ===
-    } else if (ev.type === 'night_market_open') {
-      addEventMessage('✨ The Night Market awakens near the Sacred Pond! Spend Cosmic Fish for rare aurora items. Press [L] nearby.', '#00e5cc');
-    } else if (ev.type === 'night_market_close') {
-      addEventMessage('🌙 The Night Market fades as the aurora ends.', '#7c3aed');
-      closeNightMarket();
-    } else if (ev.type === 'night_market_purchased') {
-      if (ev.birdId === myId) {
-        showAnnouncement(ev.emoji + ' ' + ev.itemName + ' (-' + ev.fishCost + ' 🐟)', '#00e5cc', 2500);
-        addEventMessage(`You bought ${ev.itemName} from the Night Market! (${ev.cosmicFishRemaining} fish remain)`, '#00e5cc');
-        renderNightMarketUI(); // refresh fish count
-      }
-    } else if (ev.type === 'night_market_fail') {
-      if (ev.birdId === myId) {
-        addEventMessage('❌ ' + ev.reason, '#ff4444');
-      }
-    } else if (ev.type === 'cosmic_fish_caught') {
-      if (ev.birdId === myId) {
-        showFloatingText(`🐟 +1 Cosmic Fish!`, ev.x, ev.y, '#00ffcc');
-        addEventMessage(`✨ Caught a Cosmic Fish! +${ev.coins}c +${ev.xp} XP (${ev.cosmicFishCount} fish total)`, '#00ffcc');
-      }
-    } else if (ev.type === 'cosmic_bomb_blast') {
-      if (ev.birdId === myId) {
-        showAnnouncement(`💫 COSMIC BOMB! Hit ${ev.targetsHit} bird${ev.targetsHit !== 1 ? 's' : ''}! +${ev.xp} XP`, '#7c3aed', 3000);
-      }
-      if (ev.targetsHit > 0) {
-        addEventMessage(`💫 ${ev.birdName} used a Cosmic Bomb — ${ev.targetsHit} birds sent flying!`, '#a855f7');
-      }
-    } else if (ev.type === 'cosmic_bomb_hit') {
-      if (ev.birdId === myId) {
-        showAnnouncement(`💫 COSMIC BOMBED! -${ev.stolen}c stunned!`, '#ff4444', 2000);
-      }
     }
 
     // === PIGEONHOLE SLOTS CASINO EVENTS ===
@@ -2582,21 +2529,6 @@
     }
     if (ev.type === 'heat_puddles_appeared') {
       addEventMessage('💧 Water puddles have appeared across the city — drink before you dry out!', '#5599ff');
-    }
-    if (ev.type === 'hot_cocoa_appeared') {
-      addEventMessage('☕ Hot cocoa carts have appeared across the city — find one to warm up and boost your speed!', '#ff9944');
-    }
-    if (ev.type === 'hot_cocoa_drink') {
-      if (ev.birdId === myId) {
-        showAnnouncement('☕ HOT COCOA! +20 food — WARM for 30s (+25% speed)!', '#ff9944', 2500);
-        addEventMessage('☕ You drank hot cocoa! Warm for 30s — cold drag negated + ×1.25 speed!', '#ff9944');
-      } else {
-        addEventMessage(`☕ ${ev.name} grabbed a hot cocoa — warm and speedy!`, '#cc7733');
-      }
-      // Floating text at pickup location
-      if (ev.x !== undefined && ev.y !== undefined) {
-        showFloatingText('☕ WARM!', ev.x, ev.y, '#ff9944');
-      }
     }
     if (ev.type === 'puddle_drink') {
       if (ev.birdId === myId) {
@@ -3061,14 +2993,10 @@
       }
     }
     if (ev.type === 'seagull_killed') {
-      const festBonus = ev.wasFestivalRaider ? ' 🎊 FESTIVAL RAIDER BONUS!' : '';
-      addEventMessage(`💀 ${ev.birdName ? (ev.gangTag ? '[' + ev.gangTag + '] ' : '') + ev.birdName + ' downed' : 'A'} a seagull! (+${ev.killXp}XP +${ev.killCoins}c)${festBonus}`, '#44aaff');
+      addEventMessage(`💀 ${ev.birdName ? (ev.gangTag ? '[' + ev.gangTag + '] ' : '') + ev.birdName + ' downed' : 'A'} a seagull! (+${ev.killXp}XP +${ev.killCoins}c)`, '#44aaff');
       if (ev.birdId === myId) {
         effects.push({ type: 'screen_shake', intensity: 4, duration: 250, time: now });
-        const killMsg = ev.wasFestivalRaider
-          ? `💀🎊 FESTIVAL RAIDER DOWN! +${ev.killXp}XP +${ev.killCoins}c`
-          : `💀 SEAGULL DOWN! +${ev.killXp}XP +${ev.killCoins}c`;
-        showAnnouncement(killMsg, ev.wasFestivalRaider ? '#ffaa33' : '#44aaff', 2000);
+        showAnnouncement(`💀 SEAGULL DOWN! +${ev.killXp}XP +${ev.killCoins}c`, '#44aaff', 2000);
       }
     }
     if (ev.type === 'seagull_invasion_repelled') {
@@ -3329,18 +3257,18 @@
         socket.emit('action', { type: 'vend_buy', machineIdx: gameState.self.nearVendingMachine.idx });
       }
     }
+    // Night Market toggle [N]
+    if (e.key.toLowerCase() === 'n') {
+      if (nmOverlayOpen) {
+        closeNightMarketOverlay();
+      } else if (gameState && gameState.nightMarket && lastNearNightMarket) {
+        openNightMarketOverlay();
+      }
+    }
     // Black Market toggle
     if (e.key.toLowerCase() === 'b') {
       if (gameState && gameState.blackMarket && lastNearBlackMarket) {
         toggleBlackMarketShop();
-      }
-    }
-    // Night Market toggle [L] — only near the stall during aurora
-    if (e.key.toLowerCase() === 'l') {
-      if (nightMarketOpen) {
-        closeNightMarket();
-      } else if (gameState && gameState.nightMarket && lastNearNightMarket) {
-        openNightMarket();
       }
     }
     // Don overlay toggle
@@ -3860,6 +3788,13 @@
     });
   }
 
+  // Night Market close button
+  const nmCloseEl = document.getElementById('nmClose');
+  if (nmCloseEl) {
+    nmCloseEl.addEventListener('click', closeNightMarketOverlay);
+    nmCloseEl.addEventListener('touchstart', (e) => { e.preventDefault(); closeNightMarketOverlay(); }, { passive: false });
+  }
+
   // Black Market close button
   const bmShopCloseEl = document.getElementById('bmShopClose');
   if (bmShopCloseEl) {
@@ -4285,6 +4220,21 @@
       activeMissionHud.style.display = 'none';
     }
 
+    // Night Market proximity check
+    const nmPrompt = document.getElementById('nmProximityPrompt');
+    if (gameState.nightMarket) {
+      const isNearNM = s.nearNightMarket || false;
+      if (isNearNM !== lastNearNightMarket) {
+        lastNearNightMarket = isNearNM;
+        if (!isNearNM && nmOverlayOpen) closeNightMarketOverlay();
+      }
+      if (nmPrompt) nmPrompt.style.display = isNearNM && !nmOverlayOpen ? 'block' : 'none';
+    } else {
+      lastNearNightMarket = false;
+      if (nmOverlayOpen) closeNightMarketOverlay();
+      if (nmPrompt) nmPrompt.style.display = 'none';
+    }
+
     // Black Market proximity check
     const bmPrompt = document.getElementById('bmProximityPrompt');
     if (gameState.blackMarket) {
@@ -4305,22 +4255,6 @@
 
     // Refresh open shop coins
     if (bmShopOpen) renderBmShop();
-
-    // Night Market proximity check
-    if (gameState.nightMarket) {
-      const nmdx = s.x - gameState.nightMarket.x;
-      const nmdy = s.y - gameState.nightMarket.y;
-      const nmDist = Math.sqrt(nmdx * nmdx + nmdy * nmdy);
-      const isNearNM = nmDist < 110;
-      if (isNearNM !== lastNearNightMarket) {
-        lastNearNightMarket = isNearNM;
-        if (!isNearNM && nightMarketOpen) closeNightMarket();
-      }
-    } else {
-      lastNearNightMarket = false;
-      if (nightMarketOpen) closeNightMarket();
-    }
-    if (nightMarketOpen) renderNightMarketUI();
 
     // Donut Cop proximity check
     if (gameState.donutCop) {
@@ -5279,14 +5213,13 @@
   // WEATHER BETTING PANEL — shown between weather events
   // ============================================================
   const WEATHER_BET_INFO = {
-    rain:      { emoji: '🌧️', label: 'RAIN',      color: '#66aaff', odds: '22%' },
-    wind:      { emoji: '💨', label: 'WIND',      color: '#aaddff', odds: '19%' },
-    storm:     { emoji: '⛈️', label: 'STORM',     color: '#ffdd44', odds: '11%' },
-    fog:       { emoji: '🌫️', label: 'FOG',       color: '#b8ddc0', odds: '10%' },
-    hailstorm: { emoji: '🌨️', label: 'HAILSTORM', color: '#88ccff', odds: '11%' },
-    heatwave:  { emoji: '🌡️', label: 'HEATWAVE',  color: '#ff9933', odds: '11%' },
-    tornado:   { emoji: '🌪️', label: 'TORNADO',   color: '#cc88ff', odds: '8%' },
-    blizzard:  { emoji: '❄️', label: 'BLIZZARD',  color: '#c8e8ff', odds: '8%' },
+    rain:      { emoji: '🌧️', label: 'RAIN',      color: '#66aaff', odds: '24%' },
+    wind:      { emoji: '💨', label: 'WIND',      color: '#aaddff', odds: '20%' },
+    storm:     { emoji: '⛈️', label: 'STORM',     color: '#ffdd44', odds: '12%' },
+    fog:       { emoji: '🌫️', label: 'FOG',       color: '#b8ddc0', odds: '11%' },
+    hailstorm: { emoji: '🌨️', label: 'HAILSTORM', color: '#88ccff', odds: '12%' },
+    heatwave:  { emoji: '🌡️', label: 'HEATWAVE',  color: '#ff9933', odds: '12%' },
+    tornado:   { emoji: '🌪️', label: 'TORNADO',   color: '#cc88ff', odds: '9%' },
   };
 
   function updateWeatherBetPanel(now) {
@@ -5319,8 +5252,8 @@
         + '<div style="color:#7799cc;font-size:9px;margin-top:4px;">Window closes: ' + secsLeft + 's</div>';
       weatherBetPanel.style.pointerEvents = 'none';
     } else {
-      // Betting interface — show all 8 weather types
-      const TYPES = ['rain', 'wind', 'storm', 'fog', 'hailstorm', 'heatwave', 'tornado', 'blizzard'];
+      // Betting interface — show all 7 weather types
+      const TYPES = ['rain', 'wind', 'storm', 'fog', 'hailstorm', 'heatwave', 'tornado'];
       let html = '<div style="color:#aaddff;font-size:12px;margin-bottom:2px;">🌤️ FORECAST BET</div>'
         + '<div style="color:#7799cc;font-size:9px;margin-bottom:6px;">What\'s next? · ' + secsLeft + 's · Pool: ' + totalPool + 'c</div>';
 
@@ -6314,61 +6247,6 @@
       ctx.restore();
     }
 
-    // === BLIZZARD: falling snow particles + icy blue tint ===
-    if (weather.type === 'blizzard') {
-      if (!window._blizzardFlakes || window._blizzardFlakes.sw !== sw) {
-        window._blizzardFlakes = {
-          sw, sh,
-          flakes: Array.from({ length: 260 }, () => ({
-            x: Math.random() * sw,
-            y: Math.random() * sh,
-            r: 1.5 + Math.random() * 3.0, // radius 1.5-4.5px
-            speed: 30 + Math.random() * 60, // 30-90px/s fall speed
-            sway: (Math.random() - 0.5) * 25, // horizontal sway per second
-            swayOffset: Math.random() * Math.PI * 2, // independent sway phase
-            opacity: 0.5 + Math.random() * 0.5,
-          })),
-        };
-      }
-      const flakes = window._blizzardFlakes.flakes;
-      const intensity = weather.intensity;
-      const windTilt = weather.windSpeed > 0 ? Math.cos(weather.windAngle) * 0.6 : 0;
-      const t = now * 0.001;
-
-      // Subtle icy blue tint overlay
-      ctx.save();
-      ctx.globalAlpha = 0.09 * intensity;
-      ctx.fillStyle = '#c0dcff';
-      ctx.fillRect(0, 0, sw, sh);
-      ctx.globalAlpha = 1;
-
-      // Snow flakes
-      ctx.save();
-      for (const f of flakes) {
-        f.y += f.speed * dt;
-        f.x += (windTilt * f.speed + Math.sin(t * 0.8 + f.swayOffset) * f.sway) * dt;
-        if (f.y > sh + 10) { f.y = -10; f.x = Math.random() * sw; }
-        if (f.x > sw + 10) f.x -= sw + 20;
-        if (f.x < -10) f.x += sw + 20;
-
-        ctx.globalAlpha = f.opacity * intensity;
-        ctx.fillStyle = '#e8f4ff';
-        ctx.beginPath();
-        ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
-        ctx.fill();
-        // Tiny sparkle highlight on larger flakes
-        if (f.r > 2.5) {
-          ctx.globalAlpha = f.opacity * 0.5 * intensity;
-          ctx.fillStyle = '#ffffff';
-          ctx.beginPath();
-          ctx.arc(f.x - f.r * 0.3, f.y - f.r * 0.3, f.r * 0.35, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
-      ctx.globalAlpha = 1;
-      ctx.restore();
-    }
-
     // === WEATHER BADGE (top-center, alongside clock) ===
     const badges = {
       rain: '🌧️ RAIN',
@@ -6378,7 +6256,6 @@
       hailstorm: '🌨️ HAIL',
       heatwave: '🌡️ HEATWAVE',
       tornado: '🌪️ TORNADO',
-      blizzard: '❄️ BLIZZARD',
     };
     const badgeBg = {
       storm: 'rgba(60, 40, 0, 0.75)',
@@ -6386,7 +6263,6 @@
       hailstorm: 'rgba(20, 50, 90, 0.78)',
       heatwave: 'rgba(100, 40, 0, 0.80)',
       tornado: 'rgba(60, 20, 90, 0.85)',
-      blizzard: 'rgba(10, 40, 80, 0.82)',
     };
     const badgeColor = {
       storm: '#ffdd44',
@@ -6394,7 +6270,6 @@
       hailstorm: '#aaddff',
       heatwave: '#ffaa44',
       tornado: '#dd88ff',
-      blizzard: '#c8e8ff',
     };
     const badge = badges[weather.type];
     if (badge) {
@@ -6406,8 +6281,7 @@
         ? (Math.sin(now * 0.006) * 0.15 + 0.85)
         : (weather.type === 'heatwave' ? (Math.sin(now * 0.004) * 0.18 + 0.82)
         : (weather.type === 'fog' ? (Math.sin(now * 0.002) * 0.08 + 0.92)
-        : (weather.type === 'tornado' ? (Math.sin(now * 0.008) * 0.22 + 0.78)
-        : (weather.type === 'blizzard' ? (Math.sin(now * 0.003) * 0.12 + 0.88) : 1))));
+        : (weather.type === 'tornado' ? (Math.sin(now * 0.008) * 0.22 + 0.78) : 1)));
       ctx.save();
       ctx.globalAlpha = pulse * 0.88;
       ctx.fillStyle = badgeBg[weather.type] || 'rgba(20, 40, 80, 0.65)';
@@ -6934,10 +6808,14 @@
       }
     }
 
-    // Night Market (aurora-only mystical stall near Sacred Pond)
+    // Night Market NPC (aurora bazaar — celestial stall near Sacred Pond)
     if (gameState.nightMarket) {
-      const isNear = !!(gameState.self && gameState.self.nearNightMarket);
-      Renderer.drawNightMarket(ctx, gameState.nightMarket, camera, isNear, now);
+      const nm = gameState.nightMarket;
+      const nmsx = nm.x - camera.x + camera.screenW / 2;
+      const nmsy = nm.y - camera.y + camera.screenH / 2;
+      if (nmsx > -margin - 50 && nmsx < camera.screenW + margin + 50 && nmsy > -margin - 50 && nmsy < camera.screenH + margin + 50) {
+        Sprites.drawNightMarket(ctx, nmsx, nmsy, now);
+      }
     }
 
     // Cop Birds (wanted system enforcement)
@@ -7232,48 +7110,6 @@
             }
           }
 
-          // Night Market: Aurora Veil — hue-cycling shimmer aura around the bird
-          if (b.auroraVeilUntil && b.auroraVeilUntil > now) {
-            const veilHue = (now * 0.08 + (b.id ? parseInt(b.id.slice(-4), 16) : 0) * 0.01) % 360;
-            const veilPulse = 0.3 + 0.2 * Math.sin(now * 0.004);
-            ctx.save();
-            ctx.globalAlpha = veilPulse;
-            const veilGrd = ctx.createRadialGradient(sx, sy, 4, sx, sy, 30);
-            veilGrd.addColorStop(0, `hsla(${veilHue}, 100%, 65%, 0.6)`);
-            veilGrd.addColorStop(0.5, `hsla(${(veilHue + 60) % 360}, 100%, 65%, 0.3)`);
-            veilGrd.addColorStop(1, `hsla(${(veilHue + 120) % 360}, 100%, 65%, 0)`);
-            ctx.fillStyle = veilGrd;
-            ctx.beginPath();
-            ctx.arc(sx, sy, 30, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.restore();
-          }
-
-          // Night Market: Comet Rush — rainbow trail behind bird
-          if (b.cometRushUntil && b.cometRushUntil > now && b.vx !== undefined) {
-            const spd = Math.sqrt((b.vx || 0) * (b.vx || 0) + (b.vy || 0) * (b.vy || 0));
-            if (spd > 15) {
-              const trailLen = Math.min(50, spd * 0.35);
-              const tnx = -(b.vx / spd);
-              const tny = -(b.vy / spd);
-              const trailHue = (now * 0.15 + (b.id ? parseInt(b.id.slice(-4), 16) : 0)) % 360;
-              ctx.save();
-              ctx.globalAlpha = 0.55;
-              const tGrd = ctx.createLinearGradient(sx, sy, sx + tnx * trailLen, sy + tny * trailLen);
-              tGrd.addColorStop(0, `hsla(${trailHue}, 100%, 70%, 0.8)`);
-              tGrd.addColorStop(0.5, `hsla(${(trailHue + 90) % 360}, 100%, 65%, 0.4)`);
-              tGrd.addColorStop(1, `hsla(${(trailHue + 180) % 360}, 100%, 60%, 0)`);
-              ctx.strokeStyle = tGrd;
-              ctx.lineWidth = 6;
-              ctx.lineCap = 'round';
-              ctx.beginPath();
-              ctx.moveTo(sx, sy);
-              ctx.lineTo(sx + tnx * trailLen, sy + tny * trailLen);
-              ctx.stroke();
-              ctx.restore();
-            }
-          }
-
           // Bird Flu: green glow ring behind infected birds (drawn before the bird sprite)
           if (b.isFlu) {
             const fluPulse = 0.4 + 0.35 * Math.sin(now * 0.008);
@@ -7289,9 +7125,43 @@
             ctx.restore();
           }
 
+          // Stardust Cloak — shimmering aurora aura (visible to all nearby players)
+          if (b.stardustCloakUntil && b.stardustCloakUntil > now) {
+            const cloakPulse = 0.3 + 0.3 * Math.abs(Math.sin(now * 0.0015 + (b.id ? b.id.charCodeAt(0) * 0.1 : 0)));
+            ctx.save();
+            ctx.globalAlpha = cloakPulse;
+            const cloakGrd = ctx.createRadialGradient(sx, sy, 5, sx, sy, 30);
+            cloakGrd.addColorStop(0, 'rgba(80,240,220,0.7)');
+            cloakGrd.addColorStop(0.5, 'rgba(40,180,200,0.3)');
+            cloakGrd.addColorStop(1, 'rgba(0,80,150,0)');
+            ctx.fillStyle = cloakGrd;
+            ctx.beginPath();
+            ctx.arc(sx, sy, 30, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+          }
+
+          // Comet Trail — golden sparkle particles trailing behind movement
+          if (b.cometTrailUntil && b.cometTrailUntil > now) {
+            ctx.save();
+            const trailAngle = b.rotation + Math.PI; // opposite direction of movement
+            for (let t = 1; t <= 4; t++) {
+              const td = t * 7;
+              const tx2 = sx + Math.cos(trailAngle) * td;
+              const ty2 = sy + Math.sin(trailAngle) * td;
+              const talpha = (1 - t / 5) * (0.5 + 0.3 * Math.abs(Math.sin(now * 0.004 + t)));
+              ctx.globalAlpha = talpha;
+              ctx.fillStyle = t <= 2 ? '#ffee88' : '#ffcc44';
+              ctx.beginPath();
+              ctx.arc(tx2, ty2, 2.5 - t * 0.4, 0, Math.PI * 2);
+              ctx.fill();
+            }
+            ctx.restore();
+          }
+
           Sprites.drawBird(ctx, sx, sy, b.rotation, b.type, b.wingPhase, isPlayer, b.birdColor || null);
           ctx.globalAlpha = 1; // Always reset after bird draw
-          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0, b.eagleFeather || false, b.idolBadge || false, b.royaleChampBadge || false, b.skillTreeMaster || false, b.fightingChampBadge || false);
+          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0, b.eagleFeather || false, b.idolBadge || false, b.royaleChampBadge || false, b.skillTreeMaster || false, b.fightingChampBadge || false, b.constellationBadge || false);
 
           // Bird Flu: sneezing emoji indicator above infected birds
           if (b.isFlu) {
@@ -7585,272 +7455,6 @@
     // Use gameState.weather as authoritative source (server-synced each tick)
     drawWeather(ctx, camera, now, gameState.weather || weatherState);
 
-    // === CHAOS EVENT VISUAL OVERLAYS ===
-    if (gameState.chaosEvent) {
-      const ce = gameState.chaosEvent;
-      const ceTimeLeft = Math.max(0, ce.endsAt - now);
-      const ceDuration = { poop_party: 20000, coin_shower: 25000, food_festival: 30000, blackout: 25000, disco_fever: 20000 }[ce.type] || 20000;
-      const ceFrac = ceTimeLeft / ceDuration;
-      // Fade in 1s at start, fade out 1s at end
-      const elapsed = ceDuration - ceTimeLeft;
-      const ceAlpha = Math.min(1, elapsed / 1000, ceTimeLeft / 1000);
-
-      if (ce.type === 'blackout') {
-        // BLACKOUT: deep darkness covers the city — a criminal's best friend
-        ctx.save();
-        ctx.globalAlpha = ceAlpha * 0.87;
-        ctx.fillStyle = '#040408';
-        ctx.fillRect(0, 0, camera.screenW, camera.screenH);
-        ctx.globalAlpha = 1;
-        ctx.restore();
-
-        // Flicker effect: occasional brief light flash (electrical glitch)
-        if (Math.random() < 0.008) {
-          ctx.save();
-          ctx.globalAlpha = 0.12;
-          ctx.fillStyle = '#ffffff';
-          ctx.fillRect(0, 0, camera.screenW, camera.screenH);
-          ctx.globalAlpha = 1;
-          ctx.restore();
-        }
-
-        // BLACKOUT HUD bar
-        const bkBarW = 200, bkBarH = 12;
-        const bkBarX = camera.screenW / 2 - bkBarW / 2;
-        const bkBarY = 132;
-        ctx.save();
-        ctx.globalAlpha = 0.92;
-        ctx.fillStyle = 'rgba(0,0,0,0.7)';
-        ctx.beginPath();
-        ctx.roundRect(bkBarX - 55, bkBarY - 18, bkBarW + 110, bkBarH + 32, 10);
-        ctx.fill();
-        const bkPulse = 0.75 + 0.25 * Math.sin(now * 0.008);
-        ctx.globalAlpha = bkPulse;
-        ctx.fillStyle = '#4488ff';
-        ctx.font = 'bold 12px Arial';
-        ctx.textAlign = 'center';
-        // Blackout + Cursed Coin synergy: hint if coin holder is hidden
-        const cursedHidden = gameState.self && gameState.self.cursedCoin &&
-          gameState.self.cursedCoin.state === 'held' && !gameState.self.cursedCoin.isMine;
-        const bkLabel = cursedHidden
-          ? `⚡ BLACKOUT — cops BLIND · 💀 COIN HOLDER VANISHED · ${Math.ceil(ceTimeLeft / 1000)}s`
-          : `⚡ BLACKOUT — cops BLIND · ${Math.ceil(ceTimeLeft / 1000)}s`;
-        ctx.fillText(bkLabel, camera.screenW / 2, bkBarY - 4);
-        ctx.globalAlpha = 0.8;
-        ctx.fillStyle = 'rgba(0,0,40,0.6)';
-        ctx.beginPath(); ctx.roundRect(bkBarX, bkBarY + 4, bkBarW, bkBarH, 5); ctx.fill();
-        ctx.fillStyle = ceFrac > 0.5 ? '#4488ff' : ceFrac > 0.25 ? '#6699ff' : '#aaaaff';
-        ctx.beginPath(); ctx.roundRect(bkBarX, bkBarY + 4, bkBarW * ceFrac, bkBarH, 5); ctx.fill();
-        ctx.globalAlpha = 1;
-        ctx.restore();
-
-      } else if (ce.type === 'disco_fever') {
-        // DISCO FEVER: rainbow color cycling tint + spinning disco ball
-        const discoHue = (now * 0.08) % 360;
-        ctx.save();
-        ctx.globalAlpha = ceAlpha * 0.07;
-        ctx.fillStyle = `hsl(${discoHue}, 100%, 60%)`;
-        ctx.fillRect(0, 0, camera.screenW, camera.screenH);
-        ctx.globalAlpha = 1;
-        ctx.restore();
-
-        // Disco ball (screen-space, top center)
-        const dbX = camera.screenW / 2, dbY = 90;
-        const spin = (now * 0.0025) % (Math.PI * 2);
-        ctx.save();
-        ctx.translate(dbX, dbY);
-        // Hanging string
-        ctx.strokeStyle = 'rgba(180,180,180,0.6)';
-        ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.moveTo(0, -22); ctx.lineTo(0, -50); ctx.stroke();
-        // Ball body (metallic sphere)
-        const ballGrad = ctx.createRadialGradient(-6, -6, 2, 0, 0, 18);
-        ballGrad.addColorStop(0, '#eeeeee');
-        ballGrad.addColorStop(0.5, '#888888');
-        ballGrad.addColorStop(1, '#333333');
-        ctx.fillStyle = ballGrad;
-        ctx.beginPath(); ctx.arc(0, 0, 18, 0, Math.PI * 2); ctx.fill();
-        // Mirror tiles (colorful rotating squares on the ball surface)
-        for (let ti = 0; ti < 12; ti++) {
-          const ta = spin + ti * (Math.PI * 2 / 12);
-          const tx = Math.cos(ta) * 12;
-          const ty = Math.sin(ta) * 9;
-          ctx.fillStyle = `hsl(${(discoHue + ti * 30) % 360}, 100%, 75%)`;
-          ctx.save();
-          ctx.translate(tx, ty);
-          ctx.rotate(spin + ti * 0.5);
-          ctx.fillRect(-3.5, -3.5, 7, 7);
-          ctx.restore();
-        }
-        // Reflection beams (disco light spokes)
-        for (let bi = 0; bi < 6; bi++) {
-          const ba = spin * 2 + bi * (Math.PI / 3);
-          const beamHue = (discoHue + bi * 60) % 360;
-          const bx2 = Math.cos(ba) * 120;
-          const by2 = Math.sin(ba) * 120;
-          const beamGrad = ctx.createLinearGradient(0, 0, bx2, by2);
-          beamGrad.addColorStop(0, `hsla(${beamHue},100%,65%,0.7)`);
-          beamGrad.addColorStop(1, `hsla(${beamHue},100%,65%,0)`);
-          ctx.strokeStyle = beamGrad;
-          ctx.lineWidth = 2.5;
-          ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(bx2, by2); ctx.stroke();
-        }
-        ctx.restore();
-
-        // Floating music notes (screen-space)
-        const noteSymbols = ['♪', '♫', '♬', '♩'];
-        for (let ni = 0; ni < 6; ni++) {
-          const nPhase = (now * 0.0008 + ni * 1.5) % 1;
-          const nx = (ni * 137 + 80) % camera.screenW;
-          const ny = camera.screenH * 0.85 - nPhase * camera.screenH * 0.7;
-          const nAlpha = nPhase < 0.1 ? nPhase / 0.1 : nPhase > 0.85 ? (1 - nPhase) / 0.15 : 1;
-          ctx.save();
-          ctx.globalAlpha = nAlpha * 0.7;
-          ctx.fillStyle = `hsl(${(discoHue + ni * 60) % 360}, 100%, 75%)`;
-          ctx.font = `bold ${14 + (ni % 3) * 4}px sans-serif`;
-          ctx.textAlign = 'center';
-          ctx.fillText(noteSymbols[ni % noteSymbols.length], nx, ny);
-          ctx.restore();
-        }
-
-        // DISCO FEVER HUD bar
-        const dfBarW = 200, dfBarH = 12;
-        const dfBarX = camera.screenW / 2 - dfBarW / 2;
-        const dfBarY = 132;
-        ctx.save();
-        ctx.globalAlpha = 0.92;
-        ctx.fillStyle = 'rgba(0,0,0,0.65)';
-        ctx.beginPath(); ctx.roundRect(dfBarX - 55, dfBarY - 18, dfBarW + 110, dfBarH + 32, 10); ctx.fill();
-        const dfPulse = 0.75 + 0.25 * Math.sin(now * 0.007);
-        ctx.globalAlpha = dfPulse;
-        ctx.fillStyle = `hsl(${discoHue},100%,70%)`;
-        ctx.font = 'bold 12px Arial';
-        ctx.textAlign = 'center';
-        // CRIME DISCO synergy: upgrade the label if Crime Wave is also active
-        const hasCrimeWave = gameState.self && gameState.self.crimeWave;
-        const discoLabel = hasCrimeWave
-          ? `🚨🪩 CRIME DISCO — NPCs 5× XP · Crime coins 3× · ${Math.ceil(ceTimeLeft / 1000)}s`
-          : `🪩 DISCO FEVER — NPCs 3× XP · ${Math.ceil(ceTimeLeft / 1000)}s`;
-        ctx.fillText(discoLabel, camera.screenW / 2, dfBarY - 4);
-        ctx.globalAlpha = 0.8;
-        ctx.fillStyle = 'rgba(40,0,40,0.5)';
-        ctx.beginPath(); ctx.roundRect(dfBarX, dfBarY + 4, dfBarW, dfBarH, 5); ctx.fill();
-        ctx.fillStyle = `hsl(${discoHue},100%,60%)`;
-        ctx.beginPath(); ctx.roundRect(dfBarX, dfBarY + 4, dfBarW * ceFrac, dfBarH, 5); ctx.fill();
-        ctx.globalAlpha = 1;
-        ctx.restore();
-
-      } else if (ce.type === 'poop_party') {
-        // POOP PARTY: festive pastel shimmer + confetti specks
-        const ppHue = (now * 0.05) % 360;
-        ctx.save();
-        ctx.globalAlpha = ceAlpha * 0.05;
-        ctx.fillStyle = `hsl(${ppHue}, 80%, 70%)`;
-        ctx.fillRect(0, 0, camera.screenW, camera.screenH);
-        ctx.globalAlpha = 1;
-        ctx.restore();
-
-        // Confetti particles (screen-space fixed seed per particle)
-        for (let ci = 0; ci < 20; ci++) {
-          const cPhase = ((now * 0.0006 + ci * 0.23) % 1);
-          const cx = ((ci * 157 + 40) % camera.screenW);
-          const cy = cPhase * (camera.screenH + 40) - 20;
-          const cAlpha = cPhase < 0.1 ? cPhase / 0.1 : cPhase > 0.9 ? (1 - cPhase) / 0.1 : 0.9;
-          ctx.save();
-          ctx.globalAlpha = cAlpha * ceAlpha;
-          ctx.fillStyle = `hsl(${(ci * 37 + now * 0.03) % 360}, 100%, 65%)`;
-          ctx.translate(cx, cy);
-          ctx.rotate(now * 0.003 + ci);
-          ctx.fillRect(-4, -2, 8, 4); // rectangle confetti piece
-          ctx.restore();
-        }
-
-        // POOP PARTY HUD bar
-        const ppBarW = 220, ppBarH = 12;
-        const ppBarX = camera.screenW / 2 - ppBarW / 2;
-        const ppBarY = 132;
-        ctx.save();
-        ctx.globalAlpha = 0.92;
-        ctx.fillStyle = 'rgba(0,0,0,0.65)';
-        ctx.beginPath(); ctx.roundRect(ppBarX - 55, ppBarY - 18, ppBarW + 110, ppBarH + 32, 10); ctx.fill();
-        const ppPulse = 0.75 + 0.25 * Math.sin(now * 0.009);
-        ctx.globalAlpha = ppPulse;
-        ctx.fillStyle = '#ff88ff';
-        ctx.font = 'bold 12px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText(`🎉 POOP PARTY — FREE MEGA POOP · ${Math.ceil(ceTimeLeft / 1000)}s`, camera.screenW / 2, ppBarY - 4);
-        ctx.globalAlpha = 0.8;
-        ctx.fillStyle = 'rgba(40,0,40,0.5)';
-        ctx.beginPath(); ctx.roundRect(ppBarX, ppBarY + 4, ppBarW, ppBarH, 5); ctx.fill();
-        ctx.fillStyle = `hsl(${ppHue}, 100%, 65%)`;
-        ctx.beginPath(); ctx.roundRect(ppBarX, ppBarY + 4, ppBarW * ceFrac, ppBarH, 5); ctx.fill();
-        ctx.globalAlpha = 1;
-        ctx.restore();
-
-      } else if (ce.type === 'coin_shower') {
-        // COIN SHOWER: golden sparkle tint
-        ctx.save();
-        ctx.globalAlpha = ceAlpha * 0.05;
-        ctx.fillStyle = '#ffd700';
-        ctx.fillRect(0, 0, camera.screenW, camera.screenH);
-        ctx.globalAlpha = 1;
-        ctx.restore();
-
-        // COIN SHOWER HUD bar
-        const csBarW = 200, csBarH = 12;
-        const csBarX = camera.screenW / 2 - csBarW / 2;
-        const csBarY = 132;
-        ctx.save();
-        ctx.globalAlpha = 0.92;
-        ctx.fillStyle = 'rgba(0,0,0,0.65)';
-        ctx.beginPath(); ctx.roundRect(csBarX - 55, csBarY - 18, csBarW + 110, csBarH + 32, 10); ctx.fill();
-        const csPulse = 0.75 + 0.25 * Math.sin(now * 0.006);
-        ctx.globalAlpha = csPulse;
-        ctx.fillStyle = '#ffd700';
-        ctx.font = 'bold 12px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText(`💸 COIN SHOWER — Fly through coins! · ${Math.ceil(ceTimeLeft / 1000)}s`, camera.screenW / 2, csBarY - 4);
-        ctx.globalAlpha = 0.8;
-        ctx.fillStyle = 'rgba(40,30,0,0.5)';
-        ctx.beginPath(); ctx.roundRect(csBarX, csBarY + 4, csBarW, csBarH, 5); ctx.fill();
-        ctx.fillStyle = ceFrac > 0.5 ? '#ffd700' : ceFrac > 0.25 ? '#ffaa00' : '#ff8800';
-        ctx.beginPath(); ctx.roundRect(csBarX, csBarY + 4, csBarW * ceFrac, csBarH, 5); ctx.fill();
-        ctx.globalAlpha = 1;
-        ctx.restore();
-
-      } else if (ce.type === 'food_festival') {
-        // FOOD FESTIVAL: warm festive tint
-        ctx.save();
-        ctx.globalAlpha = ceAlpha * 0.05;
-        ctx.fillStyle = '#44ff88';
-        ctx.fillRect(0, 0, camera.screenW, camera.screenH);
-        ctx.globalAlpha = 1;
-        ctx.restore();
-
-        // FOOD FESTIVAL HUD bar
-        const ffBarW = 210, ffBarH = 12;
-        const ffBarX = camera.screenW / 2 - ffBarW / 2;
-        const ffBarY = 132;
-        ctx.save();
-        ctx.globalAlpha = 0.92;
-        ctx.fillStyle = 'rgba(0,0,0,0.65)';
-        ctx.beginPath(); ctx.roundRect(ffBarX - 55, ffBarY - 18, ffBarW + 110, ffBarH + 32, 10); ctx.fill();
-        const ffPulse = 0.75 + 0.25 * Math.sin(now * 0.006);
-        ctx.globalAlpha = ffPulse;
-        ctx.fillStyle = '#44dd88';
-        ctx.font = 'bold 12px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText(`🎊 FOOD FESTIVAL — Free food in the park! · ${Math.ceil(ceTimeLeft / 1000)}s`, camera.screenW / 2, ffBarY - 4);
-        ctx.globalAlpha = 0.8;
-        ctx.fillStyle = 'rgba(0,40,10,0.5)';
-        ctx.beginPath(); ctx.roundRect(ffBarX, ffBarY + 4, ffBarW, ffBarH, 5); ctx.fill();
-        ctx.fillStyle = ceFrac > 0.5 ? '#44dd88' : ceFrac > 0.25 ? '#aaee55' : '#ffdd44';
-        ctx.beginPath(); ctx.roundRect(ffBarX, ffBarY + 4, ffBarW * ceFrac, ffBarH, 5); ctx.fill();
-        ctx.globalAlpha = 1;
-        ctx.restore();
-      }
-    }
-
     // === SEAGULL INVASION HUD ===
     if (gameState.seagullInvasion) {
       const si = gameState.seagullInvasion;
@@ -7950,13 +7554,7 @@
       ctx.fillStyle = '#ff3333';
       ctx.font = 'bold 12px Arial';
       ctx.textAlign = 'center';
-      // CRIME DISCO synergy: upgrade label when Disco Fever also active
-      const isCrimeDiscoActive = gameState.chaosEvent && gameState.chaosEvent.type === 'disco_fever';
-      const cwLabel = isCrimeDiscoActive
-        ? `🚨🪩 CRIME DISCO — ${Math.ceil(cwTimeLeft / 1000)}s · NPCs 5× XP · Crime coins 3×`
-        : `🚨 CRIME WAVE — ${Math.ceil(cwTimeLeft / 1000)}s · 2× HEAT · 2× CRIME REWARDS`;
-      ctx.fillStyle = isCrimeDiscoActive ? '#ff44cc' : '#ff3333';
-      ctx.fillText(cwLabel, camera.screenW / 2, cwBarY - 4);
+      ctx.fillText(`🚨 CRIME WAVE — ${Math.ceil(cwTimeLeft / 1000)}s · 2× HEAT · 2× CRIME REWARDS`, camera.screenW / 2, cwBarY - 4);
       // Bar background
       ctx.globalAlpha = 0.85;
       ctx.fillStyle = 'rgba(80,0,0,0.5)';
@@ -8656,13 +8254,8 @@
     }
 
     // Cursed Coin on minimap — pulsing red skull (visible even when held by another bird)
-    // BLACKOUT SYNERGY: if blackout is active and coin is held, the holder vanishes from minimap
     if (gameState.self && gameState.self.cursedCoin && worldData) {
-      const cc = gameState.self.cursedCoin;
-      const hiddenByBlackout = cc.blackoutActive && cc.state === 'held' && !cc.isMine;
-      if (!hiddenByBlackout) {
-        Renderer.drawCursedCoinOnMinimap(minimapCtx, worldData, cc, now);
-      }
+      Renderer.drawCursedCoinOnMinimap(minimapCtx, worldData, gameState.self.cursedCoin, now);
     }
 
     // Tornado on minimap — pulsing purple 🌪️ dot tracking the vortex position
@@ -8951,11 +8544,6 @@
       minimapCtx.fill();
     }
 
-    // Night Market on minimap (teal ✨ dot when aurora is active)
-    if (gameState.nightMarket && worldData) {
-      Renderer.drawNightMarketOnMinimap(minimapCtx, gameState.nightMarket, worldData.width, worldData.height);
-    }
-
     // Draw Godfather Raccoon on minimap (pulsing gold/purple dot)
     if (gameState.godfatherRaccoon && worldData) {
       const mw = minimapCtx.canvas.width;
@@ -9087,6 +8675,30 @@
       minimapCtx.textAlign = 'center';
       minimapCtx.textBaseline = 'middle';
       minimapCtx.fillText('✨', px, py);
+      minimapCtx.restore();
+    }
+
+    // Night Market — pulsing teal dot near the pond when aurora is active
+    if (gameState.nightMarket && worldData) {
+      const mw = minimapCtx.canvas.width;
+      const mh = minimapCtx.canvas.height;
+      const msx = mw / worldData.width;
+      const msy = mh / worldData.height;
+      const nmx = gameState.nightMarket.x * msx;
+      const nmy = gameState.nightMarket.y * msy;
+      const nmPulse = Math.abs(Math.sin(performance.now() * 0.0025));
+      minimapCtx.save();
+      const nmGrd = minimapCtx.createRadialGradient(nmx, nmy, 1, nmx, nmy, 6 + nmPulse * 2);
+      nmGrd.addColorStop(0, 'rgba(80,255,220,0.9)');
+      nmGrd.addColorStop(1, 'rgba(0,150,180,0)');
+      minimapCtx.fillStyle = nmGrd;
+      minimapCtx.beginPath();
+      minimapCtx.arc(nmx, nmy, 6 + nmPulse * 2, 0, Math.PI * 2);
+      minimapCtx.fill();
+      minimapCtx.font = '8px Arial';
+      minimapCtx.textAlign = 'center';
+      minimapCtx.textBaseline = 'middle';
+      minimapCtx.fillText('🛒', nmx, nmy);
       minimapCtx.restore();
     }
 
@@ -9249,6 +8861,80 @@
   // ============================================================
   // BLACK MARKET SHOP UI
   // ============================================================
+  // ============================================================
+  // NIGHT MARKET (aurora bazaar) — open/close/render
+  // ============================================================
+  function openNightMarketOverlay() {
+    if (!gameState || !gameState.nightMarket || !lastNearNightMarket) return;
+    nmOverlayOpen = true;
+    const el = document.getElementById('nightMarketOverlay');
+    if (el) el.style.display = 'block';
+    renderNightMarketOverlay();
+    // Freeze movement while shopping
+    for (const k in keys) keys[k] = false;
+    syncInput();
+  }
+
+  function closeNightMarketOverlay() {
+    nmOverlayOpen = false;
+    const el = document.getElementById('nightMarketOverlay');
+    if (el) el.style.display = 'none';
+  }
+
+  function renderNightMarketOverlay() {
+    if (!gameState || !gameState.self) return;
+    const s = gameState.self;
+    const now = Date.now();
+    const fish = s.cosmicFish || 0;
+    document.getElementById('nmFishBalance').textContent = fish;
+
+    const itemsEl = document.getElementById('nmItems');
+    if (!itemsEl) return;
+    itemsEl.innerHTML = '';
+
+    for (const item of NM_CATALOG) {
+      const isPermanent = item.id === 'constellation_badge';
+      const alreadyOwned = isPermanent && s.constellationBadge;
+      // Check active state for timed items
+      let isActive = false;
+      if (item.id === 'stardust_cloak') isActive = s.stardustCloakUntil > now;
+      if (item.id === 'comet_trail')    isActive = s.cometTrailUntil > now;
+      if (item.id === 'oracle_eye')     isActive = s.oracleEyeUntil > now;
+      if (item.id === 'star_power')     isActive = s.starPowerUntil > now;
+      const canAfford = fish >= item.cost && !alreadyOwned;
+
+      const div = document.createElement('div');
+      div.style.cssText = `
+        padding:9px 12px;border-radius:8px;cursor:${canAfford ? 'pointer' : 'default'};
+        background:${alreadyOwned ? 'rgba(0,60,40,0.5)' : isActive ? 'rgba(0,40,60,0.6)' : canAfford ? 'rgba(0,30,50,0.5)' : 'rgba(20,20,30,0.4)'};
+        border:1px solid ${alreadyOwned ? '#44ff88' : isActive ? '#44ddcc' : canAfford ? 'rgba(68,255,238,0.4)' : 'rgba(68,150,140,0.2)'};
+        opacity:${canAfford || alreadyOwned || isActive ? '1' : '0.55'};
+        transition:background 0.2s;
+      `;
+
+      const statusStr = alreadyOwned ? '<span style="color:#44ff88;font-size:10px;"> ✓ OWNED</span>'
+        : isActive ? '<span style="color:#44ffee;font-size:10px;"> ✓ ACTIVE</span>' : '';
+      div.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:13px;">${item.emoji} <strong style="color:#eeffee;">${item.name}</strong>${statusStr}</span>
+          <span style="color:${canAfford || alreadyOwned || isActive ? '#88ffee' : '#557777'};font-weight:bold;white-space:nowrap;">
+            ${alreadyOwned ? '—' : `🐟 ${item.cost}`}
+          </span>
+        </div>
+        <div style="font-size:10px;color:#669988;margin-top:3px;">${item.desc} <em style="color:#557766;">[${item.dur}]</em></div>
+      `;
+      if (canAfford) {
+        div.addEventListener('click', () => {
+          socket.emit('action', { type: 'night_market_buy', itemId: item.id });
+          closeNightMarketOverlay();
+        });
+        div.addEventListener('mouseenter', () => { div.style.background = 'rgba(0,50,70,0.75)'; });
+        div.addEventListener('mouseleave', () => { div.style.background = canAfford ? 'rgba(0,30,50,0.5)' : 'rgba(20,20,30,0.4)'; });
+      }
+      itemsEl.appendChild(div);
+    }
+  }
+
   function toggleBlackMarketShop() {
     if (bmShopOpen) {
       closeBmShop();
@@ -9573,76 +9259,6 @@
   }
 
   // ============================================================
-  // NIGHT MARKET UI (aurora-only mystical stall near Sacred Pond)
-  // ============================================================
-  function openNightMarket() {
-    if (!gameState || !gameState.nightMarket || !lastNearNightMarket) return;
-    nightMarketOpen = true;
-    const el = document.getElementById('nightMarketOverlay');
-    if (el) { el.style.display = 'flex'; }
-    for (const k in keys) keys[k] = false;
-    syncInput();
-    renderNightMarketUI();
-  }
-
-  function closeNightMarket() {
-    nightMarketOpen = false;
-    const el = document.getElementById('nightMarketOverlay');
-    if (el) el.style.display = 'none';
-  }
-
-  function renderNightMarketUI() {
-    if (!gameState || !gameState.self) return;
-    const s = gameState.self;
-    const fish = s.cosmicFishCount || 0;
-    const now = Date.now();
-
-    const fishEl = document.getElementById('nmFishCount');
-    if (fishEl) fishEl.textContent = fish + ' 🐟';
-
-    const itemsEl = document.getElementById('nmItemsList');
-    if (!itemsEl) return;
-    let html = '';
-    for (const item of NM_CATALOG) {
-      const canAfford = fish >= item.fishCost;
-      const isInstant = item.id === 'cosmic_bomb';
-      // Show active timer if buff is running
-      let activeLabel = '';
-      if (item.id === 'aurora_veil' && s.auroraVeilUntil > now) {
-        const sLeft = Math.ceil((s.auroraVeilUntil - now) / 1000);
-        activeLabel = ` <span style="color:#00ffcc;font-size:9px;">ACTIVE ${sLeft}s</span>`;
-      } else if (item.id === 'starlight_ammo' && s.starlightAmmo > 0) {
-        activeLabel = ` <span style="color:#ffe066;font-size:9px;">${s.starlightAmmo} left</span>`;
-      } else if (item.id === 'moonstone' && s.moonstoneUntil > now) {
-        const sLeft = Math.ceil((s.moonstoneUntil - now) / 1000);
-        activeLabel = ` <span style="color:#c084fc;font-size:9px;">ACTIVE ${sLeft}s</span>`;
-      } else if (item.id === 'comet_rush' && s.cometRushUntil > now) {
-        const sLeft = Math.ceil((s.cometRushUntil - now) / 1000);
-        activeLabel = ` <span style="color:#38bdf8;font-size:9px;">ACTIVE ${sLeft}s</span>`;
-      }
-
-      html += `<div class="nm-item">`;
-      html += `<div class="nm-item-emoji">${item.emoji}</div>`;
-      html += `<div class="nm-item-info">`;
-      html += `<div class="nm-item-name">${item.name}${activeLabel}</div>`;
-      html += `<div class="nm-item-desc">${item.desc}</div>`;
-      html += `</div>`;
-      html += `<button class="nm-buy-btn${canAfford ? '' : ' disabled'}" data-item="${item.id}">${item.fishCost} 🐟</button>`;
-      html += `</div>`;
-    }
-    itemsEl.innerHTML = html;
-
-    itemsEl.querySelectorAll('.nm-buy-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        if (btn.classList.contains('disabled')) return;
-        if (socket && joined) {
-          socket.emit('action', { type: 'night_market_buy', itemId: btn.dataset.item });
-        }
-      });
-    });
-  }
-
-  // ============================================================
   // DAILY CHALLENGES PANEL
   // ============================================================
   function showDailyPanel() {
@@ -9810,15 +9426,6 @@
       const secs = Math.ceil((s.hailSlowUntil - now) / 1000);
       html += '<div class="bm-buff-pill" style="background:rgba(40,80,140,0.7);border-color:#aaddff;color:#aaddff">🧊 HAIL SLOW — ' + secs + 's</div>';
     }
-    // Blizzard: show WARM buff (hot cocoa) or CHILLY debuff
-    if (weatherState && weatherState.type === 'blizzard') {
-      if (s.blizzardWarmUntil && s.blizzardWarmUntil > now) {
-        const secs = Math.ceil((s.blizzardWarmUntil - now) / 1000);
-        html += '<div class="bm-buff-pill" style="background:rgba(80,20,0,0.85);border-color:#ff9944;color:#ffcc88;animation:kingpinGlow 0.8s ease-in-out infinite alternate;">☕ WARM +25% SPD — ' + secs + 's</div>';
-      } else {
-        html += '<div class="bm-buff-pill" style="background:rgba(10,30,70,0.85);border-color:#88bbff;color:#b0d8ff;">❄️ CHILLY! −12% speed · Find hot cocoa!</div>';
-      }
-    }
     // Heatwave: show QUENCHED buff when fresh, or THIRSTY debuff when low on food
     if (weatherState && weatherState.type === 'heatwave') {
       if (s.heatQuenchedUntil && s.heatQuenchedUntil > now) {
@@ -9963,16 +9570,36 @@
       html += `<div class="bm-buff-pill" style="background:rgba(0,60,40,0.9);border-color:#88ffcc;color:#aaffdd;font-weight:bold;animation:kingpinGlow 1.5s ease-in-out infinite alternate;">✨ AURORA BOREALIS — ${auTime} · +25% XP · Combo 12s</div>`;
     }
 
+    // Night Market proximity nudge (when market is open and you're near but haven't visited)
+    if (gameState.nightMarket && lastNearNightMarket && !nmOverlayOpen) {
+      html += `<div class="bm-buff-pill" style="background:rgba(0,40,60,0.9);border-color:#44ffee;color:#88ffee;cursor:pointer;animation:kingpinGlow 1.5s ease-in-out infinite alternate;" onclick="openNightMarketOverlay()">✨ NIGHT MARKET — [N] to shop · ${(s.cosmicFish || 0)} 🐟 Cosmic Fish</div>`;
+    }
+    // Night Market active buff pills
+    if (s.stardustCloakUntil && s.stardustCloakUntil > now) {
+      const secs = Math.ceil((s.stardustCloakUntil - now) / 1000);
+      const mm = Math.floor(secs / 60), ss = secs % 60;
+      html += `<div class="bm-buff-pill" style="background:rgba(0,40,70,0.9);border-color:#44ffee;color:#88ffee;animation:kingpinGlow 1.2s ease-in-out infinite alternate;">🌌 STARDUST CLOAK — ${mm}m ${ss}s</div>`;
+    }
+    if (s.cometTrailUntil && s.cometTrailUntil > now) {
+      const secs = Math.ceil((s.cometTrailUntil - now) / 1000);
+      const mm = Math.floor(secs / 60), ss = secs % 60;
+      html += `<div class="bm-buff-pill" style="background:rgba(40,30,0,0.9);border-color:#ffdd44;color:#ffeeaa;animation:kingpinGlow 0.9s ease-in-out infinite alternate;">☄️ COMET TRAIL — ${mm}m ${ss}s</div>`;
+    }
+    if (s.oracleEyeUntil && s.oracleEyeUntil > now) {
+      const secs = Math.ceil((s.oracleEyeUntil - now) / 1000);
+      const mm = Math.floor(secs / 60), ss = secs % 60;
+      html += `<div class="bm-buff-pill" style="background:rgba(40,0,80,0.9);border-color:#cc88ff;color:#ddaaff;animation:kingpinGlow 1.3s ease-in-out infinite alternate;">🔮 ORACLE EYE — ${mm}m ${ss}s · All secrets revealed</div>`;
+    }
+    if (s.starPowerUntil && s.starPowerUntil > now) {
+      const secs = Math.ceil((s.starPowerUntil - now) / 1000);
+      const mm = Math.floor(secs / 60), ss = secs % 60;
+      html += `<div class="bm-buff-pill" style="background:rgba(60,50,0,0.9);border-color:#ffd700;color:#ffe044;font-weight:bold;animation:kingpinGlow 0.7s ease-in-out infinite alternate;">🌟 STAR POWER +50% XP &amp; COINS — ${mm}m ${ss}s</div>`;
+    }
+
     // Crime Wave — city-wide danger indicator
     if (s.crimeWave) {
       const cwLeft = Math.max(0, Math.ceil((s.crimeWave.endsAt - now) / 1000));
-      const isCrimeDiscoBuff = gameState.chaosEvent && gameState.chaosEvent.type === 'disco_fever';
-      if (isCrimeDiscoBuff) {
-        // CRIME DISCO: upgraded label showing the combo
-        html += `<div class="bm-buff-pill" style="background:rgba(120,0,80,0.9);border-color:#ff44cc;color:#ff88dd;font-weight:bold;animation:pulseRed 0.4s infinite alternate;">🚨🪩 CRIME DISCO — ${cwLeft}s · NPCs 5× XP · crime coins 3×!</div>`;
-      } else {
-        html += `<div class="bm-buff-pill" style="background:rgba(120,0,0,0.9);border-color:#ff2222;color:#ff6666;font-weight:bold;animation:pulseRed 0.6s infinite alternate;">🚨 CRIME WAVE — ${cwLeft}s · 2× heat &amp; coins!</div>`;
-      }
+      html += `<div class="bm-buff-pill" style="background:rgba(120,0,0,0.9);border-color:#ff2222;color:#ff6666;font-weight:bold;animation:pulseRed 0.6s infinite alternate;">🚨 CRIME WAVE — ${cwLeft}s · 2× heat &amp; coins!</div>`;
     }
 
     // City Lockdown — military emergency
@@ -10120,30 +9747,6 @@
           html += `<div class="bm-buff-pill" style="background:rgba(80,30,0,0.9);border-color:#ff6633;color:#ffaa66;font-weight:bold;animation:kingpinGlow 0.6s ease-in-out infinite alternate;cursor:pointer;" onclick="socket.emit('action',{type:'accept_rematch'})">🔄 REMATCH vs ${rm.opponentName}? Press [Y] · ${secsLeft}s</div>`;
         }
       }
-    }
-
-    // === NIGHT MARKET active buff pills ===
-    if (s.auroraVeilUntil && s.auroraVeilUntil > now) {
-      const secs = Math.ceil((s.auroraVeilUntil - now) / 1000);
-      const minsLeft = Math.floor(secs / 60);
-      const secsR = secs % 60;
-      html += `<div class="bm-buff-pill" style="background:rgba(0,60,80,0.9);border-color:#00e5cc;color:#80ffee;animation:kingpinGlow 1.5s ease-in-out infinite alternate;">🔮 AURORA VEIL — ${minsLeft}m ${secsR}s · Shimmering plumage!</div>`;
-    }
-    if (s.starlightAmmo && s.starlightAmmo > 0) {
-      html += `<div class="bm-buff-pill" style="background:rgba(60,50,0,0.9);border-color:#ffe066;color:#fff8aa;animation:kingpinGlow 0.6s ease-in-out infinite alternate;font-weight:bold;">✨ STARLIGHT ×${s.starlightAmmo} — +50% XP · POOP to use!</div>`;
-    }
-    if (s.moonstoneUntil && s.moonstoneUntil > now) {
-      const secs = Math.ceil((s.moonstoneUntil - now) / 1000);
-      html += `<div class="bm-buff-pill" style="background:rgba(60,0,100,0.9);border-color:#c084fc;color:#e9d5ff;animation:kingpinGlow 1.2s ease-in-out infinite alternate;">🌙 MOONSTONE — ${secs}s · 2× coins per poop!</div>`;
-    }
-    if (s.cometRushUntil && s.cometRushUntil > now) {
-      const secs = Math.ceil((s.cometRushUntil - now) / 1000);
-      html += `<div class="bm-buff-pill" style="background:rgba(0,40,100,0.9);border-color:#38bdf8;color:#7dd3fc;animation:kingpinGlow 0.5s ease-in-out infinite alternate;font-weight:bold;">☄️ COMET RUSH — ${secs}s · +30% speed · Rainbow trail!</div>`;
-    }
-
-    // Night Market proximity nudge — show when near but overlay closed
-    if (gameState.nightMarket && lastNearNightMarket && !nightMarketOpen) {
-      html += `<div class="bm-buff-pill" style="background:rgba(0,50,50,0.85);border-color:#00e5cc;color:#80ffee;cursor:pointer;" onclick="openNightMarket()">✨ NIGHT MARKET NEARBY — [L] to browse (${s.cosmicFishCount || 0} 🐟)</div>`;
     }
 
     el.innerHTML = html;
@@ -11750,16 +11353,6 @@
   });
 
   document.getElementById('skillTreeCloseBtn').addEventListener('click', hideSkillTree);
-
-  // Night Market close button
-  const nmCloseBtnEl = document.getElementById('nmCloseBtn');
-  if (nmCloseBtnEl) {
-    nmCloseBtnEl.addEventListener('click', closeNightMarket);
-  }
-
-  // Expose Night Market functions globally for dynamic onclick pills
-  window.openNightMarket = openNightMarket;
-  window.closeNightMarket = closeNightMarket;
 
   // ============================================================
   // INIT

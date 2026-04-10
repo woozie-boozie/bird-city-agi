@@ -82,6 +82,8 @@ const db = {
       skill_tree_master: data.skill_tree_master || false,
       tournament_wins: data.tournament_wins || 0,
       idol_wins: data.idol_wins || 0,
+      cosmic_fish: data.cosmic_fish || 0,
+      constellation_badge: data.constellation_badge || false,
       last_seen: Math.floor(Date.now() / 1000),
     };
     await birdsCol.doc(id).set(docData, { merge: true });

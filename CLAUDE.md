@@ -2516,3 +2516,6 @@ Built the Territory Control System on top of the existing upstream code:
 - Blackout power-up synergy: during blackout, Mystery Crate Ghost Mode makes you FULLY invisible (not just 40% cop chance) — pure stealth god mode
 - Gang War + Crow Cartel: if Crow Cartel raids a zone during an active gang war, both gangs get 2× XP for defending against the Cartel (shared enemy)
 - Radio Tower × Crime Wave: if crime wave starts while someone owns the Radio Tower, a forced city-wide broadcast fires from the owner with a random crime-themed taunt
+- Comet Rush × Street Duel: a bird with Comet Rush active while winning a street duel leaves sparkle trails for 30 seconds after the fight
+- Gang Aurora Ritual: if 3+ gang members are all near the pond at the same time during aurora, a bonus cosmic fish spawns for each of them — cooperative discovery reward
+- Meteor Shower: rare upgrade of Shooting Star — 3 stars fall simultaneously across different parts of the map, each claimable by different birds

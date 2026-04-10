@@ -106,7 +106,7 @@ window.Sprites = {
   },
 
   // === NAME TAG ===
-  drawNameTag(ctx, x, y, name, level, type, isPlayer, mafiaTitle, gangTag, gangColor, tattoosEquipped, prestige, eagleFeather, idolBadge, royaleChampBadge, skillTreeMaster, fightingChampBadge) {
+  drawNameTag(ctx, x, y, name, level, type, isPlayer, mafiaTitle, gangTag, gangColor, tattoosEquipped, prestige, eagleFeather, idolBadge, royaleChampBadge, skillTreeMaster, fightingChampBadge, constellationBadge) {
     const text = `${name} [Lv.${level}]`;
     ctx.font = 'bold 11px Courier New';
     ctx.textAlign = 'center';
@@ -224,6 +224,25 @@ window.Sprites = {
       ctx.shadowBlur = 5;
       ctx.fillStyle = '#00e8a0';
       ctx.fillText('🪶', x, y - 41 - offsetY);
+      ctx.shadowBlur = 0;
+      ctx.font = 'bold 11px Courier New';
+      offsetY += 14;
+    }
+
+    // 🌌 Constellation Badge — permanent cosmetic earned at the Night Market during Aurora
+    if (constellationBadge) {
+      ctx.font = '11px serif';
+      const cbStr = '🌌';
+      const cbw = ctx.measureText(cbStr).width + 10;
+      ctx.fillStyle = 'rgba(0,15,40,0.93)';
+      ctx.fillRect(x - cbw / 2, y - 52 - offsetY, cbw, 14);
+      ctx.strokeStyle = '#44ffee';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(x - cbw / 2, y - 52 - offsetY, cbw, 14);
+      ctx.shadowColor = '#00ddcc';
+      ctx.shadowBlur = 8;
+      ctx.fillStyle = '#aaffee';
+      ctx.fillText(cbStr, x, y - 41 - offsetY);
       ctx.shadowBlur = 0;
       ctx.font = 'bold 11px Courier New';
       offsetY += 14;
@@ -2453,6 +2472,137 @@ window.Sprites = {
     ctx.strokeText('BLACK MKT', x, y - 22 + signBob);
     ctx.fillStyle = 'rgba(200, 100, 255, ' + (0.7 + 0.3 * flicker) + ')';
     ctx.fillText('BLACK MKT', x, y - 22 + signBob);
+
+    ctx.restore();
+  },
+
+  // === NIGHT MARKET (aurora bazaar — celestial stall near the Sacred Pond) ===
+  drawNightMarket(ctx, x, y, now) {
+    ctx.save();
+
+    const pulse = 0.6 + 0.4 * Math.abs(Math.sin(now * 0.0018));
+    const bob   = Math.sin(now * 0.0022) * 2.5;
+
+    // ── Outer aurora glow halo ──
+    const halo = ctx.createRadialGradient(x, y - 5 + bob, 4, x, y - 5 + bob, 42);
+    halo.addColorStop(0, `rgba(80, 220, 200, ${0.30 * pulse})`);
+    halo.addColorStop(0.5, `rgba(40, 140, 200, ${0.15 * pulse})`);
+    halo.addColorStop(1, 'rgba(0,80,140,0)');
+    ctx.fillStyle = halo;
+    ctx.beginPath();
+    ctx.arc(x, y - 5 + bob, 42, 0, Math.PI * 2);
+    ctx.fill();
+
+    // ── Ground shadow ──
+    ctx.fillStyle = 'rgba(0,0,0,0.28)';
+    ctx.beginPath();
+    ctx.ellipse(x + 1, y + 18, 13, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // ── Stall canopy (two-tone teal / deep blue) ──
+    ctx.beginPath();
+    ctx.moveTo(x - 20, y - 2);
+    ctx.lineTo(x - 16, y - 18 + bob);
+    ctx.lineTo(x, y - 22 + bob);
+    ctx.lineTo(x + 16, y - 18 + bob);
+    ctx.lineTo(x + 20, y - 2);
+    ctx.closePath();
+    ctx.fillStyle = '#0a2a40';
+    ctx.fill();
+    ctx.strokeStyle = '#44ddcc';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+
+    // Canopy scallop trim (3 small arcs across the bottom of canopy)
+    ctx.beginPath();
+    for (let i = 0; i < 3; i++) {
+      const cx = x - 12 + i * 12;
+      ctx.arc(cx, y - 2, 6, 0, Math.PI, false);
+    }
+    ctx.fillStyle = '#0d3c55';
+    ctx.fill();
+    ctx.strokeStyle = '#44ddcc';
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+
+    // ── Stall body / counter ──
+    ctx.fillStyle = '#092030';
+    ctx.strokeStyle = '#228899';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(x - 17, y - 2, 34, 18, 3);
+    ctx.fill();
+    ctx.stroke();
+
+    // ── Stargazer NPC (a small owl-like bird silhouette behind the counter) ──
+    // Body
+    ctx.fillStyle = '#1a4060';
+    ctx.strokeStyle = '#44aacc';
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.ellipse(x, y + 6, 6, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    // Head
+    ctx.fillStyle = '#1a4060';
+    ctx.beginPath();
+    ctx.arc(x, y - 3, 5.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    // Ear tufts
+    ctx.fillStyle = '#1a4060';
+    ctx.beginPath();
+    ctx.moveTo(x - 4, y - 7); ctx.lineTo(x - 2, y - 11); ctx.lineTo(x - 0.5, y - 7); ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(x + 4, y - 7); ctx.lineTo(x + 2, y - 11); ctx.lineTo(x + 0.5, y - 7); ctx.closePath();
+    ctx.fill();
+    // Glowing teal eyes
+    const eyeGlow = 0.7 + 0.3 * Math.abs(Math.sin(now * 0.0025));
+    ctx.fillStyle = `rgba(80, 230, 210, ${eyeGlow})`;
+    ctx.shadowColor = '#44ffee';
+    ctx.shadowBlur = 4;
+    ctx.beginPath(); ctx.arc(x - 2.2, y - 3.2, 1.6, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(x + 2.2, y - 3.2, 1.6, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // ── Display shelf: three glowing fish tokens ──
+    const fishColors = ['#44ffcc', '#88ffee', '#00ddbb'];
+    for (let i = 0; i < 3; i++) {
+      const fx = x - 8 + i * 8;
+      const fy = y + 3;
+      const fishPulse = 0.55 + 0.45 * Math.abs(Math.sin(now * 0.002 + i * 1.1));
+      ctx.fillStyle = fishColors[i % fishColors.length];
+      ctx.globalAlpha = fishPulse;
+      ctx.beginPath();
+      // mini fish body (ellipse)
+      ctx.ellipse(fx, fy, 3, 1.8, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // mini tail
+      ctx.beginPath();
+      ctx.moveTo(fx + 3, fy);
+      ctx.lineTo(fx + 5, fy - 2);
+      ctx.lineTo(fx + 5, fy + 2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    // ── Floating sign "NIGHT MARKET" with hue shift ──
+    const hueShift = (now * 0.04) % 360;
+    const signBob = Math.sin(now * 0.0020) * 2.5;
+    ctx.font = 'bold 6.5px "Courier New", monospace';
+    ctx.textAlign = 'center';
+    ctx.strokeStyle = '#000a14';
+    ctx.lineWidth = 3;
+    ctx.strokeText('✨ NIGHT MARKET', x, y - 27 + signBob);
+    ctx.fillStyle = `hsl(${hueShift}, 90%, 72%)`;
+    ctx.fillText('✨ NIGHT MARKET', x, y - 27 + signBob);
+
+    // ── Small fish emoji below sign ──
+    ctx.font = '7px serif';
+    ctx.fillStyle = `rgba(80,230,210,${0.6 + 0.4 * pulse})`;
+    ctx.fillText('🐟', x, y - 36 + signBob);
 
     ctx.restore();
   },
