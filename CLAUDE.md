@@ -2293,6 +2293,39 @@ The Chaos Meter was Bird City's most underused system — only 3 event types, ea
 
 **Creative intent**: The chaos meter fired roughly every 10–15 minutes but always felt the same — NPC Flood, Car Frenzy, or Golden Rain. Now there are 8 possible events with completely different strategic implications. Poop Party is a 20-second god-mode rampage everyone can enjoy. Blackout is a criminal's dream — wanted birds near a blackout can sprint for the sewer or Black Market in total darkness while cops stumble blindly. Disco Fever turns the normally constant grind into a sprint to hit NPCs as fast as possible. The city's chaos is now genuinely unpredictable. Pure CARNAGE + DISCOVERY energy.
 
+**Session 70 — 2026-04-10: Chaos Event Cross-System Synergies Vol. 1**
+Four interlocking interactions between existing chaos events and other city systems — making the chaos meter feel like a living web of cause and effect rather than isolated 20-second events.
+
+**1. Blackout + Cursed Coin Stealth (the ghost thief moment):**
+- During a Blackout, the Cursed Coin's pulsing red skull dot DISAPPEARS from all other players' minimaps
+- If you're holding the coin when the lights go out, you become completely untraceable — nobody can hunt you down for the steal
+- The Blackout HUD bar now shows "💀 COIN HOLDER VANISHED" when this situation is active, reminding everyone the thief is out there but invisible
+- This creates an incredible moment: the city goes dark, the skull vanishes, and the coin holder has ~25 seconds to sprint across the map undetected
+
+**2. Food Festival × Seagull Invasion (priority targeting):**
+- When seagulls arrive during an active Food Festival, they beeline for the premium festival food items first (pizza, sandwich, donut, cake) — ignoring regular food entirely while festival items remain
+- Festival food is "tastier" — seagulls cover more distance to reach it vs regular food items
+- City-wide announcement: "🦅🎊 Seagulls are raiding the FESTIVAL FOOD!" when the priority targeting activates
+- Killing a festival-food-carrying seagull gives +90 XP +35c (vs normal +60 XP +20c) — higher risk/reward for intercepting
+- Works both ways: if a food festival starts mid-invasion, OR if seagulls arrive mid-festival — both trigger the synergy
+
+**3. Crime Wave × Disco Fever "CRIME DISCO" (the best 20 seconds in Bird City):**
+- If a Crime Wave is active when Disco Fever triggers (or vice versa), the combined event becomes "CRIME DISCO"
+- NPC hits go from 3× XP to **5× XP** — the biggest single XP multiplier in the game on a per-hit basis
+- Crime coin rewards go from 2× to **3×** on NPC hits specifically
+- Full-screen announcement: "🚨🪩 CRIME DISCO! 5× NPC XP · 3× crime coins — Dance AND commit crimes — at the same time!"
+- All HUD bars upgrade: Disco Fever bar shows "CRIME DISCO" label; Crime Wave bar turns magenta and announces the combo
+- Active Buffs HUD upgrades the Crime Wave pill to a magenta "🚨🪩 CRIME DISCO" pill with faster pulse
+- Stacks with: Lucky Charm (2×), Signal Boost (1.5×), Prestige P5 (+20% XP), combo streaks — a 15× combo in CRIME DISCO is astronomical
+
+**4. Daily Challenge: "Chaos Connoisseur" (experience 4 different chaos types in one session):**
+- New daily challenge added to the pool: target 4 unique chaos event types in a single play session
+- Rewards: 210 XP + 105 coins (a meaningful mid-tier challenge)
+- Tracked per-bird via `chaosTypesSeen` Set (session-only, not persisted) — only counts new types, not repeats of the same event
+- Encourages longer sessions and rewards players who happen to be online through multiple chaos cycles
+
+**Creative intent**: These four additions make Bird City's chaos events feel INTERCONNECTED. Before, chaos events were isolated 20-second windows that happened and ended. Now they interact with each other and with existing systems. The Blackout + Coin stealth creates a legendary moment that players will talk about: "I was holding the cursed coin when the blackout hit — I made it across the whole map while everyone was blind." The Food Festival seagull priority creates genuine urgency where none existed before (festival food was safe to collect; now seagulls are specifically going for it). Crime Disco is the highest XP event that can naturally occur in the game — a lucky combination of two chaos events creating something greater than either. The Chaos Connoisseur challenge extends session length without requiring any new content. Pure CARNAGE + DISCOVERY + SOCIAL energy — the city's chaos is now a web, not a list.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -2430,8 +2463,17 @@ Built the Territory Control System on top of the existing upstream code:
 - ~~Chaos Meter expansion: 5 new event types (Poop Party, Coin Shower, Food Festival, Blackout, Disco Fever)~~ (DONE Session 69)
 - ~~Disco King daily challenge: Hit 8 NPCs during Disco Fever~~ (DONE Session 69)
 - ~~Money Rain daily challenge: Collect 10 Coin Shower coins~~ (DONE Session 69)
-- Chaos Meter combo challenge: Trigger 3 different chaos event types in one session (new daily challenge)
-- Food Festival × Seagull Invasion: seagulls target festival food items first during food festivals — fun combat priority
-- Poop Party × Disco Fever combo: if both are somehow triggered back-to-back, special "DOUBLE CHAOS" announcement with double screen shake
+- ~~Chaos Meter combo challenge: Trigger 3 different chaos event types in one session (new daily challenge)~~ (DONE Session 70 as "Chaos Connoisseur" — 4 types)
+- ~~Food Festival × Seagull Invasion: seagulls target festival food items first during food festivals~~ (DONE Session 70)
+- ~~Crime Wave × Disco Fever CRIME DISCO: 5× NPC XP + 3× crime coins when both active~~ (DONE Session 70)
+- ~~Blackout + Cursed Coin: cursed coin holder is completely invisible on minimap during blackout~~ (DONE Session 70)
+- Poop Party × Disco Fever combo: if both somehow triggered back-to-back, special "DOUBLE CHAOS" announcement
 - Chaos event leaderboard in the Gazette: track who scored the most hits during each chaos event type that night
-- Blackout + Cursed Coin: cursed coin holder is completely invisible on minimap during blackout (no skull dot) — ultimate stealth window
+- Chaos Vol. 2: more cross-system interactions — Poop Party + Crime Wave (all poops generate 2× heat), Golden Rain + Kingpin (Kingpin's tribute doubles during golden rain)
+- Comet Trail: a P5 LEGEND bird who catches the Shooting Star leaves a brief golden comet trail for 30 seconds
+- Gazette tracking for duels: "⚔️ [Name] WINS STREET DUEL: defeats [Name] for Xc" headline
+- Royale Champion shield flash visual: golden shield burst when champion absorbs the first dethronement hit
+- Seasonal weather: extended "cold snap" period with snow flurries visible on the map, food items frozen in place (need to fly through to thaw)
+- Blackout power-up synergy: during blackout, Mystery Crate Ghost Mode makes you FULLY invisible (not just 40% cop chance) — pure stealth god mode
+- Gang War + Crow Cartel: if Crow Cartel raids a zone during an active gang war, both gangs get 2× XP for defending against the Cartel (shared enemy)
+- Radio Tower × Crime Wave: if crime wave starts while someone owns the Radio Tower, a forced city-wide broadcast fires from the owner with a random crime-themed taunt

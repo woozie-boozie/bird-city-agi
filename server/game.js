@@ -75,8 +75,9 @@ const DAILY_CHALLENGE_POOL = [
   { id: 'idol_champ',    title: 'Idol Champion',   desc: 'Win the Bird City Idol singing contest',          target: 1, trackType: 'idol_won',         reward: { xp: 250, coins: 120 } },
   { id: 'stargazer',     title: 'Stargazer',        desc: 'Catch a Shooting Star during the Aurora',         target: 1, trackType: 'shooting_star_caught', reward: { xp: 300, coins: 150 } },
   { id: 'night_shopper', title: 'Night Shopper',    desc: 'Buy any item from the Aurora Night Market',       target: 1, trackType: 'night_market_buy',     reward: { xp: 180, coins: 90  } },
-  { id: 'disco_king',   title: 'Disco King',        desc: 'Hit 8 NPCs during a Disco Fever chaos event',     target: 8, trackType: 'disco_fever_hit',      reward: { xp: 190, coins: 95  } },
-  { id: 'coin_grabber', title: 'Money Rain',        desc: 'Collect 10 coins from a Coin Shower event',       target: 10, trackType: 'coin_shower_collect', reward: { xp: 160, coins: 80  } },
+  { id: 'disco_king',       title: 'Disco King',          desc: 'Hit 8 NPCs during a Disco Fever chaos event',          target: 8, trackType: 'disco_fever_hit',      reward: { xp: 190, coins: 95  } },
+  { id: 'coin_grabber',    title: 'Money Rain',          desc: 'Collect 10 coins from a Coin Shower event',            target: 10, trackType: 'coin_shower_collect', reward: { xp: 160, coins: 80  } },
+  { id: 'chaos_connoisseur', title: 'Chaos Connoisseur', desc: 'Experience 4 different chaos event types in one session', target: 4, trackType: 'chaos_types_seen',   reward: { xp: 210, coins: 105 } },
 ];
 
 class GameEngine {
@@ -876,6 +877,8 @@ class GameEngine {
       tournamentWins: saved ? (saved.tournament_wins || 0) : 0,  // lifetime championship wins (persistent)
       // === BIRD CITY IDOL HALL OF FAME ===
       idolWins: saved ? (saved.idol_wins || 0) : 0,   // lifetime idol wins (persistent)
+      // === CHAOS CONNOISSEUR — session tracking ===
+      chaosTypesSeen: new Set(),  // transient: which chaos event types this bird has witnessed this session
     };
 
     // Determine bird type from XP
@@ -3073,13 +3076,14 @@ class GameEngine {
             });
             setTimeout(() => { this.foods.delete(droppedId); }, 25000);
           }
-          const killXp = 60;
-          const killCoins = 20;
+          // FOOD FESTIVAL SYNERGY: bonus reward for killing a festival-food raider!
+          const killXp = sg._festivalTarget ? 90 : 60;
+          const killCoins = sg._festivalTarget ? 35 : 20;
           bird.xp += killXp;
           bird.coins += killCoins;
           const newLevel = world.getLevelFromXP(bird.xp);
           if (newLevel !== bird.level) { bird.level = newLevel; bird.type = world.getBirdTypeForLevel(newLevel); }
-          this.events.push({ type: 'seagull_killed', birdId: bird.id, birdName: bird.name, gangTag: bird.gangTag || null, x: sg.x, y: sg.y, killXp, killCoins });
+          this.events.push({ type: 'seagull_killed', birdId: bird.id, birdName: bird.name, gangTag: bird.gangTag || null, x: sg.x, y: sg.y, killXp, killCoins, wasFestivalRaider: !!sg._festivalTarget });
           // Check if all seagulls are defeated
           this._checkSeagullInvasionVictory(now);
         } else {
@@ -3158,10 +3162,12 @@ class GameEngine {
         }
       }
 
-      // === CHAOS EVENT: DISCO FEVER — NPCs and event_npcs worth 3× XP on the dance floor ===
+      // === CHAOS EVENT: DISCO FEVER — NPCs and event_npcs worth 3× XP (5× during Crime Wave) ===
       if (this.chaosEvent && this.chaosEvent.type === 'disco_fever' &&
           (hit.target === 'npc' || hit.target === 'event_npc')) {
-        xpGain = Math.floor(xpGain * 3);
+        // CRIME DISCO synergy: if Crime Wave also active, 5× instead of 3×
+        const discoMult = this.crimeWave ? 5 : 3;
+        xpGain = Math.floor(xpGain * discoMult);
         this._trackDailyProgress(bird, 'disco_fever_hit', 1);
       }
 
@@ -3245,7 +3251,12 @@ class GameEngine {
         coinGain = Math.floor(coinGain * 2.5);
       }
       // Crime Wave: ×2 all crime coin rewards — high risk, high reward
-      if (this.crimeWave && coinGain > 0) coinGain *= 2;
+      // CRIME DISCO: if Disco Fever is also active AND it's an NPC hit, ×3 coins instead of ×2
+      if (this.crimeWave && coinGain > 0) {
+        const isCrimeDiscoNpc = this.chaosEvent && this.chaosEvent.type === 'disco_fever' &&
+          (hit.target === 'npc' || hit.target === 'event_npc');
+        coinGain = Math.floor(coinGain * (isCrimeDiscoNpc ? 3 : 2));
+      }
       // City Lockdown: ×1.5 crime coin rewards — city in chaos, crime pays
       if (this.cityLockdown && coinGain > 0) coinGain = Math.floor(coinGain * 1.5);
       // Vending Machine: Rainbow effect — 3× coins on this poop hit
@@ -6276,6 +6287,8 @@ class GameEngine {
         intensity: this.cursedCoin.intensity,
         isMine: this.cursedCoin.holderId === bird.id,
         heldSince: this.cursedCoin.heldSince,
+        // BLACKOUT SYNERGY: during a blackout, the holder is invisible on minimap
+        blackoutActive: !!(this.chaosEvent && this.chaosEvent.type === 'blackout'),
       } : null,
       // Crime Wave
       crimeWave: this.crimeWave ? {
@@ -8024,6 +8037,24 @@ class GameEngine {
 
     const durations = { npc_flood: 30000, car_frenzy: 20000, golden_rain: 20000, poop_party: 20000, coin_shower: 25000, food_festival: 30000, blackout: 25000, disco_fever: 20000 };
     this.events.push({ type: 'chaos_event', chaosType: type, duration: durations[type] || 20000 });
+
+    // === CHAOS CONNOISSEUR daily challenge: track unique chaos types seen per bird ===
+    for (const bird of this.birds.values()) {
+      if (!bird.chaosTypesSeen) bird.chaosTypesSeen = new Set();
+      if (!bird.chaosTypesSeen.has(type)) {
+        bird.chaosTypesSeen.add(type);
+        this._trackDailyProgress(bird, 'chaos_types_seen', 1);
+      }
+    }
+
+    // === CRIME DISCO synergy: Disco Fever starting while Crime Wave is active ===
+    if (type === 'disco_fever' && this.crimeWave) {
+      this.events.push({ type: 'crime_disco_start' });
+    }
+    // === Seagull-Festival synergy: announce when food festival starts with invasion active ===
+    if (type === 'food_festival' && this.seagullInvasion) {
+      this.events.push({ type: 'seagull_festival_announced' });
+    }
   }
 
   _updateChaosEvent(dt, now) {
@@ -13980,6 +14011,10 @@ class GameEngine {
       this.events.push({ type: 'crime_wave_start_global', endsAt: this.crimeWave.endsAt });
       // Track for gazette
       this.gazetteStats.crimeWaves++;
+      // CRIME DISCO synergy: Crime Wave starting while Disco Fever is active
+      if (this.chaosEvent && this.chaosEvent.type === 'disco_fever') {
+        this.events.push({ type: 'crime_disco_start' });
+      }
       // Reset timer for next crime wave: 40–60 minutes after this one ends
       this.crimeWaveTimer = now + CRIME_WAVE_DURATION + this._randomRange(40 * 60000, 60 * 60000);
     }
@@ -14456,11 +14491,19 @@ class GameEngine {
         sg.stealTimer -= dt;
         if (sg.stealTimer <= 0) {
           // Steal complete — remove the food and start carrying
-          const food = this.foods.get(sg.targetFoodId);
+          const food = sg._festivalTarget
+            ? this.chaosEventFoods.get(sg.targetFoodId)
+            : this.foods.get(sg.targetFoodId);
           if (food) {
             food.active = false;
-            food.respawnAt = now + 20000;
+            if (sg._festivalTarget) {
+              // Festival food: fully delete from chaos map (no respawn)
+              this.chaosEventFoods.delete(sg.targetFoodId);
+            } else {
+              food.respawnAt = now + 20000;
+            }
             sg.carriedFoodType = food.type;
+            sg._festivalTarget = false;
           }
           sg.targetFoodId = null;
           sg.state = 'carrying';
@@ -14468,7 +14511,8 @@ class GameEngine {
           const edgeTarget = this._seagullEdgeTarget(sg.x, sg.y);
           sg._fleeTargetX = edgeTarget.x;
           sg._fleeTargetY = edgeTarget.y;
-          this.events.push({ type: 'seagull_stole_food', x: sg.x, y: sg.y, foodType: sg.carriedFoodType });
+          this.events.push({ type: 'seagull_stole_food', x: sg.x, y: sg.y, foodType: sg.carriedFoodType, wasFestival: !!sg._wasFestivalFood });
+          sg._wasFestivalFood = false;
         }
         // Hover in place while stealing
         continue;
@@ -14477,28 +14521,56 @@ class GameEngine {
       // state === 'swooping' — find and move toward a food item
       // Check if current target is still valid
       if (sg.targetFoodId) {
-        const food = this.foods.get(sg.targetFoodId);
+        const food = sg._festivalTarget
+          ? this.chaosEventFoods.get(sg.targetFoodId)
+          : this.foods.get(sg.targetFoodId);
         if (!food || !food.active) {
           sg.targetFoodId = null; // food gone, re-acquire
+          sg._festivalTarget = false;
         }
       }
 
       // Acquire a new food target if needed
       if (!sg.targetFoodId) {
-        // Find the nearest active food item not already targeted by another seagull
         const targeted = new Set();
         for (const other of invasion.seagulls.values()) {
           if (other.id !== sg.id && other.targetFoodId) targeted.add(other.targetFoodId);
         }
         let bestFood = null, bestDist = Infinity;
-        for (const food of this.foods.values()) {
-          if (!food.active || targeted.has(food.id)) continue;
-          if (food.type === 'worm' || food.type === 'water_puddle') continue; // skip weather foods
-          const fdx = food.x - sg.x;
-          const fdy = food.y - sg.y;
-          const d = Math.sqrt(fdx * fdx + fdy * fdy);
-          if (d < bestDist) { bestDist = d; bestFood = food; }
+        sg._festivalTarget = false;
+
+        // === FOOD FESTIVAL SYNERGY: seagulls LOVE premium festival food — target it first ===
+        if (this.chaosEvent && this.chaosEvent.type === 'food_festival' && this.chaosEventFoods.size > 0) {
+          for (const [fId, food] of this.chaosEventFoods) {
+            if (!food.active || targeted.has(fId)) continue;
+            const fdx = food.x - sg.x;
+            const fdy = food.y - sg.y;
+            const d = Math.sqrt(fdx * fdx + fdy * fdy);
+            if (d < bestDist) { bestDist = d; bestFood = food; }
+          }
+          if (bestFood) {
+            sg._festivalTarget = true;
+            // Announce the first time seagulls go for festival food this invasion
+            if (!invasion._festivalAnnounced) {
+              invasion._festivalAnnounced = true;
+              this.events.push({ type: 'seagull_festival_raid' });
+            }
+          }
         }
+
+        // Fall back to regular food if no festival food found
+        if (!bestFood) {
+          bestDist = Infinity;
+          for (const food of this.foods.values()) {
+            if (!food.active || targeted.has(food.id)) continue;
+            if (food.type === 'worm' || food.type === 'water_puddle') continue; // skip weather foods
+            const fdx = food.x - sg.x;
+            const fdy = food.y - sg.y;
+            const d = Math.sqrt(fdx * fdx + fdy * fdy);
+            if (d < bestDist) { bestDist = d; bestFood = food; }
+          }
+        }
+
         if (bestFood) {
           sg.targetFoodId = bestFood.id;
         } else {
@@ -14511,7 +14583,9 @@ class GameEngine {
         }
       }
 
-      const targetFood = this.foods.get(sg.targetFoodId);
+      const targetFood = sg._festivalTarget
+        ? this.chaosEventFoods.get(sg.targetFoodId)
+        : this.foods.get(sg.targetFoodId);
       if (!targetFood) continue;
 
       const fdx = targetFood.x - sg.x;
@@ -14524,6 +14598,7 @@ class GameEngine {
         sg.stealTimer = 1.5;
         sg.x = targetFood.x;
         sg.y = targetFood.y;
+        sg._wasFestivalFood = sg._festivalTarget; // remember if this was festival food for the steal event
       } else {
         // Move toward food
         const spd = sg.speed * dt;
@@ -14583,6 +14658,8 @@ class GameEngine {
         stealTimer: 0,
         _fleeTargetX: edgeTarget.x,
         _fleeTargetY: edgeTarget.y,
+        _festivalTarget: false,   // true when targeting food from chaosEventFoods (food festival synergy)
+        _wasFestivalFood: false,  // true during stealing state if food came from food festival
         spawnedAt: now,
       });
     }
@@ -14596,6 +14673,10 @@ class GameEngine {
 
     this.events.push({ type: 'seagull_invasion_start', count: numSeagulls });
     this.gazetteStats.seagullInvasions = (this.gazetteStats.seagullInvasions || 0) + 1;
+    // Food Festival synergy: announce if invasion starts mid-festival
+    if (this.chaosEvent && this.chaosEvent.type === 'food_festival') {
+      this.events.push({ type: 'seagull_festival_announced' });
+    }
     console.log(`[Seagull] Invasion started — ${numSeagulls} seagulls from ${chosenEdge} edge`);
   }
 

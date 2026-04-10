@@ -1322,6 +1322,21 @@
       showAnnouncement('🚔 Crime wave over. The city breathes again.', '#ff8888', 3000);
     }
 
+    // === CRIME DISCO SYNERGY ===
+    if (ev.type === 'crime_disco_start') {
+      effects.push({ type: 'screen_shake', intensity: 12, duration: 1000, time: now });
+      showAnnouncement('🚨🪩 CRIME DISCO!\n5× NPC XP · 3× crime coins\nDance AND commit crimes — at the same time!', '#ff44cc', 8000);
+      addEventMessage('🚨🪩 CRIME DISCO! Crime Wave + Disco Fever = 5× NPC XP + 3× crime coins!', '#ff44cc');
+    }
+
+    // === SEAGULL FESTIVAL RAID ===
+    if (ev.type === 'seagull_festival_raid') {
+      addEventMessage('🦅🎊 Seagulls are raiding the FESTIVAL FOOD! Kill carriers for +35c bonus!', '#ff9933');
+    }
+    if (ev.type === 'seagull_festival_announced') {
+      addEventMessage('🦅🎊 SEAGULL INVASION during a FOOD FESTIVAL — the birds are going for the premium dishes!', '#ff9933');
+    }
+
     // === AURORA BOREALIS EVENTS ===
     if (ev.type === 'aurora_start') {
       effects.push({ type: 'screen_shake', intensity: 5, duration: 600, time: now });
@@ -3031,10 +3046,14 @@
       }
     }
     if (ev.type === 'seagull_killed') {
-      addEventMessage(`💀 ${ev.birdName ? (ev.gangTag ? '[' + ev.gangTag + '] ' : '') + ev.birdName + ' downed' : 'A'} a seagull! (+${ev.killXp}XP +${ev.killCoins}c)`, '#44aaff');
+      const festBonus = ev.wasFestivalRaider ? ' 🎊 FESTIVAL RAIDER BONUS!' : '';
+      addEventMessage(`💀 ${ev.birdName ? (ev.gangTag ? '[' + ev.gangTag + '] ' : '') + ev.birdName + ' downed' : 'A'} a seagull! (+${ev.killXp}XP +${ev.killCoins}c)${festBonus}`, '#44aaff');
       if (ev.birdId === myId) {
         effects.push({ type: 'screen_shake', intensity: 4, duration: 250, time: now });
-        showAnnouncement(`💀 SEAGULL DOWN! +${ev.killXp}XP +${ev.killCoins}c`, '#44aaff', 2000);
+        const killMsg = ev.wasFestivalRaider
+          ? `💀🎊 FESTIVAL RAIDER DOWN! +${ev.killXp}XP +${ev.killCoins}c`
+          : `💀 SEAGULL DOWN! +${ev.killXp}XP +${ev.killCoins}c`;
+        showAnnouncement(killMsg, ev.wasFestivalRaider ? '#ffaa33' : '#44aaff', 2000);
       }
     }
     if (ev.type === 'seagull_invasion_repelled') {
@@ -7535,7 +7554,13 @@
         ctx.fillStyle = '#4488ff';
         ctx.font = 'bold 12px Arial';
         ctx.textAlign = 'center';
-        ctx.fillText(`⚡ BLACKOUT — cops BLIND · ${Math.ceil(ceTimeLeft / 1000)}s`, camera.screenW / 2, bkBarY - 4);
+        // Blackout + Cursed Coin synergy: hint if coin holder is hidden
+        const cursedHidden = gameState.self && gameState.self.cursedCoin &&
+          gameState.self.cursedCoin.state === 'held' && !gameState.self.cursedCoin.isMine;
+        const bkLabel = cursedHidden
+          ? `⚡ BLACKOUT — cops BLIND · 💀 COIN HOLDER VANISHED · ${Math.ceil(ceTimeLeft / 1000)}s`
+          : `⚡ BLACKOUT — cops BLIND · ${Math.ceil(ceTimeLeft / 1000)}s`;
+        ctx.fillText(bkLabel, camera.screenW / 2, bkBarY - 4);
         ctx.globalAlpha = 0.8;
         ctx.fillStyle = 'rgba(0,0,40,0.6)';
         ctx.beginPath(); ctx.roundRect(bkBarX, bkBarY + 4, bkBarW, bkBarH, 5); ctx.fill();
@@ -7626,7 +7651,12 @@
         ctx.fillStyle = `hsl(${discoHue},100%,70%)`;
         ctx.font = 'bold 12px Arial';
         ctx.textAlign = 'center';
-        ctx.fillText(`🪩 DISCO FEVER — NPCs 3× XP · ${Math.ceil(ceTimeLeft / 1000)}s`, camera.screenW / 2, dfBarY - 4);
+        // CRIME DISCO synergy: upgrade the label if Crime Wave is also active
+        const hasCrimeWave = gameState.self && gameState.self.crimeWave;
+        const discoLabel = hasCrimeWave
+          ? `🚨🪩 CRIME DISCO — NPCs 5× XP · Crime coins 3× · ${Math.ceil(ceTimeLeft / 1000)}s`
+          : `🪩 DISCO FEVER — NPCs 3× XP · ${Math.ceil(ceTimeLeft / 1000)}s`;
+        ctx.fillText(discoLabel, camera.screenW / 2, dfBarY - 4);
         ctx.globalAlpha = 0.8;
         ctx.fillStyle = 'rgba(40,0,40,0.5)';
         ctx.beginPath(); ctx.roundRect(dfBarX, dfBarY + 4, dfBarW, dfBarH, 5); ctx.fill();
@@ -7845,7 +7875,13 @@
       ctx.fillStyle = '#ff3333';
       ctx.font = 'bold 12px Arial';
       ctx.textAlign = 'center';
-      ctx.fillText(`🚨 CRIME WAVE — ${Math.ceil(cwTimeLeft / 1000)}s · 2× HEAT · 2× CRIME REWARDS`, camera.screenW / 2, cwBarY - 4);
+      // CRIME DISCO synergy: upgrade label when Disco Fever also active
+      const isCrimeDiscoActive = gameState.chaosEvent && gameState.chaosEvent.type === 'disco_fever';
+      const cwLabel = isCrimeDiscoActive
+        ? `🚨🪩 CRIME DISCO — ${Math.ceil(cwTimeLeft / 1000)}s · NPCs 5× XP · Crime coins 3×`
+        : `🚨 CRIME WAVE — ${Math.ceil(cwTimeLeft / 1000)}s · 2× HEAT · 2× CRIME REWARDS`;
+      ctx.fillStyle = isCrimeDiscoActive ? '#ff44cc' : '#ff3333';
+      ctx.fillText(cwLabel, camera.screenW / 2, cwBarY - 4);
       // Bar background
       ctx.globalAlpha = 0.85;
       ctx.fillStyle = 'rgba(80,0,0,0.5)';
@@ -8545,8 +8581,13 @@
     }
 
     // Cursed Coin on minimap — pulsing red skull (visible even when held by another bird)
+    // BLACKOUT SYNERGY: if blackout is active and coin is held, the holder vanishes from minimap
     if (gameState.self && gameState.self.cursedCoin && worldData) {
-      Renderer.drawCursedCoinOnMinimap(minimapCtx, worldData, gameState.self.cursedCoin, now);
+      const cc = gameState.self.cursedCoin;
+      const hiddenByBlackout = cc.blackoutActive && cc.state === 'held' && !cc.isMine;
+      if (!hiddenByBlackout) {
+        Renderer.drawCursedCoinOnMinimap(minimapCtx, worldData, cc, now);
+      }
     }
 
     // Tornado on minimap — pulsing purple 🌪️ dot tracking the vortex position
@@ -9841,7 +9882,13 @@
     // Crime Wave — city-wide danger indicator
     if (s.crimeWave) {
       const cwLeft = Math.max(0, Math.ceil((s.crimeWave.endsAt - now) / 1000));
-      html += `<div class="bm-buff-pill" style="background:rgba(120,0,0,0.9);border-color:#ff2222;color:#ff6666;font-weight:bold;animation:pulseRed 0.6s infinite alternate;">🚨 CRIME WAVE — ${cwLeft}s · 2× heat &amp; coins!</div>`;
+      const isCrimeDiscoBuff = gameState.chaosEvent && gameState.chaosEvent.type === 'disco_fever';
+      if (isCrimeDiscoBuff) {
+        // CRIME DISCO: upgraded label showing the combo
+        html += `<div class="bm-buff-pill" style="background:rgba(120,0,80,0.9);border-color:#ff44cc;color:#ff88dd;font-weight:bold;animation:pulseRed 0.4s infinite alternate;">🚨🪩 CRIME DISCO — ${cwLeft}s · NPCs 5× XP · crime coins 3×!</div>`;
+      } else {
+        html += `<div class="bm-buff-pill" style="background:rgba(120,0,0,0.9);border-color:#ff2222;color:#ff6666;font-weight:bold;animation:pulseRed 0.6s infinite alternate;">🚨 CRIME WAVE — ${cwLeft}s · 2× heat &amp; coins!</div>`;
+      }
     }
 
     // City Lockdown — military emergency
