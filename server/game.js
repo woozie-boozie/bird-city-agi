@@ -73,6 +73,9 @@ const DAILY_CHALLENGE_POOL = [
   { id: 'royale_winner',  title: 'Battle Royale',   desc: 'Win a Bird Royale shrinking-zone event',        target: 1, trackType: 'royale_win',       reward: { xp: 300, coins: 150 } },
   { id: 'champ',          title: 'Fighting Champ',  desc: 'Win the Pigeon Fighting Championship tournament', target: 1, trackType: 'tournament_win',   reward: { xp: 400, coins: 200 } },
   { id: 'idol_champ',    title: 'Idol Champion',   desc: 'Win the Bird City Idol singing contest',          target: 1, trackType: 'idol_won',         reward: { xp: 250, coins: 120 } },
+  { id: 'blizzard_brawler', title: 'Blizzard Brawler', desc: 'Hit 10 targets during a blizzard storm',       target: 10, trackType: 'blizzard_hit',      reward: { xp: 220, coins: 110 } },
+  { id: 'snow_bird',     title: 'Snow Bird',       desc: 'Drink hot cocoa AND land 5 poop hits in a blizzard', target: 1, trackType: 'snow_bird_complete', reward: { xp: 250, coins: 120 } },
+  { id: 'meteor_catcher', title: 'Stargazer',      desc: 'Catch a Shooting Star or Meteor during the Aurora', target: 1, trackType: 'star_caught',       reward: { xp: 300, coins: 150 } },
 ];
 
 class GameEngine {
@@ -203,6 +206,7 @@ class GameEngine {
     this.rainWorms = new Map();       // id -> true (worm food ids spawned during rain)
     this.weatherBetting = null;       // null or { openUntil, bets: Map(birdId -> { type, amount, name }) }
     this.heatPuddles = new Map();     // id -> true (water puddle food ids spawned during heatwave)
+    this.hotCocoa = new Map();        // id -> true (hot_cocoa food ids spawned during blizzard)
 
     // === GOLDEN EGG SCRAMBLE ===
     this.eggScramble = null;          // null or { state, startedAt, endsAt, eggs: Map(id->egg), delivered }
@@ -481,6 +485,10 @@ class GameEngine {
     this.shootingStar = null; // null | { x, y, spawnedAt, expiresAt, streakAngle }
     this.shootingStarTriggeredThisAurora = false;
     this.shootingStarScheduledAt = null;
+    // Meteor Shower: rarer aurora event — 3 stars fall simultaneously across the map.
+    // Each can be claimed independently. Triggers once per aurora, 15% chance.
+    this.meteorShower = null; // null | { stars: Map(id -> { x, y, expiresAt, streakAngle, claimed }) }
+    this.meteorShowerTriggeredThisAurora = false;
 
     // === NIGHT MARKET ===
     // A celestial bazaar that materializes near the Sacred Pond only when the Aurora Borealis
@@ -810,6 +818,7 @@ class GameEngine {
       hailSlowUntil: 0,     // timestamp when hail slow wears off
       heatQuenchedUntil: 0, // timestamp: if > now, bird drank recently and won't drain food
       puddleBoostUntil: 0,  // timestamp when puddle speed boost wears off
+      warmUntil: 0,         // timestamp: hot cocoa warmth (blizzard — negates cold drag + speed bonus)
       // === RACE POWER-UPS ===
       raceBoostUntil: 0,    // timestamp when race boost gate speed buff wears off
       // === GOLDEN EGG SCRAMBLE ===
@@ -1440,9 +1449,10 @@ class GameEngine {
     // === Day/Night Cycle ===
     this._updateDayNight(dt, now);
 
-    // === Aurora Borealis + Shooting Star ===
+    // === Aurora Borealis + Shooting Star + Meteor Shower ===
     this._updateAurora(dt, now);
     this._tickShootingStar(now);
+    this._tickMeteorShower(now);
 
     // === Underground Sewer ===
     this._updateSewerRats(dt, now);
@@ -2431,6 +2441,15 @@ class GameEngine {
       maxSpeed *= 1.2;
     }
 
+    // Blizzard: cold drag slows all birds — unless warmed by hot cocoa
+    if (this.weather && this.weather.type === 'blizzard') {
+      if (bird.warmUntil > now) {
+        maxSpeed *= 1.25; // cocoa warmth: +25% — beat the chill
+      } else {
+        maxSpeed *= 0.88; // cold drag: -12% — dragging frozen wings
+      }
+    }
+
     // Cursed Coin: holder gets +20% speed (urgent cursed energy)
     if (this.cursedCoin && this.cursedCoin.state === 'held' && this.cursedCoin.holderId === bird.id) {
       maxSpeed *= 1.20;
@@ -3168,6 +3187,8 @@ class GameEngine {
         }
         // Crime Wave: heat generation ×2 — every crime escalates faster
         if (this.crimeWave) heatAmt *= 2;
+        // Blizzard × Crime Wave: snowball poops generate EXTRA heat — the cold makes crime sting
+        if (this.crimeWave && this.weather && this.weather.type === 'blizzard') heatAmt *= 2;
         this._addHeat(bird.id, heatAmt);
       }
       this._addAreaChaos(poop.x, poop.y, 1);
@@ -3239,7 +3260,9 @@ class GameEngine {
       if (hit.target && hit.target !== 'none') {
         const comboActive = now < bird.comboExpiresAt;
         bird.comboCount = comboActive ? bird.comboCount + 1 : 1;
-        bird.comboExpiresAt = now + (this.aurora ? 12000 : 8000); // aurora extends combo window to 12s
+        // Aurora extends combo to 12s; blizzard to 11s (snowball chaos = more time to chain hits)
+        const comboWindow = this.aurora ? 12000 : (this.weather && this.weather.type === 'blizzard' ? 11000 : 8000);
+        bird.comboExpiresAt = now + comboWindow;
         const combo = bird.comboCount;
         // XP bonus: flat multiplier applied to base xpGain
         let comboMult = 1.0;
@@ -3369,6 +3392,20 @@ class GameEngine {
       // Track combo10 milestone
       if (bird.comboCount === 10) {
         this._trackDailyProgress(bird, 'combo10', 1);
+      }
+      // Blizzard daily challenge: Blizzard Brawler (10 hits during blizzard)
+      if (this.weather && this.weather.type === 'blizzard') {
+        this._trackDailyProgress(bird, 'blizzard_hit', 1);
+        // Snow Bird: cocoa drank + 5 blizzard hits
+        if (!bird._blizzardHitsThisCocoa) bird._blizzardHitsThisCocoa = 0;
+        if (bird._blizzardCocoaDrank > 0) {
+          bird._blizzardHitsThisCocoa = (bird._blizzardHitsThisCocoa || 0) + 1;
+          if (bird._blizzardHitsThisCocoa >= 5) {
+            this._trackDailyProgress(bird, 'snow_bird_complete', 1);
+            bird._blizzardHitsThisCocoa = 0; // reset so they can't double-count
+            bird._blizzardCocoaDrank = 0;
+          }
+        }
       }
 
       // === KINGPIN HIT TRACKING — secondary check, doesn't replace primary hit ===
@@ -3653,6 +3690,38 @@ class GameEngine {
       }
     }
 
+    // === Hot cocoa auto-collect (blizzard-only) — warms and boosts the bird ===
+    if (this.weather && this.weather.type === 'blizzard' && this.hotCocoa.size > 0) {
+      for (const cocoaId of this.hotCocoa.keys()) {
+        const cocoa = this.foods.get(cocoaId);
+        if (!cocoa || !cocoa.active) continue;
+        const cdx = bird.x - cocoa.x;
+        const cdy = bird.y - cocoa.y;
+        if (Math.sqrt(cdx * cdx + cdy * cdy) < 45) {
+          cocoa.active = false;
+          this.hotCocoa.delete(cocoaId);
+          bird.food = Math.min(100, bird.food + 20);
+          bird.coins += 8;
+          bird.xp += 15;
+          bird.warmUntil = now + 30000; // warm for 30s — negates cold drag + speed bonus
+          // Track Snow Bird daily: need to also land 5 blizzard hits — mark drank
+          if (!bird._blizzardCocoaDrank) bird._blizzardCocoaDrank = 0;
+          bird._blizzardCocoaDrank++;
+          this._trackDailyProgress(bird, 'cocoa_drink', 1);
+          this.events.push({
+            type: 'cocoa_drink',
+            birdId: bird.id, name: bird.name,
+            x: cocoa.x, y: cocoa.y,
+          });
+          // Re-queue cocoa respawn quickly
+          if (this.weather && this.weather.cocoaSpawnTimer > now + 15000) {
+            this.weather.cocoaSpawnTimer = now + 8000;
+          }
+          break; // one cocoa per tick
+        }
+      }
+    }
+
     // === Water puddle auto-collect (heatwave-only, fly near any puddle) ===
     if (this.weather && this.weather.type === 'heatwave' && this.heatPuddles.size > 0) {
       for (const puddleId of this.heatPuddles.keys()) {
@@ -3733,6 +3802,10 @@ class GameEngine {
     const shooter = this.birds.get(poop.birdId);
     if (shooter && shooter.skillTreeUnlocked && shooter.skillTreeUnlocked.includes('splash_zone') && !isMegaPoop) {
       hitRadius = Math.round(hitRadius * 1.20);
+    }
+    // Blizzard: snowball poop! All poop gets wider splash (×2.2 for normal, ×1.5 for mega)
+    if (this.weather && this.weather.type === 'blizzard') {
+      hitRadius = Math.round(hitRadius * (isMegaPoop ? 1.5 : 2.2));
     }
     const allHits = [];
 
@@ -4098,6 +4171,15 @@ class GameEngine {
         this.heatPuddles.clear();
         this.events.push({ type: 'heatwave_end' });
       }
+      // Remove hot cocoa items (blizzard-only food)
+      if (oldType === 'blizzard') {
+        for (const cocoaId of this.hotCocoa.keys()) {
+          this.foods.delete(cocoaId);
+        }
+        this.hotCocoa.clear();
+        // Clear warmth from all birds (blizzard is over)
+        for (const b of this.birds.values()) b.warmUntil = 0;
+      }
       this.events.push({ type: 'weather_end', weatherType: oldType });
       // Open a 30-second betting window before the next weather spawns
       const betGap = this._randomRange(90000, 180000); // 1.5–3 min gap
@@ -4119,16 +4201,17 @@ class GameEngine {
 
     // Spawn new weather when timer fires
     if (!this.weather && now >= this.weatherTimer) {
-      // Rain most common; heatwave/fog/hailstorm are rarer surprises; tornado is rarest
+      // Rain most common; heatwave/fog/hailstorm are rarer surprises; tornado and blizzard are rarest
       const roll = Math.random();
       let type;
-      if (roll < 0.24) type = 'rain';
-      else if (roll < 0.44) type = 'wind';
-      else if (roll < 0.56) type = 'storm';
-      else if (roll < 0.67) type = 'fog';
-      else if (roll < 0.79) type = 'hailstorm';
-      else if (roll < 0.91) type = 'heatwave';
-      else type = 'tornado';
+      if (roll < 0.22) type = 'rain';
+      else if (roll < 0.42) type = 'wind';
+      else if (roll < 0.53) type = 'storm';
+      else if (roll < 0.63) type = 'fog';
+      else if (roll < 0.74) type = 'hailstorm';
+      else if (roll < 0.85) type = 'heatwave';
+      else if (roll < 0.92) type = 'tornado';
+      else type = 'blizzard';  // 8% — winter blast: snowball poops, hot cocoa warmth, cops shiver
 
       const windAngle = Math.random() * Math.PI * 2;
       let duration, windSpeed, intensity;
@@ -4156,6 +4239,10 @@ class GameEngine {
         duration = this._randomRange(150000, 240000); // 2.5–4 min of scorching heat
         windSpeed = 0;
         intensity = 0.7 + Math.random() * 0.3; // 0.7–1.0 heat intensity
+      } else if (type === 'blizzard') {
+        duration = this._randomRange(150000, 240000); // 2.5–4 min of freezing cold
+        windSpeed = 30 + Math.random() * 50; // moderate wind — snow drifts sideways
+        intensity = 0.7 + Math.random() * 0.3; // 0.7–1.0
       } else { // tornado
         duration = 95000; // ~95 seconds — traverses the full map
         windSpeed = 0;
@@ -4201,6 +4288,8 @@ class GameEngine {
         hailTimer: now + this._randomRange(2000, 4000), // for hailstorm
         heatPuddleTimer: now + 8000,   // for heatwave: when to spawn next puddle batch
         heatThirstTimer: now + 8000,   // for heatwave: when to next drain bird thirst
+        cocoaSpawnTimer: now + 12000,  // for blizzard: when to spawn next hot cocoa batch
+        blizzardHitTimer: now + 3000,  // for blizzard: daily challenge tracking reset timer
         // Tornado position + velocity
         tornadoX, tornadoY, tornadoVx, tornadoVy,
         tornadoCooldowns: {}, // birdId -> timestamp when they can be flung again
@@ -4208,6 +4297,11 @@ class GameEngine {
 
       this.events.push({ type: 'weather_start', weatherType: type, windAngle, windSpeed, intensity });
       console.log(`[GameEngine] Weather started: ${type} (wind=${Math.round(windSpeed)}, angle=${windAngle.toFixed(2)})`);
+      // Gazette tracking for blizzards
+      if (type === 'blizzard') {
+        if (!this.gazetteStats.blizzards) this.gazetteStats.blizzards = 0;
+        this.gazetteStats.blizzards++;
+      }
 
       // Resolve any outstanding weather bets
       if (this.weatherBetting) {
@@ -4347,6 +4441,42 @@ class GameEngine {
         }
         this.weather.foodSpoilTimer = now + this._randomRange(35000, 55000);
       }
+    }
+
+    // === BLIZZARD: spawn hot cocoa warmth items, cops freeze, snowball poop ===
+    if (this.weather.type === 'blizzard') {
+      const HOT_COCOA_POSITIONS = [
+        { x: 640, y: 1010 }, { x: 1250, y: 670 }, { x: 1780, y: 1200 }, { x: 2200, y: 880 },
+        { x: 600, y: 1800 }, { x: 1600, y: 2100 }, { x: 2450, y: 1800 }, { x: 900, y: 2400 },
+        { x: 1450, y: 1540 }, { x: 2700, y: 600 },
+      ];
+      // Spawn hot cocoa periodically up to 4 max
+      if (now >= this.weather.cocoaSpawnTimer && this.hotCocoa.size < 4) {
+        // Pick a random position not already occupied
+        const available = HOT_COCOA_POSITIONS.filter(pos => {
+          for (const cId of this.hotCocoa.keys()) {
+            const c = this.foods.get(cId);
+            if (c) {
+              const dx = c.x - pos.x; const dy = c.y - pos.y;
+              if (Math.sqrt(dx*dx+dy*dy) < 150) return false;
+            }
+          }
+          return true;
+        });
+        if (available.length > 0) {
+          const pos = available[Math.floor(Math.random() * available.length)];
+          const cId = `cocoa_${now}_${Math.random().toFixed(4)}`;
+          const cocoaItem = { id: cId, x: pos.x, y: pos.y, type: 'hot_cocoa', active: true, value: 20, respawnAt: 0 };
+          this.foods.set(cId, cocoaItem);
+          this.hotCocoa.set(cId, true);
+          if (this.hotCocoa.size === 1) {
+            this.events.push({ type: 'cocoa_appeared' });
+          }
+        }
+        this.weather.cocoaSpawnTimer = now + this._randomRange(20000, 40000);
+      }
+      // Gazette tracking
+      if (!this.gazetteStats.blizzards) this.gazetteStats.blizzards = 0;
     }
 
     // === TORNADO: move across map + suck/fling birds ===
@@ -4687,17 +4817,23 @@ class GameEngine {
     // Speed of drunk wander (slow — they're wasted)
     const WANDER_SPEED = 38;
 
+    // Blizzard × Drunk Pigeon: they slip on ice — direction changes are much more erratic
+    const blizzardIcy = this.weather && this.weather.type === 'blizzard';
+
     for (const [dpId, dp] of this.drunkPigeons) {
       // Wobbly wandering: change direction frequently with big random swings
       dp.wanderTimer -= dt;
       if (dp.wanderTimer <= 0) {
-        // Big random direction change (±100° swing = very drunk)
-        dp.wanderAngle += (Math.random() - 0.5) * (Math.PI * 100 / 180) * 3.5;
-        dp.wanderTimer = this._randomRange(0.8, 2.5);
+        // Big random direction change — ±100° normally, ±180° on ice (blizzard makes them slip)
+        const swing = blizzardIcy ? (Math.PI * 180 / 180) * 3 : (Math.PI * 100 / 180) * 3.5;
+        dp.wanderAngle += (Math.random() - 0.5) * swing;
+        dp.wanderTimer = this._randomRange(blizzardIcy ? 0.4 : 0.8, blizzardIcy ? 1.2 : 2.5);
       }
 
       // Move in wanderAngle direction, with a sine-wave stagger side-to-side
-      const staggerOffset = Math.sin(now * 0.003 + dp.wobblePhase) * 25 * dt;
+      // Blizzard: wider sway as they slip on icy ground
+      const staggerAmt = blizzardIcy ? 45 : 25;
+      const staggerOffset = Math.sin(now * 0.003 + dp.wobblePhase) * staggerAmt * dt;
       dp.x += Math.cos(dp.wanderAngle) * WANDER_SPEED * dt + Math.cos(dp.wanderAngle + Math.PI / 2) * staggerOffset;
       dp.y += Math.sin(dp.wanderAngle) * WANDER_SPEED * dt + Math.sin(dp.wanderAngle + Math.PI / 2) * staggerOffset;
       dp.wobblePhase += dt * 2;
@@ -4750,7 +4886,9 @@ class GameEngine {
     // Crime Wave synergy: if a crime wave is active, the explosion is SUPERCHARGED.
     // Coins are doubled and nearby cops are stunned by the blast — the ultimate chaos moment.
     const crimeWaveBonus = !!this.crimeWave;
-    const coinMult = crimeWaveBonus ? 2 : 1;
+    // Blizzard synergy: lightning + drunk pigeon on ice = ×3 coin scatter (coins fly EVERYWHERE)
+    const blizzardBonus = !!(this.weather && this.weather.type === 'blizzard');
+    const coinMult = crimeWaveBonus ? 2 : (blizzardBonus ? 3 : 1);
 
     // Every bird within 250px gets a windfall share of the coins
     const winners = [];
@@ -4789,8 +4927,9 @@ class GameEngine {
       totalCoins: dp.coins * coinMult,
       winners,
       crimeWaveBonus,
+      blizzardBonus,
     });
-    console.log(`[GameEngine] ⚡🍺 Drunk pigeon ZAPPED — coin shower! ${dp.coins * coinMult}c scattered${crimeWaveBonus ? ' (CRIME WAVE ×2!)' : ''}`);
+    console.log(`[GameEngine] ⚡🍺 Drunk pigeon ZAPPED — coin shower! ${dp.coins * coinMult}c scattered${crimeWaveBonus ? ' (CRIME WAVE ×2!)' : ''}${blizzardBonus ? ' (BLIZZARD ×3!)' : ''}`);
   }
 
   // ============================================================
@@ -5806,6 +5945,7 @@ class GameEngine {
         hailSlowUntil: bird.hailSlowUntil,
         heatQuenchedUntil: bird.heatQuenchedUntil,
         puddleBoostUntil: bird.puddleBoostUntil,
+        warmUntil: bird.warmUntil,
         // Race boost gate
         raceBoostUntil: bird.raceBoostUntil,
         // Golden Egg Scramble
@@ -6273,6 +6413,11 @@ class GameEngine {
         spawnedAt: this.shootingStar.spawnedAt,
         expiresAt: this.shootingStar.expiresAt,
         streakAngle: this.shootingStar.streakAngle,
+      } : null,
+      meteorShower: this.meteorShower ? {
+        stars: Array.from(this.meteorShower.stars.values()).filter(s => !s.claimed).map(s => ({
+          id: s.id, x: s.x, y: s.y, expiresAt: s.expiresAt, streakAngle: s.streakAngle,
+        })),
       } : null,
       // City Lockdown — available in self state for HUD rendering
       cityLockdown: this.cityLockdown ? {
@@ -9137,9 +9282,11 @@ class GameEngine {
 
       if (dist > 1) {
         // Crime Wave: cops are 30% faster and more aggressive
+        // Blizzard: cops shiver at 75% speed — their boots weren't made for snow
         const crimeWaveSpeedMult = this.crimeWave ? 1.30 : 1.0;
-        cop.x += (dx / dist) * cop.speed * crimeWaveSpeedMult * dt;
-        cop.y += (dy / dist) * cop.speed * crimeWaveSpeedMult * dt;
+        const blizzardSlowMult = (this.weather && this.weather.type === 'blizzard') ? 0.75 : 1.0;
+        cop.x += (dx / dist) * cop.speed * crimeWaveSpeedMult * blizzardSlowMult * dt;
+        cop.y += (dy / dist) * cop.speed * crimeWaveSpeedMult * blizzardSlowMult * dt;
         cop.rotation = Math.atan2(dy, dx);
       }
 
@@ -11108,7 +11255,7 @@ class GameEngine {
       this.events.push({ type: 'weather_bet_fail', birdId: bird.id, reason: 'already_bet' });
       return;
     }
-    const VALID_TYPES = ['rain', 'wind', 'storm', 'fog', 'hailstorm', 'heatwave', 'tornado'];
+    const VALID_TYPES = ['rain', 'wind', 'storm', 'fog', 'hailstorm', 'heatwave', 'tornado', 'blizzard'];
     if (!VALID_TYPES.includes(action.betType)) {
       this.events.push({ type: 'weather_bet_fail', birdId: bird.id, reason: 'invalid_type' });
       return;
@@ -12229,6 +12376,9 @@ class GameEngine {
       auroraCount:     0,   // auroras triggered this cycle
       helicopterDowns: [],  // [{ name, gangTag }]
       tournamentWinner: null, // { name, gangTag, pot }
+      blizzards:       0,   // blizzards this cycle
+      meteorShowers:   0,   // meteor showers this cycle
+      shootingStars:   0,   // shooting stars this cycle
     };
   }
 
@@ -12395,7 +12545,21 @@ class GameEngine {
       });
     }
 
-    if (stats.auroraCount > 0) {
+    if (stats.blizzards > 0) {
+      headlines.push({
+        icon: '❄️',
+        headline: 'BLIZZARD SWEEPS BIRD CITY — SNOWBALL POOP CHAOS ERUPTS',
+        subline: 'Hot cocoa stocks depleted in minutes. Cops report "cold feet." Drunk pigeons reported slipping on ice.',
+      });
+    }
+
+    if (stats.meteorShowers > 0) {
+      headlines.push({
+        icon: '🌠',
+        headline: `METEOR SHOWER OVER BIRD CITY — ${stats.meteorShowers * 3} STARS FALL SIMULTANEOUSLY`,
+        subline: 'Racing birds scramble across the city as multiple Mystery Crate-tier items rain from the sky.',
+      });
+    } else if (stats.auroraCount > 0) {
       headlines.push({
         icon: '✨',
         headline: 'AURORA BOREALIS LIGHTS UP BIRD CITY SKIES',
@@ -13848,13 +14012,25 @@ class GameEngine {
     // Track for gazette
     if (!this.gazetteStats.auroraCount) this.gazetteStats.auroraCount = 0;
     this.gazetteStats.auroraCount++;
-    // Schedule shooting star: 30% chance, fires 15-50s into the aurora
+    // Schedule shooting star (30% chance) OR meteor shower (15% chance), fires 15-50s into the aurora
     this.shootingStarTriggeredThisAurora = false;
     this.shootingStar = null;
-    if (Math.random() < 0.30) {
+    this.meteorShowerTriggeredThisAurora = false;
+    this.meteorShower = null;
+    const starRoll = Math.random();
+    if (starRoll < 0.15) {
+      // Meteor Shower — rarer, more spectacular: 3 stars simultaneously
+      this.shootingStarScheduledAt = null;
+      // Use a shared "scheduled at" approach: reuse shootingStarScheduledAt for the timer,
+      // but meteorShower will check meteorShowerTriggeredThisAurora separately
+      this._meteorShowerScheduledAt = now + this._randomRange(20000, 60000);
+    } else if (starRoll < 0.45) {
+      // Regular Shooting Star — 30% chance
       this.shootingStarScheduledAt = now + this._randomRange(15000, 50000);
+      this._meteorShowerScheduledAt = null;
     } else {
       this.shootingStarScheduledAt = null;
+      this._meteorShowerScheduledAt = null;
     }
   }
 
@@ -13894,6 +14070,10 @@ class GameEngine {
         this.events.push({ type: 'shooting_star_expired', x: this.shootingStar.x, y: this.shootingStar.y });
         this.shootingStar = null;
       }
+      // Clean up any active meteor shower
+      if (this.meteorShower) {
+        this.meteorShower = null;
+      }
       return;
     }
     // Spawn cosmic fish periodically during aurora (keep 2 in pond at all times)
@@ -13907,6 +14087,10 @@ class GameEngine {
     // Fire scheduled shooting star
     if (!this.shootingStarTriggeredThisAurora && this.shootingStarScheduledAt && now >= this.shootingStarScheduledAt) {
       this._spawnShootingStar(now);
+    }
+    // Fire scheduled meteor shower (3 stars at once!)
+    if (!this.meteorShowerTriggeredThisAurora && this._meteorShowerScheduledAt && now >= this._meteorShowerScheduledAt) {
+      this._spawnMeteorShower(now);
     }
   }
 
@@ -14040,6 +14224,7 @@ class GameEngine {
         break;
     }
 
+    this._trackDailyProgress(bird, 'star_caught', 1);
     this.events.push({
       type: 'shooting_star_claimed',
       birdId: bird.id,
@@ -14055,6 +14240,131 @@ class GameEngine {
       x: star.x,
       y: star.y,
     });
+  }
+
+  // ============================================================
+  // METEOR SHOWER — Rarer aurora event (15% chance per aurora)
+  // Three shooting stars fall simultaneously at different map locations.
+  // Each can be claimed independently by different birds.
+  // ============================================================
+
+  _spawnMeteorShower(now) {
+    this.meteorShowerTriggeredThisAurora = true;
+    const ALL_SPOTS = [
+      { x: 1200, y: 1200 }, { x: 2350, y: 580 },  { x: 280,  y: 300 },
+      { x: 2520, y: 1800 }, { x: 1400, y: 2500 }, { x: 760,  y: 700 },
+      { x: 1900, y: 380 },  { x: 380,  y: 1750 }, { x: 1500, y: 900 },
+      { x: 2700, y: 1200 }, { x: 600,  y: 2000 }, { x: 1700, y: 1700 },
+    ];
+    // Pick 3 non-overlapping spots
+    const shuffled = ALL_SPOTS.slice().sort(() => Math.random() - 0.5).slice(0, 3);
+    const stars = new Map();
+    for (const spot of shuffled) {
+      const id = 'ms_' + Date.now() + '_' + Math.random().toFixed(6);
+      const x = Math.max(150, Math.min(world.WORLD_WIDTH - 150, spot.x + (Math.random() - 0.5) * 200));
+      const y = Math.max(150, Math.min(world.WORLD_HEIGHT - 150, spot.y + (Math.random() - 0.5) * 200));
+      const streakAngle = -Math.PI / 2 + (Math.random() - 0.5) * (Math.PI / 2);
+      stars.set(id, { id, x, y, expiresAt: now + 45000, streakAngle, claimed: false });
+    }
+    this.meteorShower = { stars };
+
+    // Fire events for all 3 stars at once — epic!
+    this.events.push({
+      type: 'meteor_shower_start',
+      stars: Array.from(stars.values()).map(s => ({ id: s.id, x: s.x, y: s.y, streakAngle: s.streakAngle, expiresAt: s.expiresAt })),
+    });
+    if (!this.gazetteStats.meteorShowers) this.gazetteStats.meteorShowers = 0;
+    this.gazetteStats.meteorShowers++;
+    console.log('[GameEngine] ✨🌠 METEOR SHOWER — 3 stars falling simultaneously!');
+  }
+
+  _tickMeteorShower(now) {
+    if (!this.meteorShower) return;
+    const { stars } = this.meteorShower;
+    let anyActive = false;
+    for (const [starId, star] of stars) {
+      if (star.claimed) continue;
+      // Expire individual stars
+      if (now >= star.expiresAt) {
+        stars.delete(starId);
+        this.events.push({ type: 'shooting_star_expired', x: star.x, y: star.y });
+        continue;
+      }
+      anyActive = true;
+      // Auto-collect: first non-stunned above-ground bird within 60px
+      for (const bird of this.birds.values()) {
+        if (bird.stunnedUntil > now) continue;
+        if (bird.inSewer) continue;
+        const dx = bird.x - star.x;
+        const dy = bird.y - star.y;
+        if (Math.sqrt(dx * dx + dy * dy) < 60) {
+          this._claimMeteorStar(bird, star, now);
+          star.claimed = true;
+          break;
+        }
+      }
+    }
+    // End meteor shower when all stars claimed or expired
+    if (stars.size === 0 || (!anyActive && [...stars.values()].every(s => s.claimed || now >= s.expiresAt))) {
+      this.meteorShower = null;
+    }
+  }
+
+  _claimMeteorStar(bird, star, now) {
+    // Pick a Mystery Crate-tier item
+    let roll = Math.random() * this.MYSTERY_CRATE_TOTAL_WEIGHT;
+    let item = this.MYSTERY_CRATE_ITEMS[this.MYSTERY_CRATE_ITEMS.length - 1];
+    for (const candidate of this.MYSTERY_CRATE_ITEMS) {
+      if (roll < candidate.weight) { item = candidate; break; }
+      roll -= candidate.weight;
+    }
+    // Apply item effect (mirrors _claimShootingStar)
+    switch (item.id) {
+      case 'nuke_poop': bird.mcNukePoop = true; break;
+      case 'jet_wings': bird.mcJetWingsUntil = now + 15000; break;
+      case 'coin_cache': {
+        const coins = 250 + Math.floor(Math.random() * 200);
+        bird.coins += coins;
+        this._trackDailyProgress(bird, 'coins_earned', coins);
+        item = { ...item, coinsAwarded: coins };
+        break;
+      }
+      case 'riot_shield': bird.mcRiotShieldUntil = now + 12000; break;
+      case 'lightning_rod': bird.mcLightningRodUntil = now + 20000; break;
+      case 'coin_magnet':
+        bird.mcMagnetUntil = now + 10000;
+        bird.mcMagnetLastPull = 0;
+        break;
+      case 'ghost_mode': bird.mcGhostModeUntil = now + 15000; break;
+      case 'twister_bomb':
+        for (const other of this.birds.values()) {
+          if (other.id === bird.id) continue;
+          const dx = other.x - bird.x;
+          const dy = other.y - bird.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < 200) {
+            const pushAngle = dist > 1 ? Math.atan2(dy, dx) : Math.random() * Math.PI * 2;
+            other.x = Math.max(50, Math.min(world.WORLD_WIDTH - 50, other.x + Math.cos(pushAngle) * 300));
+            other.y = Math.max(50, Math.min(world.WORLD_HEIGHT - 50, other.y + Math.sin(pushAngle) * 300));
+            other.stunnedUntil = now + 1200;
+            other.comboCount = 0; other.comboExpiresAt = 0;
+          }
+        }
+        break;
+      case 'diamond_poop': bird.mcDiamondPoopUntil = now + 20000; break;
+      case 'broken_crate': bird.coins += 75; this._trackDailyProgress(bird, 'coins_earned', 75); break;
+    }
+    this._trackDailyProgress(bird, 'star_caught', 1);
+    this.events.push({
+      type: 'shooting_star_claimed',
+      birdId: bird.id,
+      birdName: bird.name,
+      gangTag: bird.gangTag || null,
+      item: { id: item.id, emoji: item.emoji, name: item.name, desc: item.desc, coinsAwarded: item.coinsAwarded },
+      x: star.x, y: star.y,
+      isMeteor: true,
+    });
+    console.log(`[GameEngine] 🌠 Meteor star claimed by ${bird.name} → ${item.name}`);
   }
 
   // ============================================================
@@ -14369,7 +14679,9 @@ class GameEngine {
         sg.y = targetFood.y;
       } else {
         // Move toward food
-        const spd = sg.speed * dt;
+        // Blizzard × Seagull Invasion: seagulls slowed −20% by the cold (easier to intercept!)
+        const blizzardSlow = (this.weather && this.weather.type === 'blizzard') ? 0.80 : 1.0;
+        const spd = sg.speed * blizzardSlow * dt;
         sg.x += (fdx / foodDist) * spd;
         sg.y += (fdy / foodDist) * spd;
         sg.rotation = Math.atan2(fdy, fdx);

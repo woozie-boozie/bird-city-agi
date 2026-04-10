@@ -2360,6 +2360,45 @@ Winter arrives in Bird City. The blizzard (8% probability, 2.5–4 min) brings c
 
 **Creative intent**: Heatwave creates survival urgency (find water or drag). Blizzard creates COMBAT opportunity. Snowball poop with 2.2× radius turns every bird into an area-denial machine — but you're also slower, which creates tension. The hot cocoa economy is the inverse of heatwave puddles: puddles quench thirst briefly, cocoa warms you for 30 seconds AND boosts speed above baseline, making the hunt for cocoa worth mid-chase detours. A Level 5 Most Wanted bird with cops at 75% speed hunting them across a snow-covered city, firing wide snowball poops in all directions — that's peak CARNAGE CITY chaos in the snow. Pure CARNAGE + DISCOVERY energy.
 
+**Session 72 — 2026-04-10: Blizzard Polish + Meteor Shower — Aurora's Rarest Event**
+Completed the Blizzard system's client-side layer and added the Meteor Shower as the Aurora's rarest phenomenon — 3 shooting stars fall simultaneously, each claimable by a different bird.
+
+**Blizzard client-side visuals (completing Session 71's server work):**
+- 260 animated screen-space snowflakes — each with unique size (1.5–4.5px), fall speed, sinusoidal sway, and wind tilt from `weather.windAngle`
+- Larger flakes (size > 3) get a sparkle cross-hair highlight for depth
+- 9% icy blue tint overlay (`#b0d8ff`) during blizzard — the world genuinely looks cold
+- ❄️ BLIZZARD badge in the top-center weather HUD (ice blue, slow pulse)
+- Blizzard added to weather start/end announcements: "❄️ BLIZZARD! Snowball poop is HUGE — find hot cocoa to stay warm!"
+- Blizzard added as 8th type in weather betting panel (8% odds — the long shot)
+- `cocoa_appeared` + `cocoa_drink` event handlers: announcement + event feed callouts
+- Active buffs HUD: "☕ WARM +25% SPD — Xs" pill (warm orange) when cocoa is active; "❄️ CHILLY! −12% speed · Find hot cocoa!" pill otherwise during blizzard
+
+**Meteor Shower (`server/game.js`, `public/js/main.js`):**
+- 15% chance during Aurora (alongside 30% shooting star, 55% nothing) — scheduled 20–60 seconds after aurora starts
+- Picks 3 of 12 landmark positions spread across the city — each star lands at a different zone
+- Each star has its own 60-second claim window and `expiresAt` timer
+- First bird within 60px of any landing site auto-collects a Mystery Crate-tier item (same 10-item pool)
+- `_claimMeteorStar()` mirrors `_claimShootingStar()` — tracks `star_caught` daily challenge progress
+- All three stars can be claimed by three different birds — unlike shooting star which is winner-takes-all
+- Client events: `meteor_shower_start` (sets `window._meteorShowerData` array), `meteor_star_claimed`, `meteor_star_expired`, `meteor_shower_end`
+- Rendering: each star re-uses `Renderer.drawShootingStarStreak()` — 3 simultaneous landing zone rings in world space
+- Direction arrows for off-screen stars (☄️ amber arrows for each unclaimed star)
+- Minimap: individual pulsing amber ☄️ dots at each landing site
+- State snapshot: `meteorShower: { stars: [...unclaimed] }` included in global state
+- Gazette: "METEOR SHOWER OVER BIRD CITY — N STARS FALL SIMULTANEOUSLY" headline
+
+**Blizzard cross-system interactions (completed from Session 71 queue):**
+- Drunk Pigeon × Blizzard: direction swings ±180° (vs ±100° normal) + wander timer 0.4–1.2s, stagger amplitude 45px — genuinely stumbling on ice. Lightning zap coin scatter: ×3 (vs ×2 crime wave, ×1 normal)
+- Seagull Invasion × Blizzard: seagulls fly at 80% speed — easier to intercept
+- Crime Wave × Blizzard: additional ×2 heat multiplier per poop hit — crime in a snowstorm STINGS
+
+**New daily challenges (added to pool):**
+- Blizzard Brawler: hit 10 targets during a blizzard (220 XP, 110c)
+- Snow Bird: drink hot cocoa AND land 5 poop hits in the same blizzard (250 XP, 120c)
+- Meteor Catcher / Stargazer: catch any star during Aurora (shooting star OR meteor) (300 XP, 150c)
+
+**Creative intent**: The Meteor Shower is the Aurora's ultimate jackpot event — not winner-takes-all like the shooting star, but three separate prizes for three birds simultaneously. The city erupts: "☄️ METEOR SHOWER — 3 STARS FALL!" and suddenly every player on the minimap is sprinting toward different landing zones. The first player to see the map might call out positions: "One near the mall, one near docks, one near park!" Unlike the shooting star (one prize, most competitive), meteor shower is MORE cooperative — three birds can win at once, which makes the whole city feel like it's benefiting from the aurora together. The blizzard cross-systems and client polish turn what was a server-only feature into a full-sensory weather experience: you SEE the snowflakes fall, FEEL the cold drag on your movement bar, and FEEL the warmth when you find that mug of cocoa in the frozen city. Pure DISCOVERY + SPECTACLE + CARNAGE energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -2509,13 +2548,18 @@ Built the Territory Control System on top of the existing upstream code:
 - Gazette tracking for duels: "⚔️ [Name] WINS STREET DUEL: defeats [Name] for Xc" headline
 - Royale Champion shield flash visual: golden shield burst when champion absorbs the first dethronement hit
 - Seasonal weather: extended "cold snap" period with snow flurries visible on the map, food items frozen in place (need to fly through to thaw)
-- Blizzard × Drunk Pigeon interaction: drunk pigeons slip and slide during blizzard (direction changes more erratically), coin scatter on lightning zap is ×3 instead of ×2 (coins freeze and scatter farther)
-- Blizzard × Seagull Invasion: seagulls are slowed by the cold (−20% speed during blizzard) — easier to intercept but they also pick up hot cocoa items (extra incentive to kill them)
-- Blizzard × Crime Wave synergy: during crime wave + blizzard, all snowball poops generate 2× heat — the cold makes crime STING
-- Hot Cocoa daily challenge: "Snow Bird — drink hot cocoa AND land 5 poop hits during the same blizzard" (250 XP, 120c) — requires staying active in the cold
+- ~~Blizzard × Drunk Pigeon interaction: drunk pigeons slip and slide during blizzard (direction changes more erratically), coin scatter on lightning zap is ×3 instead of ×2 (coins freeze and scatter farther)~~ (DONE Session 72)
+- ~~Blizzard × Seagull Invasion: seagulls are slowed by the cold (−20% speed during blizzard) — easier to intercept but they also pick up hot cocoa items (extra incentive to kill them)~~ (DONE Session 72 — seagulls slowed −20%)
+- ~~Blizzard × Crime Wave synergy: during crime wave + blizzard, all snowball poops generate 2× heat — the cold makes crime STING~~ (DONE Session 72)
+- ~~Hot Cocoa daily challenge: "Snow Bird — drink hot cocoa AND land 5 poop hits during the same blizzard" (250 XP, 120c) — requires staying active in the cold~~ (DONE Session 72)
 - Blackout power-up synergy: during blackout, Mystery Crate Ghost Mode makes you FULLY invisible (not just 40% cop chance) — pure stealth god mode
 - Gang War + Crow Cartel: if Crow Cartel raids a zone during an active gang war, both gangs get 2× XP for defending against the Cartel (shared enemy)
 - Radio Tower × Crime Wave: if crime wave starts while someone owns the Radio Tower, a forced city-wide broadcast fires from the owner with a random crime-themed taunt
 - Comet Rush × Street Duel: a bird with Comet Rush active while winning a street duel leaves sparkle trails for 30 seconds after the fight
 - Gang Aurora Ritual: if 3+ gang members are all near the pond at the same time during aurora, a bonus cosmic fish spawns for each of them — cooperative discovery reward
-- Meteor Shower: rare upgrade of Shooting Star — 3 stars fall simultaneously across different parts of the map, each claimable by different birds
+- ~~Meteor Shower: rare upgrade of Shooting Star — 3 stars fall simultaneously across different parts of the map, each claimable by different birds~~ (DONE Session 72)
+- Blizzard × Hot Cocoa seagull: seagulls in the blizzard occasionally fly toward hot cocoa items (birds must race seagulls to get the warmth)
+- Blizzard × Crime Wave gang war: during crime wave + blizzard, gang war kills give +2× XP (cold-blooded kills)
+- Comet Trail: a P5 LEGEND bird who catches a Meteor (or Shooting Star) leaves a golden comet trail behind them for 30 seconds
+- Snowball Fight Club: during blizzard, two birds that duel each other get extra snowball poop width (35px vs 44px) — blizzard duels are wider chaos
+- Ice Rink: a random plaza in the city becomes an ice rink during blizzards — birds slide across it at 1.3× speed with no turning friction for 5 seconds (chaos chaos chaos)

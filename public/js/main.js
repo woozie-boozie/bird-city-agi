@@ -1302,6 +1302,7 @@
     if (ev.type === 'aurora_end') {
       addEventMessage('✨ The Aurora fades... The sky returns to ordinary night.', '#55bbaa');
       window._shootingStarData = null; // clean up if aurora ends with unclaimed star
+      window._meteorShowerData = null; // clean up any meteor shower too
     }
 
     // === SHOOTING STAR (rare aurora event) ===
@@ -1325,6 +1326,37 @@
     if (ev.type === 'shooting_star_expired') {
       window._shootingStarData = null;
       addEventMessage('🌠 The Shooting Star faded... Nobody reached the landing site in time.', '#887755');
+    }
+
+    // === METEOR SHOWER (rare aurora upgrade — 3 simultaneous shooting stars) ===
+    if (ev.type === 'meteor_shower_start') {
+      window._meteorShowerData = ev.stars.map(s => ({ ...s })); // { id, x, y, expiresAt, streakAngle }
+      effects.push({ type: 'screen_shake', intensity: 8, duration: 600, time: now });
+      showAnnouncement(`☄️ METEOR SHOWER!\n${ev.count} stars fall — race to any landing site!`, '#ffeeaa', 6000);
+      addEventMessage(`☄️ METEOR SHOWER over Bird City! ${ev.count} stars streak across the aurora sky — Mystery items for every lucky bird!`, '#ffeeaa');
+    }
+    if (ev.type === 'meteor_star_claimed') {
+      // Remove the claimed star from local data
+      if (window._meteorShowerData) {
+        window._meteorShowerData = window._meteorShowerData.filter(s => s.id !== ev.starId);
+      }
+      if (ev.birdId === myId) {
+        showAnnouncement(`☄️ METEOR CAUGHT! You got: ${ev.item.emoji} ${ev.item.name}!`, '#ffeeaa', 5000);
+        addEventMessage(`☄️ You caught a Meteor and got ${ev.item.emoji} ${ev.item.name}!`, '#ffeeaa');
+        effects.push({ type: 'screen_shake', intensity: 10, duration: 500, time: now });
+      } else {
+        const tag = ev.gangTag ? `[${ev.gangTag}] ` : '';
+        addEventMessage(`☄️ ${tag}${ev.birdName} caught a Meteor → ${ev.item.emoji} ${ev.item.name}!`, '#ffdd88');
+      }
+    }
+    if (ev.type === 'meteor_star_expired') {
+      if (window._meteorShowerData) {
+        window._meteorShowerData = window._meteorShowerData.filter(s => s.id !== ev.starId);
+      }
+    }
+    if (ev.type === 'meteor_shower_end') {
+      window._meteorShowerData = null;
+      addEventMessage('☄️ The meteor shower fades. Aurora light returns to peace.', '#887755');
     }
 
     // Cosmic fish caught (triple loot — aurora only)
@@ -2502,6 +2534,7 @@
         hailstorm: ['🌨️ HAILSTORM! Ice chunks will slow anyone they hit!', '#aaddff'],
         heatwave:  ['🌡️ HEATWAVE! The city is SCORCHING — find water puddles before you shrivel!', '#ff8800'],
         tornado:   ['🌪️ TORNADO INCOMING! Stay clear or get FLUNG across the city!', '#cc88ff'],
+        blizzard:  ['❄️ BLIZZARD! Snowball poop is HUGE — find hot cocoa to stay warm!', '#aaddff'],
       };
       const [msg, color] = msgs[ev.weatherType] || ['Weather changed!', '#fff'];
       showAnnouncement(msg, color, 4000);
@@ -2520,6 +2553,7 @@
         hailstorm: '🌨️ The hailstorm passes.',
         heatwave:  '🌡️ The heatwave breaks. Cool relief washes over the city.',
         tornado:   '🌪️ The tornado dissipates. The city exhales.',
+        blizzard:  '❄️ The blizzard clears. Snow melts off the streets.',
       };
       addEventMessage(endMsgs[ev.weatherType] || 'Weather cleared.', '#aaaaaa');
       weatherState = null;
@@ -2538,6 +2572,13 @@
     }
     if (ev.type === 'food_spoiled') {
       addEventMessage(`🥵 The scorching heat spoiled ${ev.count || 'some'} food around the city!`, '#ff8822');
+    }
+    if (ev.type === 'cocoa_appeared') {
+      addEventMessage('☕ Hot cocoa has appeared around the city — drink up to stay warm!', '#ffaa44');
+    }
+    if (ev.type === 'cocoa_drink' && ev.birdId === myId) {
+      showAnnouncement('☕ HOT COCOA! +20 food — WARM for 30s (+25% speed)!', '#ffcc44', 2500);
+      addEventMessage('☕ You drank hot cocoa! Warm for 30s · +25% speed', '#ffcc44');
     }
 
     // === WEATHER BETTING EVENTS ===
@@ -5220,6 +5261,7 @@
     hailstorm: { emoji: '🌨️', label: 'HAILSTORM', color: '#88ccff', odds: '12%' },
     heatwave:  { emoji: '🌡️', label: 'HEATWAVE',  color: '#ff9933', odds: '12%' },
     tornado:   { emoji: '🌪️', label: 'TORNADO',   color: '#cc88ff', odds: '9%' },
+    blizzard:  { emoji: '❄️', label: 'BLIZZARD',  color: '#aaeeff', odds: '8%' },
   };
 
   function updateWeatherBetPanel(now) {
@@ -5252,8 +5294,8 @@
         + '<div style="color:#7799cc;font-size:9px;margin-top:4px;">Window closes: ' + secsLeft + 's</div>';
       weatherBetPanel.style.pointerEvents = 'none';
     } else {
-      // Betting interface — show all 7 weather types
-      const TYPES = ['rain', 'wind', 'storm', 'fog', 'hailstorm', 'heatwave', 'tornado'];
+      // Betting interface — show all 8 weather types
+      const TYPES = ['rain', 'wind', 'storm', 'fog', 'hailstorm', 'heatwave', 'tornado', 'blizzard'];
       let html = '<div style="color:#aaddff;font-size:12px;margin-bottom:2px;">🌤️ FORECAST BET</div>'
         + '<div style="color:#7799cc;font-size:9px;margin-bottom:6px;">What\'s next? · ' + secsLeft + 's · Pool: ' + totalPool + 'c</div>';
 
@@ -5767,6 +5809,25 @@
     }
   }
 
+  // Lazily generated blizzard snowflake pool
+  let _snowflakes = null;
+  function _ensureSnowflakes(sw, sh) {
+    if (_snowflakes && _snowflakes.sw === sw && _snowflakes.sh === sh) return;
+    _snowflakes = { sw, sh, flakes: [] };
+    for (let i = 0; i < 260; i++) {
+      _snowflakes.flakes.push({
+        x:      Math.random() * sw,
+        y:      Math.random() * sh,
+        size:   1.5 + Math.random() * 3.0,
+        speed:  40 + Math.random() * 80,    // gentle fall — slower than hail
+        opacity: 0.5 + Math.random() * 0.45,
+        wobble: Math.random() * Math.PI * 2, // horizontal drift phase
+        wobbleAmp: 1.5 + Math.random() * 3.0,
+        sparkle: Math.random() > 0.7,        // larger flakes get a shimmer highlight
+      });
+    }
+  }
+
   // Lazily generated heat-haze line pool (horizontal shimmer streaks rising upward)
   let _heatHaze = null;
   function _ensureHeatHaze(sw, sh) {
@@ -6152,6 +6213,51 @@
       ctx.restore();
     }
 
+    // === BLIZZARD SNOWFLAKES + ICY TINT ===
+    if (weather.type === 'blizzard') {
+      _ensureSnowflakes(sw, sh);
+      const wx = weather.windAngle ? Math.cos(weather.windAngle) : -0.3;
+      const windTilt = wx * 0.18; // gentle diagonal from wind
+
+      // Icy blue world tint
+      ctx.save();
+      ctx.globalAlpha = 0.09 * weather.intensity;
+      ctx.fillStyle = '#b0d8ff';
+      ctx.fillRect(0, 0, sw, sh);
+      ctx.globalAlpha = 1;
+      ctx.restore();
+
+      // Snowflakes
+      ctx.save();
+      for (const flake of _snowflakes.flakes) {
+        flake.wobble += 0.015;
+        flake.y += flake.speed * dt;
+        flake.x += windTilt * flake.speed * dt + Math.sin(flake.wobble) * flake.wobbleAmp * dt * 40;
+        if (flake.y > sh + 6) { flake.y = -6; flake.x = Math.random() * sw; }
+        if (flake.x > sw + 6) flake.x -= sw + 12;
+        if (flake.x < -6) flake.x += sw + 12;
+
+        ctx.globalAlpha = flake.opacity * weather.intensity;
+        ctx.fillStyle = flake.sparkle ? '#eaf6ff' : '#cce8ff';
+        ctx.beginPath();
+        ctx.arc(flake.x, flake.y, flake.size, 0, Math.PI * 2);
+        ctx.fill();
+        // Sparkle cross on larger flakes
+        if (flake.sparkle && flake.size > 3) {
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+          ctx.lineWidth = 0.8;
+          ctx.beginPath();
+          ctx.moveTo(flake.x - flake.size * 1.4, flake.y);
+          ctx.lineTo(flake.x + flake.size * 1.4, flake.y);
+          ctx.moveTo(flake.x, flake.y - flake.size * 1.4);
+          ctx.lineTo(flake.x, flake.y + flake.size * 1.4);
+          ctx.stroke();
+        }
+      }
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+
     // === RAIN DROPS ===
     if (isRainy) {
       _ensureRainDrops(sw, sh);
@@ -6256,6 +6362,7 @@
       hailstorm: '🌨️ HAIL',
       heatwave: '🌡️ HEATWAVE',
       tornado: '🌪️ TORNADO',
+      blizzard: '❄️ BLIZZARD',
     };
     const badgeBg = {
       storm: 'rgba(60, 40, 0, 0.75)',
@@ -6263,6 +6370,7 @@
       hailstorm: 'rgba(20, 50, 90, 0.78)',
       heatwave: 'rgba(100, 40, 0, 0.80)',
       tornado: 'rgba(60, 20, 90, 0.85)',
+      blizzard: 'rgba(10, 30, 70, 0.85)',
     };
     const badgeColor = {
       storm: '#ffdd44',
@@ -6270,6 +6378,7 @@
       hailstorm: '#aaddff',
       heatwave: '#ffaa44',
       tornado: '#dd88ff',
+      blizzard: '#cceeFF',
     };
     const badge = badges[weather.type];
     if (badge) {
@@ -6281,7 +6390,8 @@
         ? (Math.sin(now * 0.006) * 0.15 + 0.85)
         : (weather.type === 'heatwave' ? (Math.sin(now * 0.004) * 0.18 + 0.82)
         : (weather.type === 'fog' ? (Math.sin(now * 0.002) * 0.08 + 0.92)
-        : (weather.type === 'tornado' ? (Math.sin(now * 0.008) * 0.22 + 0.78) : 1)));
+        : (weather.type === 'tornado' ? (Math.sin(now * 0.008) * 0.22 + 0.78)
+        : (weather.type === 'blizzard' ? (Math.sin(now * 0.003) * 0.10 + 0.90) : 1))));
       ctx.save();
       ctx.globalAlpha = pulse * 0.88;
       ctx.fillStyle = badgeBg[weather.type] || 'rgba(20, 40, 80, 0.65)';
@@ -7450,6 +7560,12 @@
     if (window._shootingStarData) {
       Renderer.drawShootingStarStreak(ctx, camera, window._shootingStarData, now);
     }
+    // Meteor Shower — 3 simultaneous landing zones (each drawn like a shooting star)
+    if (window._meteorShowerData && window._meteorShowerData.length > 0) {
+      for (const mStar of window._meteorShowerData) {
+        Renderer.drawShootingStarStreak(ctx, camera, mStar, now);
+      }
+    }
 
     // Weather effects (screen-space, drawn over day/night overlay)
     // Use gameState.weather as authoritative source (server-synced each tick)
@@ -7861,6 +7977,45 @@
       ctx.restore();
     }
 
+    // === METEOR SHOWER — direction arrows for each unclaimed landing site ===
+    if (window._meteorShowerData && window._meteorShowerData.length > 0) {
+      for (const mStar of window._meteorShowerData) {
+        const msTimeLeft = Math.max(0, mStar.expiresAt - now);
+        if (msTimeLeft <= 0) continue;
+        const msx = mStar.x - camera.x + camera.screenW / 2;
+        const msy = mStar.y - camera.y + camera.screenH / 2;
+        const msOnScreen = msx > 40 && msx < camera.screenW - 40 && msy > 40 && msy < camera.screenH - 40;
+        const msPulse = 0.7 + 0.3 * Math.sin(now * 0.009 + mStar.id * 1.3);
+        if (!msOnScreen) {
+          const angle = Math.atan2(msy - camera.screenH / 2, msx - camera.screenW / 2);
+          const arrowDist = Math.min(camera.screenW, camera.screenH) / 2 - 55;
+          const ax = camera.screenW / 2 + Math.cos(angle) * arrowDist;
+          const ay = camera.screenH / 2 + Math.sin(angle) * arrowDist;
+          ctx.save();
+          ctx.translate(ax, ay);
+          ctx.rotate(angle);
+          ctx.globalAlpha = 0.85 * msPulse;
+          ctx.fillStyle = '#ffeeaa';
+          ctx.strokeStyle = '#664400';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(20, 0);
+          ctx.lineTo(-10, -10);
+          ctx.lineTo(-5, 0);
+          ctx.lineTo(-10, 10);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = '#332200';
+          ctx.font = 'bold 9px Arial';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('☄️', 4, 0);
+          ctx.restore();
+        }
+      }
+    }
+
     // Bird Royale — compass arrow pointing to safe zone center when outside or near edge
     if (gameState.birdRoyale && gameState.birdRoyale.state === 'active' && gameState.self) {
       const ry = gameState.birdRoyale;
@@ -8246,6 +8401,30 @@
       minimapCtx.textAlign = 'center';
       minimapCtx.fillText('🌠', px, py - 5);
       minimapCtx.restore();
+    }
+
+    // Meteor Shower landing sites on minimap — pulsing amber dots
+    if (window._meteorShowerData && window._meteorShowerData.length > 0 && worldData) {
+      const mw = minimapCtx.canvas.width;
+      const mh = minimapCtx.canvas.height;
+      for (const mStar of window._meteorShowerData) {
+        if (mStar.expiresAt <= now) continue;
+        const mpx = mStar.x * mw / worldData.width;
+        const mpy = mStar.y * mh / worldData.height;
+        const mPulse = 0.4 + 0.6 * Math.abs(Math.sin(now * 0.009 + mStar.id * 1.1));
+        minimapCtx.save();
+        minimapCtx.shadowColor = '#ffeeaa';
+        minimapCtx.shadowBlur = 6 + 3 * mPulse;
+        minimapCtx.fillStyle = `rgba(255, 230, 120, ${0.6 + 0.35 * mPulse})`;
+        minimapCtx.beginPath();
+        minimapCtx.arc(mpx, mpy, 3 + mPulse * 1.5, 0, Math.PI * 2);
+        minimapCtx.fill();
+        minimapCtx.shadowBlur = 0;
+        minimapCtx.font = '7px sans-serif';
+        minimapCtx.textAlign = 'center';
+        minimapCtx.fillText('☄️', mpx, mpy - 4);
+        minimapCtx.restore();
+      }
     }
 
     // Pied Piper on minimap — rainbow pulsing dot
@@ -9425,6 +9604,15 @@
     if (s.hailSlowUntil && s.hailSlowUntil > now) {
       const secs = Math.ceil((s.hailSlowUntil - now) / 1000);
       html += '<div class="bm-buff-pill" style="background:rgba(40,80,140,0.7);border-color:#aaddff;color:#aaddff">🧊 HAIL SLOW — ' + secs + 's</div>';
+    }
+    // Blizzard: show WARM buff if hot cocoa active, or CHILLY debuff otherwise
+    if (weatherState && weatherState.type === 'blizzard') {
+      if (s.warmUntil && s.warmUntil > now) {
+        const secs = Math.ceil((s.warmUntil - now) / 1000);
+        html += '<div class="bm-buff-pill" style="background:rgba(100,50,0,0.85);border-color:#ffaa44;color:#ffcc66;">☕ WARM +25% SPD — ' + secs + 's</div>';
+      } else {
+        html += '<div class="bm-buff-pill" style="background:rgba(10,30,70,0.85);border-color:#aaeeff;color:#cceeff;animation:kingpinGlow 1.2s ease-in-out infinite alternate;">❄️ CHILLY! −12% speed · Find hot cocoa!</div>';
+      }
     }
     // Heatwave: show QUENCHED buff when fresh, or THIRSTY debuff when low on food
     if (weatherState && weatherState.type === 'heatwave') {
