@@ -2326,6 +2326,40 @@ Four interlocking interactions between existing chaos events and other city syst
 
 **Creative intent**: These four additions make Bird City's chaos events feel INTERCONNECTED. Before, chaos events were isolated 20-second windows that happened and ended. Now they interact with each other and with existing systems. The Blackout + Coin stealth creates a legendary moment that players will talk about: "I was holding the cursed coin when the blackout hit — I made it across the whole map while everyone was blind." The Food Festival seagull priority creates genuine urgency where none existed before (festival food was safe to collect; now seagulls are specifically going for it). Crime Disco is the highest XP event that can naturally occur in the game — a lucky combination of two chaos events creating something greater than either. The Chaos Connoisseur challenge extends session length without requiring any new content. Pure CARNAGE + DISCOVERY + SOCIAL energy — the city's chaos is now a web, not a list.
 
+**Session 71 — 2026-04-10: The Blizzard — 8th Weather Type with Snowball Poop + Hot Cocoa**
+Winter arrives in Bird City. The blizzard (8% probability, 2.5–4 min) brings cold drag, snowball physics, shivering cops, and a hot cocoa economy.
+
+**Four core mechanics (`server/game.js`):**
+- **Cold drag (−12% speed)**: all birds fly sluggishly unless warmed by hot cocoa — the city slows down in the snow
+- **Hot cocoa items** (up to 4 active, one every 25–45s at 10 city positions): fly within 45px to collect — +20 food, +8 coins, +15 XP, and 30 seconds of WARMTH (+25% speed, negating cold drag)
+- **Snowball poop**: normal poop hit radius ×2.2 (from 20px to ~44px), mega poop ×1.5 — the most area-denial weather in the game
+- **Cop cold debuff**: cops move at 75% speed during blizzard — best natural escape window in the game. Stacks with Crime Wave (which usually boosts them 130%) for net cop speed of ~97% instead of 130%
+
+**Additional mechanics:**
+- Extended combo window: 11s during blizzard (vs 8s normal) — snowball chaos makes streaks more achievable
+- Blizzard Brawler daily challenge: hit 10 targets during a blizzard (220 XP, 110c)
+- Weather betting: blizzard added as 8th bettable type (8% odds — joint-longest shot with tornado, huge payout for correct guesses)
+- Gazette: "BLIZZARD SWEEPS BIRD CITY — SNOWBALL POOP CHAOS ERUPTS" headline with satirical subline about cop absenteeism and hot cocoa demand
+
+**Visual system:**
+- 260 animated snow flakes in screen-space — each unique size (1.5–4.5px), fall speed, and sinusoidal sway
+- Wind tilt from weather's windAngle so snow drifts naturally with the blizzard wind
+- Sparkle highlights on larger flakes for depth and shimmer
+- 9% icy blue tint overlay over the world
+- ❄️ BLIZZARD HUD badge in ice blue, slow pulse animation
+
+**Hot cocoa sprite (`sprites.js`):**
+- Dark brown mug body (rounded rect), cocoa surface, cream foam layer, handle arc
+- Warm orange radial glow halo pulsing behind cup
+- 3 animated steam wisps rising with quadratic bezier curves, independently phased
+- ☕ label above in warm orange — unmistakable warmth signal in the frozen city
+
+**Active buffs HUD:**
+- ☕ WARM +25% SPD — Xs pill (warm orange) while cocoa warmth is active
+- ❄️ CHILLY! −12% speed · Find hot cocoa! pill when cold and exposed
+
+**Creative intent**: Heatwave creates survival urgency (find water or drag). Blizzard creates COMBAT opportunity. Snowball poop with 2.2× radius turns every bird into an area-denial machine — but you're also slower, which creates tension. The hot cocoa economy is the inverse of heatwave puddles: puddles quench thirst briefly, cocoa warms you for 30 seconds AND boosts speed above baseline, making the hunt for cocoa worth mid-chase detours. A Level 5 Most Wanted bird with cops at 75% speed hunting them across a snow-covered city, firing wide snowball poops in all directions — that's peak CARNAGE CITY chaos in the snow. Pure CARNAGE + DISCOVERY energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -2453,7 +2487,8 @@ Built the Territory Control System on top of the existing upstream code:
 - ~~Aurora + Cursed Coin combo: if someone grabs the Cursed Coin during aurora, explosion coin shower is doubled~~ (DONE Session 67)
 - ~~Aurora + Combo milestone: hitting 20× combo under the aurora triggers a personal aurora-hued screen flash~~ (DONE Session 67)
 - ~~Shooting Star event: rare (30% chance during aurora) — a shooting star crosses the sky and the first bird to "catch" it by flying to its landing spot earns a Mystery Crate-tier item~~ (DONE Session 67)
-- Seasonal events: longer-term city transformations (snow in "winter", cherry blossoms in "spring")
+- ~~Blizzard weather type — 8th weather, snowball poop radius ×2.2, hot cocoa warmth economy, cop cold debuff~~ (DONE Session 71)
+- Seasonal events: longer-term city transformations (cherry blossoms in "spring")
 - Graffiti mural system: large multi-building art pieces that require a whole gang to paint
 - Aurora + Gang War: if a gang war erupts during the aurora, all kills give 2× gang war XP — sacred sky amplifies the violence
 - Shooting Star daily challenge: "Stargazer — catch a Shooting Star during the Aurora" (300 XP, 150c) — the rarest weather challenge
@@ -2474,6 +2509,10 @@ Built the Territory Control System on top of the existing upstream code:
 - Gazette tracking for duels: "⚔️ [Name] WINS STREET DUEL: defeats [Name] for Xc" headline
 - Royale Champion shield flash visual: golden shield burst when champion absorbs the first dethronement hit
 - Seasonal weather: extended "cold snap" period with snow flurries visible on the map, food items frozen in place (need to fly through to thaw)
+- Blizzard × Drunk Pigeon interaction: drunk pigeons slip and slide during blizzard (direction changes more erratically), coin scatter on lightning zap is ×3 instead of ×2 (coins freeze and scatter farther)
+- Blizzard × Seagull Invasion: seagulls are slowed by the cold (−20% speed during blizzard) — easier to intercept but they also pick up hot cocoa items (extra incentive to kill them)
+- Blizzard × Crime Wave synergy: during crime wave + blizzard, all snowball poops generate 2× heat — the cold makes crime STING
+- Hot Cocoa daily challenge: "Snow Bird — drink hot cocoa AND land 5 poop hits during the same blizzard" (250 XP, 120c) — requires staying active in the cold
 - Blackout power-up synergy: during blackout, Mystery Crate Ghost Mode makes you FULLY invisible (not just 40% cop chance) — pure stealth god mode
 - Gang War + Crow Cartel: if Crow Cartel raids a zone during an active gang war, both gangs get 2× XP for defending against the Cartel (shared enemy)
 - Radio Tower × Crime Wave: if crime wave starts while someone owns the Radio Tower, a forced city-wide broadcast fires from the owner with a random crime-themed taunt
