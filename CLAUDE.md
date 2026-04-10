@@ -2271,6 +2271,28 @@ The Aurora Borealis now has its own economy. A mystical market stall materialize
 
 **Creative intent**: The aurora was already the most beautiful visual event in Bird City. Now it's also the most economically important. A night when the aurora fires AND you've been catching Cosmic Fish is suddenly a money-printing opportunity: Moonstone + Starlight Ammo + lucky Combo = XP/coin explosion. The Cosmic Bomb turns a peaceful fishing session into a chaotic PvP ambush. The Aurora Veil is pure status — flying around with a shimmering aurora-hued glow while listed on the Hall of Legends is the highest visual prestige in the game. And the Night Market only existing during aurora nights means players now actively WANT the aurora to appear — it's no longer just beautiful, it's profitable. Pure DISCOVERY + PROGRESSION + SPECTACLE energy.
 
+**Session 69 — 2026-04-10: 5 New Chaos Events — Poop Party, Coin Shower, Food Festival, Blackout, Disco Fever**
+The Chaos Meter was Bird City's most underused system — only 3 event types, each with equal probability. Session 69 doubles the event count to 8, adds dramatic visual effects for each, and wires in 2 new daily challenges.
+
+**Five new chaos events (server + client):**
+- 🎉 **POOP PARTY** (20s): ALL poop is treated as mega poop — unlimited AOE blasts for everyone. Confetti rains down the screen. Pink countdown HUD bar. Extra screen shake on spawn. The most CARNAGE event.
+- 💸 **COIN SHOWER** (25s): 60 glowing gold coin stacks scatter across the city map at random positions. Auto-collect by flying within 40px — no button press needed. Each coin stack gives 20–50c + 8 XP + 4 food. Golden tint overlay + countdown bar.
+- 🎊 **FOOD FESTIVAL** (30s): 40 premium food items (pizza, sandwich, donut, cake) spawn across four zones: park, café district, downtown, and mall. Auto-collect within 50px for food + coins + 12 XP. Green tint overlay + countdown bar.
+- ⚡ **BLACKOUT** (25s): 87% dark overlay with occasional electric flicker effect. All cops lose their targets and drift in blind wander mode at 1.2× angular drift (much more chaotic than fog's 0.6×). Blue countdown bar. The best escape window for wanted birds.
+- 🪩 **DISCO FEVER** (20s): Spinning disco ball with 12 rotating mirror tiles and 6 rainbow beam reflections fills the screen. 6 floating music notes (♪♫) cycle up. ALL NPC poop hits are worth 3× XP — turn the dance floor into an XP machine. Rainbow countdown bar.
+
+**Event weighting:** Original 3 events keep double weight (2 entries each in the pool), new 5 events each get 1 entry — so chaos events feel fresh while the classic events still appear often.
+
+**Fixes:**
+- `coin_shower` food items now render as a proper glowing stacked coin sprite (3-disc stack with glow halo) instead of the default brown square
+- `chaos_event_end` end message now correctly shows which event ended (was reading `gameState.chaosEvent.type` which is already null by then — fixed with `window._lastChaosType` tracking)
+
+**Two new daily challenges:**
+- 🪩 **Disco King**: Hit 8 NPCs during a Disco Fever chaos event (190 XP, 95c)
+- 💸 **Money Rain**: Collect 10 coins from a Coin Shower event (160 XP, 80c)
+
+**Creative intent**: The chaos meter fired roughly every 10–15 minutes but always felt the same — NPC Flood, Car Frenzy, or Golden Rain. Now there are 8 possible events with completely different strategic implications. Poop Party is a 20-second god-mode rampage everyone can enjoy. Blackout is a criminal's dream — wanted birds near a blackout can sprint for the sewer or Black Market in total darkness while cops stumble blindly. Disco Fever turns the normally constant grind into a sprint to hit NPCs as fast as possible. The city's chaos is now genuinely unpredictable. Pure CARNAGE + DISCOVERY energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -2405,3 +2427,11 @@ Built the Territory Control System on top of the existing upstream code:
 - Comet Trail: a P5 LEGEND bird who catches the Shooting Star leaves a brief golden comet trail behind them for 30 seconds
 - ~~Night Market: a special vendor that only appears during Aurora nights, selling rare cosmetics for cosmic fish (the aurora's currency)~~ (DONE Session 68)
 - ~~Shooting Star daily challenge: "Stargazer — catch a Shooting Star during the Aurora" (300 XP, 150c) — the rarest weather challenge~~ (DONE Session 68)
+- ~~Chaos Meter expansion: 5 new event types (Poop Party, Coin Shower, Food Festival, Blackout, Disco Fever)~~ (DONE Session 69)
+- ~~Disco King daily challenge: Hit 8 NPCs during Disco Fever~~ (DONE Session 69)
+- ~~Money Rain daily challenge: Collect 10 Coin Shower coins~~ (DONE Session 69)
+- Chaos Meter combo challenge: Trigger 3 different chaos event types in one session (new daily challenge)
+- Food Festival × Seagull Invasion: seagulls target festival food items first during food festivals — fun combat priority
+- Poop Party × Disco Fever combo: if both are somehow triggered back-to-back, special "DOUBLE CHAOS" announcement with double screen shake
+- Chaos event leaderboard in the Gazette: track who scored the most hits during each chaos event type that night
+- Blackout + Cursed Coin: cursed coin holder is completely invisible on minimap during blackout (no skull dot) — ultimate stealth window
