@@ -75,6 +75,8 @@ const DAILY_CHALLENGE_POOL = [
   { id: 'idol_champ',    title: 'Idol Champion',   desc: 'Win the Bird City Idol singing contest',          target: 1, trackType: 'idol_won',         reward: { xp: 250, coins: 120 } },
   { id: 'stargazer',     title: 'Stargazer',        desc: 'Catch a Shooting Star during the Aurora',         target: 1, trackType: 'shooting_star_caught', reward: { xp: 300, coins: 150 } },
   { id: 'night_shopper', title: 'Night Shopper',    desc: 'Buy any item from the Aurora Night Market',       target: 1, trackType: 'night_market_buy',     reward: { xp: 180, coins: 90  } },
+  { id: 'disco_king',   title: 'Disco King',        desc: 'Hit 8 NPCs during a Disco Fever chaos event',     target: 8, trackType: 'disco_fever_hit',      reward: { xp: 190, coins: 95  } },
+  { id: 'coin_grabber', title: 'Money Rain',        desc: 'Collect 10 coins from a Coin Shower event',       target: 10, trackType: 'coin_shower_collect', reward: { xp: 160, coins: 80  } },
 ];
 
 class GameEngine {
@@ -2473,6 +2475,10 @@ class GameEngine {
     if (bird.skillTreeUnlocked && bird.skillTreeUnlocked.includes('quick_draw')) {
       poopCooldown = Math.floor(poopCooldown * 0.85);
     }
+    // === CHAOS EVENT: POOP PARTY — free mega poop, minimal cooldown ===
+    if (this.chaosEvent && this.chaosEvent.type === 'poop_party') {
+      poopCooldown = 220; // fire up to ~4.5 poops/second
+    }
 
     // === SKILL TREE: Speed — Aerodynamics (+10% base speed) ===
     if (bird.skillTreeUnlocked && bird.skillTreeUnlocked.includes('aerodynamics')) {
@@ -2657,9 +2663,10 @@ class GameEngine {
         isLegend: (bird.prestige || 0) >= 5,  // P5 LEGEND birds drop golden poop
       };
 
-      // Check if mega poop (power-up OR black market mega poop OR nuke poop crate item)
+      // Check if mega poop (power-up OR black market mega poop OR nuke poop crate item OR poop party chaos event)
       const isNukePoop = bird.mcNukePoop;
-      const isMegaPoop = bird.megaPoopReady || bird.bmMegaPoops > 0 || isNukePoop;
+      const isMegaPoop = bird.megaPoopReady || bird.bmMegaPoops > 0 || isNukePoop ||
+        !!(this.chaosEvent && this.chaosEvent.type === 'poop_party');
       if (bird.megaPoopReady) {
         bird.megaPoopReady = false;
         bird.powerUp = null; // Consumed
@@ -3149,6 +3156,13 @@ class GameEngine {
             bird.totalHits++;
           }
         }
+      }
+
+      // === CHAOS EVENT: DISCO FEVER — NPCs and event_npcs worth 3× XP on the dance floor ===
+      if (this.chaosEvent && this.chaosEvent.type === 'disco_fever' &&
+          (hit.target === 'npc' || hit.target === 'event_npc')) {
+        xpGain = Math.floor(xpGain * 3);
+        this._trackDailyProgress(bird, 'disco_fever_hit', 1);
       }
 
       // Flock XP bonus: 2+ flock mates within 300px -> 1.2x
@@ -5309,10 +5323,10 @@ class GameEngine {
         nearbyFoods.push({ id: f.id, x: f.x, y: f.y, type: f.type, value: f.value });
       }
     }
-    // Chaos event golden rain foods
+    // Chaos event foods (golden rain, coin shower, food festival)
     for (const f of this.chaosEventFoods.values()) {
       if (f.active && (isEagleEye || (Math.abs(f.x - bird.x) < foodRange && Math.abs(f.y - bird.y) < foodRange))) {
-        nearbyFoods.push({ id: f.id, x: f.x, y: f.y, type: 'golden', value: f.value });
+        nearbyFoods.push({ id: f.id, x: f.x, y: f.y, type: f.type || 'golden', value: f.value, coinValue: f.coinValue });
       }
     }
 
@@ -5562,6 +5576,7 @@ class GameEngine {
       missionBoard: this.missionBoard.map(m => ({ id: m.id, title: m.title, desc: m.desc, minPlayers: m.minPlayers, type: m.type })),
       lobbyBirds: lobbyBirds,
       chaosMeter: Math.floor(this.chaosMeter),
+      chaosEvent: this.chaosEvent ? { type: this.chaosEvent.type, endsAt: this.chaosEvent.endsAt } : null,
       boss: bossState,
       territoryPredators: {
         hawk: this.territoryPredators.hawk.state !== 'dead' ? {
@@ -7890,8 +7905,18 @@ class GameEngine {
   }
 
   _triggerChaosEvent(now) {
-    const types = ['npc_flood', 'car_frenzy', 'golden_rain'];
-    const type = types[Math.floor(Math.random() * types.length)];
+    // Weighted random selection — original 3 slightly more common than new 5
+    const typePools = [
+      'npc_flood', 'npc_flood',
+      'car_frenzy', 'car_frenzy',
+      'golden_rain', 'golden_rain',
+      'poop_party',
+      'coin_shower',
+      'food_festival',
+      'blackout',
+      'disco_fever',
+    ];
+    const type = typePools[Math.floor(Math.random() * typePools.length)];
 
     if (type === 'npc_flood') {
       this.chaosEvent = { type: 'npc_flood', endsAt: now + 30000, data: {} };
@@ -7941,9 +7966,64 @@ class GameEngine {
         this.chaosEventFoods.set(food.id, food);
       }
       console.log('[GameEngine] CHAOS EVENT: GOLDEN RAIN!');
+    } else if (type === 'poop_party') {
+      // POOP PARTY: all birds fire free mega poop at minimal cooldown for 20 seconds
+      this.chaosEvent = { type: 'poop_party', endsAt: now + 20000, data: {} };
+      console.log('[GameEngine] CHAOS EVENT: POOP PARTY!');
+    } else if (type === 'coin_shower') {
+      // COIN SHOWER: 60 golden coin piles scatter at random positions, auto-collect by proximity
+      this.chaosEvent = { type: 'coin_shower', endsAt: now + 25000, data: {} };
+      for (let i = 0; i < 60; i++) {
+        const food = {
+          id: 'coinsh_' + uid(),
+          x: 250 + Math.random() * (world.WORLD_WIDTH - 500),
+          y: 250 + Math.random() * (world.WORLD_HEIGHT - 500),
+          type: 'coin_shower',
+          value: 5,
+          coinValue: 20 + Math.floor(Math.random() * 31), // 20–50 coins each
+          respawnAt: null,
+          active: true,
+        };
+        this.chaosEventFoods.set(food.id, food);
+      }
+      console.log('[GameEngine] CHAOS EVENT: COIN SHOWER!');
+    } else if (type === 'food_festival') {
+      // FOOD FESTIVAL: 40 premium food items spawn in the park and café zones
+      this.chaosEvent = { type: 'food_festival', endsAt: now + 30000, data: {} };
+      const festivalZones = [
+        { x: 900, y: 900,  w: 500, h: 500 },  // park
+        { x: 400, y: 1700, w: 400, h: 300 },  // café district
+        { x: 1400, y: 1300, w: 400, h: 300 }, // downtown
+        { x: 1800, y: 700,  w: 300, h: 300 }, // mall corridor
+      ];
+      const fTypes = ['pizza', 'sandwich', 'donut', 'cake'];
+      for (let i = 0; i < 40; i++) {
+        const zone = festivalZones[Math.floor(Math.random() * festivalZones.length)];
+        const food = {
+          id: 'fest_' + uid(),
+          x: zone.x + Math.random() * zone.w,
+          y: zone.y + Math.random() * zone.h,
+          type: fTypes[Math.floor(Math.random() * fTypes.length)],
+          value: 22 + Math.floor(Math.random() * 11), // 22–32 food value (premium)
+          coinValue: 6 + Math.floor(Math.random() * 5),
+          respawnAt: null,
+          active: true,
+        };
+        this.chaosEventFoods.set(food.id, food);
+      }
+      console.log('[GameEngine] CHAOS EVENT: FOOD FESTIVAL!');
+    } else if (type === 'blackout') {
+      // BLACKOUT: city goes dark, all cops lose their target and wander blindly for 25 seconds
+      this.chaosEvent = { type: 'blackout', endsAt: now + 25000, data: {} };
+      console.log('[GameEngine] CHAOS EVENT: BLACKOUT!');
+    } else if (type === 'disco_fever') {
+      // DISCO FEVER: all NPC poop hits worth 3× XP for 20 seconds — dance floor rewards the bold
+      this.chaosEvent = { type: 'disco_fever', endsAt: now + 20000, data: {} };
+      console.log('[GameEngine] CHAOS EVENT: DISCO FEVER!');
     }
 
-    this.events.push({ type: 'chaos_event', chaosType: type, duration: type === 'npc_flood' ? 30000 : 20000 });
+    const durations = { npc_flood: 30000, car_frenzy: 20000, golden_rain: 20000, poop_party: 20000, coin_shower: 25000, food_festival: 30000, blackout: 25000, disco_fever: 20000 };
+    this.events.push({ type: 'chaos_event', chaosType: type, duration: durations[type] || 20000 });
   }
 
   _updateChaosEvent(dt, now) {
@@ -7960,7 +8040,9 @@ class GameEngine {
             car.speed = this.chaosEvent.data.originalSpeeds[car.id];
           }
         }
-      } else if (this.chaosEvent.type === 'golden_rain') {
+      } else if (this.chaosEvent.type === 'golden_rain' ||
+                 this.chaosEvent.type === 'coin_shower' ||
+                 this.chaosEvent.type === 'food_festival') {
         this.chaosEventFoods.clear();
       }
       this.events.push({ type: 'chaos_event_end', chaosType: this.chaosEvent.type });
@@ -7985,7 +8067,7 @@ class GameEngine {
       }
     }
 
-    // Golden rain: check bird pickup
+    // Golden rain: check bird pickup (requires pressing E)
     if (this.chaosEvent.type === 'golden_rain') {
       for (const [fId, food] of this.chaosEventFoods) {
         if (!food.active) continue;
@@ -8004,6 +8086,58 @@ class GameEngine {
             this.events.push({
               type: 'steal', birdId: bird.id, foodId: food.id,
               foodType: 'golden', x: food.x, y: food.y, value: food.value,
+            });
+            break;
+          }
+        }
+      }
+    }
+
+    // Coin shower: auto-collect — just fly within 40px
+    if (this.chaosEvent.type === 'coin_shower') {
+      for (const [fId, food] of this.chaosEventFoods) {
+        if (!food.active || food.type !== 'coin_shower') continue;
+        for (const bird of this.birds.values()) {
+          const dx = bird.x - food.x;
+          const dy = bird.y - food.y;
+          if (Math.sqrt(dx * dx + dy * dy) < 40) {
+            food.active = false;
+            this.chaosEventFoods.delete(fId);
+            const coins = food.coinValue || 25;
+            bird.coins += coins;
+            bird.xp += 8;
+            bird.food += 4;
+            bird.dailyCoinEarned += coins;
+            this._trackDailyProgress(bird, 'coins_earned', coins);
+            this._trackDailyProgress(bird, 'coin_shower_collect', 1);
+            this.events.push({
+              type: 'coin_shower_collect', birdId: bird.id, birdName: bird.name,
+              coins, x: food.x, y: food.y,
+            });
+            break;
+          }
+        }
+      }
+    }
+
+    // Food festival: auto-collect — fly within 50px for premium food
+    if (this.chaosEvent.type === 'food_festival') {
+      for (const [fId, food] of this.chaosEventFoods) {
+        if (!food.active) continue;
+        for (const bird of this.birds.values()) {
+          const dx = bird.x - food.x;
+          const dy = bird.y - food.y;
+          if (Math.sqrt(dx * dx + dy * dy) < 50) {
+            food.active = false;
+            this.chaosEventFoods.delete(fId);
+            bird.food = Math.min(100, bird.food + food.value);
+            bird.coins += (food.coinValue || 6);
+            bird.xp += 12;
+            bird.dailyCoinEarned += (food.coinValue || 6);
+            this._trackDailyProgress(bird, 'coins_earned', food.coinValue || 6);
+            this.events.push({
+              type: 'steal', birdId: bird.id, foodId: food.id,
+              foodType: food.type, x: food.x, y: food.y, value: food.value,
             });
             break;
           }
@@ -9144,23 +9278,25 @@ class GameEngine {
 
       // Fog: cops lose sight of birds beyond 220px — they wander instead of pursuing
       const fogActive = this.weather && this.weather.type === 'fog';
+      // Blackout: cops completely blind, wander randomly — great escape window for criminals
+      const blackoutActive = !!(this.chaosEvent && this.chaosEvent.type === 'blackout');
 
       // Pursue wanted bird
       const dx = wanted.x - cop.x;
       const dy = wanted.y - cop.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
 
-      if (fogActive && dist > 220) {
-        // Lost in the fog — wander in last-known direction with drift
+      if (blackoutActive || (fogActive && dist > 220)) {
+        // Lost in the fog/blackout — wander in last-known direction with drift
         cop.fogWanderAngle = cop.fogWanderAngle || Math.atan2(dy, dx);
-        cop.fogWanderAngle += (Math.random() - 0.5) * 0.6 * dt * 3;
+        cop.fogWanderAngle += (Math.random() - 0.5) * (blackoutActive ? 1.2 : 0.6) * dt * 3;
         cop.x += Math.cos(cop.fogWanderAngle) * cop.speed * 0.5 * dt;
         cop.y += Math.sin(cop.fogWanderAngle) * cop.speed * 0.5 * dt;
         cop.x = Math.max(10, Math.min(world.WORLD_WIDTH - 10, cop.x));
         cop.y = Math.max(10, Math.min(world.WORLD_HEIGHT - 10, cop.y));
         continue;
       }
-      // Reset fog wander state once they can "see" again
+      // Reset fog/blackout wander state once they can "see" again
       if (!fogActive || dist <= 220) cop.fogWanderAngle = null;
 
       if (dist > 1) {

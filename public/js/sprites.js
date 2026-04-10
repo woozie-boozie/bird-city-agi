@@ -498,6 +498,34 @@ window.Sprites = {
       ctx.beginPath();
       ctx.arc(-1, -1, 2, 0, Math.PI * 2);
       ctx.fill();
+    } else if (type === 'coin_shower') {
+      // Coin shower item: stack of glowing gold coins
+      const cs = Date.now();
+      const csPulse = 0.5 + 0.5 * Math.sin(cs * 0.006);
+      ctx.save();
+      ctx.shadowBlur = 12;
+      ctx.shadowColor = 'rgba(255, 200, 0, 0.8)';
+      // Draw 3 stacked coin discs
+      for (let ci = 2; ci >= 0; ci--) {
+        const cy = ci * 2.5;
+        ctx.fillStyle = ci === 0 ? '#ffe033' : '#ffd700';
+        ctx.beginPath();
+        ctx.ellipse(0, cy, 5.5, 2.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // Rim line
+        ctx.strokeStyle = 'rgba(180,130,0,0.6)';
+        ctx.lineWidth = 0.6;
+        ctx.stroke();
+      }
+      // Glow halo
+      const csGlow = ctx.createRadialGradient(0, 0, 2, 0, 0, 10);
+      csGlow.addColorStop(0, `rgba(255,220,0,${0.35 * csPulse})`);
+      csGlow.addColorStop(1, 'rgba(255,200,0,0)');
+      ctx.fillStyle = csGlow;
+      ctx.beginPath();
+      ctx.arc(0, 0, 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
     } else if (type === 'crumb') {
       for (let i = 0; i < 3; i++) {
         ctx.beginPath();

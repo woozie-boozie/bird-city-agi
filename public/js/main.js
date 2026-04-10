@@ -1027,17 +1027,46 @@
 
     // === CHAOS EVENTS ===
     if (ev.type === 'chaos_event') {
+      window._lastChaosType = ev.chaosType; // track for end message
       SoundEngine.eventFanfare();
+      effects.push({ type: 'screen_shake', intensity: 8, duration: 500, time: now });
       const names = {
-        npc_flood: 'CHAOS: NPC FLOOD! Targets everywhere!',
-        car_frenzy: 'CHAOS: CAR FRENZY! Cars gone wild!',
-        golden_rain: 'CHAOS: GOLDEN RAIN! Grab the gold!',
+        npc_flood:     '🚶 NPC FLOOD! Targets everywhere! 30s',
+        car_frenzy:    '🚗 CAR FRENZY! Cars gone wild! 20s',
+        golden_rain:   '🌧️ GOLDEN RAIN! Press E to grab gold! 20s',
+        poop_party:    '🎉 POOP PARTY! FREE MEGA POOP — 20 seconds of CARNAGE!',
+        coin_shower:   '💸 COIN SHOWER! Money rains — fly through coins to collect! 25s',
+        food_festival: '🎊 FOOD FESTIVAL! Free premium food in the park! 30s',
+        blackout:      '⚡ BLACKOUT! The city goes dark — cops are blind! 25s',
+        disco_fever:   '🪩 DISCO FEVER! NPCs worth 3× XP for 20 seconds — DANCE!',
       };
-      showAnnouncement(names[ev.chaosType] || 'CHAOS EVENT!', '#ff4444', 4000);
-      addEventMessage(names[ev.chaosType] || 'Chaos event triggered!', '#ff4444');
+      const colors = {
+        poop_party: '#ff88ff', coin_shower: '#ffd700', food_festival: '#44dd88',
+        blackout: '#4488ff', disco_fever: '#ff44cc',
+      };
+      const color = colors[ev.chaosType] || '#ff4444';
+      showAnnouncement(names[ev.chaosType] || 'CHAOS EVENT!', color, 5000);
+      addEventMessage(names[ev.chaosType] || 'Chaos event triggered!', color);
+      if (ev.chaosType === 'poop_party') {
+        // Extra shake for the wildest event
+        effects.push({ type: 'screen_shake', intensity: 12, duration: 800, time: now });
+      }
     }
     if (ev.type === 'chaos_event_end') {
-      addEventMessage('Chaos event ended.', '#888');
+      const endNames = {
+        poop_party: '🎉 Poop Party over. Back to rationed ammunition.',
+        coin_shower: '💸 The coin shower dries up.',
+        food_festival: '🎊 Food Festival wraps up. Cooks go home.',
+        blackout: '⚡ Power restored. Cops can see again.',
+        disco_fever: '🪩 The music stops. NPCs go back to being boring.',
+      };
+      addEventMessage(endNames[window._lastChaosType] || 'Chaos event ended.', '#888');
+      window._lastChaosType = null;
+    }
+    if (ev.type === 'coin_shower_collect') {
+      if (ev.birdId === myId) {
+        addEventMessage(`💸 +${ev.coins}c from the coin shower!`, '#ffd700');
+      }
     }
 
     // === MYSTERY CRATE AIRDROP EVENTS ===
@@ -7461,6 +7490,261 @@
     // Weather effects (screen-space, drawn over day/night overlay)
     // Use gameState.weather as authoritative source (server-synced each tick)
     drawWeather(ctx, camera, now, gameState.weather || weatherState);
+
+    // === CHAOS EVENT VISUAL OVERLAYS ===
+    if (gameState.chaosEvent) {
+      const ce = gameState.chaosEvent;
+      const ceTimeLeft = Math.max(0, ce.endsAt - now);
+      const ceDuration = { poop_party: 20000, coin_shower: 25000, food_festival: 30000, blackout: 25000, disco_fever: 20000 }[ce.type] || 20000;
+      const ceFrac = ceTimeLeft / ceDuration;
+      // Fade in 1s at start, fade out 1s at end
+      const elapsed = ceDuration - ceTimeLeft;
+      const ceAlpha = Math.min(1, elapsed / 1000, ceTimeLeft / 1000);
+
+      if (ce.type === 'blackout') {
+        // BLACKOUT: deep darkness covers the city — a criminal's best friend
+        ctx.save();
+        ctx.globalAlpha = ceAlpha * 0.87;
+        ctx.fillStyle = '#040408';
+        ctx.fillRect(0, 0, camera.screenW, camera.screenH);
+        ctx.globalAlpha = 1;
+        ctx.restore();
+
+        // Flicker effect: occasional brief light flash (electrical glitch)
+        if (Math.random() < 0.008) {
+          ctx.save();
+          ctx.globalAlpha = 0.12;
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, camera.screenW, camera.screenH);
+          ctx.globalAlpha = 1;
+          ctx.restore();
+        }
+
+        // BLACKOUT HUD bar
+        const bkBarW = 200, bkBarH = 12;
+        const bkBarX = camera.screenW / 2 - bkBarW / 2;
+        const bkBarY = 132;
+        ctx.save();
+        ctx.globalAlpha = 0.92;
+        ctx.fillStyle = 'rgba(0,0,0,0.7)';
+        ctx.beginPath();
+        ctx.roundRect(bkBarX - 55, bkBarY - 18, bkBarW + 110, bkBarH + 32, 10);
+        ctx.fill();
+        const bkPulse = 0.75 + 0.25 * Math.sin(now * 0.008);
+        ctx.globalAlpha = bkPulse;
+        ctx.fillStyle = '#4488ff';
+        ctx.font = 'bold 12px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(`⚡ BLACKOUT — cops BLIND · ${Math.ceil(ceTimeLeft / 1000)}s`, camera.screenW / 2, bkBarY - 4);
+        ctx.globalAlpha = 0.8;
+        ctx.fillStyle = 'rgba(0,0,40,0.6)';
+        ctx.beginPath(); ctx.roundRect(bkBarX, bkBarY + 4, bkBarW, bkBarH, 5); ctx.fill();
+        ctx.fillStyle = ceFrac > 0.5 ? '#4488ff' : ceFrac > 0.25 ? '#6699ff' : '#aaaaff';
+        ctx.beginPath(); ctx.roundRect(bkBarX, bkBarY + 4, bkBarW * ceFrac, bkBarH, 5); ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.restore();
+
+      } else if (ce.type === 'disco_fever') {
+        // DISCO FEVER: rainbow color cycling tint + spinning disco ball
+        const discoHue = (now * 0.08) % 360;
+        ctx.save();
+        ctx.globalAlpha = ceAlpha * 0.07;
+        ctx.fillStyle = `hsl(${discoHue}, 100%, 60%)`;
+        ctx.fillRect(0, 0, camera.screenW, camera.screenH);
+        ctx.globalAlpha = 1;
+        ctx.restore();
+
+        // Disco ball (screen-space, top center)
+        const dbX = camera.screenW / 2, dbY = 90;
+        const spin = (now * 0.0025) % (Math.PI * 2);
+        ctx.save();
+        ctx.translate(dbX, dbY);
+        // Hanging string
+        ctx.strokeStyle = 'rgba(180,180,180,0.6)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(0, -22); ctx.lineTo(0, -50); ctx.stroke();
+        // Ball body (metallic sphere)
+        const ballGrad = ctx.createRadialGradient(-6, -6, 2, 0, 0, 18);
+        ballGrad.addColorStop(0, '#eeeeee');
+        ballGrad.addColorStop(0.5, '#888888');
+        ballGrad.addColorStop(1, '#333333');
+        ctx.fillStyle = ballGrad;
+        ctx.beginPath(); ctx.arc(0, 0, 18, 0, Math.PI * 2); ctx.fill();
+        // Mirror tiles (colorful rotating squares on the ball surface)
+        for (let ti = 0; ti < 12; ti++) {
+          const ta = spin + ti * (Math.PI * 2 / 12);
+          const tx = Math.cos(ta) * 12;
+          const ty = Math.sin(ta) * 9;
+          ctx.fillStyle = `hsl(${(discoHue + ti * 30) % 360}, 100%, 75%)`;
+          ctx.save();
+          ctx.translate(tx, ty);
+          ctx.rotate(spin + ti * 0.5);
+          ctx.fillRect(-3.5, -3.5, 7, 7);
+          ctx.restore();
+        }
+        // Reflection beams (disco light spokes)
+        for (let bi = 0; bi < 6; bi++) {
+          const ba = spin * 2 + bi * (Math.PI / 3);
+          const beamHue = (discoHue + bi * 60) % 360;
+          const bx2 = Math.cos(ba) * 120;
+          const by2 = Math.sin(ba) * 120;
+          const beamGrad = ctx.createLinearGradient(0, 0, bx2, by2);
+          beamGrad.addColorStop(0, `hsla(${beamHue},100%,65%,0.7)`);
+          beamGrad.addColorStop(1, `hsla(${beamHue},100%,65%,0)`);
+          ctx.strokeStyle = beamGrad;
+          ctx.lineWidth = 2.5;
+          ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(bx2, by2); ctx.stroke();
+        }
+        ctx.restore();
+
+        // Floating music notes (screen-space)
+        const noteSymbols = ['♪', '♫', '♬', '♩'];
+        for (let ni = 0; ni < 6; ni++) {
+          const nPhase = (now * 0.0008 + ni * 1.5) % 1;
+          const nx = (ni * 137 + 80) % camera.screenW;
+          const ny = camera.screenH * 0.85 - nPhase * camera.screenH * 0.7;
+          const nAlpha = nPhase < 0.1 ? nPhase / 0.1 : nPhase > 0.85 ? (1 - nPhase) / 0.15 : 1;
+          ctx.save();
+          ctx.globalAlpha = nAlpha * 0.7;
+          ctx.fillStyle = `hsl(${(discoHue + ni * 60) % 360}, 100%, 75%)`;
+          ctx.font = `bold ${14 + (ni % 3) * 4}px sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.fillText(noteSymbols[ni % noteSymbols.length], nx, ny);
+          ctx.restore();
+        }
+
+        // DISCO FEVER HUD bar
+        const dfBarW = 200, dfBarH = 12;
+        const dfBarX = camera.screenW / 2 - dfBarW / 2;
+        const dfBarY = 132;
+        ctx.save();
+        ctx.globalAlpha = 0.92;
+        ctx.fillStyle = 'rgba(0,0,0,0.65)';
+        ctx.beginPath(); ctx.roundRect(dfBarX - 55, dfBarY - 18, dfBarW + 110, dfBarH + 32, 10); ctx.fill();
+        const dfPulse = 0.75 + 0.25 * Math.sin(now * 0.007);
+        ctx.globalAlpha = dfPulse;
+        ctx.fillStyle = `hsl(${discoHue},100%,70%)`;
+        ctx.font = 'bold 12px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(`🪩 DISCO FEVER — NPCs 3× XP · ${Math.ceil(ceTimeLeft / 1000)}s`, camera.screenW / 2, dfBarY - 4);
+        ctx.globalAlpha = 0.8;
+        ctx.fillStyle = 'rgba(40,0,40,0.5)';
+        ctx.beginPath(); ctx.roundRect(dfBarX, dfBarY + 4, dfBarW, dfBarH, 5); ctx.fill();
+        ctx.fillStyle = `hsl(${discoHue},100%,60%)`;
+        ctx.beginPath(); ctx.roundRect(dfBarX, dfBarY + 4, dfBarW * ceFrac, dfBarH, 5); ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.restore();
+
+      } else if (ce.type === 'poop_party') {
+        // POOP PARTY: festive pastel shimmer + confetti specks
+        const ppHue = (now * 0.05) % 360;
+        ctx.save();
+        ctx.globalAlpha = ceAlpha * 0.05;
+        ctx.fillStyle = `hsl(${ppHue}, 80%, 70%)`;
+        ctx.fillRect(0, 0, camera.screenW, camera.screenH);
+        ctx.globalAlpha = 1;
+        ctx.restore();
+
+        // Confetti particles (screen-space fixed seed per particle)
+        for (let ci = 0; ci < 20; ci++) {
+          const cPhase = ((now * 0.0006 + ci * 0.23) % 1);
+          const cx = ((ci * 157 + 40) % camera.screenW);
+          const cy = cPhase * (camera.screenH + 40) - 20;
+          const cAlpha = cPhase < 0.1 ? cPhase / 0.1 : cPhase > 0.9 ? (1 - cPhase) / 0.1 : 0.9;
+          ctx.save();
+          ctx.globalAlpha = cAlpha * ceAlpha;
+          ctx.fillStyle = `hsl(${(ci * 37 + now * 0.03) % 360}, 100%, 65%)`;
+          ctx.translate(cx, cy);
+          ctx.rotate(now * 0.003 + ci);
+          ctx.fillRect(-4, -2, 8, 4); // rectangle confetti piece
+          ctx.restore();
+        }
+
+        // POOP PARTY HUD bar
+        const ppBarW = 220, ppBarH = 12;
+        const ppBarX = camera.screenW / 2 - ppBarW / 2;
+        const ppBarY = 132;
+        ctx.save();
+        ctx.globalAlpha = 0.92;
+        ctx.fillStyle = 'rgba(0,0,0,0.65)';
+        ctx.beginPath(); ctx.roundRect(ppBarX - 55, ppBarY - 18, ppBarW + 110, ppBarH + 32, 10); ctx.fill();
+        const ppPulse = 0.75 + 0.25 * Math.sin(now * 0.009);
+        ctx.globalAlpha = ppPulse;
+        ctx.fillStyle = '#ff88ff';
+        ctx.font = 'bold 12px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(`🎉 POOP PARTY — FREE MEGA POOP · ${Math.ceil(ceTimeLeft / 1000)}s`, camera.screenW / 2, ppBarY - 4);
+        ctx.globalAlpha = 0.8;
+        ctx.fillStyle = 'rgba(40,0,40,0.5)';
+        ctx.beginPath(); ctx.roundRect(ppBarX, ppBarY + 4, ppBarW, ppBarH, 5); ctx.fill();
+        ctx.fillStyle = `hsl(${ppHue}, 100%, 65%)`;
+        ctx.beginPath(); ctx.roundRect(ppBarX, ppBarY + 4, ppBarW * ceFrac, ppBarH, 5); ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.restore();
+
+      } else if (ce.type === 'coin_shower') {
+        // COIN SHOWER: golden sparkle tint
+        ctx.save();
+        ctx.globalAlpha = ceAlpha * 0.05;
+        ctx.fillStyle = '#ffd700';
+        ctx.fillRect(0, 0, camera.screenW, camera.screenH);
+        ctx.globalAlpha = 1;
+        ctx.restore();
+
+        // COIN SHOWER HUD bar
+        const csBarW = 200, csBarH = 12;
+        const csBarX = camera.screenW / 2 - csBarW / 2;
+        const csBarY = 132;
+        ctx.save();
+        ctx.globalAlpha = 0.92;
+        ctx.fillStyle = 'rgba(0,0,0,0.65)';
+        ctx.beginPath(); ctx.roundRect(csBarX - 55, csBarY - 18, csBarW + 110, csBarH + 32, 10); ctx.fill();
+        const csPulse = 0.75 + 0.25 * Math.sin(now * 0.006);
+        ctx.globalAlpha = csPulse;
+        ctx.fillStyle = '#ffd700';
+        ctx.font = 'bold 12px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(`💸 COIN SHOWER — Fly through coins! · ${Math.ceil(ceTimeLeft / 1000)}s`, camera.screenW / 2, csBarY - 4);
+        ctx.globalAlpha = 0.8;
+        ctx.fillStyle = 'rgba(40,30,0,0.5)';
+        ctx.beginPath(); ctx.roundRect(csBarX, csBarY + 4, csBarW, csBarH, 5); ctx.fill();
+        ctx.fillStyle = ceFrac > 0.5 ? '#ffd700' : ceFrac > 0.25 ? '#ffaa00' : '#ff8800';
+        ctx.beginPath(); ctx.roundRect(csBarX, csBarY + 4, csBarW * ceFrac, csBarH, 5); ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.restore();
+
+      } else if (ce.type === 'food_festival') {
+        // FOOD FESTIVAL: warm festive tint
+        ctx.save();
+        ctx.globalAlpha = ceAlpha * 0.05;
+        ctx.fillStyle = '#44ff88';
+        ctx.fillRect(0, 0, camera.screenW, camera.screenH);
+        ctx.globalAlpha = 1;
+        ctx.restore();
+
+        // FOOD FESTIVAL HUD bar
+        const ffBarW = 210, ffBarH = 12;
+        const ffBarX = camera.screenW / 2 - ffBarW / 2;
+        const ffBarY = 132;
+        ctx.save();
+        ctx.globalAlpha = 0.92;
+        ctx.fillStyle = 'rgba(0,0,0,0.65)';
+        ctx.beginPath(); ctx.roundRect(ffBarX - 55, ffBarY - 18, ffBarW + 110, ffBarH + 32, 10); ctx.fill();
+        const ffPulse = 0.75 + 0.25 * Math.sin(now * 0.006);
+        ctx.globalAlpha = ffPulse;
+        ctx.fillStyle = '#44dd88';
+        ctx.font = 'bold 12px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(`🎊 FOOD FESTIVAL — Free food in the park! · ${Math.ceil(ceTimeLeft / 1000)}s`, camera.screenW / 2, ffBarY - 4);
+        ctx.globalAlpha = 0.8;
+        ctx.fillStyle = 'rgba(0,40,10,0.5)';
+        ctx.beginPath(); ctx.roundRect(ffBarX, ffBarY + 4, ffBarW, ffBarH, 5); ctx.fill();
+        ctx.fillStyle = ceFrac > 0.5 ? '#44dd88' : ceFrac > 0.25 ? '#aaee55' : '#ffdd44';
+        ctx.beginPath(); ctx.roundRect(ffBarX, ffBarY + 4, ffBarW * ceFrac, ffBarH, 5); ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.restore();
+      }
+    }
 
     // === SEAGULL INVASION HUD ===
     if (gameState.seagullInvasion) {
