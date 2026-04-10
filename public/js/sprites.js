@@ -670,6 +670,60 @@ window.Sprites = {
       ctx.textAlign = 'center';
       ctx.fillStyle = 'rgba(50,120,200,0.85)';
       ctx.fillText('💧', 0, -10);
+    } else if (type === 'hot_cocoa') {
+      // Steaming hot cocoa cup — blizzard warmth pickup
+      const t = Date.now();
+      const steamPhase = t * 0.002;
+      // Warm glow halo behind cup
+      const grad = ctx.createRadialGradient(0, 0, 3, 0, 0, 16);
+      grad.addColorStop(0, `rgba(255, 140, 60, ${0.3 + 0.15 * Math.sin(steamPhase)})`);
+      grad.addColorStop(1, 'rgba(255, 140, 60, 0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 16, 14, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Mug body (dark brown)
+      ctx.fillStyle = '#6b2f05';
+      ctx.beginPath();
+      ctx.roundRect(-8, -4, 16, 14, 3);
+      ctx.fill();
+      // Mug highlight stripe
+      ctx.fillStyle = 'rgba(255,160,80,0.25)';
+      ctx.beginPath();
+      ctx.roundRect(-6, -2, 5, 10, 2);
+      ctx.fill();
+      // Cocoa surface (dark liquid)
+      ctx.fillStyle = '#3b1800';
+      ctx.beginPath();
+      ctx.ellipse(0, -3, 7, 3, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Foam on top
+      ctx.fillStyle = 'rgba(240, 200, 140, 0.9)';
+      ctx.beginPath();
+      ctx.ellipse(0, -4, 5.5, 2.2, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Handle (right side)
+      ctx.strokeStyle = '#6b2f05';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(11, 3, 5, -0.6, 0.6, false);
+      ctx.stroke();
+      // Steam wisps (3 animated wisps)
+      ctx.strokeStyle = `rgba(220, 180, 140, ${0.45 + 0.35 * Math.sin(steamPhase)})`;
+      ctx.lineWidth = 1.2;
+      for (let w = 0; w < 3; w++) {
+        const wx = -4 + w * 4;
+        const wOff = Math.sin(steamPhase + w * 1.4) * 2;
+        ctx.beginPath();
+        ctx.moveTo(wx, -7);
+        ctx.quadraticCurveTo(wx + wOff + 2, -11, wx - wOff, -15 - w * 1.5);
+        ctx.stroke();
+      }
+      // "☕" label above
+      ctx.font = '9px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(255,160,80,0.9)';
+      ctx.fillText('☕', 0, -19);
     } else if (type === 'cake') {
       // Wedding cake - larger, tiered
       ctx.fillStyle = '#fff';

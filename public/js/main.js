@@ -2583,6 +2583,21 @@
     if (ev.type === 'heat_puddles_appeared') {
       addEventMessage('💧 Water puddles have appeared across the city — drink before you dry out!', '#5599ff');
     }
+    if (ev.type === 'hot_cocoa_appeared') {
+      addEventMessage('☕ Hot cocoa carts have appeared across the city — find one to warm up and boost your speed!', '#ff9944');
+    }
+    if (ev.type === 'hot_cocoa_drink') {
+      if (ev.birdId === myId) {
+        showAnnouncement('☕ HOT COCOA! +20 food — WARM for 30s (+25% speed)!', '#ff9944', 2500);
+        addEventMessage('☕ You drank hot cocoa! Warm for 30s — cold drag negated + ×1.25 speed!', '#ff9944');
+      } else {
+        addEventMessage(`☕ ${ev.name} grabbed a hot cocoa — warm and speedy!`, '#cc7733');
+      }
+      // Floating text at pickup location
+      if (ev.x !== undefined && ev.y !== undefined) {
+        showFloatingText('☕ WARM!', ev.x, ev.y, '#ff9944');
+      }
+    }
     if (ev.type === 'puddle_drink') {
       if (ev.birdId === myId) {
         showAnnouncement('💧 REFRESHED! +35 food — quenched for 20s + speed boost!', '#44aaff', 2500);
@@ -5264,13 +5279,14 @@
   // WEATHER BETTING PANEL — shown between weather events
   // ============================================================
   const WEATHER_BET_INFO = {
-    rain:      { emoji: '🌧️', label: 'RAIN',      color: '#66aaff', odds: '24%' },
-    wind:      { emoji: '💨', label: 'WIND',      color: '#aaddff', odds: '20%' },
-    storm:     { emoji: '⛈️', label: 'STORM',     color: '#ffdd44', odds: '12%' },
-    fog:       { emoji: '🌫️', label: 'FOG',       color: '#b8ddc0', odds: '11%' },
-    hailstorm: { emoji: '🌨️', label: 'HAILSTORM', color: '#88ccff', odds: '12%' },
-    heatwave:  { emoji: '🌡️', label: 'HEATWAVE',  color: '#ff9933', odds: '12%' },
-    tornado:   { emoji: '🌪️', label: 'TORNADO',   color: '#cc88ff', odds: '9%' },
+    rain:      { emoji: '🌧️', label: 'RAIN',      color: '#66aaff', odds: '22%' },
+    wind:      { emoji: '💨', label: 'WIND',      color: '#aaddff', odds: '19%' },
+    storm:     { emoji: '⛈️', label: 'STORM',     color: '#ffdd44', odds: '11%' },
+    fog:       { emoji: '🌫️', label: 'FOG',       color: '#b8ddc0', odds: '10%' },
+    hailstorm: { emoji: '🌨️', label: 'HAILSTORM', color: '#88ccff', odds: '11%' },
+    heatwave:  { emoji: '🌡️', label: 'HEATWAVE',  color: '#ff9933', odds: '11%' },
+    tornado:   { emoji: '🌪️', label: 'TORNADO',   color: '#cc88ff', odds: '8%' },
+    blizzard:  { emoji: '❄️', label: 'BLIZZARD',  color: '#c8e8ff', odds: '8%' },
   };
 
   function updateWeatherBetPanel(now) {
@@ -5303,8 +5319,8 @@
         + '<div style="color:#7799cc;font-size:9px;margin-top:4px;">Window closes: ' + secsLeft + 's</div>';
       weatherBetPanel.style.pointerEvents = 'none';
     } else {
-      // Betting interface — show all 7 weather types
-      const TYPES = ['rain', 'wind', 'storm', 'fog', 'hailstorm', 'heatwave', 'tornado'];
+      // Betting interface — show all 8 weather types
+      const TYPES = ['rain', 'wind', 'storm', 'fog', 'hailstorm', 'heatwave', 'tornado', 'blizzard'];
       let html = '<div style="color:#aaddff;font-size:12px;margin-bottom:2px;">🌤️ FORECAST BET</div>'
         + '<div style="color:#7799cc;font-size:9px;margin-bottom:6px;">What\'s next? · ' + secsLeft + 's · Pool: ' + totalPool + 'c</div>';
 
@@ -6298,6 +6314,61 @@
       ctx.restore();
     }
 
+    // === BLIZZARD: falling snow particles + icy blue tint ===
+    if (weather.type === 'blizzard') {
+      if (!window._blizzardFlakes || window._blizzardFlakes.sw !== sw) {
+        window._blizzardFlakes = {
+          sw, sh,
+          flakes: Array.from({ length: 260 }, () => ({
+            x: Math.random() * sw,
+            y: Math.random() * sh,
+            r: 1.5 + Math.random() * 3.0, // radius 1.5-4.5px
+            speed: 30 + Math.random() * 60, // 30-90px/s fall speed
+            sway: (Math.random() - 0.5) * 25, // horizontal sway per second
+            swayOffset: Math.random() * Math.PI * 2, // independent sway phase
+            opacity: 0.5 + Math.random() * 0.5,
+          })),
+        };
+      }
+      const flakes = window._blizzardFlakes.flakes;
+      const intensity = weather.intensity;
+      const windTilt = weather.windSpeed > 0 ? Math.cos(weather.windAngle) * 0.6 : 0;
+      const t = now * 0.001;
+
+      // Subtle icy blue tint overlay
+      ctx.save();
+      ctx.globalAlpha = 0.09 * intensity;
+      ctx.fillStyle = '#c0dcff';
+      ctx.fillRect(0, 0, sw, sh);
+      ctx.globalAlpha = 1;
+
+      // Snow flakes
+      ctx.save();
+      for (const f of flakes) {
+        f.y += f.speed * dt;
+        f.x += (windTilt * f.speed + Math.sin(t * 0.8 + f.swayOffset) * f.sway) * dt;
+        if (f.y > sh + 10) { f.y = -10; f.x = Math.random() * sw; }
+        if (f.x > sw + 10) f.x -= sw + 20;
+        if (f.x < -10) f.x += sw + 20;
+
+        ctx.globalAlpha = f.opacity * intensity;
+        ctx.fillStyle = '#e8f4ff';
+        ctx.beginPath();
+        ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
+        ctx.fill();
+        // Tiny sparkle highlight on larger flakes
+        if (f.r > 2.5) {
+          ctx.globalAlpha = f.opacity * 0.5 * intensity;
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath();
+          ctx.arc(f.x - f.r * 0.3, f.y - f.r * 0.3, f.r * 0.35, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+
     // === WEATHER BADGE (top-center, alongside clock) ===
     const badges = {
       rain: '🌧️ RAIN',
@@ -6307,6 +6378,7 @@
       hailstorm: '🌨️ HAIL',
       heatwave: '🌡️ HEATWAVE',
       tornado: '🌪️ TORNADO',
+      blizzard: '❄️ BLIZZARD',
     };
     const badgeBg = {
       storm: 'rgba(60, 40, 0, 0.75)',
@@ -6314,6 +6386,7 @@
       hailstorm: 'rgba(20, 50, 90, 0.78)',
       heatwave: 'rgba(100, 40, 0, 0.80)',
       tornado: 'rgba(60, 20, 90, 0.85)',
+      blizzard: 'rgba(10, 40, 80, 0.82)',
     };
     const badgeColor = {
       storm: '#ffdd44',
@@ -6321,6 +6394,7 @@
       hailstorm: '#aaddff',
       heatwave: '#ffaa44',
       tornado: '#dd88ff',
+      blizzard: '#c8e8ff',
     };
     const badge = badges[weather.type];
     if (badge) {
@@ -6332,7 +6406,8 @@
         ? (Math.sin(now * 0.006) * 0.15 + 0.85)
         : (weather.type === 'heatwave' ? (Math.sin(now * 0.004) * 0.18 + 0.82)
         : (weather.type === 'fog' ? (Math.sin(now * 0.002) * 0.08 + 0.92)
-        : (weather.type === 'tornado' ? (Math.sin(now * 0.008) * 0.22 + 0.78) : 1)));
+        : (weather.type === 'tornado' ? (Math.sin(now * 0.008) * 0.22 + 0.78)
+        : (weather.type === 'blizzard' ? (Math.sin(now * 0.003) * 0.12 + 0.88) : 1))));
       ctx.save();
       ctx.globalAlpha = pulse * 0.88;
       ctx.fillStyle = badgeBg[weather.type] || 'rgba(20, 40, 80, 0.65)';
@@ -9734,6 +9809,15 @@
     if (s.hailSlowUntil && s.hailSlowUntil > now) {
       const secs = Math.ceil((s.hailSlowUntil - now) / 1000);
       html += '<div class="bm-buff-pill" style="background:rgba(40,80,140,0.7);border-color:#aaddff;color:#aaddff">🧊 HAIL SLOW — ' + secs + 's</div>';
+    }
+    // Blizzard: show WARM buff (hot cocoa) or CHILLY debuff
+    if (weatherState && weatherState.type === 'blizzard') {
+      if (s.blizzardWarmUntil && s.blizzardWarmUntil > now) {
+        const secs = Math.ceil((s.blizzardWarmUntil - now) / 1000);
+        html += '<div class="bm-buff-pill" style="background:rgba(80,20,0,0.85);border-color:#ff9944;color:#ffcc88;animation:kingpinGlow 0.8s ease-in-out infinite alternate;">☕ WARM +25% SPD — ' + secs + 's</div>';
+      } else {
+        html += '<div class="bm-buff-pill" style="background:rgba(10,30,70,0.85);border-color:#88bbff;color:#b0d8ff;">❄️ CHILLY! −12% speed · Find hot cocoa!</div>';
+      }
     }
     // Heatwave: show QUENCHED buff when fresh, or THIRSTY debuff when low on food
     if (weatherState && weatherState.type === 'heatwave') {

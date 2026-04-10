@@ -77,7 +77,8 @@ const DAILY_CHALLENGE_POOL = [
   { id: 'night_shopper', title: 'Night Shopper',    desc: 'Buy any item from the Aurora Night Market',       target: 1, trackType: 'night_market_buy',     reward: { xp: 180, coins: 90  } },
   { id: 'disco_king',       title: 'Disco King',          desc: 'Hit 8 NPCs during a Disco Fever chaos event',          target: 8, trackType: 'disco_fever_hit',      reward: { xp: 190, coins: 95  } },
   { id: 'coin_grabber',    title: 'Money Rain',          desc: 'Collect 10 coins from a Coin Shower event',            target: 10, trackType: 'coin_shower_collect', reward: { xp: 160, coins: 80  } },
-  { id: 'chaos_connoisseur', title: 'Chaos Connoisseur', desc: 'Experience 4 different chaos event types in one session', target: 4, trackType: 'chaos_types_seen',   reward: { xp: 210, coins: 105 } },
+  { id: 'chaos_connoisseur',  title: 'Chaos Connoisseur',  desc: 'Experience 4 different chaos event types in one session', target: 4, trackType: 'chaos_types_seen', reward: { xp: 210, coins: 105 } },
+  { id: 'blizzard_brawler',  title: 'Blizzard Brawler',   desc: 'Hit 10 targets during a Blizzard (snowballs fly far!)',   target: 10, trackType: 'blizzard_hit',    reward: { xp: 220, coins: 110 } },
 ];
 
 class GameEngine {
@@ -208,6 +209,7 @@ class GameEngine {
     this.rainWorms = new Map();       // id -> true (worm food ids spawned during rain)
     this.weatherBetting = null;       // null or { openUntil, bets: Map(birdId -> { type, amount, name }) }
     this.heatPuddles = new Map();     // id -> true (water puddle food ids spawned during heatwave)
+    this.blizzardHotCocoas = new Map(); // id -> true (hot cocoa food ids during blizzard)
 
     // === GOLDEN EGG SCRAMBLE ===
     this.eggScramble = null;          // null or { state, startedAt, endsAt, eggs: Map(id->egg), delivered }
@@ -817,9 +819,10 @@ class GameEngine {
       comboCount: 0,        // current consecutive hit streak
       comboExpiresAt: 0,    // timestamp when combo resets if no new hit
       // === WEATHER EFFECTS ===
-      hailSlowUntil: 0,     // timestamp when hail slow wears off
-      heatQuenchedUntil: 0, // timestamp: if > now, bird drank recently and won't drain food
-      puddleBoostUntil: 0,  // timestamp when puddle speed boost wears off
+      hailSlowUntil: 0,      // timestamp when hail slow wears off
+      heatQuenchedUntil: 0,  // timestamp: if > now, bird drank recently and won't drain food
+      puddleBoostUntil: 0,   // timestamp when puddle speed boost wears off
+      blizzardWarmUntil: 0,  // timestamp when blizzard hot cocoa warmth wears off
       // === RACE POWER-UPS ===
       raceBoostUntil: 0,    // timestamp when race boost gate speed buff wears off
       // === GOLDEN EGG SCRAMBLE ===
@@ -2422,6 +2425,15 @@ class GameEngine {
       maxSpeed *= 0.5;
     }
 
+    // Blizzard: cold drag slows birds 12% (negated + boosted by drinking hot cocoa)
+    if (this.weather && this.weather.type === 'blizzard') {
+      if (bird.blizzardWarmUntil > now) {
+        maxSpeed *= 1.25; // hot cocoa gives +25% speed — warmer than baseline!
+      } else {
+        maxSpeed *= 0.88; // chilly birds drag their wings
+      }
+    }
+
     // Heatwave: thirsty birds drag their wings (-15% speed when food < 15)
     if (this.weather && this.weather.type === 'heatwave' && bird.food < 15 && bird.heatQuenchedUntil <= now) {
       maxSpeed *= 0.85;
@@ -3274,7 +3286,9 @@ class GameEngine {
       if (hit.target && hit.target !== 'none') {
         const comboActive = now < bird.comboExpiresAt;
         bird.comboCount = comboActive ? bird.comboCount + 1 : 1;
-        bird.comboExpiresAt = now + (this.aurora ? 12000 : 8000); // aurora extends combo window to 12s
+        // Aurora: 12s combo window (sacred sky extends time), Blizzard: 11s (chaos makes it easier), normal: 8s
+        const comboWindow = this.aurora ? 12000 : (this.weather && this.weather.type === 'blizzard' ? 11000 : 8000);
+        bird.comboExpiresAt = now + comboWindow;
         const combo = bird.comboCount;
         // XP bonus: flat multiplier applied to base xpGain
         let comboMult = 1.0;
@@ -3406,6 +3420,10 @@ class GameEngine {
       // Track combo10 milestone
       if (bird.comboCount === 10) {
         this._trackDailyProgress(bird, 'combo10', 1);
+      }
+      // Track blizzard hits for daily challenge
+      if (this.weather && this.weather.type === 'blizzard' && hit.target && hit.target !== 'miss' && hit.target !== 'none') {
+        this._trackDailyProgress(bird, 'blizzard_hit', 1);
       }
 
       // === KINGPIN HIT TRACKING — secondary check, doesn't replace primary hit ===
@@ -3723,6 +3741,37 @@ class GameEngine {
       }
     }
 
+    // === Hot Cocoa auto-collect during blizzard — fly near for warmth + food + speed ===
+    if (this.weather && this.weather.type === 'blizzard' && this.blizzardHotCocoas.size > 0) {
+      for (const cocoaId of this.blizzardHotCocoas.keys()) {
+        const cocoa = this.foods.get(cocoaId);
+        if (!cocoa || !cocoa.active) continue;
+        const cdx = bird.x - cocoa.x;
+        const cdy = bird.y - cocoa.y;
+        if (Math.sqrt(cdx * cdx + cdy * cdy) < 45) {
+          cocoa.active = false;
+          this.blizzardHotCocoas.delete(cocoaId);
+          bird.food = Math.min(100, bird.food + 20);
+          bird.xp += 15;
+          bird.coins += 8;
+          bird.blizzardWarmUntil = now + 30000; // warm for 30s — negates cold drag, gives +25% speed
+          this._trackDailyProgress(bird, 'blizzard_cocoa', 1);
+          this.events.push({
+            type: 'hot_cocoa_drink',
+            birdId: bird.id, name: bird.name,
+            x: cocoa.x, y: cocoa.y,
+          });
+          const cId = cocoaId;
+          setTimeout(() => { this.foods.delete(cId); }, 5000);
+          // Re-queue a new cocoa sooner so the city stays stocked
+          if (this.weather && this.weather.blizzardHotCocoaTimer > now + 15000) {
+            this.weather.blizzardHotCocoaTimer = now + 8000;
+          }
+          break; // one cocoa per tick
+        }
+      }
+    }
+
     // === Pond fish auto-collect (night-only, fly near the sacred pond) ===
     if (!bird.inSewer && this.pondFishIds.size > 0) {
       for (const fishId of this.pondFishIds) {
@@ -3770,6 +3819,12 @@ class GameEngine {
     const shooter = this.birds.get(poop.birdId);
     if (shooter && shooter.skillTreeUnlocked && shooter.skillTreeUnlocked.includes('splash_zone') && !isMegaPoop) {
       hitRadius = Math.round(hitRadius * 1.20);
+    }
+    // Blizzard: SNOWBALL POOP — 2.2× wider radius for normal poops, 1.5× for mega
+    // Snowballs spread wide! Everyone is easier to hit during the blizzard.
+    if (this.weather && this.weather.type === 'blizzard') {
+      if (!isMegaPoop) hitRadius = Math.round(hitRadius * 2.2);
+      else hitRadius = Math.round(hitRadius * 1.5);
     }
     const allHits = [];
 
@@ -4118,6 +4173,7 @@ class GameEngine {
     if (this.weather && now >= this.weather.endsAt) {
       const wasRainy = this.weather.type === 'rain' || this.weather.type === 'storm';
       const wasHeatwave = this.weather.type === 'heatwave';
+      const wasBlizzard = this.weather.type === 'blizzard';
       const oldType = this.weather.type;
       this.weather = null;
       // Remove rain worms
@@ -4134,6 +4190,13 @@ class GameEngine {
         }
         this.heatPuddles.clear();
         this.events.push({ type: 'heatwave_end' });
+      }
+      // Remove blizzard hot cocoas
+      if (wasBlizzard) {
+        for (const cocoaId of this.blizzardHotCocoas.keys()) {
+          this.foods.delete(cocoaId);
+        }
+        this.blizzardHotCocoas.clear();
       }
       this.events.push({ type: 'weather_end', weatherType: oldType });
       // Open a 30-second betting window before the next weather spawns
@@ -4156,16 +4219,17 @@ class GameEngine {
 
     // Spawn new weather when timer fires
     if (!this.weather && now >= this.weatherTimer) {
-      // Rain most common; heatwave/fog/hailstorm are rarer surprises; tornado is rarest
+      // Rain most common; heatwave/fog/hailstorm are rarer surprises; tornado and blizzard are rarest
       const roll = Math.random();
       let type;
-      if (roll < 0.24) type = 'rain';
-      else if (roll < 0.44) type = 'wind';
-      else if (roll < 0.56) type = 'storm';
-      else if (roll < 0.67) type = 'fog';
-      else if (roll < 0.79) type = 'hailstorm';
-      else if (roll < 0.91) type = 'heatwave';
-      else type = 'tornado';
+      if (roll < 0.22) type = 'rain';
+      else if (roll < 0.41) type = 'wind';
+      else if (roll < 0.52) type = 'storm';
+      else if (roll < 0.62) type = 'fog';
+      else if (roll < 0.73) type = 'hailstorm';
+      else if (roll < 0.84) type = 'heatwave';
+      else if (roll < 0.92) type = 'tornado';
+      else type = 'blizzard';
 
       const windAngle = Math.random() * Math.PI * 2;
       let duration, windSpeed, intensity;
@@ -4193,6 +4257,10 @@ class GameEngine {
         duration = this._randomRange(150000, 240000); // 2.5–4 min of scorching heat
         windSpeed = 0;
         intensity = 0.7 + Math.random() * 0.3; // 0.7–1.0 heat intensity
+      } else if (type === 'blizzard') {
+        duration = this._randomRange(150000, 240000); // 2.5–4 min of bitter cold
+        windSpeed = 15 + Math.random() * 35;  // light drift wind so snow falls at angle
+        intensity = 0.75 + Math.random() * 0.25; // 0.75–1.0 blizzard intensity
       } else { // tornado
         duration = 95000; // ~95 seconds — traverses the full map
         windSpeed = 0;
@@ -4238,6 +4306,7 @@ class GameEngine {
         hailTimer: now + this._randomRange(2000, 4000), // for hailstorm
         heatPuddleTimer: now + 8000,   // for heatwave: when to spawn next puddle batch
         heatThirstTimer: now + 8000,   // for heatwave: when to next drain bird thirst
+        blizzardHotCocoaTimer: now + 12000, // for blizzard: when to spawn first hot cocoa
         // Tornado position + velocity
         tornadoX, tornadoY, tornadoVx, tornadoVy,
         tornadoCooldowns: {}, // birdId -> timestamp when they can be flung again
@@ -4245,6 +4314,7 @@ class GameEngine {
 
       this.events.push({ type: 'weather_start', weatherType: type, windAngle, windSpeed, intensity });
       console.log(`[GameEngine] Weather started: ${type} (wind=${Math.round(windSpeed)}, angle=${windAngle.toFixed(2)})`);
+      if (type === 'blizzard') this.gazetteStats.blizzardCount++;
 
       // Resolve any outstanding weather bets
       if (this.weatherBetting) {
@@ -4386,6 +4456,18 @@ class GameEngine {
       }
     }
 
+    // === BLIZZARD: spawn hot cocoa items across the city ===
+    if (this.weather.type === 'blizzard') {
+      if (now >= this.weather.blizzardHotCocoaTimer && this.blizzardHotCocoas.size < 4) {
+        const isFirst = this.blizzardHotCocoas.size === 0;
+        this._spawnHotCocoa();
+        this.weather.blizzardHotCocoaTimer = now + this._randomRange(25000, 45000);
+        if (isFirst) {
+          this.events.push({ type: 'hot_cocoa_appeared' });
+        }
+      }
+    }
+
     // === TORNADO: move across map + suck/fling birds ===
     if (this.weather.type === 'tornado') {
       const w = this.weather;
@@ -4492,6 +4574,43 @@ class GameEngine {
       respawnAt: 0,  // puddles don't auto-respawn — controlled by weather loop
     });
     this.heatPuddles.set(id, true);
+  }
+
+  _spawnHotCocoa() {
+    // Hot cocoa cart positions — near buildings and road corners across the city
+    const cocoaPositions = [
+      { x: 1050, y: 1000 }, // Park south entrance
+      { x: 1900, y: 1180 }, // Downtown center
+      { x: 2350, y: 900  }, // Mall corridor
+      { x: 480,  y: 1720 }, // Cafe District
+      { x: 380,  y: 580  }, // Residential north
+      { x: 1380, y: 2480 }, // South Docks
+      { x: 870,  y: 1580 }, // Midtown West
+      { x: 1720, y: 380  }, // North Quarter
+      { x: 2100, y: 1200 }, // Casino area
+      { x: 640,  y: 1840 }, // Tattoo Parlor area
+    ];
+    const occupied = [];
+    for (const cocoaId of this.blizzardHotCocoas.keys()) {
+      const f = this.foods.get(cocoaId);
+      if (f) occupied.push({ x: f.x, y: f.y });
+    }
+    const available = cocoaPositions.filter(z =>
+      !occupied.some(o => Math.abs(o.x - z.x) < 200 && Math.abs(o.y - z.y) < 200)
+    );
+    if (available.length === 0) return;
+    const pos = available[Math.floor(Math.random() * available.length)];
+    const px = pos.x + (Math.random() - 0.5) * 60;
+    const py = pos.y + (Math.random() - 0.5) * 60;
+    const id = 'hc_' + uid();
+    this.foods.set(id, {
+      id, type: 'hot_cocoa',
+      x: px, y: py,
+      value: 20,      // +20 food when collected
+      active: true,
+      respawnAt: 0,
+    });
+    this.blizzardHotCocoas.set(id, true);
   }
 
   _spawnRainWorm() {
@@ -5839,6 +5958,7 @@ class GameEngine {
         hailSlowUntil: bird.hailSlowUntil,
         heatQuenchedUntil: bird.heatQuenchedUntil,
         puddleBoostUntil: bird.puddleBoostUntil,
+        blizzardWarmUntil: bird.blizzardWarmUntil || 0,
         // Race boost gate
         raceBoostUntil: bird.raceBoostUntil,
         // Golden Egg Scramble
@@ -9333,8 +9453,10 @@ class GameEngine {
       if (dist > 1) {
         // Crime Wave: cops are 30% faster and more aggressive
         const crimeWaveSpeedMult = this.crimeWave ? 1.30 : 1.0;
-        cop.x += (dx / dist) * cop.speed * crimeWaveSpeedMult * dt;
-        cop.y += (dy / dist) * cop.speed * crimeWaveSpeedMult * dt;
+        // Blizzard: cops shiver and move 25% slower — great escape window!
+        const blizzardCopMult = (this.weather && this.weather.type === 'blizzard') ? 0.75 : 1.0;
+        cop.x += (dx / dist) * cop.speed * crimeWaveSpeedMult * blizzardCopMult * dt;
+        cop.y += (dy / dist) * cop.speed * crimeWaveSpeedMult * blizzardCopMult * dt;
         cop.rotation = Math.atan2(dy, dx);
       }
 
@@ -11303,7 +11425,7 @@ class GameEngine {
       this.events.push({ type: 'weather_bet_fail', birdId: bird.id, reason: 'already_bet' });
       return;
     }
-    const VALID_TYPES = ['rain', 'wind', 'storm', 'fog', 'hailstorm', 'heatwave', 'tornado'];
+    const VALID_TYPES = ['rain', 'wind', 'storm', 'fog', 'hailstorm', 'heatwave', 'tornado', 'blizzard'];
     if (!VALID_TYPES.includes(action.betType)) {
       this.events.push({ type: 'weather_bet_fail', birdId: bird.id, reason: 'invalid_type' });
       return;
@@ -12424,6 +12546,7 @@ class GameEngine {
       auroraCount:     0,   // auroras triggered this cycle
       helicopterDowns: [],  // [{ name, gangTag }]
       tournamentWinner: null, // { name, gangTag, pot }
+      blizzardCount:   0,   // blizzards triggered this cycle
     };
   }
 
@@ -12595,6 +12718,14 @@ class GameEngine {
         icon: '✨',
         headline: 'AURORA BOREALIS LIGHTS UP BIRD CITY SKIES',
         subline: 'Witnesses describe "divine light ribbons" above the park. Cosmic fish reportedly went wild. Scientists baffled.',
+      });
+    }
+
+    if (stats.blizzardCount > 0) {
+      headlines.push({
+        icon: '❄️',
+        headline: 'BLIZZARD SWEEPS BIRD CITY — SNOWBALL POOP CHAOS ERUPTS',
+        subline: 'Cops refuse to leave precincts. Birds discovered wide-radius snowball technique. Hot cocoa demand at all-time high.',
       });
     }
 
