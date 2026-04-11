@@ -2544,6 +2544,39 @@ Five interlocking additions that deepen Bird City's existing systems without add
 
 **Creative intent**: These five additions take Bird City's 75 sessions of accumulated systems and make them feel like a living web rather than a list of features. The Blackout + Ghost Mode combo is the kind of thing players will discover accidentally and tell friends about. The Radio Tower crime broadcast turns ambient ownership into a personality moment. The Gang War / Cartel shared enemy is the ultimate "enemies become allies" social drama. The Poop Party / Crime Wave heat combo is pure comedy danger that catches even veterans off guard. The Lunar Lens completes a three-system discovery chain: aurora → night market → sewer. Pure CARNAGE + SOCIAL + DISCOVERY energy.
 
+**Session 77 — 2026-04-11: The Kingpin's Royal Decree — City-Shaping Power**
+The Kingpin's role gets its most dramatic upgrade yet. Wear the crown and you now have ONE Royal Decree to issue per tenure — a city-wide edict that bends reality for every bird online. Press [O] to open the golden Decree Panel.
+
+**Four Decree Types:**
+- 👑 **GOLD RUSH** (60s): All coin drops ×2 city-wide for a full minute. The Kingpin plays benefactor — every poop hit earns double. Stacks with Lucky Charm, Signal Boost, Prestige. The most popular decree.
+- ⚡ **WANTED DECREE** (instant): Instantly adds 20 wanted heat to every other bird in the city. Chaos erupts — birds scramble, cops flood the streets, Level-1 birds suddenly have cop tails. Pure tyranny.
+- 🛡️ **ROYAL AMNESTY** (45s): All law enforcement stands down entirely — cops despawn and no new ones spawn for 45 seconds. Total lawlessness. The entire city can crime freely. The BM's Disguise Kit is irrelevant for 45 glorious seconds.
+- 💰 **TAX DAY** (instant): Collect 10% of every bird's coins (min 5c, max 100c per bird) directly into your wallet. A richest-bird tax on everyone else. Creates instant city-wide resentment and a compelling reason for a mob dethronement.
+
+**Mechanics:**
+- One decree per Kingpin tenure — consume it wisely. The counter resets to 1 whenever the crown changes hands.
+- Press [O] anywhere as Kingpin to open the Decree Panel (golden royal-themed overlay)
+- "DECREE READY — Press [O] to govern!" pill pulses in active buffs the moment you're crowned
+- A golden "⚜️ DECREE AVAILABLE" pill shows in the active buffs HUD until used
+- After issuing: overlay switches to "decree active" view showing a countdown; once used it says "spend this tenure earning it back"
+- All other players see the decree as a dramatic full-screen golden announcement: "⚜️ ROYAL DECREE from [Kingpin]: GOLD RUSH — All coins doubled for 60 seconds!"
+- Gold Rush and Royal Amnesty show live countdown banners at top of screen for all players
+- Gold Rush and Royal Amnesty effects also show as active-buff pills for everyone
+
+**Server:**
+- `kingpin.decreesAvailable` (0 or 1) — set to 1 on crown, consumed on issue
+- `this.kingpinDecree` — `{ type, endsAt, kingpinId, kingpinName }` — null when inactive
+- `_handleRoyalDecree()` — validates, applies instant effects (wanted_decree/tax_day), starts timed effects
+- `_updateKingpinDecree(now)` — expires timed decrees, fires `royal_decree_expired`
+- Gold Rush hooks into `_checkPoopHit()` coin chain (×2 multiplier after Crime Wave/Lockdown)
+- Royal Amnesty hooks into `_updateCopBirds()` — clears all cops and blocks spawns
+- Wanted Decree loops all birds and calls `_addHeat(b.id, 20)` on each
+- Tax Day loops all birds, takes `floor(coins × 0.10)` each (min 5c, max 100c), transfers to Kingpin
+- `royal_decree_issued` event carries full metadata for announcements
+- Gazette tracking: `royalDecrees[]` array with new headline per decree type (4 unique satirical headlines)
+
+**Creative intent**: The Kingpin was powerful (tribute income, minimap visibility, dethronement drama) but PASSIVE. Every Kingpin moment was reactive — other birds hunting you. The Royal Decree flips this: now the Kingpin takes INITIATIVE. Tax Day means getting rich in Bird City now has a direct downside for everyone else — the Kingpin literally takes your money. Wanted Decree turns every crime-free bird into a fugitive in seconds. GOLD RUSH is the Kingpin playing populist — "I'll give the city what it wants" — creating a window where the crowd LIKES having a Kingpin. Royal Amnesty is the most dramatic: 45 seconds where every cop vanishes, every bird can crime freely, and the city collectively loses its mind. The one-per-tenure rule makes the choice AGONIZING: do you drop Tax Day early when you first get the crown (when your wallet is fattest) or save Royal Amnesty for when you're at Level 5 Most Wanted? Pure SOCIAL + CARNAGE + SPECTACLE energy — the Kingpin is now Bird City's most powerful role.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -2730,3 +2763,13 @@ Built the Territory Control System on top of the existing upstream code:
 - Poop Party × Crime Wave: all AOE mega poops during Poop Party + Crime Wave generate 3× heat — double chaos penalty
 - Ice Rink cop death animation: when cop exits the rink they do a brief spin (cosmetic, no gameplay effect)
 - Blizzard × Hot Cocoa seagulls: seagulls in blizzard occasionally fly toward hot cocoa first (birds must race seagulls for warmth)
+- ~~Royal Decree — Kingpin issues one city-shaping edict per tenure: Gold Rush (2× coins), Wanted Decree (heat all), Royal Amnesty (no cops 45s), Tax Day (take 10% from all)~~ (DONE Session 77)
+- Royal Decree × Gang War: if Kingpin issues Wanted Decree during an active gang war, gang war kills also give 2× XP (both systems escalate together)
+- Royal Decree daily challenge: "Subject — be affected by 2 different Kingpin decrees in one session" (200 XP, 100c)
+- Kingpin Prestige: after holding the crown for 5+ minutes, unlock a "Kingpin" title badge that persists (like Mafia Rep) — earnable once per session
+- "The People's Revolt" mechanic: if Tax Day decree fires and 3+ birds poop the Kingpin within 10 seconds afterward, they collectively earn 2× the normal dethronement loot (fury bonus)
+- Decree combo: if a Kingpin issues GOLD RUSH and a Crime Wave fires within the 60-second window, city-wide 4× coin moment (Gold Rush × Crime Wave stacked)
+- "Kingpin's Pardon" new decree type: instantly clears the Most Wanted bird's entire heat + despawns all cops targeting them — the Kingpin can pardon a criminal (useful for alliances/gang coordination)
+- Bird City Photo Mode: press [P] while in spectator/free-cam mode for a 3-second UI-free screenshot freeze
+- Gazette tracking for duels: "⚔️ [Name] WINS STREET DUEL: defeats [Name] for Xc" headline
+- Royale Champion shield flash visual: golden shield burst effect on the Kingpin sprite when champion absorbs the first dethronement hit

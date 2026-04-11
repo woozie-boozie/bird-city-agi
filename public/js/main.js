@@ -91,6 +91,9 @@
   const casinoCloseBtn = document.getElementById('casinoCloseBtn');
   let casinoOverlayVisible = false;
   let lastNearCasino = false;
+
+  // === ROYAL DECREE PANEL ===
+  let decreePanelVisible = false;
   let casinoSpinning = false;
   let casinoSpinInterval = null;
   const CASINO_REEL_SYMBOLS = ['🐦', '💩', '🍗', '⭐', '💎', '👑'];
@@ -832,7 +835,7 @@
       const shieldNoteOther = ev.champShield ? '\n🏆 They have a Champion Shield — takes 4 hits to dethrone!' : '';
       if (selfIsKingpin) {
         screenShake(10, 700);
-        showAnnouncement(`👑 YOU ARE THE KINGPIN!\n${ev.coins}c makes you the richest bird.\nYou earn tribute — but you are a TARGET!${shieldNote}`, '#ffd700', 5000);
+        showAnnouncement(`👑 YOU ARE THE KINGPIN!\n${ev.coins}c makes you the richest bird.\nYou earn tribute — but you are a TARGET!\n⚜️ Press [O] to issue a ROYAL DECREE!${shieldNote}`, '#ffd700', 5000);
       } else if (ev.oldKingpin) {
         addEventMessage(`👑 ${ev.birdName} seized the crown from ${ev.oldKingpin}! (${ev.coins}c)${ev.champShield ? ' 🏆 CHAMPION SHIELD active!' : ''}`, '#ffd700');
         showAnnouncement(`👑 NEW KINGPIN: ${ev.birdName}!\nPoop them 3× to steal the crown!${shieldNoteOther}`, '#ffd700', 4000);
@@ -925,6 +928,48 @@
     }
     if (ev.type === 'kingpin_topple_shockwave') {
       effects.push({ type: 'screen_shake', intensity: 14, duration: 800, time: now });
+    }
+
+    // === ROYAL DECREE EVENTS ===
+    if (ev.type === 'royal_decree_issued') {
+      const DECREE_NAMES = { gold_rush: '👑 GOLD RUSH', wanted_decree: '⚡ WANTED DECREE', royal_amnesty: '🛡️ ROYAL AMNESTY', tax_day: '💰 TAX DAY' };
+      const DECREE_DESCS = {
+        gold_rush: 'All coin drops DOUBLED city-wide for 60 seconds!',
+        wanted_decree: 'All birds immediately gain wanted heat — chaos erupts!',
+        royal_amnesty: 'All law enforcement STANDS DOWN for 45 seconds!',
+        tax_day: 'The Kingpin collects 10% of every bird\'s coins!',
+      };
+      const selfIsKingpin = ev.kingpinId === myId;
+      const decName = DECREE_NAMES[ev.decreeType] || ev.decreeType;
+      const decDesc = DECREE_DESCS[ev.decreeType] || '';
+      screenShake(12, 700);
+      if (selfIsKingpin) {
+        showAnnouncement(`⚜️ YOU ISSUED A ROYAL DECREE!\n${decName}\n${decDesc}`, '#ffd700', 6000);
+      } else {
+        showAnnouncement(`⚜️ ROYAL DECREE from ${ev.gangTag ? `[${ev.gangTag}] ` : ''}${ev.kingpinName}:\n${decName}\n${decDesc}`, '#ffd700', 6000);
+      }
+      addEventMessage(`⚜️ ROYAL DECREE: ${ev.kingpinName} issues ${decName}!`, '#ffd700');
+    }
+    if (ev.type === 'royal_decree_expired') {
+      const DECREE_NAMES = { gold_rush: 'GOLD RUSH', royal_amnesty: 'ROYAL AMNESTY' };
+      const name = DECREE_NAMES[ev.decreeType];
+      if (name) addEventMessage(`⚜️ DECREE EXPIRED: ${name} has ended.`, '#aa8800');
+    }
+    if (ev.type === 'decree_fail') {
+      const msgs = { not_kingpin: 'Only the Kingpin can issue decrees!', already_used: 'You already used your decree this tenure!', already_active: 'A decree is already in effect!' };
+      if (ev.birdId === myId) showTemporaryPrompt('⚜️ ' + (msgs[ev.reason] || 'Cannot issue decree now.'), 'decreeBanner', 2500);
+    }
+    if (ev.type === 'decree_wanted_zap') {
+      addEventMessage(`⚡ WANTED DECREE: ${ev.kingpinName} sentenced ${ev.targetCount} birds — wanted heat surges!`, '#ff4444');
+    }
+    if (ev.type === 'decree_taxed') {
+      if (ev.birdId === myId) {
+        effects.push({ type: 'text', x: camera.x, y: camera.y - 30, time: now, duration: 2000, text: `💰 TAX DAY −${ev.amount}c`, color: '#ff8800', size: 15 });
+        showAnnouncement(`💰 THE KINGPIN TAXED YOU: −${ev.amount}c`, '#ff8800', 3500);
+      }
+    }
+    if (ev.type === 'decree_tax_collected') {
+      addEventMessage(`💰 TAX DAY: ${ev.kingpinName} collected ${ev.total}c from the citizens!`, '#ffd700');
     }
 
     // === FLOCK EVENTS ===
@@ -3493,6 +3538,13 @@
       }
     }
 
+    // Royal Decree — [O] to open Decree Panel (Kingpin only)
+    if (e.key.toLowerCase() === 'o') {
+      if (gameState && gameState.self && gameState.self.isKingpin) {
+        toggleDecreePanel();
+      }
+    }
+
     // Bird City Idol — [I] to enter contest or vote
     if (e.key.toLowerCase() === 'i') {
       if (idolOverlayVisible) {
@@ -4460,6 +4512,11 @@
 
     // Active buffs HUD
     updateActiveBuffsHud();
+
+    // Royal Decree banner
+    updateDecreeBanner();
+    // Refresh decree panel if open
+    if (decreePanelVisible) renderDecreePanel();
 
     // Daily Challenges HUD indicator
     updateDailyHudIndicator();
@@ -9960,6 +10017,21 @@
     }
     if (s.isKingpin) {
       html += '<div class="bm-buff-pill" style="background:rgba(100,80,0,0.9);border-color:#ffd700;color:#ffd700;animation:kingpinGlow 1.2s ease-in-out infinite alternate;font-weight:bold;">👑 KINGPIN — You earn tribute! Stay rich!</div>';
+      if (s.kingpinDecreesAvailable > 0 && !gameState.activeDecree) {
+        html += '<div class="bm-buff-pill" style="background:rgba(120,90,0,0.95);border-color:#ffcc00;color:#ffe044;animation:kingpinGlow 0.5s ease-in-out infinite alternate;cursor:pointer;font-weight:bold;" onclick="toggleDecreePanel()">⚜️ DECREE READY — Press [O] to govern!</div>';
+      }
+    }
+    // Active Royal Decree — shown to ALL players
+    if (gameState.activeDecree) {
+      const d = gameState.activeDecree;
+      const secs = Math.max(0, Math.ceil((d.endsAt - now) / 1000));
+      if (secs > 0) {
+        const decInfo = { gold_rush: { icon: '👑', label: 'GOLD RUSH 2× COINS', c: '#ffd700' }, royal_amnesty: { icon: '🛡️', label: 'ROYAL AMNESTY — NO COPS', c: '#44aaff' } };
+        const di = decInfo[d.type];
+        if (di) {
+          html += `<div class="bm-buff-pill" style="background:rgba(80,60,0,0.95);border-color:${di.c};color:${di.c};animation:kingpinGlow 0.8s ease-in-out infinite alternate;font-weight:bold;">⚜️ ${di.icon} ${di.label} — ${secs}s</div>`;
+        }
+      }
     }
 
     // === MYSTERY CRATE active buff pills ===
@@ -11814,6 +11886,143 @@
 
   window._hideRoyaleCheerPanel = function() { hideRoyaleCheerPanel(); };
   window.toggleRoyaleCheerPanel = toggleRoyaleCheerPanel;
+
+  // ============================================================
+  // ROYAL DECREE PANEL
+  // ============================================================
+
+  const DECREE_INFO = {
+    gold_rush: {
+      emoji: '👑',
+      name: 'GOLD RUSH',
+      desc: 'All poop coin drops DOUBLED city-wide for 60 seconds.\nEveryone profits — but you get credit.',
+      duration: '60s',
+      color: '#ffd700',
+    },
+    wanted_decree: {
+      emoji: '⚡',
+      name: 'WANTED DECREE',
+      desc: 'Instantly adds wanted heat to every other bird.\nChaos erupts — cops flood the streets!',
+      duration: 'INSTANT',
+      color: '#ff4444',
+    },
+    royal_amnesty: {
+      emoji: '🛡️',
+      name: 'ROYAL AMNESTY',
+      desc: 'All law enforcement STANDS DOWN for 45 seconds.\nTotal lawlessness — no arrests, no cops.',
+      duration: '45s',
+      color: '#44aaff',
+    },
+    tax_day: {
+      emoji: '💰',
+      name: 'TAX DAY',
+      desc: 'Collect 10% of every bird\'s coins.\nMax 100c per bird — fills your royal treasury.',
+      duration: 'INSTANT',
+      color: '#ff9900',
+    },
+  };
+
+  function toggleDecreePanel() {
+    if (decreePanelVisible) closeDecreePanel();
+    else openDecreePanel();
+  }
+
+  function openDecreePanel() {
+    if (!gameState || !gameState.self || !gameState.self.isKingpin) return;
+    decreePanelVisible = true;
+    const el = document.getElementById('decreePanelOverlay');
+    if (el) { el.style.display = 'block'; renderDecreePanel(); }
+  }
+
+  function closeDecreePanel() {
+    decreePanelVisible = false;
+    const el = document.getElementById('decreePanelOverlay');
+    if (el) el.style.display = 'none';
+  }
+
+  function renderDecreePanel() {
+    const el = document.getElementById('decreePanelContent');
+    if (!el || !gameState) return;
+
+    const s = gameState.self;
+    const decreesLeft = s ? s.kingpinDecreesAvailable : 0;
+    const activeDecree = gameState.activeDecree;
+
+    if (activeDecree) {
+      const secs = Math.max(0, Math.ceil((activeDecree.endsAt - Date.now()) / 1000));
+      const info = DECREE_INFO[activeDecree.type];
+      el.innerHTML = `
+        <div style="text-align:center;padding:12px;background:rgba(255,215,0,0.1);border:1px solid #886600;border-radius:8px;">
+          <div style="font-size:28px;margin-bottom:6px;">${info ? info.emoji : '⚜️'}</div>
+          <div style="font-size:15px;font-weight:900;color:#ffd700;margin-bottom:4px;">${info ? info.name : activeDecree.type.toUpperCase()} ACTIVE</div>
+          <div style="font-size:12px;color:#ffcc44;">Expires in <b>${secs}s</b></div>
+        </div>
+        <div style="margin-top:12px;font-size:11px;color:#aa8800;letter-spacing:0.5px;">
+          Your decree has been issued. Earn or regain the crown for a fresh decree.
+        </div>`;
+      return;
+    }
+
+    if (!decreesLeft) {
+      el.innerHTML = `
+        <div style="text-align:center;padding:16px;opacity:0.7;">
+          <div style="font-size:22px;margin-bottom:8px;">📜</div>
+          <div style="font-size:13px;color:#aa8800;">Decree already used this tenure.</div>
+          <div style="font-size:11px;color:#886600;margin-top:6px;">Lose and regain the crown to issue another.</div>
+        </div>`;
+      return;
+    }
+
+    // Build decree cards
+    let cards = '';
+    for (const [type, info] of Object.entries(DECREE_INFO)) {
+      cards += `
+        <div onclick="window._issueDecree('${type}')" style="cursor:pointer;margin-bottom:10px;
+          padding:10px 14px;background:rgba(40,30,0,0.7);border:1px solid ${info.color}44;border-radius:8px;
+          display:flex;align-items:flex-start;gap:10px;
+          transition:background 0.2s;text-align:left;"
+          onmouseover="this.style.background='rgba(80,60,0,0.9)'" onmouseout="this.style.background='rgba(40,30,0,0.7)'">
+          <div style="font-size:22px;flex-shrink:0;margin-top:2px;">${info.emoji}</div>
+          <div>
+            <div style="font-size:13px;font-weight:900;color:${info.color};letter-spacing:1px;">${info.name}
+              <span style="font-size:10px;color:#886600;font-weight:normal;margin-left:6px;">[${info.duration}]</span>
+            </div>
+            <div style="font-size:10px;color:#ccaa66;margin-top:3px;line-height:1.4;">${info.desc.replace('\n', '<br>')}</div>
+          </div>
+        </div>`;
+    }
+    el.innerHTML = `
+      <div style="font-size:11px;color:#aa8800;letter-spacing:0.5px;margin-bottom:12px;text-align:center;">
+        ⚜️ You have <b style="color:#ffd700;">1 decree</b> to spend. Choose wisely — your word is law.
+      </div>
+      ${cards}`;
+  }
+
+  window.closeDecreePanel = closeDecreePanel;
+  window.toggleDecreePanel = toggleDecreePanel;
+  window._issueDecree = function(decreeType) {
+    socket.emit('action', { type: 'royal_decree', decreeType });
+    closeDecreePanel();
+  };
+
+  function updateDecreeBanner() {
+    const banner = document.getElementById('decreeBanner');
+    if (!banner || !gameState) { if (banner) banner.style.display = 'none'; return; }
+
+    const d = gameState.activeDecree;
+    if (!d) { banner.style.display = 'none'; return; }
+
+    const secs = Math.max(0, Math.ceil((d.endsAt - Date.now()) / 1000));
+    const info = DECREE_INFO[d.type];
+    if (!secs) { banner.style.display = 'none'; return; }
+
+    const COLOR_MAP = { gold_rush: '#ffd700', royal_amnesty: '#44aaff' };
+    const color = COLOR_MAP[d.type] || '#ffd700';
+    banner.style.display = 'block';
+    banner.style.borderColor = color;
+    banner.style.color = color;
+    banner.textContent = `⚜️ ROYAL DECREE: ${info ? info.name : d.type.toUpperCase()} — ${secs}s remaining`;
+  }
 
   window._buySkillTree = function(skillId) {
     socket.emit('action', { type: 'skill_tree_unlock', skillId });

@@ -936,6 +936,29 @@
       text-align:center;letter-spacing:0.5px;"></div>
   </div>
 
+  <!-- Royal Decree Panel — Kingpin issues city-wide edicts -->
+  <div id="decreePanelOverlay" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+    background:linear-gradient(160deg,#1a1200,#2a1e00,#1a1200);
+    border:2px solid #ffd700;border-radius:16px;padding:22px 28px;z-index:160;
+    min-width:480px;max-width:560px;box-shadow:0 0 60px rgba(255,215,0,0.5),inset 0 0 30px rgba(255,215,0,0.07);
+    color:#ffe880;font-family:'Courier New',monospace;text-align:center;">
+    <div style="font-size:28px;margin-bottom:4px;">⚜️</div>
+    <div style="font-size:19px;font-weight:900;color:#ffd700;text-shadow:0 0 16px #ffaa00;letter-spacing:3px;margin-bottom:4px;">ROYAL DECREE</div>
+    <div style="font-size:11px;color:#ffcc44;letter-spacing:1px;margin-bottom:18px;opacity:0.9;">As Kingpin, you may issue ONE city-wide edict per tenure.</div>
+    <div id="decreePanelContent"></div>
+    <button onclick="closeDecreePanel()" style="margin-top:18px;background:rgba(80,60,0,0.6);
+      color:#ccaa44;border:1px solid #886600;border-radius:6px;padding:6px 20px;
+      cursor:pointer;font:bold 12px 'Courier New',monospace;letter-spacing:1px;">✕ CLOSE [O]</button>
+  </div>
+
+  <!-- Active Decree HUD bar -->
+  <div id="decreeBanner" style="display:none;position:fixed;top:108px;left:50%;transform:translateX(-50%);
+    background:linear-gradient(90deg,rgba(100,80,0,0.95),rgba(160,120,0,0.95),rgba(100,80,0,0.95));
+    border:1px solid #ffd700;border-radius:8px;padding:5px 18px;z-index:100;
+    color:#ffe880;font:bold 12px 'Courier New',monospace;letter-spacing:1.5px;
+    box-shadow:0 0 20px rgba(255,215,0,0.5);text-align:center;white-space:nowrap;">
+  </div>
+
   <!-- Feather Points available HUD pill -->
   <div id="fpHudPill" style="display:none;position:fixed;bottom:70px;right:12px;
     background:rgba(20,60,20,0.9);border:1px solid #44cc44;color:#88ff88;
