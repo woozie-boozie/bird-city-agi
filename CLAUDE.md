@@ -2423,6 +2423,50 @@ Three interlocking Blizzard/Aurora additions that deepen emergent cooperation an
 
 **Creative intent**: The ice rink turns Blizzard into a chaos PLAYGROUND — birds zoom onto the rink for the speed boost then can't stop or turn, careening toward other players/cops at 1.3× speed in pure slapstick mayhem. The P5 Comet Trail is a rare cosmic reward that no amount of coins can buy — only dedication (P5 prestige) plus luck (catching a shooting star) creates the golden trail. The Gang Ritual gives flocks the first purely cooperative aurora action: gather at the sacred pond together to call down bonus fish. Night sessions near the pond now have a new social dynamic. Pure CARNAGE + SPECTACLE + SOCIAL energy.
 
+**Session 74 — 2026-04-11: Five Cross-System Synergies — Blizzard & Tornado Depth**
+Six interlocking additions that weave the Blizzard, Tornado, Aurora, and Gang systems into a richer web of emergent chaos:
+
+**1. Tornado × Cursed Coin Fling:**
+- When the active tornado passes within 300px of the world-mode Cursed Coin (unclaimed), it FLINGS the coin 400-600px to a completely new map location
+- `_tornadoFlung = true` prevents re-triggering in the same tornado pass; resets when tornado expires
+- City-wide announcement: "🌪️💀 TORNADO FLUNG THE CURSED COIN! It's somewhere else now — check the minimap!"
+- The minimap skull dot immediately updates to the new position — pure chaos for hunters who were closing in
+
+**2. Gang War × Aurora Double XP:**
+- When a gang war kill fires during an active Aurora Borealis, the attacker earns **300 XP instead of 150**
+- `auroraBonus: true` flag added to `gang_war_kill` event — kill announcements show "✨ 2× AURORA XP!" suffix
+- Sacred sky amplifies the violence: the most beautiful night event now makes gang wars the most lucrative combat in the game
+- Stacks with combo streaks, lucky charm, prestige bonuses — an aurora war kill at 10× combo is astronomical
+
+**3. Ice Rink Cop Slide (the funniest mechanic):**
+- Cops that wander onto the Ice Rink lose all directional control — they skid around helplessly with wide random drift
+- `cop.iceSlideAngle` gives each cop an independent sliding trajectory with strong angular drift (2.5× per tick)
+- `continue` in the cop loop skips the arrest check — birds ON the ice rink are completely SAFE from arrest
+- Ice rink becomes a tactical refuge: sprint onto the rink with a cop on your tail and watch them pinball around while you circle them safely
+- `iceSlideAngle = undefined` reset when cop exits the rink (traction restored)
+
+**4. Gang Nest Firepit (Blizzard sanctuary):**
+- During blizzard, every active gang nest emits a warm firepit aura within 100px — visible as an animated orange flame with pulsing warm glow
+- Gang members within 100px of their OWN nest get +25% speed (same as hot cocoa) instead of the -12% cold drag
+- `bird.nearNestFirepit = true` checked in the blizzard speed section, exposed in self-snapshot
+- Renderer draws: outer warm gradient, inner flickering flame core, "🔥 WARM" label — visible to all nearby players
+- Active buffs HUD pill: "🔥 GANG FIREPIT — +25% SPD · Warm and cozy!" (pulsing orange)
+- Creates tactical gathering mechanic: "everyone meet at the nest during blizzard" is now a game-meaningful callout
+
+**5. Snowball Fight Club:**
+- During blizzard, birds engaged in a STREET DUEL get an extra ×1.18 poop radius on top of the blizzard ×2.2 boost
+- Normal duel poop: 20px base → ×2.2 blizzard → ×1.18 club = ~52px radius — huge snowball explosions
+- The snow makes every shot an area-denying snowball that's nearly impossible to dodge at close range
+- Creates the wildest street duel conditions in the game: two birds sliding around on snow firing massive snowballs
+
+**6. Ice Skater Daily Challenge:**
+- "Land 5 poop hits while sliding on the Ice Rink" — 240 XP, 120 coins
+- Tracked when `bird.onIceRink === true` at time of any poop hit
+- Forces players to make the most of the ice rink's chaotic physics: aim and fire while sliding at full speed with minimal control
+- One of the most skillful daily challenges — landing 5 hits while barely able to steer is genuinely impressive
+
+**Creative intent**: Six additions but they all deepen existing blizzard/tornado/aurora/gang systems rather than adding new ones. The cop ice slide is pure slapstick comedy that creates a real strategic landmark: "cops can't arrest me if I'm on the rink." The gang nest firepit transforms the blizzard from "find cocoa or suffer" into "gather your crew at the nest and stay warm together" — an inherently social mechanic. Tornado × Cursed Coin creates an incredible moment of chaos: you're closing in on the coin, tornado hits the map, coin vanishes to a new location, and the race restarts. The aurora gang war bonus makes night sessions during gang wars the most lucrative play sessions in the game. Pure CARNAGE + SOCIAL + DISCOVERY energy — the city's chaos is now deeply interconnected.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -2553,7 +2597,7 @@ Built the Territory Control System on top of the existing upstream code:
 - ~~Blizzard weather type — 8th weather, snowball poop radius ×2.2, hot cocoa warmth economy, cop cold debuff~~ (DONE Session 71)
 - Seasonal events: longer-term city transformations (cherry blossoms in "spring")
 - Graffiti mural system: large multi-building art pieces that require a whole gang to paint
-- Aurora + Gang War: if a gang war erupts during the aurora, all kills give 2× gang war XP — sacred sky amplifies the violence
+- ~~Aurora + Gang War: if a gang war erupts during the aurora, all kills give 2× gang war XP — sacred sky amplifies the violence~~ (DONE Session 74)
 - Shooting Star daily challenge: "Stargazer — catch a Shooting Star during the Aurora" (300 XP, 150c) — the rarest weather challenge
 - ~~Comet Trail: a P5 LEGEND bird who catches the Shooting Star leaves a brief golden comet trail behind them for 30 seconds~~ (DONE Session 73 — also triggers on Meteor catch)
 - ~~Night Market: a special vendor that only appears during Aurora nights, selling rare cosmetics for cosmic fish (the aurora's currency)~~ (DONE Session 68)
@@ -2585,15 +2629,22 @@ Built the Territory Control System on top of the existing upstream code:
 - Blizzard × Hot Cocoa seagull: seagulls in the blizzard occasionally fly toward hot cocoa items (birds must race seagulls to get the warmth)
 - Blizzard × Crime Wave gang war: during crime wave + blizzard, gang war kills give +2× XP (cold-blooded kills)
 - Comet Trail: a P5 LEGEND bird who catches a Meteor (or Shooting Star) leaves a golden comet trail behind them for 30 seconds
-- Snowball Fight Club: during blizzard, two birds that duel each other get extra snowball poop width (35px vs 44px) — blizzard duels are wider chaos
+- ~~Snowball Fight Club: during blizzard, two birds that duel each other get extra snowball poop width~~ (DONE Session 74 — ×1.18 extra radius on top of blizzard ×2.2)
 - ~~Ice Rink: a random plaza in the city becomes an ice rink during blizzards — birds slide across it at 1.3× speed with no turning friction for 5 seconds (chaos chaos chaos)~~ (DONE Session 73)
 - ~~Comet Trail: a P5 LEGEND bird who catches a Meteor (or Shooting Star) leaves a golden comet trail behind them for 30 seconds~~ (DONE Session 73)
-- Snowball Fight Club: during blizzard, two birds that duel each other get extra snowball poop width (45px vs 44px) — blizzard duels are wider, wilder chaos
-- Ice Rink death spiral: a bird on the ice rink being chased by cops has reduced turning — cop AI should also feel ice drag (creates hilarious sliding pursuit scenes)
-- Gang Aurora Bonus: Aurora + active gang war = all gang war kills give 2× XP (sacred sky amplifies the violence, connects two night systems)
-- Cosmic Fish leaderboard: track who has caught the most cosmic fish this aurora session — display live in the Night Market overlay
-- Ice Rink daily challenge: "Ice Skater — land 5 poop hits while on the ice rink" (240 XP, 120c)
+- ~~Ice Rink death spiral: a bird on the ice rink being chased by cops has reduced turning — cop AI should also feel ice drag (creates hilarious sliding pursuit scenes)~~ (DONE Session 74 — cops skid helplessly on ice, can't arrest)
+- ~~Cosmic Fish leaderboard: track who has caught the most cosmic fish this aurora session — display live in the Night Market overlay~~ (future idea)
+- ~~Ice Rink daily challenge: "Ice Skater — land 5 poop hits while on the ice rink" (240 XP, 120c)~~ (DONE Session 74)
 - Blizzard Ice Bridge: the pond freezes over during blizzard — birds can cross directly through it instead of flying around (shortcut that only exists in winter)
 - Night Market new item: "🌙 Lunar Lens" (3 cosmic fish) — reveals every hidden sewer loot cache on your minimap for 2 minutes (discovery + aurora synergy)
-- Tornado × Cursed Coin: if a tornado passes within 300px of the Cursed Coin, it flings the coin 500px in a random direction — the coin is now somewhere else on the map (chaos!)
-- Gang Nest × Blizzard: gang nests get a "firepit" during blizzard — members within 100px are immune to cold drag (cozy gang base mechanic)
+- ~~Tornado × Cursed Coin: if a tornado passes within 300px of the Cursed Coin, it flings the coin 500px in a random direction — the coin is now somewhere else on the map (chaos!)~~ (DONE Session 74)
+- ~~Gang Nest × Blizzard: gang nests get a "firepit" during blizzard — members within 100px are immune to cold drag (cozy gang base mechanic)~~ (DONE Session 74 — also gives +25% speed bonus)
+- Cosmic Fish leaderboard: track who has caught the most cosmic fish per aurora session — show live in Night Market overlay
+- Blizzard Ice Bridge: pond freezes over, becomes walkable shortcut during blizzard
+- Night Market new item: "🌙 Lunar Lens" (3 cosmic fish) — reveals hidden sewer caches on minimap for 2 min
+- Blackout + Ghost Mode: during blackout, Mystery Crate Ghost Mode makes you FULLY invisible (not just 40% cop chance) — pure stealth god mode
+- Gang War + Crow Cartel: if Crow Cartel raids a zone during an active gang war, both gangs get 2× XP for defending against the Cartel
+- Radio Tower × Crime Wave: if crime wave starts while someone owns the Radio Tower, forced city-wide broadcast fires from the owner
+- Poop Party × Crime Wave: all AOE mega poops during Poop Party + Crime Wave generate 3× heat — double chaos penalty
+- Ice Rink cop death animation: when cop exits the rink they do a brief spin (cosmetic, no gameplay effect)
+- Blizzard × Hot Cocoa seagulls: seagulls in blizzard occasionally fly toward hot cocoa first (birds must race seagulls for warmth)

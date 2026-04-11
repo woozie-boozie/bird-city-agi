@@ -2785,14 +2785,52 @@ window.Renderer = {
    * Draw all gang nests in world space.
    * nests: array from gameState.gangNests
    */
-  drawGangNests(ctx, camera, nests, selfGangId, now) {
+  drawGangNests(ctx, camera, nests, selfGangId, now, isBlizzard) {
     if (!nests || nests.length === 0) return;
+    const t = now / 1000;
     for (const nest of nests) {
       if (!nest.alive) continue;
       const sx = nest.x - camera.x;
       const sy = nest.y - camera.y;
       // Only draw nests within a reasonable view range
-      if (sx < -120 || sx > (camera.screenW || 1400) + 120 || sy < -120 || sy > (camera.screenH || 900) + 120) continue;
+      if (sx < -200 || sx > (camera.screenW || 1400) + 200 || sy < -200 || sy > (camera.screenH || 900) + 200) continue;
+
+      // Gang Nest Firepit: during blizzard, draw a warm campfire aura around own gang's nest
+      if (isBlizzard && nest.isMyNest) {
+        const pulse = 0.6 + 0.4 * Math.sin(t * 2.8);
+        const fireR = 100; // matches server-side 100px radius
+        // Warm outer glow (large, very soft)
+        const firepitGrad = ctx.createRadialGradient(sx, sy + 5, 8, sx, sy, fireR);
+        firepitGrad.addColorStop(0, `rgba(255,180,40,${0.38 * pulse})`);
+        firepitGrad.addColorStop(0.45, `rgba(255,100,10,${0.18 * pulse})`);
+        firepitGrad.addColorStop(1, 'rgba(255,60,0,0)');
+        ctx.beginPath();
+        ctx.arc(sx, sy, fireR, 0, Math.PI * 2);
+        ctx.fillStyle = firepitGrad;
+        ctx.fill();
+        // Firepit flame flicker (small bright core)
+        ctx.save();
+        ctx.globalAlpha = 0.7 + 0.3 * Math.sin(t * 9.5 + 0.4);
+        const flameGrad = ctx.createRadialGradient(sx, sy + 3, 2, sx, sy + 3, 18);
+        flameGrad.addColorStop(0, '#fff4aa');
+        flameGrad.addColorStop(0.4, '#ffaa22');
+        flameGrad.addColorStop(1, 'rgba(255,60,0,0)');
+        ctx.beginPath();
+        ctx.ellipse(sx, sy + 3, 12, 16, 0, 0, Math.PI * 2);
+        ctx.fillStyle = flameGrad;
+        ctx.fill();
+        ctx.restore();
+        // "🔥" label above nest
+        ctx.save();
+        ctx.font = 'bold 11px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#ffcc55';
+        ctx.shadowColor = '#ff8800';
+        ctx.shadowBlur = 6;
+        ctx.fillText('🔥 WARM', sx, sy - 52);
+        ctx.restore();
+      }
+
       Sprites.drawGangNest(ctx, sx, sy, nest.gangColor, nest.gangTag, nest.hp, nest.maxHp, nest.isMyNest, now);
     }
   },

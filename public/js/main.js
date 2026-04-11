@@ -974,8 +974,10 @@
     }
     if (ev.type === 'gang_war_kill') {
       SoundEngine.coinPickup && SoundEngine.coinPickup();
-      showAnnouncement(`💀 [${ev.attackerGangTag}] ${ev.attackerName} SMOKED [${ev.targetGangTag}] ${ev.targetName}! (+${ev.loot}c)`, ev.attackerGangColor || '#ff3333', 4000);
-      addEventMessage(`💀 [${ev.attackerGangTag}] ${ev.attackerName} ELIMINATED [${ev.targetGangTag}] ${ev.targetName} (+${ev.loot}c loot)`, '#ff4444');
+      const auroraExtra = ev.auroraBonus ? ' ✨ 2× AURORA XP!' : '';
+      showAnnouncement(`💀 [${ev.attackerGangTag}] ${ev.attackerName} SMOKED [${ev.targetGangTag}] ${ev.targetName}! (+${ev.loot}c)${auroraExtra}`, ev.attackerGangColor || '#ff3333', 4000);
+      const aurFeedMsg = ev.auroraBonus ? ' ✨ AURORA BONUS: 300 XP!' : '';
+      addEventMessage(`💀 [${ev.attackerGangTag}] ${ev.attackerName} ELIMINATED [${ev.targetGangTag}] ${ev.targetName} (+${ev.loot}c loot)${aurFeedMsg}`, '#ff4444');
       effects.push({ type: 'screen_shake', intensity: 6, duration: 400, time: now });
     }
     if (ev.type === 'gang_war_ended') {
@@ -1192,6 +1194,12 @@
       effects.push({ type: 'screen_shake', intensity: 6, duration: 500, time: now });
       showAnnouncement('💀 THE CURSED COIN HAS MATERIALIZED!\n+2.5× coin gains — but beware the curse!', '#ff3366', 6000);
       addEventMessage('💀 The Cursed Coin appeared on the streets! First to grab it earns +2.5× coins!', '#ff3366');
+    }
+    if (ev.type === 'cursed_coin_tornado_flung') {
+      effects.push({ type: 'screen_shake', intensity: 5, duration: 400, time: now });
+      showAnnouncement('🌪️💀 TORNADO FLUNG THE CURSED COIN!\nIt\'s somewhere else now — check the minimap!', '#cc44ff', 5000);
+      addEventMessage('🌪️💀 The tornado swept the Cursed Coin to a new location!', '#cc44ff');
+      // Gold pulsing direction arrow handled via the existing cursed coin minimap dot (position updates automatically)
     }
     if (ev.type === 'cursed_coin_grabbed') {
       const tag = ev.gangTag ? `[${ev.gangTag}] ` : '';
@@ -7085,10 +7093,11 @@
       Renderer.drawHallOfLegends(ctx, camera, worldData.hallOfLegendsPos, legendsData, !!(gameState.self && gameState.self.nearHallOfLegends), now);
     }
 
-    // Gang Nests
+    // Gang Nests (pass blizzard flag for firepit visual)
     if (gameState.gangNests && gameState.gangNests.length > 0) {
       const selfGangId = gameState.self && gameState.self.gangId;
-      Renderer.drawGangNests(ctx, camera, gameState.gangNests, selfGangId, now);
+      const isBlizzard = weatherState && weatherState.type === 'blizzard';
+      Renderer.drawGangNests(ctx, camera, gameState.gangNests, selfGangId, now, isBlizzard);
     }
 
     // Bird City Idol Stage
@@ -9674,10 +9683,12 @@
       const secs = Math.ceil((s.hailSlowUntil - now) / 1000);
       html += '<div class="bm-buff-pill" style="background:rgba(40,80,140,0.7);border-color:#aaddff;color:#aaddff">🧊 HAIL SLOW — ' + secs + 's</div>';
     }
-    // Blizzard: show WARM buff if hot cocoa active, or CHILLY debuff otherwise
+    // Blizzard: show WARM buff if hot cocoa active, near firepit, or CHILLY debuff otherwise
     if (weatherState && weatherState.type === 'blizzard') {
       if (s.onIceRink) {
         html += '<div class="bm-buff-pill" style="background:rgba(0,60,120,0.92);border-color:#88ddff;color:#cceeff;animation:kingpinGlow 0.5s ease-in-out infinite alternate;font-weight:bold;">⛸️ ON ICE — SLIDING! +30% SPD · Minimal control</div>';
+      } else if (s.nearNestFirepit) {
+        html += '<div class="bm-buff-pill" style="background:rgba(100,40,0,0.92);border-color:#ff8822;color:#ffcc66;animation:kingpinGlow 0.8s ease-in-out infinite alternate;font-weight:bold;">🔥 GANG FIREPIT — +25% SPD · Warm and cozy!</div>';
       } else if (s.warmUntil && s.warmUntil > now) {
         const secs = Math.ceil((s.warmUntil - now) / 1000);
         html += '<div class="bm-buff-pill" style="background:rgba(100,50,0,0.85);border-color:#ffaa44;color:#ffcc66;">☕ WARM +25% SPD — ' + secs + 's</div>';

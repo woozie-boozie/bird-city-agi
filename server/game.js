@@ -76,6 +76,7 @@ const DAILY_CHALLENGE_POOL = [
   { id: 'blizzard_brawler', title: 'Blizzard Brawler', desc: 'Hit 10 targets during a blizzard storm',       target: 10, trackType: 'blizzard_hit',      reward: { xp: 220, coins: 110 } },
   { id: 'snow_bird',     title: 'Snow Bird',       desc: 'Drink hot cocoa AND land 5 poop hits in a blizzard', target: 1, trackType: 'snow_bird_complete', reward: { xp: 250, coins: 120 } },
   { id: 'meteor_catcher', title: 'Stargazer',      desc: 'Catch a Shooting Star or Meteor during the Aurora', target: 1, trackType: 'star_caught',       reward: { xp: 300, coins: 150 } },
+  { id: 'ice_skater',    title: 'Ice Skater',     desc: 'Land 5 poop hits while sliding on the Ice Rink',    target: 5, trackType: 'ice_rink_hit',     reward: { xp: 240, coins: 120 } },
 ];
 
 class GameEngine {
@@ -2443,10 +2444,22 @@ class GameEngine {
       maxSpeed *= 1.2;
     }
 
-    // Blizzard: cold drag slows all birds — unless warmed by hot cocoa
+    // Blizzard: cold drag slows all birds — unless warmed by hot cocoa OR huddled at gang nest firepit
+    bird.nearNestFirepit = false;
     if (this.weather && this.weather.type === 'blizzard') {
-      if (bird.warmUntil > now) {
-        maxSpeed *= 1.25; // cocoa warmth: +25% — beat the chill
+      // Gang Nest Firepit: your gang's nest becomes a warm campfire during blizzard — gather round!
+      if (bird.gangId && !bird.inSewer) {
+        const myNest = this.gangNests.get(bird.gangId);
+        if (myNest && myNest.destroyedAt === null) {
+          const fpdx = bird.x - myNest.x;
+          const fpdy = bird.y - myNest.y;
+          if (Math.sqrt(fpdx * fpdx + fpdy * fpdy) < 100) {
+            bird.nearNestFirepit = true;
+          }
+        }
+      }
+      if (bird.warmUntil > now || bird.nearNestFirepit) {
+        maxSpeed *= 1.25; // cocoa warmth or firepit warmth: +25% — beat the chill
       } else {
         maxSpeed *= 0.88; // cold drag: -12% — dragging frozen wings
       }
@@ -3407,6 +3420,10 @@ class GameEngine {
       if (bird.comboCount === 10) {
         this._trackDailyProgress(bird, 'combo10', 1);
       }
+      // Ice Skater daily challenge: land 5 poop hits while on the ice rink
+      if (bird.onIceRink) {
+        this._trackDailyProgress(bird, 'ice_rink_hit', 1);
+      }
       // Blizzard daily challenge: Blizzard Brawler (10 hits during blizzard)
       if (this.weather && this.weather.type === 'blizzard') {
         this._trackDailyProgress(bird, 'blizzard_hit', 1);
@@ -3820,6 +3837,11 @@ class GameEngine {
     // Blizzard: snowball poop! All poop gets wider splash (×2.2 for normal, ×1.5 for mega)
     if (this.weather && this.weather.type === 'blizzard') {
       hitRadius = Math.round(hitRadius * (isMegaPoop ? 1.5 : 2.2));
+      // Snowball Fight Club: birds dueling during a blizzard get extra-wide snowball poop!
+      // The snow makes every shot an exploding snowball — insane area-of-effect
+      if (shooter && shooter.streetDuelId) {
+        hitRadius = Math.round(hitRadius * 1.18); // ~50px for normal poop in a blizzard duel
+      }
     }
     const allHits = [];
 
@@ -4169,6 +4191,10 @@ class GameEngine {
       const wasRainy = this.weather.type === 'rain' || this.weather.type === 'storm';
       const wasHeatwave = this.weather.type === 'heatwave';
       const oldType = this.weather.type;
+      // Tornado ended — reset cursed coin flung flag so next tornado can interact again
+      if (oldType === 'tornado' && this.cursedCoin) {
+        this.cursedCoin._tornadoFlung = false;
+      }
       this.weather = null;
       // Remove rain worms
       if (wasRainy) {
@@ -4578,6 +4604,26 @@ class GameEngine {
           const pullStrength = 55 * (1 - dist / PULL_RADIUS) * (1 - dist / PULL_RADIUS);
           b.vx += nx * pullStrength * dt;
           b.vy += ny * pullStrength * dt;
+        }
+      }
+
+      // Tornado × Cursed Coin: if the tornado passes within 300px of the world-mode Cursed Coin,
+      // it flings the coin to a completely new map location — chaos! (once per tornado pass)
+      if (this.cursedCoin && this.cursedCoin.state === 'world' && !this.cursedCoin._tornadoFlung) {
+        const ccDx = tx - this.cursedCoin.x;
+        const ccDy = ty - this.cursedCoin.y;
+        if (Math.sqrt(ccDx * ccDx + ccDy * ccDy) < 300) {
+          const flingAngle = Math.random() * Math.PI * 2;
+          const flingDist = 400 + Math.random() * 200; // 400–600px
+          this.cursedCoin.x = Math.max(150, Math.min(world.WORLD_WIDTH - 150, this.cursedCoin.x + Math.cos(flingAngle) * flingDist));
+          this.cursedCoin.y = Math.max(150, Math.min(world.WORLD_HEIGHT - 150, this.cursedCoin.y + Math.sin(flingAngle) * flingDist));
+          this.cursedCoin._tornadoFlung = true; // prevent re-flinging same tornado pass
+          this.events.push({
+            type: 'cursed_coin_tornado_flung',
+            x: this.cursedCoin.x,
+            y: this.cursedCoin.y,
+            message: '🌪️💀 TORNADO FLUNG THE CURSED COIN! It\'s somewhere else now...',
+          });
         }
       }
     }
@@ -5935,6 +5981,7 @@ class GameEngine {
         inNest: bird.inNest,
         inSewer: bird.inSewer,
         onIceRink: bird.onIceRink || false,
+        nearNestFirepit: bird.nearNestFirepit || false,
         flockId: bird.flockId,
         flockName,
         flockMembers,
@@ -7632,7 +7679,9 @@ class GameEngine {
       const loot = Math.min(Math.floor(target.coins * 0.18), 150);
       target.coins = Math.max(0, target.coins - loot);
       attacker.coins += loot + 80;
-      attacker.xp += 150;
+      // Gang War × Aurora: sacred sky doubles kill XP — the aurora amplifies violence!
+      const auroraWarBonus = !!this.aurora;
+      attacker.xp += auroraWarBonus ? 300 : 150;
       target.comboCount = 0;
       target.stunnedUntil = now + 2000;
 
@@ -7645,7 +7694,7 @@ class GameEngine {
         type: 'gang_war_kill',
         attackerId: attacker.id, attackerName: attacker.name, attackerGangTag: attacker.gangTag, attackerGangColor: attacker.gangColor,
         targetId: target.id, targetName: target.name, targetGangTag: target.gangTag,
-        loot,
+        loot, auroraBonus: auroraWarBonus,
       });
     }
   }
@@ -9318,6 +9367,23 @@ class GameEngine {
       }
       // Reset fog wander state once they can "see" again
       if (!fogActive || dist <= 220) cop.fogWanderAngle = null;
+
+      // Ice Rink: cops slip and slide helplessly on the frozen plaza — they can't arrest anyone on the ice!
+      if (this.iceRink) {
+        const irDx = cop.x - this.iceRink.x;
+        const irDy = cop.y - this.iceRink.y;
+        if (Math.sqrt(irDx * irDx + irDy * irDy) < this.iceRink.radius) {
+          // Cop is on the ice — slide in a drifting direction, lose all pursuit control
+          if (cop.iceSlideAngle === undefined) cop.iceSlideAngle = Math.atan2(dy, dx);
+          cop.iceSlideAngle += (Math.random() - 0.5) * 2.5 * dt * 3; // wide, erratic drift
+          cop.x += Math.cos(cop.iceSlideAngle) * cop.speed * 0.75 * dt;
+          cop.y += Math.sin(cop.iceSlideAngle) * cop.speed * 0.75 * dt;
+          cop.x = Math.max(10, Math.min(world.WORLD_WIDTH - 10, cop.x));
+          cop.y = Math.max(10, Math.min(world.WORLD_HEIGHT - 10, cop.y));
+          continue; // no arrest while sliding on ice!
+        }
+        cop.iceSlideAngle = undefined; // exited ice rink — regain traction
+      }
 
       if (dist > 1) {
         // Crime Wave: cops are 30% faster and more aggressive
