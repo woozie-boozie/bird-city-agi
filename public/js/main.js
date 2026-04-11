@@ -1030,16 +1030,53 @@
     // === CHAOS EVENTS ===
     if (ev.type === 'chaos_event') {
       SoundEngine.eventFanfare();
-      const names = {
-        npc_flood: 'CHAOS: NPC FLOOD! Targets everywhere!',
-        car_frenzy: 'CHAOS: CAR FRENZY! Cars gone wild!',
-        golden_rain: 'CHAOS: GOLDEN RAIN! Grab the gold!',
-      };
-      showAnnouncement(names[ev.chaosType] || 'CHAOS EVENT!', '#ff4444', 4000);
-      addEventMessage(names[ev.chaosType] || 'Chaos event triggered!', '#ff4444');
+      window._lastChaosType = ev.chaosType;
+      const isCrimeDisco = ev.isCrimeDisco;
+      if (isCrimeDisco) {
+        effects.push({ type: 'screen_shake', intensity: 10, duration: 700, time: now });
+        showAnnouncement('🚨🪩 CRIME DISCO!\n5× NPC XP · 3× crime coins — Dance AND commit crimes — at the same time!', '#ff44ff', 6000);
+        addEventMessage('🚨🪩 CRIME DISCO! Double chaos: 5× NPC XP · 3× crime coins active!', '#ff44ff');
+      } else {
+        const CHAOS_INFO = {
+          npc_flood:    { msg: '🚶 CHAOS: NPC FLOOD! Targets everywhere!',         color: '#ff4444', shake: 6 },
+          car_frenzy:   { msg: '🚗 CHAOS: CAR FRENZY! Cars gone wild!',            color: '#ff8800', shake: 6 },
+          golden_rain:  { msg: '🌟 CHAOS: GOLDEN RAIN! Grab the gold!',            color: '#ffd700', shake: 6 },
+          poop_party:   { msg: '🎉 POOP PARTY! ALL poop is MEGA for 20 seconds!',  color: '#ff88ff', shake: 8 },
+          coin_shower:  { msg: '💸 COIN SHOWER! Fly and collect the gold coins!',  color: '#ffd700', shake: 7 },
+          food_festival:{ msg: '🎊 FOOD FESTIVAL! Premium food spawned citywide!', color: '#88ff44', shake: 6 },
+          blackout:     { msg: '⚡ BLACKOUT! The city goes DARK — cops lose sight!',color: '#4488ff', shake: 7 },
+          disco_fever:  { msg: '🪩 DISCO FEVER! 3× XP on all NPC hits — DANCE!',  color: '#ff88ff', shake: 7 },
+        };
+        const info = CHAOS_INFO[ev.chaosType] || { msg: 'CHAOS EVENT!', color: '#ff4444', shake: 6 };
+        effects.push({ type: 'screen_shake', intensity: info.shake, duration: 500, time: now });
+        showAnnouncement(info.msg, info.color, 4000);
+        addEventMessage(info.msg, info.color);
+      }
+      // Track chaos types seen for Chaos Connoisseur daily challenge
+      if (!window._chaosTypesSeen) window._chaosTypesSeen = new Set();
+      window._chaosTypesSeen.add(ev.chaosType);
     }
     if (ev.type === 'chaos_event_end') {
-      addEventMessage('Chaos event ended.', '#888');
+      const lastType = window._lastChaosType || 'chaos';
+      const END_NAMES = {
+        npc_flood: 'The NPC flood subsides.', car_frenzy: 'Cars return to normal.',
+        golden_rain: 'The golden rain dries up.', poop_party: '🎉 Poop Party is over — back to normal ammo.',
+        coin_shower: '💸 Coin Shower done — better luck next time!',
+        food_festival: '🎊 Food Festival ends — food stalls cleared.',
+        blackout: '⚡ LIGHTS BACK ON — cops can see you again!',
+        disco_fever: '🪩 Disco Fever fades — the dance floor goes quiet.',
+      };
+      addEventMessage(END_NAMES[lastType] || 'Chaos event ended.', '#888');
+      window._lastChaosType = null;
+    }
+    if (ev.type === 'coin_shower_collect') {
+      effects.push({ type: 'text', x: ev.x, y: ev.y - 20, time: now, duration: 1400, text: '+' + ev.coins + 'c 💸', color: '#ffd700', size: 13 });
+    }
+    if (ev.type === 'festival_collect') {
+      effects.push({ type: 'text', x: ev.x, y: ev.y - 20, time: now, duration: 1400, text: '🎊 +' + ev.food + ' food', color: '#88ff44', size: 12 });
+    }
+    if (ev.type === 'seagull_festival_raid') {
+      addEventMessage('🦅🎊 SEAGULLS ARE RAIDING THE FESTIVAL FOOD! Poop them for +90 XP!', '#ffaa44');
     }
 
     // === MYSTERY CRATE AIRDROP EVENTS ===
@@ -6636,6 +6673,17 @@
       }
     }
 
+    // Chaos event foods (coin shower coins / food festival premium items)
+    if (gameState.chaosEventFoods && gameState.chaosEventFoods.length > 0) {
+      for (const food of gameState.chaosEventFoods) {
+        const sx = food.x - camera.x + camera.screenW / 2;
+        const sy = food.y - camera.y + camera.screenH / 2;
+        if (sx > -margin && sx < camera.screenW + margin && sy > -margin && sy < camera.screenH + margin) {
+          Sprites.drawFood(ctx, sx, sy, food.type || 'coin_shower');
+        }
+      }
+    }
+
     // Golden eggs (on ground, unclaimed)
     if (gameState.eggScramble && gameState.eggScramble.eggs) {
       Renderer.drawGoldenEggs(ctx, camera, gameState.eggScramble.eggs, now / 1000);
@@ -7789,6 +7837,151 @@
       ctx.roundRect(clBarX, clBarY + 4, clBarW * clFrac, clBarH, 5);
       ctx.fill();
 
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+
+    // === CHAOS EVENT OVERLAYS ===
+    if (gameState.chaosEvent) {
+      const ce = gameState.chaosEvent;
+      const ceTimeLeft = Math.max(0, ce.endsAt - now);
+      const ceDur = { npc_flood:30000, car_frenzy:20000, golden_rain:20000,
+        poop_party:20000, coin_shower:25000, food_festival:30000, blackout:25000, disco_fever:20000 };
+      const ceTotal = ceDur[ce.type] || 25000;
+      const ceFrac = ceTimeLeft / ceTotal;
+      const cePulse = 0.5 + 0.5 * Math.abs(Math.sin(now * 0.005));
+
+      // Blackout — near-total darkness, cop blindness
+      if (ce.type === 'blackout') {
+        ctx.save();
+        ctx.globalAlpha = 0.87;
+        ctx.fillStyle = '#000011';
+        ctx.fillRect(0, 0, camera.screenW, camera.screenH);
+        // Occasional electric flicker
+        if (Math.random() < 0.005) {
+          ctx.globalAlpha = 0.12;
+          ctx.fillStyle = '#4488ff';
+          ctx.fillRect(0, 0, camera.screenW, camera.screenH);
+        }
+        ctx.globalAlpha = 1;
+        ctx.restore();
+      }
+
+      // Poop Party — pink confetti rain + tint
+      if (ce.type === 'poop_party') {
+        ctx.save();
+        ctx.globalAlpha = 0.06 + 0.03 * cePulse;
+        ctx.fillStyle = '#ff44cc';
+        ctx.fillRect(0, 0, camera.screenW, camera.screenH);
+        ctx.globalAlpha = 1;
+        // Confetti particles (deterministic per frame for perf)
+        const confettiCount = 40;
+        for (let i = 0; i < confettiCount; i++) {
+          const phase = (now * 0.0003 + i * 0.7) % 1;
+          const cx2 = ((i * 137.5) % camera.screenW);
+          const cy2 = (phase * (camera.screenH + 40)) - 20;
+          const hue = (i * 30 + now * 0.05) % 360;
+          ctx.globalAlpha = 0.55 + 0.35 * Math.sin(now * 0.004 + i);
+          ctx.fillStyle = `hsl(${hue},100%,65%)`;
+          ctx.fillRect(cx2, cy2, 4, 8);
+        }
+        ctx.globalAlpha = 1;
+        ctx.restore();
+      }
+
+      // Disco Fever — spinning disco ball light rays
+      if (ce.type === 'disco_fever' || ce.isCrimeDisco) {
+        ctx.save();
+        // Subtle color-cycling tint
+        const discoHue = (now * 0.04) % 360;
+        ctx.globalAlpha = 0.07 + 0.04 * cePulse;
+        ctx.fillStyle = `hsl(${discoHue},100%,60%)`;
+        ctx.fillRect(0, 0, camera.screenW, camera.screenH);
+        // Disco beam rays from top-center
+        const ballX = camera.screenW / 2;
+        const ballY = 60;
+        ctx.globalAlpha = 0.08;
+        for (let r = 0; r < 8; r++) {
+          const angle = (now * 0.0015 + r * Math.PI / 4) % (Math.PI * 2);
+          const hue2 = (r * 45 + now * 0.06) % 360;
+          ctx.strokeStyle = `hsl(${hue2},100%,70%)`;
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(ballX, ballY);
+          ctx.lineTo(ballX + Math.cos(angle) * 900, ballY + Math.sin(angle) * 900);
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+        ctx.restore();
+      }
+
+      // Coin Shower — golden sparkle overlay
+      if (ce.type === 'coin_shower') {
+        ctx.save();
+        ctx.globalAlpha = 0.05 + 0.03 * cePulse;
+        ctx.fillStyle = '#ffd700';
+        ctx.fillRect(0, 0, camera.screenW, camera.screenH);
+        ctx.globalAlpha = 1;
+        ctx.restore();
+      }
+
+      // Food Festival — soft green tint
+      if (ce.type === 'food_festival') {
+        ctx.save();
+        ctx.globalAlpha = 0.05 + 0.02 * cePulse;
+        ctx.fillStyle = '#44ff44';
+        ctx.fillRect(0, 0, camera.screenW, camera.screenH);
+        ctx.globalAlpha = 1;
+        ctx.restore();
+      }
+
+      // HUD countdown bar for all chaos events
+      const CE_LABELS = {
+        npc_flood: '🚶 NPC FLOOD', car_frenzy: '🚗 CAR FRENZY', golden_rain: '🌟 GOLDEN RAIN',
+        poop_party: '🎉 POOP PARTY — ALL POOP = MEGA!', coin_shower: '💸 COIN SHOWER — COLLECT!',
+        food_festival: '🎊 FOOD FESTIVAL — EAT UP!',
+        blackout: '⚡ BLACKOUT — COPS BLIND!',
+        disco_fever: ce.isCrimeDisco ? '🚨🪩 CRIME DISCO — 5× NPC XP · 3× CRIME COINS!' : '🪩 DISCO FEVER — 3× NPC XP!',
+      };
+      const CE_COLORS = {
+        npc_flood: '#ff4444', car_frenzy: '#ff8800', golden_rain: '#ffd700',
+        poop_party: '#ff88ff', coin_shower: '#ffd700', food_festival: '#88ff44',
+        blackout: '#4488ff', disco_fever: ce.isCrimeDisco ? '#ff44ff' : '#ff88ff',
+      };
+      const ceLabel = CE_LABELS[ce.type] || 'CHAOS EVENT';
+      const ceColor = CE_COLORS[ce.type] || '#ff4444';
+
+      // Stack below existing bars
+      const hasCrimeWave3 = gameState.self && gameState.self.crimeWave;
+      const hasSeagull3 = gameState.seagullInvasion;
+      const hasLockdown3 = gameState.cityLockdown;
+      let ceBarY = 132;
+      if (hasCrimeWave3) ceBarY += 43;
+      if (hasSeagull3) ceBarY += 43;
+      if (hasLockdown3) ceBarY += 43;
+
+      const ceBarW = 200, ceBarH = 12;
+      const ceBarX = camera.screenW / 2 - ceBarW / 2;
+      ctx.save();
+      ctx.globalAlpha = 0.92;
+      ctx.fillStyle = 'rgba(0,0,0,0.65)';
+      ctx.beginPath();
+      ctx.roundRect(ceBarX - 65, ceBarY - 18, ceBarW + 130, ceBarH + 34, 10);
+      ctx.fill();
+      ctx.globalAlpha = 0.75 + 0.25 * Math.sin(now * 0.007);
+      ctx.fillStyle = ceColor;
+      ctx.font = 'bold 11px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${ceLabel} — ${Math.ceil(ceTimeLeft / 1000)}s`, camera.screenW / 2, ceBarY - 4);
+      ctx.globalAlpha = 0.8;
+      ctx.fillStyle = 'rgba(30,0,30,0.5)';
+      ctx.beginPath();
+      ctx.roundRect(ceBarX, ceBarY + 2, ceBarW, ceBarH, 4);
+      ctx.fill();
+      ctx.fillStyle = ceColor;
+      ctx.beginPath();
+      ctx.roundRect(ceBarX, ceBarY + 2, ceBarW * ceFrac, ceBarH, 4);
+      ctx.fill();
       ctx.globalAlpha = 1;
       ctx.restore();
     }
@@ -9870,6 +10063,31 @@
     if (s.crimeWave) {
       const cwLeft = Math.max(0, Math.ceil((s.crimeWave.endsAt - now) / 1000));
       html += `<div class="bm-buff-pill" style="background:rgba(120,0,0,0.9);border-color:#ff2222;color:#ff6666;font-weight:bold;animation:pulseRed 0.6s infinite alternate;">🚨 CRIME WAVE — ${cwLeft}s · 2× heat &amp; coins!</div>`;
+    }
+
+    // Active Chaos Event pills
+    if (gameState.chaosEvent) {
+      const ce = gameState.chaosEvent;
+      const ceLeft = Math.max(0, Math.ceil((ce.endsAt - now) / 1000));
+      if (ce.type === 'poop_party') {
+        html += `<div class="bm-buff-pill" style="background:rgba(120,0,80,0.9);border-color:#ff88ff;color:#ffaafF;font-weight:bold;animation:kingpinGlow 0.5s ease-in-out infinite alternate;">🎉 POOP PARTY — ${ceLeft}s · ALL POOP = MEGA AOE!</div>`;
+      } else if (ce.type === 'coin_shower') {
+        html += `<div class="bm-buff-pill" style="background:rgba(100,80,0,0.9);border-color:#ffd700;color:#ffe044;animation:kingpinGlow 0.8s ease-in-out infinite alternate;">💸 COIN SHOWER — ${ceLeft}s · FLY OVER COINS!</div>`;
+      } else if (ce.type === 'food_festival') {
+        html += `<div class="bm-buff-pill" style="background:rgba(0,80,10,0.9);border-color:#44ff44;color:#88ff88;animation:kingpinGlow 0.9s ease-in-out infinite alternate;">🎊 FOOD FESTIVAL — ${ceLeft}s · Premium food citywide!</div>`;
+      } else if (ce.type === 'blackout') {
+        html += `<div class="bm-buff-pill" style="background:rgba(0,0,40,0.95);border-color:#4488ff;color:#88aaff;font-weight:bold;animation:kingpinGlow 0.7s ease-in-out infinite alternate;">⚡ BLACKOUT — ${ceLeft}s · COPS ARE BLIND! Run!</div>`;
+        // If cursed coin is hidden, show extra hint
+        if (gameState.cursedCoin && gameState.cursedCoin.blackoutHidden) {
+          html += `<div class="bm-buff-pill" style="background:rgba(40,0,10,0.85);border-color:#cc3344;color:#ff8888;">💀 COIN HOLDER VANISHED — in the dark somewhere…</div>`;
+        }
+      } else if (ce.type === 'disco_fever') {
+        if (ce.isCrimeDisco) {
+          html += `<div class="bm-buff-pill" style="background:rgba(120,0,80,0.95);border-color:#ff44ff;color:#ffaaff;font-weight:bold;animation:kingpinGlow 0.4s ease-in-out infinite alternate;">🚨🪩 CRIME DISCO — ${ceLeft}s · 5× NPC XP · 3× CRIME COINS!</div>`;
+        } else {
+          html += `<div class="bm-buff-pill" style="background:rgba(80,0,100,0.9);border-color:#ff88ff;color:#ffaafF;font-weight:bold;animation:kingpinGlow 0.7s ease-in-out infinite alternate;">🪩 DISCO FEVER — ${ceLeft}s · 3× XP on NPC hits!</div>`;
+        }
+      }
     }
 
     // City Lockdown — military emergency

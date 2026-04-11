@@ -77,6 +77,9 @@ const DAILY_CHALLENGE_POOL = [
   { id: 'snow_bird',     title: 'Snow Bird',       desc: 'Drink hot cocoa AND land 5 poop hits in a blizzard', target: 1, trackType: 'snow_bird_complete', reward: { xp: 250, coins: 120 } },
   { id: 'meteor_catcher', title: 'Stargazer',      desc: 'Catch a Shooting Star or Meteor during the Aurora', target: 1, trackType: 'star_caught',       reward: { xp: 300, coins: 150 } },
   { id: 'ice_skater',    title: 'Ice Skater',     desc: 'Land 5 poop hits while sliding on the Ice Rink',    target: 5, trackType: 'ice_rink_hit',     reward: { xp: 240, coins: 120 } },
+  { id: 'disco_king',   title: 'Disco King',     desc: 'Hit 8 NPCs during a Disco Fever chaos event',        target: 8, trackType: 'disco_fever_hit',  reward: { xp: 190, coins: 95  } },
+  { id: 'coin_grabber', title: 'Money Rain',     desc: 'Collect 10 coins from a Coin Shower event',          target: 10,trackType: 'coin_shower_grab', reward: { xp: 160, coins: 80  } },
+  { id: 'chaos_taster', title: 'Chaos Connoisseur', desc: 'Experience 4 different chaos event types in one session', target: 4, trackType: 'chaos_types_seen', reward: { xp: 210, coins: 105 } },
 ];
 
 class GameEngine {
@@ -133,7 +136,7 @@ class GameEngine {
     this.chaosMeter = 0;
     this.chaosEvent = null;           // { type, endsAt, data }
     this.chaosEventNPCs = new Map();  // extra NPCs spawned by chaos events
-    this.chaosEventFoods = new Map(); // golden rain foods
+    this.chaosEventFoods = new Map(); // golden rain / coin shower / food festival items
 
     // === BOSS BATTLES (Eagle Overlord only — MEGA_CAT/MEGA_HAWK now have fixed territories) ===
     this.boss = null;
@@ -2697,9 +2700,10 @@ class GameEngine {
         isLegend: (bird.prestige || 0) >= 5,  // P5 LEGEND birds drop golden poop
       };
 
-      // Check if mega poop (power-up OR black market mega poop OR nuke poop crate item)
+      // Check if mega poop (power-up OR black market mega poop OR nuke poop crate item OR poop party event)
       const isNukePoop = bird.mcNukePoop;
-      const isMegaPoop = bird.megaPoopReady || bird.bmMegaPoops > 0 || isNukePoop;
+      const isPoopParty = !!(this.chaosEvent && this.chaosEvent.type === 'poop_party');
+      const isMegaPoop = bird.megaPoopReady || bird.bmMegaPoops > 0 || isNukePoop || isPoopParty;
       if (bird.megaPoopReady) {
         bird.megaPoopReady = false;
         bird.powerUp = null; // Consumed
@@ -3228,6 +3232,13 @@ class GameEngine {
         xpGain = Math.floor(xpGain * 1.5);
       }
 
+      // Disco Fever / Crime Disco: NPC hits give 3× XP (5× during Crime Disco + 3× coins)
+      const isDiscoFever = !!(this.chaosEvent && this.chaosEvent.type === 'disco_fever');
+      const isCrimeDisco = isDiscoFever && !!this.crimeWave;
+      if (isDiscoFever && (hit.target === 'npc' || hit.target === 'event_npc' || hit.target === 'chaos_npc') && xpGain > 0) {
+        xpGain = Math.floor(xpGain * (isCrimeDisco ? 5 : 3));
+      }
+
       // Coin earning from poop hits
       let coinGain = 0;
       if (hit.target === 'npc' || hit.target === 'event_npc') coinGain = 2;
@@ -3307,6 +3318,11 @@ class GameEngine {
         if (combo > this.gazetteStats.topCombo.count) {
           this.gazetteStats.topCombo = { count: combo, name: bird.name, gangTag: bird.gangTag || null };
         }
+      }
+
+      // Crime Disco: ×3 coins on NPC hits (crime wave + disco fever combined)
+      if (isCrimeDisco && coinGain > 0 && (hit.target === 'npc' || hit.target === 'event_npc')) {
+        coinGain *= 3;
       }
 
       // Black Market: Lucky Charm doubles all XP
@@ -3423,6 +3439,16 @@ class GameEngine {
       // Ice Skater daily challenge: land 5 poop hits while on the ice rink
       if (bird.onIceRink) {
         this._trackDailyProgress(bird, 'ice_rink_hit', 1);
+      }
+      // Disco King daily challenge: hit 8 NPCs during Disco Fever
+      if (isDiscoFever && (hit.target === 'npc' || hit.target === 'event_npc')) {
+        this._trackDailyProgress(bird, 'disco_fever_hit', 1);
+      }
+      // Chaos Connoisseur daily: track unique chaos event types seen this session
+      if (this.chaosEvent && !bird._chaosTypesSeen) bird._chaosTypesSeen = new Set();
+      if (this.chaosEvent && bird._chaosTypesSeen && !bird._chaosTypesSeen.has(this.chaosEvent.type)) {
+        bird._chaosTypesSeen.add(this.chaosEvent.type);
+        this._trackDailyProgress(bird, 'chaos_types_seen', 1);
       }
       // Blizzard daily challenge: Blizzard Brawler (10 hits during blizzard)
       if (this.weather && this.weather.type === 'blizzard') {
@@ -5431,7 +5457,9 @@ class GameEngine {
           cometTrailUntil: b.cometTrailUntil || 0,
           isFlu: b.fluUntil > now,
           formationType: b.formationType || null,
-          hasCursedCoin: this.cursedCoin && this.cursedCoin.state === 'held' && this.cursedCoin.holderId === b.id,
+          // Blackout × Cursed Coin: coin holder is INVISIBLE on all other players' minimaps during blackout
+          hasCursedCoin: this.cursedCoin && this.cursedCoin.state === 'held' && this.cursedCoin.holderId === b.id
+            && !(this.chaosEvent && this.chaosEvent.type === 'blackout' && b.id !== bird.id),
           cursedCoinIntensity: (this.cursedCoin && this.cursedCoin.state === 'held' && this.cursedCoin.holderId === b.id) ? this.cursedCoin.intensity : 0,
           witnessProtectionActive: b.witnessProtectionUntil > now,
           streetDuelId: b.streetDuelId || null,
@@ -5776,6 +5804,18 @@ class GameEngine {
       missionBoard: this.missionBoard.map(m => ({ id: m.id, title: m.title, desc: m.desc, minPlayers: m.minPlayers, type: m.type })),
       lobbyBirds: lobbyBirds,
       chaosMeter: Math.floor(this.chaosMeter),
+      chaosEvent: this.chaosEvent ? { type: this.chaosEvent.type, endsAt: this.chaosEvent.endsAt, isCrimeDisco: !!(this.chaosEvent.data && this.chaosEvent.data.crimeDisco) } : null,
+      // Coin shower / food festival items near this bird
+      chaosEventFoods: (() => {
+        if (!this.chaosEvent || (this.chaosEvent.type !== 'coin_shower' && this.chaosEvent.type !== 'food_festival')) return [];
+        const result = [];
+        for (const food of this.chaosEventFoods.values()) {
+          if (!food.active) continue;
+          const dx = food.x - bird.x; const dy = food.y - bird.y;
+          if (Math.sqrt(dx*dx + dy*dy) < 800) result.push({ id: food.id, x: food.x, y: food.y, type: food.type, coinValue: food.coinValue });
+        }
+        return result;
+      })(),
       boss: bossState,
       territoryPredators: {
         hawk: this.territoryPredators.hawk.state !== 'dead' ? {
@@ -6468,17 +6508,25 @@ class GameEngine {
         endsAt: this.piper.endsAt,
       } : null,
       piperEnchantedUntil: bird.piperEnchantedUntil,
-      // Cursed Coin
-      cursedCoin: this.cursedCoin ? {
-        state: this.cursedCoin.state,
-        x: this.cursedCoin.x,
-        y: this.cursedCoin.y,
-        holderId: this.cursedCoin.holderId,
-        holderName: this.cursedCoin.holderName,
-        intensity: this.cursedCoin.intensity,
-        isMine: this.cursedCoin.holderId === bird.id,
-        heldSince: this.cursedCoin.heldSince,
-      } : null,
+      // Cursed Coin — during Blackout, holder position hidden from other players' minimaps
+      cursedCoin: (() => {
+        if (!this.cursedCoin) return null;
+        const isBlackout = !!(this.chaosEvent && this.chaosEvent.type === 'blackout');
+        const isHolder = this.cursedCoin.holderId === bird.id;
+        const isHeld = this.cursedCoin.state === 'held';
+        return {
+          state: this.cursedCoin.state,
+          // During blackout, non-holder players can't see the coin world position or holder info
+          x: isBlackout && isHeld && !isHolder ? null : this.cursedCoin.x,
+          y: isBlackout && isHeld && !isHolder ? null : this.cursedCoin.y,
+          holderId: isBlackout && isHeld && !isHolder ? null : this.cursedCoin.holderId,
+          holderName: isBlackout && isHeld && !isHolder ? '???' : this.cursedCoin.holderName,
+          intensity: this.cursedCoin.intensity,
+          isMine: isHolder,
+          heldSince: this.cursedCoin.heldSince,
+          blackoutHidden: isBlackout && isHeld && !isHolder,
+        };
+      })(),
       // Crime Wave
       crimeWave: this.crimeWave ? {
         endsAt: this.crimeWave.endsAt,
@@ -8120,85 +8168,133 @@ class GameEngine {
   }
 
   _triggerChaosEvent(now) {
-    const types = ['npc_flood', 'car_frenzy', 'golden_rain'];
-    const type = types[Math.floor(Math.random() * types.length)];
+    // Weighted pool: classic events get 2 entries, new events get 1 each
+    const pool = [
+      'npc_flood', 'npc_flood',
+      'car_frenzy', 'car_frenzy',
+      'golden_rain', 'golden_rain',
+      'poop_party',
+      'coin_shower',
+      'food_festival',
+      'blackout',
+      'disco_fever',
+    ];
+    const type = pool[Math.floor(Math.random() * pool.length)];
+
+    const DURATIONS = {
+      npc_flood: 30000, car_frenzy: 20000, golden_rain: 20000,
+      poop_party: 20000, coin_shower: 25000, food_festival: 30000,
+      blackout: 25000, disco_fever: 20000,
+    };
+    const duration = DURATIONS[type] || 20000;
+
+    // Check for CRIME DISCO: Crime Wave + Disco Fever together
+    const isCrimeDisco = (type === 'disco_fever') && !!this.crimeWave;
 
     if (type === 'npc_flood') {
-      this.chaosEvent = { type: 'npc_flood', endsAt: now + 30000, data: {} };
-      // Spawn 50 walker NPCs
+      this.chaosEvent = { type: 'npc_flood', endsAt: now + duration, data: {} };
       for (let i = 0; i < 50; i++) {
         const areas = world.NPC_TYPES.walker.spawnAreas;
         const area = areas[Math.floor(Math.random() * areas.length)];
         const npc = {
-          id: 'chaos_npc_' + uid(),
-          type: 'walker',
-          x: area.x + Math.random() * area.w,
-          y: area.y + Math.random() * area.h,
+          id: 'chaos_npc_' + uid(), type: 'walker',
+          x: area.x + Math.random() * area.w, y: area.y + Math.random() * area.h,
           targetX: 0, targetY: 0,
           speed: world.NPC_TYPES.walker.speed + Math.random() * 15,
-          state: 'walking',
-          stateTimer: 0,
-          poopedOn: 0,
-          hasFood: Math.random() > 0.5,
+          state: 'walking', stateTimer: 0, poopedOn: 0, hasFood: Math.random() > 0.5,
         };
         this._setNPCTarget(npc);
         this.chaosEventNPCs.set(npc.id, npc);
       }
-      console.log('[GameEngine] CHAOS EVENT: NPC FLOOD!');
     } else if (type === 'car_frenzy') {
-      this.chaosEvent = { type: 'car_frenzy', endsAt: now + 20000, data: { originalSpeeds: {} } };
-      // Double all moving car speeds
+      this.chaosEvent = { type: 'car_frenzy', endsAt: now + duration, data: { originalSpeeds: {} } };
       for (const car of this.movingCars) {
         this.chaosEvent.data.originalSpeeds[car.id] = car.speed;
         car.speed *= 2;
       }
-      console.log('[GameEngine] CHAOS EVENT: CAR FRENZY!');
     } else if (type === 'golden_rain') {
-      this.chaosEvent = { type: 'golden_rain', endsAt: now + 20000, data: {} };
-      // Spawn 40 golden food items
+      this.chaosEvent = { type: 'golden_rain', endsAt: now + duration, data: {} };
       for (let i = 0; i < 40; i++) {
         const food = {
           id: 'golden_' + uid(),
           x: 100 + Math.random() * (world.WORLD_WIDTH - 200),
           y: 100 + Math.random() * (world.WORLD_HEIGHT - 200),
-          type: 'golden',
-          value: 15,
-          coinValue: 5,
-          respawnAt: null,
-          active: true,
-          isGolden: true,
+          type: 'golden', value: 15, coinValue: 5, respawnAt: null, active: true, isGolden: true,
         };
         this.chaosEventFoods.set(food.id, food);
       }
-      console.log('[GameEngine] CHAOS EVENT: GOLDEN RAIN!');
+    } else if (type === 'poop_party') {
+      // All poop becomes mega poop for 20s — handled in _updateBird poop logic
+      this.chaosEvent = { type: 'poop_party', endsAt: now + duration, data: {} };
+    } else if (type === 'coin_shower') {
+      // 60 glowing coin stacks auto-scatter — auto-collect within 40px
+      this.chaosEvent = { type: 'coin_shower', endsAt: now + duration, data: {} };
+      for (let i = 0; i < 60; i++) {
+        const coinValue = 20 + Math.floor(Math.random() * 31); // 20-50c
+        const food = {
+          id: 'coinshower_' + uid(),
+          x: 150 + Math.random() * (world.WORLD_WIDTH - 300),
+          y: 150 + Math.random() * (world.WORLD_HEIGHT - 300),
+          type: 'coin_shower', value: 4, coinValue, active: true, respawnAt: null,
+        };
+        this.chaosEventFoods.set(food.id, food);
+      }
+    } else if (type === 'food_festival') {
+      // 40 premium foods in 4 city zones
+      this.chaosEvent = { type: 'food_festival', endsAt: now + duration, data: {} };
+      const festivalZones = [
+        { x: 900, y: 900, w: 600, h: 500 },   // Park
+        { x: 500, y: 1600, w: 400, h: 400 },  // Cafe District
+        { x: 1800, y: 1100, w: 500, h: 400 }, // Downtown
+        { x: 2200, y: 700, w: 400, h: 400 },  // Mall
+      ];
+      const festivalTypes = ['pizza', 'sandwich', 'donut', 'cake'];
+      for (let i = 0; i < 40; i++) {
+        const zone = festivalZones[Math.floor(Math.random() * festivalZones.length)];
+        const ftype = festivalTypes[Math.floor(Math.random() * festivalTypes.length)];
+        const food = {
+          id: 'festival_' + uid(),
+          x: zone.x + Math.random() * zone.w,
+          y: zone.y + Math.random() * zone.h,
+          type: ftype, isFestival: true, value: 18, coinValue: 6,
+          active: true, respawnAt: null,
+        };
+        this.chaosEventFoods.set(food.id, food);
+      }
+    } else if (type === 'blackout') {
+      // Pitch-dark — cops wander blindly; cursed coin hidden on minimap (handled in snapshot)
+      this.chaosEvent = { type: 'blackout', endsAt: now + duration, data: {} };
+    } else if (type === 'disco_fever') {
+      // All NPC poop hits give 3× XP (5× + 3× coins if Crime Disco)
+      this.chaosEvent = { type: 'disco_fever', endsAt: now + duration, data: { crimeDisco: isCrimeDisco } };
     }
 
-    this.events.push({ type: 'chaos_event', chaosType: type, duration: type === 'npc_flood' ? 30000 : 20000 });
+    console.log(`[GameEngine] CHAOS EVENT: ${type.toUpperCase()}!${isCrimeDisco ? ' (CRIME DISCO!)' : ''}`);
+    this.events.push({ type: 'chaos_event', chaosType: type, duration, isCrimeDisco });
   }
 
   _updateChaosEvent(dt, now) {
     if (!this.chaosEvent) return;
 
     if (now >= this.chaosEvent.endsAt) {
-      // End chaos event
-      if (this.chaosEvent.type === 'npc_flood') {
+      const endedType = this.chaosEvent.type;
+      if (endedType === 'npc_flood') {
         this.chaosEventNPCs.clear();
-      } else if (this.chaosEvent.type === 'car_frenzy') {
-        // Restore original speeds
+      } else if (endedType === 'car_frenzy') {
         for (const car of this.movingCars) {
           if (this.chaosEvent.data.originalSpeeds[car.id]) {
             car.speed = this.chaosEvent.data.originalSpeeds[car.id];
           }
         }
-      } else if (this.chaosEvent.type === 'golden_rain') {
+      } else if (endedType === 'golden_rain' || endedType === 'coin_shower' || endedType === 'food_festival') {
         this.chaosEventFoods.clear();
       }
-      this.events.push({ type: 'chaos_event_end', chaosType: this.chaosEvent.type });
+      this.events.push({ type: 'chaos_event_end', chaosType: endedType });
       this.chaosEvent = null;
       return;
     }
 
-    // Update chaos event NPCs
+    // Update chaos event NPCs (NPC Flood)
     if (this.chaosEvent.type === 'npc_flood') {
       for (const npc of this.chaosEventNPCs.values()) {
         this._updateNPC(npc, dt, now);
@@ -8209,20 +8305,19 @@ class GameEngine {
     if (this.chaosEvent.type === 'car_frenzy') {
       for (const car of this.movingCars) {
         if (car.honkCooldown <= 0) {
-          car.honkCooldown = 1; // honk every second
+          car.honkCooldown = 1;
           this.events.push({ type: 'honk', x: car.x, y: car.y });
         }
       }
     }
 
-    // Golden rain: check bird pickup
+    // Golden rain: press E to collect
     if (this.chaosEvent.type === 'golden_rain') {
       for (const [fId, food] of this.chaosEventFoods) {
         if (!food.active) continue;
         for (const bird of this.birds.values()) {
           if (!bird.input.e || now - bird.lastSteal <= 1000) continue;
-          const dx = bird.x - food.x;
-          const dy = bird.y - food.y;
+          const dx = bird.x - food.x; const dy = bird.y - food.y;
           if (Math.sqrt(dx * dx + dy * dy) < 60) {
             food.active = false;
             this.chaosEventFoods.delete(fId);
@@ -8231,10 +8326,46 @@ class GameEngine {
             bird.food += food.value;
             bird.totalSteals++;
             bird.lastSteal = now;
-            this.events.push({
-              type: 'steal', birdId: bird.id, foodId: food.id,
-              foodType: 'golden', x: food.x, y: food.y, value: food.value,
-            });
+            this.events.push({ type: 'steal', birdId: bird.id, foodId: food.id, foodType: 'golden', x: food.x, y: food.y, value: food.value });
+            break;
+          }
+        }
+      }
+    }
+
+    // Coin Shower: auto-collect within 40px — no button press needed
+    if (this.chaosEvent.type === 'coin_shower') {
+      for (const [fId, food] of this.chaosEventFoods) {
+        if (!food.active) continue;
+        for (const bird of this.birds.values()) {
+          const dx = bird.x - food.x; const dy = bird.y - food.y;
+          if (Math.sqrt(dx * dx + dy * dy) < 40) {
+            food.active = false;
+            this.chaosEventFoods.delete(fId);
+            bird.coins += food.coinValue;
+            bird.food += food.value;
+            bird.xp += 8;
+            this._trackDailyProgress(bird, 'coin_shower_grab', 1);
+            this.events.push({ type: 'coin_shower_collect', birdId: bird.id, birdName: bird.name, coins: food.coinValue, x: food.x, y: food.y });
+            break;
+          }
+        }
+      }
+    }
+
+    // Food Festival: auto-collect within 50px
+    if (this.chaosEvent.type === 'food_festival') {
+      for (const [fId, food] of this.chaosEventFoods) {
+        if (!food.active) continue;
+        for (const bird of this.birds.values()) {
+          const dx = bird.x - food.x; const dy = bird.y - food.y;
+          if (Math.sqrt(dx * dx + dy * dy) < 50) {
+            food.active = false;
+            this.chaosEventFoods.delete(fId);
+            bird.food += food.value;
+            bird.coins += food.coinValue;
+            bird.xp += 12;
+            this.events.push({ type: 'festival_collect', birdId: bird.id, birdName: bird.name, foodType: food.type, x: food.x, y: food.y });
             break;
           }
         }
@@ -9349,12 +9480,23 @@ class GameEngine {
 
       // Fog: cops lose sight of birds beyond 220px — they wander instead of pursuing
       const fogActive = this.weather && this.weather.type === 'fog';
+      // Blackout: cops are completely blind — always wander (1.2× drift vs fog's 0.6×)
+      const blackoutActive = !!(this.chaosEvent && this.chaosEvent.type === 'blackout');
 
       // Pursue wanted bird
       const dx = wanted.x - cop.x;
       const dy = wanted.y - cop.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
 
+      if (blackoutActive) {
+        // Complete blindness — cops drift aimlessly in all directions
+        cop.fogWanderAngle = (cop.fogWanderAngle || Math.random() * Math.PI * 2) + (Math.random() - 0.5) * 1.2 * dt * 3;
+        cop.x += Math.cos(cop.fogWanderAngle) * cop.speed * 0.4 * dt;
+        cop.y += Math.sin(cop.fogWanderAngle) * cop.speed * 0.4 * dt;
+        cop.x = Math.max(10, Math.min(world.WORLD_WIDTH - 10, cop.x));
+        cop.y = Math.max(10, Math.min(world.WORLD_HEIGHT - 10, cop.y));
+        continue;
+      }
       if (fogActive && dist > 220) {
         // Lost in the fog — wander in last-known direction with drift
         cop.fogWanderAngle = cop.fogWanderAngle || Math.atan2(dy, dx);
@@ -14812,14 +14954,28 @@ class GameEngine {
         for (const other of invasion.seagulls.values()) {
           if (other.id !== sg.id && other.targetFoodId) targeted.add(other.targetFoodId);
         }
+        // Food Festival × Seagull Invasion: seagulls target festival food FIRST (tastier!)
+        const isFoodFestival = !!(this.chaosEvent && this.chaosEvent.type === 'food_festival');
         let bestFood = null, bestDist = Infinity;
-        for (const food of this.foods.values()) {
+        let festivalBestFood = null, festivalBestDist = Infinity;
+        // First pass: combine main foods + chaos event foods
+        const allFoodSources = [...this.foods.values(), ...(isFoodFestival ? [...this.chaosEventFoods.values()] : [])];
+        for (const food of allFoodSources) {
           if (!food.active || targeted.has(food.id)) continue;
           if (food.type === 'worm' || food.type === 'water_puddle') continue; // skip weather foods
           const fdx = food.x - sg.x;
           const fdy = food.y - sg.y;
           const d = Math.sqrt(fdx * fdx + fdy * fdy);
+          if (food.isFestival && d < festivalBestDist) { festivalBestDist = d; festivalBestFood = food; }
           if (d < bestDist) { bestDist = d; bestFood = food; }
+        }
+        // Prefer festival food within 600px (seagulls will divert for the premium stuff)
+        if (isFoodFestival && festivalBestFood && festivalBestDist < 600) {
+          bestFood = festivalBestFood;
+          if (!sg._announcedFestivalRaid) {
+            sg._announcedFestivalRaid = true;
+            this.events.push({ type: 'seagull_festival_raid', x: sg.x, y: sg.y });
+          }
         }
         if (bestFood) {
           sg.targetFoodId = bestFood.id;

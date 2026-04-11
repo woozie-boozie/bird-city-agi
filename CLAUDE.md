@@ -2467,6 +2467,49 @@ Six interlocking additions that weave the Blizzard, Tornado, Aurora, and Gang sy
 
 **Creative intent**: Six additions but they all deepen existing blizzard/tornado/aurora/gang systems rather than adding new ones. The cop ice slide is pure slapstick comedy that creates a real strategic landmark: "cops can't arrest me if I'm on the rink." The gang nest firepit transforms the blizzard from "find cocoa or suffer" into "gather your crew at the nest and stay warm together" — an inherently social mechanic. Tornado × Cursed Coin creates an incredible moment of chaos: you're closing in on the coin, tornado hits the map, coin vanishes to a new location, and the race restarts. The aurora gang war bonus makes night sessions during gang wars the most lucrative play sessions in the game. Pure CARNAGE + SOCIAL + DISCOVERY energy — the city's chaos is now deeply interconnected.
 
+**Session 75 — 2026-04-11: Chaos Event Overhaul — 8 Types + 3 Cross-System Synergies**
+Restored and massively expanded the Chaos Meter event system. A git archaeology investigation discovered that the Session 68 Night Market commit had inadvertently overwrote Sessions 69-70 (5 new chaos events + 3 cross-system synergies). Session 75 restores and fully implements everything from those lost sessions — now done properly with full client-side visuals.
+
+**8 Chaos Event Types (server `_triggerChaosEvent()`):**
+- 🚶 **NPC Flood** (classic, 2× weight): Standard target explosion
+- 🚗 **Car Frenzy** (classic, 2× weight): Cars go wild
+- 🌟 **Golden Rain** (classic, 2× weight): Glowing gold collectibles
+- 🎉 **Poop Party** (20s): ALL poop becomes mega AOE for every bird in the city — the most carnage event
+- 💸 **Coin Shower** (25s): 60 glowing coin stacks scattered citywide, auto-collect within 40px
+- 🎊 **Food Festival** (30s): 40 premium foods (pizza, sandwich, donut, cake) in 4 zones
+- ⚡ **Blackout** (25s): 87% dark overlay, cops lose targeting and blind-wander
+- 🪩 **Disco Fever** (20s): 3× XP on all NPC hits — 5× and 3× coins if Crime Wave is also active
+
+**CRIME DISCO (the killer combo):**
+- If Crime Wave is active when Disco Fever triggers (or vice versa), the combined event becomes "🚨🪩 CRIME DISCO"
+- NPC hits: 5× XP + 3× crime coins — the highest single-event XP multiplier in the game
+- Special city-wide announcement + magenta HUD upgrades for both event bars
+- Stacks with: Lucky Charm (2×), Signal Boost (1.5×), P5 Prestige (+20% XP), combo streaks
+
+**Three cross-system synergies (server):**
+- **Blackout × Cursed Coin**: Cursed Coin holder becomes invisible on all other players' minimaps during blackout — coin skull vanishes from the map. HUD hint shows "💀 COIN HOLDER VANISHED" for others. Thief gets 25 seconds of free movement across the city while everyone is blind
+- **Food Festival × Seagull Invasion**: Seagulls beeline for premium festival food items first during food festivals. Killing a festival-food-carrying seagull gives +90 XP +35c (vs normal +60 XP +20c). City-wide "🦅🎊 SEAGULLS RAIDING THE FESTIVAL FOOD!" callout
+- **Crime Disco coin multiplier**: Crime Disco applies ×3 to crime coins per NPC hit (stacked on top of the existing crime wave ×2 — total 6× coins on NPC hits during Crime Disco)
+
+**Three new daily challenges:**
+- 🪩 **Disco King**: Hit 8 NPCs during a Disco Fever chaos event (190 XP, 95c)
+- 💸 **Money Rain**: Collect 10 coins from a Coin Shower event (160 XP, 80c)
+- 🎭 **Chaos Connoisseur**: Experience 4 different chaos event types in one session (210 XP, 105c) — encourages staying online through multiple chaos cycles
+
+**Client-side visuals (`public/js/main.js`):**
+- Blackout: near-total `#000011` overlay at 87% opacity + rare electric flicker effect
+- Poop Party: pink tint + 40 cascading confetti particles in cycling rainbow hues
+- Disco Fever: cycling color tint + 8 rotating light beam rays from a virtual disco ball at screen top
+- Coin Shower: golden tint + glowing coin stack sprites rendered in world space
+- Food Festival: soft green tint + existing food sprites rendered in world space
+- All 8 types get a HUD countdown bar that stacks below crime wave / seagull / lockdown bars
+- Blackout bar gets "⚡ BLACKOUT — COPS BLIND!" label; Crime Disco bar turns magenta
+- Active buffs HUD pills for all 5 new event types (+ special Crime Disco pill)
+- Updated chaos event announcements with screen shakes, colors, and end messages for all 8 types
+- Event handlers for `coin_shower_collect`, `festival_collect`, and `seagull_festival_raid`
+
+**Creative intent**: The chaos meter went from 3 boring identical events to 8 wildly different 20-30 second windows. Blackout is a criminal's dream (cops blind + coin holder invisible). Poop Party is pure carnage — every bird firing mega AOE for 20 seconds simultaneously creates city-wide destruction. Disco Fever creates an XP sprint (hit NPCs as fast as possible). The Crime Disco combo creates the highest-XP moment achievable in the game without a 5-star prestige setup. Chaos Connoisseur challenge rewards players for staying online through multiple event cycles. The city's chaos meter is now unpredictable and deeply connected to other systems. Pure CARNAGE + DISCOVERY + SOCIAL energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -2602,13 +2645,13 @@ Built the Territory Control System on top of the existing upstream code:
 - ~~Comet Trail: a P5 LEGEND bird who catches the Shooting Star leaves a brief golden comet trail behind them for 30 seconds~~ (DONE Session 73 — also triggers on Meteor catch)
 - ~~Night Market: a special vendor that only appears during Aurora nights, selling rare cosmetics for cosmic fish (the aurora's currency)~~ (DONE Session 68)
 - ~~Shooting Star daily challenge: "Stargazer — catch a Shooting Star during the Aurora" (300 XP, 150c) — the rarest weather challenge~~ (DONE Session 68)
-- ~~Chaos Meter expansion: 5 new event types (Poop Party, Coin Shower, Food Festival, Blackout, Disco Fever)~~ (DONE Session 69)
-- ~~Disco King daily challenge: Hit 8 NPCs during Disco Fever~~ (DONE Session 69)
-- ~~Money Rain daily challenge: Collect 10 Coin Shower coins~~ (DONE Session 69)
-- ~~Chaos Meter combo challenge: Trigger 3 different chaos event types in one session (new daily challenge)~~ (DONE Session 70 as "Chaos Connoisseur" — 4 types)
-- ~~Food Festival × Seagull Invasion: seagulls target festival food items first during food festivals~~ (DONE Session 70)
-- ~~Crime Wave × Disco Fever CRIME DISCO: 5× NPC XP + 3× crime coins when both active~~ (DONE Session 70)
-- ~~Blackout + Cursed Coin: cursed coin holder is completely invisible on minimap during blackout~~ (DONE Session 70)
+- ~~Chaos Meter expansion: 5 new event types (Poop Party, Coin Shower, Food Festival, Blackout, Disco Fever)~~ (DONE Session 75 — restored after git overwrite)
+- ~~Disco King daily challenge: Hit 8 NPCs during Disco Fever~~ (DONE Session 75)
+- ~~Money Rain daily challenge: Collect 10 Coin Shower coins~~ (DONE Session 75)
+- ~~Chaos Meter combo challenge: Trigger 3 different chaos event types in one session (new daily challenge)~~ (DONE Session 75 as "Chaos Connoisseur" — 4 types)
+- ~~Food Festival × Seagull Invasion: seagulls target festival food items first during food festivals~~ (DONE Session 75)
+- ~~Crime Wave × Disco Fever CRIME DISCO: 5× NPC XP + 3× crime coins when both active~~ (DONE Session 75)
+- ~~Blackout + Cursed Coin: cursed coin holder is completely invisible on minimap during blackout~~ (DONE Session 75)
 - Poop Party × Disco Fever combo: if both somehow triggered back-to-back, special "DOUBLE CHAOS" announcement
 - Chaos event leaderboard in the Gazette: track who scored the most hits during each chaos event type that night
 - Chaos Vol. 2: more cross-system interactions — Poop Party + Crime Wave (all poops generate 2× heat), Golden Rain + Kingpin (Kingpin's tribute doubles during golden rain)
