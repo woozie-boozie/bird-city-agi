@@ -2399,6 +2399,30 @@ Completed the Blizzard system's client-side layer and added the Meteor Shower as
 
 **Creative intent**: The Meteor Shower is the Aurora's ultimate jackpot event — not winner-takes-all like the shooting star, but three separate prizes for three birds simultaneously. The city erupts: "☄️ METEOR SHOWER — 3 STARS FALL!" and suddenly every player on the minimap is sprinting toward different landing zones. The first player to see the map might call out positions: "One near the mall, one near docks, one near park!" Unlike the shooting star (one prize, most competitive), meteor shower is MORE cooperative — three birds can win at once, which makes the whole city feel like it's benefiting from the aurora together. The blizzard cross-systems and client polish turn what was a server-only feature into a full-sensory weather experience: you SEE the snowflakes fall, FEEL the cold drag on your movement bar, and FEEL the warmth when you find that mug of cocoa in the frozen city. Pure DISCOVERY + SPECTACLE + CARNAGE energy.
 
+**Session 73 — 2026-04-11: Ice Rink + P5 Legend Comet Trail + Gang Aurora Ritual**
+Three interlocking Blizzard/Aurora additions that deepen emergent cooperation and spectacle:
+
+**Ice Rink (Blizzard cross-system):**
+- During blizzard, one of 6 predefined city plazas randomly freezes into an ice rink (radius 85px), announced city-wide with screen shake
+- Birds inside the rink get +30% max speed but accel drops 800→220 and drag drops 0.92→0.978 — birds SLIDE with almost no directional authority
+- Rendered as a translucent icy oval with cross-hatch skating marks, orbiting sparkle glints, dashed center circle, and "⛸️ ICE RINK" label in world space
+- Minimap: pulsing cyan dot + ⛸️ emoji; off-screen directional arrow during blizzard; HUD buff pill "⛸️ ON ICE — SLIDING! +30% SPD · Minimal control"
+- Melts cleanly when blizzard ends — clears `bird.onIceRink` flags for all birds
+
+**P5 Legend Comet Trail:**
+- When a Prestige 5 LEGEND bird catches a Shooting Star OR any Meteor during aurora, they automatically earn 30 seconds of the golden comet trail effect (`cometTrailUntil = now + 30000`)
+- Fires a city-wide `legend_comet_trail` event in gold — the server sees the moment a LEGEND claims the sky
+- Connects two separate prestige systems (P5 Prestige + Aurora events) into a single spectacular payoff
+
+**Gang Aurora Ritual:**
+- During active aurora, if 3+ members of the same gang gather simultaneously within 155px of the Sacred Pond center (x:1050, y:1100), a ritual fires
+- Each gang member present: receives 1 bonus cosmic fish spawned at the pond + 80 XP
+- City-wide `gang_aurora_ritual` event fires with gang tag + member count
+- 2-minute per-gang cooldown via `gangRitualCooldowns` Map — rewards coordinated presence without spammability
+- "Everyone meet at the pond" is now a game-meaningful gang callout
+
+**Creative intent**: The ice rink turns Blizzard into a chaos PLAYGROUND — birds zoom onto the rink for the speed boost then can't stop or turn, careening toward other players/cops at 1.3× speed in pure slapstick mayhem. The P5 Comet Trail is a rare cosmic reward that no amount of coins can buy — only dedication (P5 prestige) plus luck (catching a shooting star) creates the golden trail. The Gang Ritual gives flocks the first purely cooperative aurora action: gather at the sacred pond together to call down bonus fish. Night sessions near the pond now have a new social dynamic. Pure CARNAGE + SPECTACLE + SOCIAL energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -2531,7 +2555,7 @@ Built the Territory Control System on top of the existing upstream code:
 - Graffiti mural system: large multi-building art pieces that require a whole gang to paint
 - Aurora + Gang War: if a gang war erupts during the aurora, all kills give 2× gang war XP — sacred sky amplifies the violence
 - Shooting Star daily challenge: "Stargazer — catch a Shooting Star during the Aurora" (300 XP, 150c) — the rarest weather challenge
-- Comet Trail: a P5 LEGEND bird who catches the Shooting Star leaves a brief golden comet trail behind them for 30 seconds
+- ~~Comet Trail: a P5 LEGEND bird who catches the Shooting Star leaves a brief golden comet trail behind them for 30 seconds~~ (DONE Session 73 — also triggers on Meteor catch)
 - ~~Night Market: a special vendor that only appears during Aurora nights, selling rare cosmetics for cosmic fish (the aurora's currency)~~ (DONE Session 68)
 - ~~Shooting Star daily challenge: "Stargazer — catch a Shooting Star during the Aurora" (300 XP, 150c) — the rarest weather challenge~~ (DONE Session 68)
 - ~~Chaos Meter expansion: 5 new event types (Poop Party, Coin Shower, Food Festival, Blackout, Disco Fever)~~ (DONE Session 69)
@@ -2544,7 +2568,7 @@ Built the Territory Control System on top of the existing upstream code:
 - Poop Party × Disco Fever combo: if both somehow triggered back-to-back, special "DOUBLE CHAOS" announcement
 - Chaos event leaderboard in the Gazette: track who scored the most hits during each chaos event type that night
 - Chaos Vol. 2: more cross-system interactions — Poop Party + Crime Wave (all poops generate 2× heat), Golden Rain + Kingpin (Kingpin's tribute doubles during golden rain)
-- Comet Trail: a P5 LEGEND bird who catches the Shooting Star leaves a brief golden comet trail for 30 seconds
+- ~~Comet Trail: a P5 LEGEND bird who catches the Shooting Star leaves a brief golden comet trail for 30 seconds~~ (DONE Session 73)
 - Gazette tracking for duels: "⚔️ [Name] WINS STREET DUEL: defeats [Name] for Xc" headline
 - Royale Champion shield flash visual: golden shield burst when champion absorbs the first dethronement hit
 - Seasonal weather: extended "cold snap" period with snow flurries visible on the map, food items frozen in place (need to fly through to thaw)
@@ -2556,10 +2580,20 @@ Built the Territory Control System on top of the existing upstream code:
 - Gang War + Crow Cartel: if Crow Cartel raids a zone during an active gang war, both gangs get 2× XP for defending against the Cartel (shared enemy)
 - Radio Tower × Crime Wave: if crime wave starts while someone owns the Radio Tower, a forced city-wide broadcast fires from the owner with a random crime-themed taunt
 - Comet Rush × Street Duel: a bird with Comet Rush active while winning a street duel leaves sparkle trails for 30 seconds after the fight
-- Gang Aurora Ritual: if 3+ gang members are all near the pond at the same time during aurora, a bonus cosmic fish spawns for each of them — cooperative discovery reward
+- ~~Gang Aurora Ritual: if 3+ gang members are all near the pond at the same time during aurora, a bonus cosmic fish spawns for each of them — cooperative discovery reward~~ (DONE Session 73)
 - ~~Meteor Shower: rare upgrade of Shooting Star — 3 stars fall simultaneously across different parts of the map, each claimable by different birds~~ (DONE Session 72)
 - Blizzard × Hot Cocoa seagull: seagulls in the blizzard occasionally fly toward hot cocoa items (birds must race seagulls to get the warmth)
 - Blizzard × Crime Wave gang war: during crime wave + blizzard, gang war kills give +2× XP (cold-blooded kills)
 - Comet Trail: a P5 LEGEND bird who catches a Meteor (or Shooting Star) leaves a golden comet trail behind them for 30 seconds
 - Snowball Fight Club: during blizzard, two birds that duel each other get extra snowball poop width (35px vs 44px) — blizzard duels are wider chaos
-- Ice Rink: a random plaza in the city becomes an ice rink during blizzards — birds slide across it at 1.3× speed with no turning friction for 5 seconds (chaos chaos chaos)
+- ~~Ice Rink: a random plaza in the city becomes an ice rink during blizzards — birds slide across it at 1.3× speed with no turning friction for 5 seconds (chaos chaos chaos)~~ (DONE Session 73)
+- ~~Comet Trail: a P5 LEGEND bird who catches a Meteor (or Shooting Star) leaves a golden comet trail behind them for 30 seconds~~ (DONE Session 73)
+- Snowball Fight Club: during blizzard, two birds that duel each other get extra snowball poop width (45px vs 44px) — blizzard duels are wider, wilder chaos
+- Ice Rink death spiral: a bird on the ice rink being chased by cops has reduced turning — cop AI should also feel ice drag (creates hilarious sliding pursuit scenes)
+- Gang Aurora Bonus: Aurora + active gang war = all gang war kills give 2× XP (sacred sky amplifies the violence, connects two night systems)
+- Cosmic Fish leaderboard: track who has caught the most cosmic fish this aurora session — display live in the Night Market overlay
+- Ice Rink daily challenge: "Ice Skater — land 5 poop hits while on the ice rink" (240 XP, 120c)
+- Blizzard Ice Bridge: the pond freezes over during blizzard — birds can cross directly through it instead of flying around (shortcut that only exists in winter)
+- Night Market new item: "🌙 Lunar Lens" (3 cosmic fish) — reveals every hidden sewer loot cache on your minimap for 2 minutes (discovery + aurora synergy)
+- Tornado × Cursed Coin: if a tornado passes within 300px of the Cursed Coin, it flings the coin 500px in a random direction — the coin is now somewhere else on the map (chaos!)
+- Gang Nest × Blizzard: gang nests get a "firepit" during blizzard — members within 100px are immune to cold drag (cozy gang base mechanic)
