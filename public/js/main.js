@@ -1304,6 +1304,15 @@
       window._shootingStarData = null; // clean up if aurora ends with unclaimed star
       window._meteorShowerData = null; // clean up any meteor shower too
     }
+    if (ev.type === 'gang_aurora_ritual') {
+      const isMine = gameState.self && gameState.self.gangId === ev.gangId;
+      const names = ev.birdNames ? ev.birdNames.slice(0, 3).join(', ') : '';
+      addEventMessage(`✨🐦 [${ev.gangTag}] GANG AURORA RITUAL! ${ev.memberCount} birds gathered at the Sacred Pond — bonus cosmic fish appear! (${names})`, '#44ffcc');
+      if (isMine) {
+        showAnnouncement(`✨ [${ev.gangTag}] GANG AURORA RITUAL!\n${ev.memberCount} gang birds at the pond — bonus cosmic fish + 80 XP each!`, '#44ffcc', 5000);
+        effects.push({ type: 'screen_shake', intensity: 5, duration: 500, time: now });
+      }
+    }
 
     // === SHOOTING STAR (rare aurora event) ===
     if (ev.type === 'shooting_star_spawn') {
@@ -1326,6 +1335,13 @@
     if (ev.type === 'shooting_star_expired') {
       window._shootingStarData = null;
       addEventMessage('🌠 The Shooting Star faded... Nobody reached the landing site in time.', '#887755');
+    }
+    if (ev.type === 'legend_comet_trail') {
+      const tag = ev.gangTag ? `[${ev.gangTag}] ` : '';
+      addEventMessage(`✨☄️ ${tag}${ev.birdName} caught a star and blazes with a LEGEND COMET TRAIL! ⚜️⚜️⚜️⚜️⚜️`, '#ffd700');
+      if (ev.birdId === myId) {
+        showAnnouncement('☄️ LEGEND COMET TRAIL!', '#ffd700', 3500);
+      }
     }
 
     // === METEOR SHOWER (rare aurora upgrade — 3 simultaneous shooting stars) ===
@@ -2579,6 +2595,14 @@
     if (ev.type === 'cocoa_drink' && ev.birdId === myId) {
       showAnnouncement('☕ HOT COCOA! +20 food — WARM for 30s (+25% speed)!', '#ffcc44', 2500);
       addEventMessage('☕ You drank hot cocoa! Warm for 30s · +25% speed', '#ffcc44');
+    }
+    if (ev.type === 'ice_rink_spawned') {
+      showAnnouncement('⛸️ ICE RINK!', '❄️ A plaza has frozen over! Fly there to SLIDE — lose all turning control but gain huge speed!', '#aaddff', 5000);
+      addEventMessage('⛸️ An ICE RINK formed in the blizzard! Birds slide uncontrollably — +30% speed, almost no turning!', '#aaddff');
+      effects.push({ type: 'screen_shake', time: performance.now(), duration: 500, intensity: 6 });
+    }
+    if (ev.type === 'ice_rink_melted') {
+      addEventMessage('⛸️ The ice rink has melted as the blizzard clears.', '#88aacc');
     }
 
     // === WEATHER BETTING EVENTS ===
@@ -7113,6 +7137,11 @@
       Renderer.drawBoostGates(ctx, camera, worldData.raceBoostGates, myCooldowns, raceActive, now);
     }
 
+    // Ice Rink — slippery blizzard plaza
+    if (gameState.iceRink) {
+      Renderer.drawIceRink(ctx, camera, gameState.iceRink, now);
+    }
+
     // Birds
     if (gameState.birds) {
       for (const bird of gameState.birds) {
@@ -8248,6 +8277,41 @@
       }
     }
 
+    // Ice Rink — direction arrow when off-screen (during blizzard)
+    if (gameState.iceRink && selfBird && weatherState && weatherState.type === 'blizzard') {
+      const irsx = gameState.iceRink.x - camera.x + camera.screenW / 2;
+      const irsy = gameState.iceRink.y - camera.y + camera.screenH / 2;
+      const irOnScreen = irsx > 40 && irsx < camera.screenW - 40 && irsy > 40 && irsy < camera.screenH - 40;
+      if (!irOnScreen) {
+        const irAngle = Math.atan2(irsy - camera.screenH / 2, irsx - camera.screenW / 2);
+        const irArrowDist = Math.min(camera.screenW, camera.screenH) / 2 - 60;
+        const irAx = camera.screenW / 2 + Math.cos(irAngle) * irArrowDist;
+        const irAy = camera.screenH / 2 + Math.sin(irAngle) * irArrowDist;
+        const irPulse = 0.65 + 0.35 * Math.sin(now * 0.005);
+        ctx.save();
+        ctx.translate(irAx, irAy);
+        ctx.rotate(irAngle);
+        ctx.globalAlpha = 0.85 * irPulse;
+        ctx.fillStyle = '#88ddff';
+        ctx.strokeStyle = '#224';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(18, 0);
+        ctx.lineTo(-9, -9);
+        ctx.lineTo(-4, 0);
+        ctx.lineTo(-9, 9);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#fff';
+        ctx.font = '9px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('⛸️', 3, 0);
+        ctx.restore();
+      }
+    }
+
     // Announcements (screen-space)
     drawAnnouncements(ctx, now);
 
@@ -8855,6 +8919,11 @@
       minimapCtx.textBaseline = 'middle';
       minimapCtx.fillText('✨', px, py);
       minimapCtx.restore();
+    }
+
+    // Ice Rink — pulsing icy blue dot when blizzard is active
+    if (gameState.iceRink && worldData) {
+      Renderer.drawIceRinkOnMinimap(minimapCtx, gameState.iceRink, worldData.width, worldData.height);
     }
 
     // Night Market — pulsing teal dot near the pond when aurora is active
@@ -9607,7 +9676,9 @@
     }
     // Blizzard: show WARM buff if hot cocoa active, or CHILLY debuff otherwise
     if (weatherState && weatherState.type === 'blizzard') {
-      if (s.warmUntil && s.warmUntil > now) {
+      if (s.onIceRink) {
+        html += '<div class="bm-buff-pill" style="background:rgba(0,60,120,0.92);border-color:#88ddff;color:#cceeff;animation:kingpinGlow 0.5s ease-in-out infinite alternate;font-weight:bold;">⛸️ ON ICE — SLIDING! +30% SPD · Minimal control</div>';
+      } else if (s.warmUntil && s.warmUntil > now) {
         const secs = Math.ceil((s.warmUntil - now) / 1000);
         html += '<div class="bm-buff-pill" style="background:rgba(100,50,0,0.85);border-color:#ffaa44;color:#ffcc66;">☕ WARM +25% SPD — ' + secs + 's</div>';
       } else {

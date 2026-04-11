@@ -3959,4 +3959,124 @@ window.Renderer = {
     minimapCtx.fillText('✨', cx, cy - 4);
     minimapCtx.restore();
   },
+
+  // ============================================================
+  // ICE RINK — blizzard-only slippery plaza
+  // ============================================================
+  drawIceRink(ctx, camera, iceRinkData, now) {
+    if (!iceRinkData) return;
+    const sx = iceRinkData.x - camera.x + camera.screenW / 2;
+    const sy = iceRinkData.y - camera.y + camera.screenH / 2;
+    const r  = iceRinkData.radius || 85;
+    const t  = now / 1000;
+
+    // Skip if off screen
+    if (sx + r * 1.8 < 0 || sx - r * 1.8 > camera.screenW ||
+        sy + r < 0 || sy - r > camera.screenH) return;
+
+    ctx.save();
+
+    // Ice surface (wide shallow oval — like a real rink)
+    ctx.beginPath();
+    ctx.ellipse(sx, sy, r * 1.65, r * 0.78, 0, 0, Math.PI * 2);
+
+    const iceGrad = ctx.createRadialGradient(sx - r * 0.3, sy - r * 0.25, 5, sx, sy, r * 1.65);
+    iceGrad.addColorStop(0, 'rgba(210, 245, 255, 0.82)');
+    iceGrad.addColorStop(0.55, 'rgba(155, 215, 255, 0.65)');
+    iceGrad.addColorStop(1, 'rgba(80, 160, 220, 0.28)');
+    ctx.fillStyle = iceGrad;
+    ctx.fill();
+
+    // Border ring
+    ctx.strokeStyle = 'rgba(170, 230, 255, 0.92)';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+
+    // Skating-mark cross-hatch lines (clipped to oval)
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(sx, sy, r * 1.65, r * 0.78, 0, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.strokeStyle = 'rgba(180, 225, 255, 0.28)';
+    ctx.lineWidth = 1;
+    for (let li = -4; li <= 4; li++) {
+      const lx = sx + li * (r * 1.65 / 4.5);
+      ctx.beginPath();
+      ctx.moveTo(lx - 25, sy - r * 0.78);
+      ctx.lineTo(lx + 25, sy + r * 0.78);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // Center circle
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    ctx.strokeStyle = 'rgba(150, 210, 255, 0.8)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.arc(sx, sy, 22, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+
+    // Orbiting sparkle glints (12 points around the oval)
+    for (let i = 0; i < 12; i++) {
+      const phase = (i / 12) * Math.PI * 2 + t * 0.55;
+      const glintPulse = (Math.sin(t * 2.8 + i * 1.4) + 1) / 2;
+      const gx = sx + Math.cos(phase) * r * 1.45;
+      const gy = sy + Math.sin(phase) * r * 0.65;
+      const gs = 1.4 + glintPulse * 2.2;
+
+      ctx.globalAlpha = 0.35 + glintPulse * 0.65;
+      ctx.fillStyle = '#ddeeff';
+      ctx.beginPath();
+      ctx.arc(gx, gy, gs, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Crosshair sparkle on brighter glints
+      if (glintPulse > 0.6) {
+        ctx.strokeStyle = 'rgba(200, 235, 255, 0.7)';
+        ctx.lineWidth = 0.8;
+        ctx.beginPath();
+        ctx.moveTo(gx - gs * 2.2, gy); ctx.lineTo(gx + gs * 2.2, gy);
+        ctx.moveTo(gx, gy - gs * 2.2); ctx.lineTo(gx, gy + gs * 2.2);
+        ctx.stroke();
+      }
+    }
+    ctx.globalAlpha = 1;
+
+    // Label
+    ctx.font = 'bold 11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#cceeff';
+    ctx.shadowColor = '#0066bb';
+    ctx.shadowBlur = 10;
+    ctx.fillText('⛸️ ICE RINK', sx, sy - r * 0.78 - 9);
+    ctx.shadowBlur = 0;
+
+    ctx.restore();
+  },
+
+  drawIceRinkOnMinimap(minimapCtx, iceRinkData, worldWidth, worldHeight) {
+    if (!iceRinkData) return;
+    const mw = minimapCtx.canvas.width;
+    const mh = minimapCtx.canvas.height;
+    const cx = iceRinkData.x * (mw / worldWidth);
+    const cy = iceRinkData.y * (mh / worldHeight);
+    const t = Date.now() / 1000;
+    const pulse = 0.55 + 0.45 * Math.sin(t * 2.2);
+
+    minimapCtx.save();
+    minimapCtx.globalAlpha = pulse;
+    minimapCtx.fillStyle = '#88ddff';
+    minimapCtx.beginPath();
+    minimapCtx.arc(cx, cy, 3.5, 0, Math.PI * 2);
+    minimapCtx.fill();
+    minimapCtx.globalAlpha = 1;
+    minimapCtx.font = '7px sans-serif';
+    minimapCtx.textAlign = 'center';
+    minimapCtx.fillText('⛸️', cx, cy - 4);
+    minimapCtx.restore();
+  },
 };

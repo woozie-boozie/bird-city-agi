@@ -207,6 +207,8 @@ class GameEngine {
     this.weatherBetting = null;       // null or { openUntil, bets: Map(birdId -> { type, amount, name }) }
     this.heatPuddles = new Map();     // id -> true (water puddle food ids spawned during heatwave)
     this.hotCocoa = new Map();        // id -> true (hot_cocoa food ids spawned during blizzard)
+    this.iceRink = null;              // null | { x, y, radius } — random plaza becomes ice rink during blizzard
+    this.gangRitualCooldowns = new Map(); // gangId -> lastRitualTimestamp (2-min cooldown per gang)
 
     // === GOLDEN EGG SCRAMBLE ===
     this.eggScramble = null;          // null or { state, startedAt, endsAt, eggs: Map(id->egg), delivered }
@@ -2450,6 +2452,17 @@ class GameEngine {
       }
     }
 
+    // Ice Rink: a plaza freezes into a slippery rink during blizzard — +30% speed, almost no turning control
+    bird.onIceRink = false;
+    if (this.iceRink && !bird.inSewer) {
+      const irdx = bird.x - this.iceRink.x;
+      const irdy = bird.y - this.iceRink.y;
+      if (Math.sqrt(irdx * irdx + irdy * irdy) < this.iceRink.radius) {
+        bird.onIceRink = true;
+        maxSpeed *= 1.30; // slippery ice — birds launch fast but can barely turn!
+      }
+    }
+
     // Cursed Coin: holder gets +20% speed (urgent cursed energy)
     if (this.cursedCoin && this.cursedCoin.state === 'held' && this.cursedCoin.holderId === bird.id) {
       maxSpeed *= 1.20;
@@ -2571,8 +2584,9 @@ class GameEngine {
       }
     }
 
-    const accel = 800;
-    const drag = 0.92;
+    // Ice Rink: dramatically reduced turning control + high slide (nearly no drag)
+    const accel = bird.onIceRink ? 220 : 800;    // barely any directional authority on ice
+    const drag  = bird.onIceRink ? 0.978 : 0.92; // almost no speed decay — birds SLIDE
 
     // Apply input — supports analog joystick (joyX/joyY) or digital WASD
     let ax = 0, ay = 0;
@@ -4179,6 +4193,12 @@ class GameEngine {
         this.hotCocoa.clear();
         // Clear warmth from all birds (blizzard is over)
         for (const b of this.birds.values()) b.warmUntil = 0;
+        // Melt the ice rink
+        if (this.iceRink) {
+          this.iceRink = null;
+          for (const b of this.birds.values()) b.onIceRink = false;
+          this.events.push({ type: 'ice_rink_melted' });
+        }
       }
       this.events.push({ type: 'weather_end', weatherType: oldType });
       // Open a 30-second betting window before the next weather spawns
@@ -4297,10 +4317,26 @@ class GameEngine {
 
       this.events.push({ type: 'weather_start', weatherType: type, windAngle, windSpeed, intensity });
       console.log(`[GameEngine] Weather started: ${type} (wind=${Math.round(windSpeed)}, angle=${windAngle.toFixed(2)})`);
-      // Gazette tracking for blizzards
+      // Gazette tracking for blizzards + spawn ice rink
       if (type === 'blizzard') {
         if (!this.gazetteStats.blizzards) this.gazetteStats.blizzards = 0;
         this.gazetteStats.blizzards++;
+        // Pick a random open plaza to freeze into an ice rink
+        const RINK_POSITIONS = [
+          { x: 1200, y: 1200 }, // Park center plaza
+          { x: 1780, y: 1050 }, // City Hall courtyard
+          { x: 2100, y: 1200 }, // Casino plaza
+          { x: 600,  y: 1600 }, // Cafe District square
+          { x: 1620, y: 750  }, // North market area
+          { x: 920,  y: 1600 }, // Midtown plaza
+        ];
+        const rinkPos = RINK_POSITIONS[Math.floor(Math.random() * RINK_POSITIONS.length)];
+        this.iceRink = { x: rinkPos.x, y: rinkPos.y, radius: 85 };
+        this.events.push({
+          type: 'ice_rink_spawned',
+          x: this.iceRink.x, y: this.iceRink.y, radius: this.iceRink.radius,
+        });
+        console.log(`[GameEngine] ⛸️ Ice rink formed at (${rinkPos.x}, ${rinkPos.y}) during blizzard`);
       }
 
       // Resolve any outstanding weather bets
@@ -5898,6 +5934,7 @@ class GameEngine {
         cloaked: bird.cloakedUntil > now,
         inNest: bird.inNest,
         inSewer: bird.inSewer,
+        onIceRink: bird.onIceRink || false,
         flockId: bird.flockId,
         flockName,
         flockMembers,
@@ -6406,6 +6443,8 @@ class GameEngine {
       } : null,
       // Night Market (aurora bazaar — near Sacred Pond)
       nightMarket: this.nightMarket ? { x: this.nightMarket.x, y: this.nightMarket.y } : null,
+      // Ice Rink (blizzard-only)
+      iceRink: this.iceRink || null,
       // Shooting Star (aurora event)
       shootingStar: this.shootingStar ? {
         x: this.shootingStar.x,
@@ -14092,6 +14131,48 @@ class GameEngine {
     if (!this.meteorShowerTriggeredThisAurora && this._meteorShowerScheduledAt && now >= this._meteorShowerScheduledAt) {
       this._spawnMeteorShower(now);
     }
+
+    // === GANG AURORA RITUAL ===
+    // If 3+ members of the SAME gang gather near the Sacred Pond during the aurora,
+    // a bonus cosmic fish spawns for each of them + an XP pulse (2-minute cooldown per gang).
+    const RITUAL_POND_CX = 1050, RITUAL_POND_CY = 1100;
+    const RITUAL_RADIUS = 155;  // px from pond center
+    const RITUAL_COOLDOWN_MS = 120000; // 2 minutes
+    const gangNearPond = new Map(); // gangId -> [bird, ...]
+    for (const b of this.birds.values()) {
+      if (!b.gangId || b.inSewer) continue;
+      const dx = b.x - RITUAL_POND_CX;
+      const dy = b.y - RITUAL_POND_CY;
+      if (Math.sqrt(dx * dx + dy * dy) < RITUAL_RADIUS) {
+        if (!gangNearPond.has(b.gangId)) gangNearPond.set(b.gangId, []);
+        gangNearPond.get(b.gangId).push(b);
+      }
+    }
+    for (const [gangId, members] of gangNearPond) {
+      if (members.length < 3) continue;
+      const lastRitual = this.gangRitualCooldowns.get(gangId) || 0;
+      if (now < lastRitual + RITUAL_COOLDOWN_MS) continue;
+      // Ritual fires!
+      this.gangRitualCooldowns.set(gangId, now);
+      const gang = this.gangs.get(gangId);
+      const gangTag = gang ? gang.tag : '???';
+      const gangColor = gang ? gang.color : '#ffffff';
+      // Spawn one bonus cosmic fish per member + XP pulse
+      for (const member of members) {
+        this._spawnCosmicFish();
+        member.xp += 80;
+      }
+      this.events.push({
+        type: 'gang_aurora_ritual',
+        gangId,
+        gangTag,
+        gangColor,
+        memberCount: members.length,
+        birdNames: members.map(m => m.name),
+        birdIds:   members.map(m => m.id),
+      });
+      console.log(`[GameEngine] ✨ Gang Aurora Ritual: [${gangTag}] (${members.length} birds) — bonus cosmic fish!`);
+    }
   }
 
   // ============================================================
@@ -14225,6 +14306,17 @@ class GameEngine {
     }
 
     this._trackDailyProgress(bird, 'star_caught', 1);
+
+    // P5 LEGEND bonus: catching a shooting star blazes a golden comet trail for 30 seconds
+    if (bird.prestige >= 5) {
+      bird.cometTrailUntil = Math.max(bird.cometTrailUntil || 0, Date.now() + 30000);
+      this.events.push({
+        type: 'legend_comet_trail',
+        birdId: bird.id, birdName: bird.name,
+        gangTag: bird.gangTag || null,
+      });
+    }
+
     this.events.push({
       type: 'shooting_star_claimed',
       birdId: bird.id,
@@ -14355,6 +14447,17 @@ class GameEngine {
       case 'broken_crate': bird.coins += 75; this._trackDailyProgress(bird, 'coins_earned', 75); break;
     }
     this._trackDailyProgress(bird, 'star_caught', 1);
+
+    // P5 LEGEND bonus: catching a meteor blazes a golden comet trail for 30 seconds
+    if (bird.prestige >= 5) {
+      bird.cometTrailUntil = Math.max(bird.cometTrailUntil || 0, Date.now() + 30000);
+      this.events.push({
+        type: 'legend_comet_trail',
+        birdId: bird.id, birdName: bird.name,
+        gangTag: bird.gangTag || null,
+      });
+    }
+
     this.events.push({
       type: 'shooting_star_claimed',
       birdId: bird.id,
