@@ -2510,6 +2510,40 @@ Restored and massively expanded the Chaos Meter event system. A git archaeology 
 
 **Creative intent**: The chaos meter went from 3 boring identical events to 8 wildly different 20-30 second windows. Blackout is a criminal's dream (cops blind + coin holder invisible). Poop Party is pure carnage — every bird firing mega AOE for 20 seconds simultaneously creates city-wide destruction. Disco Fever creates an XP sprint (hit NPCs as fast as possible). The Crime Disco combo creates the highest-XP moment achievable in the game without a 5-star prestige setup. Chaos Connoisseur challenge rewards players for staying online through multiple event cycles. The city's chaos meter is now unpredictable and deeply connected to other systems. Pure CARNAGE + DISCOVERY + SOCIAL energy.
 
+**Session 76 — 2026-04-11: Cross-System Synergies Vol. 2 + Lunar Lens**
+Five interlocking additions that deepen Bird City's existing systems without adding new ones — each one creates a "wait, THAT works with THAT?" moment.
+
+**1. Blackout + Ghost Mode = Full Invisibility:**
+- Previously: Ghost Mode → 40% chance cops lose scent. Blackout → cops wander blindly. Both felt separate.
+- NOW: Using Ghost Mode during a Blackout makes you COMPLETELY off-grid — no new cop spawns, all existing cops drift aimlessly (can't arrest), AND the Bounty Hunter fully loses scent in the darkness
+- `_blackoutGhostAnnounced` flag fires a one-shot personal announcement: "🌑👻 BLACKOUT + GHOST MODE — FULLY INVISIBLE — 15 seconds of complete freedom!"
+- Two situational items (Ghost Mode Mystery Crate + Blackout chaos event) now create a legendary combo that requires timing and luck to pull off
+
+**2. Radio Tower × Crime Wave Auto-Broadcast:**
+- When a Crime Wave erupts AND someone owns the Radio Tower: the tower auto-fires a crime-themed taunt broadcast in the owner's name to ALL players
+- 5 pre-written taunts: "BIRD CITY IS BURNING — and I'm ON AIR!", "Crime pays. Come find me if you want some.", etc.
+- Appears as "📻 [CRIME WAVE BROADCAST] [Owner]: '[Taunt]'" in every player's event feed + a showAnnouncement overlay
+- The tower owner suddenly becomes the crime wave's voice — pure SPECTACLE. Rivals who just saw that player capture the tower during a crime wave now know they're broadcasting criminal swagger
+
+**3. Gang War + Crow Cartel Shared Enemy (2× XP):**
+- When the Crow Cartel raids a player territory during an active gang war between any two gangs: ALL cartel crow/don hits give 2× XP to the hitter
+- City-wide first-discovery announcement: "[Bird] discovered the synergy! 2× XP for fighting Cartel! Shared enemy bonus active in [zone]!"
+- The moment when two rival gangs both defending the same zone against the Cartel — shooting at the same crow — is pure emergent cooperation. Two factions that were just at war are suddenly (briefly) on the same side, both getting 2× XP from their shared enemy. Pure social chaos.
+
+**4. Poop Party × Crime Wave = 3× Heat:**
+- When both a Crime Wave AND Poop Party chaos event are active simultaneously: heat per poop is ×3 instead of ×2 (crime wave's 2× + 1.5× multiplier = 3× total)
+- HUD pill upgrades from red "🚨 CRIME WAVE" to a magenta "🎉🚨 POOP PARTY + CRIME WAVE — 3× HEAT — BE CAREFUL!" warning
+- Makes the rarest combo in the chaos system genuinely dangerous: you can go from 0 stars to MOST WANTED in 2 hits during this window. Hilarious AND terrifying for birds who don't notice.
+
+**5. 🌙 Lunar Lens (Night Market — 3 Cosmic Fish, 2 minutes):**
+- New 6th item in the Aurora Night Market: spend 3 Cosmic Fish to activate the Lunar Lens for 2 minutes
+- While active: ALL sewer loot caches are revealed on your minimap as pulsing cyan dots — even from above ground
+- Server sends sewer loot positions to bird when `lunarLensUntil > now` (previously only sent when underground)
+- HUD buff pill: "🌙 LUNAR LENS — Xm Ys · Sewer caches revealed on minimap"
+- Connects three systems: catch Cosmic Fish at the Sacred Pond during Aurora → spend fish at the Night Market → explore the sewer with perfect knowledge. A Discovery chain across the city's most secret layers.
+
+**Creative intent**: These five additions take Bird City's 75 sessions of accumulated systems and make them feel like a living web rather than a list of features. The Blackout + Ghost Mode combo is the kind of thing players will discover accidentally and tell friends about. The Radio Tower crime broadcast turns ambient ownership into a personality moment. The Gang War / Cartel shared enemy is the ultimate "enemies become allies" social drama. The Poop Party / Crime Wave heat combo is pure comedy danger that catches even veterans off guard. The Lunar Lens completes a three-system discovery chain: aurora → night market → sewer. Pure CARNAGE + SOCIAL + DISCOVERY energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -2652,6 +2686,11 @@ Built the Territory Control System on top of the existing upstream code:
 - ~~Food Festival × Seagull Invasion: seagulls target festival food items first during food festivals~~ (DONE Session 75)
 - ~~Crime Wave × Disco Fever CRIME DISCO: 5× NPC XP + 3× crime coins when both active~~ (DONE Session 75)
 - ~~Blackout + Cursed Coin: cursed coin holder is completely invisible on minimap during blackout~~ (DONE Session 75)
+- ~~Blackout + Ghost Mode: during blackout, Mystery Crate Ghost Mode makes you FULLY invisible (no new cops, BH loses scent)~~ (DONE Session 76)
+- ~~Radio Tower × Crime Wave: if crime wave starts while someone owns the Radio Tower, forced city-wide broadcast fires from the owner~~ (DONE Session 76)
+- ~~Gang War + Crow Cartel: if Crow Cartel raids a zone during an active gang war, both gangs get 2× XP for defending against the Cartel~~ (DONE Session 76)
+- ~~Poop Party × Crime Wave: all AOE mega poops during Poop Party + Crime Wave generate 3× heat~~ (DONE Session 76)
+- ~~Night Market new item: "🌙 Lunar Lens" (3 cosmic fish) — reveals hidden sewer caches on minimap for 2 min~~ (DONE Session 76)
 - Poop Party × Disco Fever combo: if both somehow triggered back-to-back, special "DOUBLE CHAOS" announcement
 - Chaos event leaderboard in the Gazette: track who scored the most hits during each chaos event type that night
 - Chaos Vol. 2: more cross-system interactions — Poop Party + Crime Wave (all poops generate 2× heat), Golden Rain + Kingpin (Kingpin's tribute doubles during golden rain)

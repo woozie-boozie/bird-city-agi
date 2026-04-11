@@ -213,6 +213,7 @@
     { id: 'comet_trail',         name: 'Comet Trail',          emoji: '☄️',  cost: 2, desc: 'Golden sparkle trail behind your movement for 6 min', dur: '6 min' },
     { id: 'oracle_eye',          name: 'Oracle Eye',           emoji: '🔮', cost: 2, desc: 'See all hidden items on the minimap for 4 min', dur: '4 min' },
     { id: 'star_power',          name: 'Star Power',           emoji: '🌟', cost: 3, desc: '+50% all XP and coins for 8 min — stacks with every multiplier', dur: '8 min' },
+    { id: 'lunar_lens',          name: 'Lunar Lens',           emoji: '🌙', cost: 3, desc: 'Reveals ALL sewer loot caches on your minimap for 2 min — find them above ground!', dur: '2 min' },
     { id: 'constellation_badge', name: 'Constellation Badge',  emoji: '🌌', cost: 5, desc: 'Permanent 🌌 nametag badge — the rarest cosmetic in Bird City', dur: 'Forever' },
   ];
 
@@ -1332,6 +1333,28 @@
     }
     if (ev.type === 'crime_wave_start_global') {
       addEventMessage('🚨 CRIME WAVE ERUPTS ACROSS BIRD CITY! 2× heat · 2× crime rewards · Extra cops!', '#ff4444');
+    }
+    // Radio Tower × Crime Wave: forced auto-broadcast
+    if (ev.type === 'tower_broadcast' && ev.isCrimeWaveForced) {
+      showAnnouncement(`📻 PIGEON RADIO: ${ev.ownerName} says:\n"${ev.message}"`, ev.ownerColor || '#ff8844', 5000);
+      addEventMessage(`📻 [CRIME WAVE BROADCAST] ${ev.ownerName}: "${ev.message}"`, ev.ownerColor || '#ff8844');
+    }
+    // Blackout + Ghost Mode full invisibility announcement
+    if (ev.type === 'blackout_ghost_combo' && ev.birdId === myId) {
+      effects.push({ type: 'screen_shake', intensity: 6, duration: 500, time: now });
+      showAnnouncement('🌑👻 BLACKOUT + GHOST MODE!\nYou are FULLY INVISIBLE — cops, Bounty Hunter,\neverything. 15 seconds of complete freedom!', '#44aaff', 6000);
+    }
+    // Gang War + Crow Cartel synergy
+    if (ev.type === 'gang_war_cartel_synergy') {
+      if (ev.cityWide) {
+        // City-wide first-discovery announcement
+        effects.push({ type: 'screen_shake', intensity: 5, duration: 400, time: now });
+        showAnnouncement(`⚔️🐦‍⬛ GANG WAR × CARTEL RAID!\n${ev.birdName} discovered the synergy!\n2× XP vs the Cartel — your enemies share an enemy!`, '#ff8844', 5000);
+        addEventMessage(`⚔️🐦‍⬛ GANG WAR × CARTEL RAID — 2× XP for fighting Cartel! Shared enemy bonus active in ${ev.zoneName}!`, '#ff8844');
+      } else if (ev.birdId === myId) {
+        // Personal notice on subsequent hits
+        addEventMessage('⚔️🐦‍⬛ 2× XP vs Cartel! (Gang War synergy)', '#ff8844');
+      }
     }
     if (ev.type === 'crime_wave_end') {
       addEventMessage('🚔 The crime wave subsides. Officers stand down.', '#ff8888');
@@ -3016,8 +3039,8 @@
     if (ev.type === 'tower_expired') {
       addEventMessage('📡 The Radio Tower signal cut out — ' + (ev.ownerName || 'nobody') + '\'s broadcast has ended.', '#888888');
     }
-    if (ev.type === 'tower_broadcast') {
-      // Big overlay-style announcement for broadcasts
+    if (ev.type === 'tower_broadcast' && !ev.isCrimeWaveForced) {
+      // Big overlay-style announcement for broadcasts (skip if this is the crime wave auto-broadcast — handled separately above)
       showAnnouncement('📻 PIGEON RADIO: ' + ev.message, ev.ownerColor || '#44aaff', 6000);
       addEventMessage('📻 ' + ev.message, ev.ownerColor || '#44aaff');
       if (ev.broadcastType === 'signal_boost') {
@@ -8598,6 +8621,30 @@
       Renderer.drawManholesOnMinimap(minimapCtx, worldData, worldData.manholes, gameState.self && gameState.self.inSewer);
     }
 
+    // Lunar Lens: reveal all sewer loot caches on minimap even when above ground
+    const now_mm = Date.now();
+    if (gameState.self && gameState.self.lunarLensUntil > now_mm && gameState.sewerLoot && gameState.sewerLoot.length > 0) {
+      for (const loot of gameState.sewerLoot) {
+        const mx = (loot.x / worldData.WORLD_WIDTH) * minimapCanvas.width;
+        const my = (loot.y / worldData.WORLD_HEIGHT) * minimapCanvas.height;
+        // Pulsing cyan dot with coin amount label
+        const pulse = 0.6 + 0.4 * Math.sin(now_mm * 0.005 + loot.x * 0.01);
+        minimapCtx.globalAlpha = pulse;
+        minimapCtx.fillStyle = '#44eedd';
+        minimapCtx.beginPath();
+        minimapCtx.arc(mx, my, 3.5, 0, Math.PI * 2);
+        minimapCtx.fill();
+        // Tiny glow ring
+        minimapCtx.globalAlpha = pulse * 0.3;
+        minimapCtx.strokeStyle = '#88ffee';
+        minimapCtx.lineWidth = 1.5;
+        minimapCtx.beginPath();
+        minimapCtx.arc(mx, my, 5.5, 0, Math.PI * 2);
+        minimapCtx.stroke();
+        minimapCtx.globalAlpha = 1;
+      }
+    }
+
     // Golden egg scramble on minimap
     if (gameState.eggScramble || gameState.eggNestZones) {
       Renderer.drawEggScrambleOnMinimap(minimapCtx, worldData, gameState.eggScramble || null, gameState.eggNestZones || null);
@@ -9351,6 +9398,7 @@
       if (item.id === 'comet_trail')    isActive = s.cometTrailUntil > now;
       if (item.id === 'oracle_eye')     isActive = s.oracleEyeUntil > now;
       if (item.id === 'star_power')     isActive = s.starPowerUntil > now;
+      if (item.id === 'lunar_lens')     isActive = s.lunarLensUntil > now;
       const canAfford = fish >= item.cost && !alreadyOwned;
 
       const div = document.createElement('div');
@@ -10058,11 +10106,21 @@
       const mm = Math.floor(secs / 60), ss = secs % 60;
       html += `<div class="bm-buff-pill" style="background:rgba(60,50,0,0.9);border-color:#ffd700;color:#ffe044;font-weight:bold;animation:kingpinGlow 0.7s ease-in-out infinite alternate;">🌟 STAR POWER +50% XP &amp; COINS — ${mm}m ${ss}s</div>`;
     }
+    if (s.lunarLensUntil && s.lunarLensUntil > now) {
+      const secs = Math.ceil((s.lunarLensUntil - now) / 1000);
+      const mm = Math.floor(secs / 60), ss = secs % 60;
+      html += `<div class="bm-buff-pill" style="background:rgba(0,20,50,0.9);border-color:#88aaff;color:#aaccff;animation:kingpinGlow 1.4s ease-in-out infinite alternate;">🌙 LUNAR LENS — ${mm}m ${ss}s · Sewer caches revealed on minimap</div>`;
+    }
 
     // Crime Wave — city-wide danger indicator
     if (s.crimeWave) {
       const cwLeft = Math.max(0, Math.ceil((s.crimeWave.endsAt - now) / 1000));
-      html += `<div class="bm-buff-pill" style="background:rgba(120,0,0,0.9);border-color:#ff2222;color:#ff6666;font-weight:bold;animation:pulseRed 0.6s infinite alternate;">🚨 CRIME WAVE — ${cwLeft}s · 2× heat &amp; coins!</div>`;
+      const isPoopParty = gameState.chaosEvent && gameState.chaosEvent.type === 'poop_party';
+      if (isPoopParty) {
+        html += `<div class="bm-buff-pill" style="background:rgba(120,0,60,0.9);border-color:#ff44ff;color:#ffaaff;font-weight:bold;animation:pulseRed 0.4s infinite alternate;">🎉🚨 POOP PARTY + CRIME WAVE — ${cwLeft}s · AOE MEGA · 3× HEAT — BE CAREFUL!</div>`;
+      } else {
+        html += `<div class="bm-buff-pill" style="background:rgba(120,0,0,0.9);border-color:#ff2222;color:#ff6666;font-weight:bold;animation:pulseRed 0.6s infinite alternate;">🚨 CRIME WAVE — ${cwLeft}s · 2× heat &amp; coins!</div>`;
+      }
     }
 
     // Active Chaos Event pills

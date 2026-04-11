@@ -507,6 +507,7 @@ class GameEngine {
       { id: 'comet_trail',        name: 'Comet Trail',         emoji: '☄️',  cost: 2, desc: 'Leave a golden sparkle trail for 6 min' },
       { id: 'oracle_eye',         name: 'Oracle Eye',          emoji: '🔮', cost: 2, desc: 'See all hidden items on the minimap for 4 min' },
       { id: 'star_power',         name: 'Star Power',          emoji: '🌟', cost: 3, desc: '+50% all XP and coins for 8 min' },
+      { id: 'lunar_lens',         name: 'Lunar Lens',          emoji: '🌙', cost: 3, desc: 'Reveals ALL sewer loot caches on your minimap for 2 min' },
       { id: 'constellation_badge',name: 'Constellation Badge', emoji: '🌌', cost: 5, desc: 'Permanent 🌌 nametag badge — rarest cosmetic in the game' },
     ];
 
@@ -888,6 +889,7 @@ class GameEngine {
       stardustCloakUntil: 0,   // timed: shimmering aurora aura around bird
       cometTrailUntil:    0,   // timed: golden sparkle trail
       oracleEyeUntil:     0,   // timed: see all hidden items on minimap
+      lunarLensUntil:    0,   // timed: see all sewer loot caches on minimap
       starPowerUntil:     0,   // timed: +50% XP and coins
     };
 
@@ -3056,6 +3058,31 @@ class GameEngine {
         crow.hp -= dmg;
         xpGain = isMegaPoop ? (isDon ? 80 : 55) : (isDon ? 35 : 25);
         bird.coins += isDon ? 8 : 4;
+        // GANG WAR × CROW CARTEL: shared enemy bonus — if any gang war is active, 2× XP vs Cartel
+        const gangWarActive = Array.from(this.gangs.values()).some(g => g.warWithGangId && now < g.warEndsAt);
+        if (gangWarActive) {
+          xpGain *= 2;
+          bird.coins += isDon ? 4 : 2;
+          // Announce the synergy: city-wide on first discovery, personal on subsequent hits
+          const raidKey = `gw_cartel_${this.crowCartel.raidId || 'raid'}`;
+          if (!this._gangWarCartelAnnounced) this._gangWarCartelAnnounced = new Set();
+          if (!this._gangWarCartelAnnounced.has(raidKey)) {
+            // First discovery: city-wide announcement
+            this._gangWarCartelAnnounced.add(raidKey);
+            this.events.push({
+              type: 'gang_war_cartel_synergy',
+              cityWide: true,
+              birdName: bird.name, gangTag: bird.gangTag || null,
+              zoneName: this.crowCartel.targetZoneName || 'the zone',
+            });
+          }
+          // Also always tell the hitting bird personally (so they see the 2× XP note)
+          const birdKey = `${raidKey}_${bird.id}`;
+          if (!this._gangWarCartelAnnounced.has(birdKey)) {
+            this._gangWarCartelAnnounced.add(birdKey);
+            this.events.push({ type: 'gang_war_cartel_synergy', birdId: bird.id });
+          }
+        }
 
         this.events.push({
           type: 'cartel_crow_hit',
@@ -3220,6 +3247,8 @@ class GameEngine {
         if (this.crimeWave) heatAmt *= 2;
         // Blizzard × Crime Wave: snowball poops generate EXTRA heat — the cold makes crime sting
         if (this.crimeWave && this.weather && this.weather.type === 'blizzard') heatAmt *= 2;
+        // Poop Party × Crime Wave: AOE carnage during crime wave = 3× heat total (dangerous combo!)
+        if (this.crimeWave && this.chaosEvent && this.chaosEvent.type === 'poop_party') heatAmt = Math.floor(heatAmt * 1.5); // ×2 from crime wave × 1.5 more = ×3 total
         this._addHeat(bird.id, heatAmt);
       }
       this._addAreaChaos(poop.x, poop.y, 1);
@@ -6056,6 +6085,7 @@ class GameEngine {
         cometTrailUntil: bird.cometTrailUntil || 0,
         oracleEyeUntil: bird.oracleEyeUntil || 0,
         starPowerUntil: bird.starPowerUntil || 0,
+        lunarLensUntil: bird.lunarLensUntil || 0,
         nearNightMarket: (() => {
           if (!this.nightMarket) return false;
           const dx = bird.x - this.nightMarket.x;
@@ -6240,7 +6270,7 @@ class GameEngine {
       sewerRats: bird.inSewer
         ? Array.from(this.sewerRats.values()).map(r => ({ id: r.id, x: r.x, y: r.y, rotation: r.rotation, state: r.state }))
         : [],
-      sewerLoot: bird.inSewer
+      sewerLoot: (bird.inSewer || (bird.lunarLensUntil || 0) > now)
         ? Array.from(this.sewerLoot.values()).filter(l => l.available).map(l => ({ id: l.id, x: l.x, y: l.y, value: l.value }))
         : [],
       graffiti: Array.from(this.graffiti.entries())
@@ -8497,6 +8527,9 @@ class GameEngine {
       case 'star_power':
         bird.starPowerUntil = now + 8 * 60000;      // 8 minutes
         break;
+      case 'lunar_lens':
+        bird.lunarLensUntil = now + 2 * 60000;      // 2 minutes — reveals all sewer caches
+        break;
       case 'constellation_badge':
         bird.constellationBadge = true;
         this.events.push({ type: 'constellation_badge_earned', birdId: bird.id, birdName: bird.name,
@@ -9392,6 +9425,28 @@ class GameEngine {
       if (this.copBirds.size > 0) this.copBirds.clear();
       return;
     }
+
+    // BLACKOUT + GHOST MODE = FULL INVISIBILITY: no new spawns, all cops go blind-wander mode
+    const blackoutActive = !!(this.chaosEvent && this.chaosEvent.type === 'blackout');
+    const ghostModeActive = !!(wpBird && wpBird.mcGhostModeUntil > now);
+    const fullInvisCombo = blackoutActive && ghostModeActive;
+    if (fullInvisCombo) {
+      // Announce the combo the first tick it activates
+      if (!this._blackoutGhostAnnounced) {
+        this._blackoutGhostAnnounced = true;
+        this.events.push({ type: 'blackout_ghost_combo', birdId: this.wantedBirdId, birdName: wpBird.name });
+      }
+      // All cops drift completely aimlessly and can't arrest
+      for (const cop of this.copBirds.values()) {
+        cop.ghostDriftAngle = (cop.ghostDriftAngle || Math.random() * Math.PI * 2) + (Math.random() - 0.5) * 1.8 * dt * 3;
+        cop.x += Math.cos(cop.ghostDriftAngle) * cop.speed * 0.35 * dt;
+        cop.y += Math.sin(cop.ghostDriftAngle) * cop.speed * 0.35 * dt;
+        cop.x = Math.max(10, Math.min(world.WORLD_WIDTH - 10, cop.x));
+        cop.y = Math.max(10, Math.min(world.WORLD_HEIGHT - 10, cop.y));
+      }
+      return; // Skip spawning and arrest checks entirely
+    }
+    if (!fullInvisCombo) this._blackoutGhostAnnounced = false;
 
     // Count current cops (excluding stunned-for-good ones)
     const activeCops = Array.from(this.copBirds.values()).filter(c => c.targetBirdId === this.wantedBirdId);
@@ -12979,6 +13034,7 @@ class GameEngine {
       if (allGone) {
         this.crowCartel = null;
         this.crowCartelTimer = now + this._randomRange(20 * 60000, 35 * 60000);
+        if (this._gangWarCartelAnnounced) this._gangWarCartelAnnounced.clear();
       }
     }
   }
@@ -13854,7 +13910,18 @@ class GameEngine {
 
     // NOTE: Smoke bomb does NOT work on Bounty Hunter — he's a professional, not a city cop.
     // He tracks by scent, not sight. Ghost Mode from Mystery Crate DOES partially work (40% not tracked).
+    // EXCEPTION: Blackout + Ghost Mode = FULL INVISIBILITY — even the BH can't track you.
     const ghostActive = wanted.mcGhostModeUntil > now;
+    const bhBlackout = !!(this.chaosEvent && this.chaosEvent.type === 'blackout');
+    if (ghostActive && bhBlackout) {
+      // Full invisibility combo — BH completely loses scent in the darkness
+      bh.wanderAngle = (bh.wanderAngle !== undefined ? bh.wanderAngle : Math.atan2(dy, dx)) + (Math.random() - 0.5) * 2.0;
+      bh.x += Math.cos(bh.wanderAngle) * 60 * dt;
+      bh.y += Math.sin(bh.wanderAngle) * 60 * dt;
+      bh.x = Math.max(10, Math.min(world.WORLD_WIDTH - 10, bh.x));
+      bh.y = Math.max(10, Math.min(world.WORLD_HEIGHT - 10, bh.y));
+      return;
+    }
     if (ghostActive && Math.random() < 0.40) {
       // Ghost mode gives a 40% chance each tick of the BH losing the scent briefly
       bh.wanderAngle = (bh.wanderAngle !== undefined ? bh.wanderAngle : Math.atan2(dy, dx)) + (Math.random() - 0.5) * 1.0;
@@ -14225,6 +14292,25 @@ class GameEngine {
       }
       // Also fire a single city-wide event for the feed
       this.events.push({ type: 'crime_wave_start_global', endsAt: this.crimeWave.endsAt });
+      // RADIO TOWER × CRIME WAVE: if someone owns the tower, auto-broadcast a crime taunt
+      if (this.radioTower.state === 'owned' && this.radioTower.ownerId && this.radioTower.ownerName) {
+        const CRIME_TAUNTS = [
+          "BIRD CITY IS BURNING — and I'm ON AIR!",
+          "Crime pays. Come find me if you want some.",
+          "The law is BLIND tonight. I made sure of it.",
+          "All cops report: YOU'RE ON MY TURF NOW.",
+          "This city belongs to whoever's bold enough to take it.",
+        ];
+        const taunt = CRIME_TAUNTS[Math.floor(Math.random() * CRIME_TAUNTS.length)];
+        this.events.push({
+          type: 'tower_broadcast',
+          subType: 'taunt',
+          ownerName: this.radioTower.ownerName,
+          ownerColor: this.radioTower.ownerColor,
+          message: taunt,
+          isCrimeWaveForced: true,
+        });
+      }
       // Track for gazette
       this.gazetteStats.crimeWaves++;
       // Reset timer for next crime wave: 40–60 minutes after this one ends
