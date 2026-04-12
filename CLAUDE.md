@@ -2617,6 +2617,54 @@ The Kingpin's Royal Decree system gets four dramatic expansions that complete it
 
 **Creative intent**: The King's Pardon creates the most unexpected social moment yet — the Kingpin choosing to USE their decree to help a criminal instead of themselves. It's a deeply political act that the whole city watches. Pardoning a gang ally mid-Bounty Hunter chase is a coordinated gang play. Pardoning a rival to buy goodwill is diplomacy. The People's Revolt turns Tax Day from "take coins and endure" to "take coins and brace for uprising" — the Kingpin watches three birds converging with the same purpose, knowing one more hit ends their reign by popular demand. Tax Day is now the most DRAMATIC decree because of what it might trigger. The cross-system synergies wire Decrees into two more systems: gang wars and crime waves now have direct responses to royal power. Pure SOCIAL + CARNAGE + SPECTACLE energy — the city now has a revolution mechanic.
 
+**Session 79 — 2026-04-12: The Royal Court — Bird City's Noble Hierarchy**
+Bird City now has a full aristocracy beneath the crown. The top-3 richest non-Kingpin birds earn noble titles — Duke, Baron, Count — with visible gold/silver/bronze nametag badges, passive tribute income, and city-wide announcements when titles change hands. Plus two Kingpin power upgrades.
+
+**Royal Court System (`server/game.js`):**
+- Every 5 seconds (alongside Kingpin check), server finds top-3 richest non-Kingpin birds with ≥100 coins
+- Top bird = **👑 DUKE** (gold), 2nd = **🥈 BARON** (silver), 3rd = **🥉 COUNT** (bronze)
+- Passive income: +10 coins every 30 seconds per court member — the city's nobility earns tribute too
+- `court_titled` event fires when a bird earns a new or different title — city-wide announcement + screen shake
+- `court_lost_title` fires when someone loses their noble status (their coins dropped below the threshold or the Kingpin takes it)
+- Court members and their coins visible to all in the **Royal Court Board** (HUD panel left-side, below Most Wanted Board)
+- `courtTitle` field added to other-birds snapshot — badge visible on ALL nearby birds' nametags
+- `myCourtTitle` in self-snapshot — drives the active buffs HUD noble pill
+
+**Nametag badges (`sprites.js`):**
+- New `courtTitle` parameter added to `drawNameTag`
+- Duke: dark gold background, `#d4a800` border, `#ffd700` glow — brightest gold in the nametag stack
+- Baron: dark silver-blue background, `#9090a0` border, `#c8c8d0` text
+- Count: dark bronze background, `#9a6535` border, `#cd8c5a` text
+- Renders BELOW the eagle feather and constellation badge, ABOVE the gang tag — perfectly positioned in the existing badge stack
+
+**Royal Court Board HUD:**
+- `#royalCourtBoard`: fixed left-side panel below the Most Wanted Board, auto-positioned via JS
+- Shows "⚜️ ROYAL COURT" title + 3 rows (title emoji + title name + bird name + coins)
+- Your own entry highlighted with "👈" indicator — you see yourself in the nobility register
+- Animated gold border glow — distinct from the red crime board above
+- Hides when court is empty (nobody has 100+ coins other than the Kingpin)
+
+**Active Buffs HUD court pill:**
+- Duke: pulsing gold `👑 DUKE — Noble tribute flows every 30s`
+- Baron: slow-pulse silver `🥈 BARON — Noble tribute flows every 30s`
+- Count: gentle-pulse bronze `🥉 COUNT — Noble tribute flows every 30s`
+- Each with distinct animation speed and color — the hierarchy is visible at a glance
+
+**Prestige Kingpin (simple but powerful):**
+- P5 LEGEND birds who take the crown now start with **2 Royal Decrees per tenure** instead of 1
+- Kingpin crowned announcement now shows "⚜️⚜️⚜️⚜️⚜️ LEGEND KING — 2 ROYAL DECREES this tenure!" for both the new Kingpin and all observers
+- The second decree is a massive incentive for LEGEND players to actively compete for the crown
+
+**The People's March upgrade:**
+- When 5+ unique birds (instead of 3) participate in the Tax Day revolt: **The People's March** triggers
+- Loot: 60% of Kingpin's coins split equally (vs 40% for normal revolt) — mob justice bonus
+- XP: 350 per participant (vs 250 for normal revolt)
+- Coin cap raised to 1200c max (vs 800c) — the bigger the mob, the bigger the haul
+- Special city-wide announcement: "✊ THE PEOPLE'S MARCH! N birds seize 60% loot!"
+- Gazette headline: "THE PEOPLE'S MARCH — N BIRDS SEIZE THE CROWN"
+
+**Creative intent**: The Royal Court creates a new social tier that didn't exist before. Being the Kingpin was always the goal — but now the Duke, Baron, and Count are visible to every bird on the server. Rich players who aren't the Kingpin now have status AND passive income. Two gangs competing for the Duke position (to see their gang tag next to the gold crown badge) is a new form of rivalry. The People's March upgrade makes large-scale revolts dramatically more rewarding — organizing 5 birds to revolt simultaneously is hard, but a 60% loot split makes it worth coordinating. A P5 LEGEND Kingpin with 2 decrees can reshape the city twice per tenure — issue Gold Rush then wait for a Crime Wave for a 4× coin moment, THEN drop a second Gold Rush on top of it. Pure SOCIAL + PROGRESSION + SPECTACLE energy — Bird City now has full feudal hierarchy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -2816,10 +2864,14 @@ Built the Territory Control System on top of the existing upstream code:
 - Kingpin Prestige: after holding the crown for 5+ minutes, unlock a "Kingpin" title badge that persists (like Mafia Rep) — earnable once per session
 - King's Pardon × Alliance system: if Kingpin pardons a gang member, that gang gets a 2-minute territory capture speed boost (political alliance bonus)
 - Royal Decree daily challenge: "Revolutionary — participate in a People's Revolt" — DONE Session 78
-- "The People's March" upgrade: if revolt has 5+ unique participants instead of 3, Kingpin loses 60% coins instead of 40% (mob justice)
+- ~~"The People's March" upgrade: if revolt has 5+ unique participants instead of 3, Kingpin loses 60% coins instead of 40% (mob justice)~~ (DONE Session 79 — 5+ birds = 60% loot + 350 XP each)
 - Decree cooldown transparency: minimap tooltip on [O] shows when next decree will be available (tenure-based clarity)
-- Prestige Kingpin mechanic: P5 LEGEND Kingpins get 2 decrees per tenure instead of 1 (legendary authority)
-- Royal Court: top-3 richest birds that AREN'T the Kingpin get "Duke/Baron/Count" titles and earn 10c tribute every 30s (minor nobility around the crown)
+- ~~Prestige Kingpin mechanic: P5 LEGEND Kingpins get 2 decrees per tenure instead of 1 (legendary authority)~~ (DONE Session 79)
+- ~~Royal Court: top-3 richest birds that AREN'T the Kingpin get "Duke/Baron/Count" titles and earn 10c tribute every 30s (minor nobility around the crown)~~ (DONE Session 79)
 - Double-elimination tournament: losers bracket gives everyone a second chance in the Fighting Championship
 - Seasonal city transformation: Cherry Blossoms event — 7-day visual overlay with pink petals falling, unique spring food items, and a special Blossom Viewing festival event at the park pond
 - Graffiti mural: multi-building mega art requires 3+ gang members to paint simultaneously across a whole city block — persistent visual landmark when complete
+- Royal Court × Gang War: Court members who join a gang war get +15% coin bonus on gang war kills (nobility fights back)
+- Royal Court × Kingpin Dethronement: if the Kingpin is dethroned and a Court member becomes the new Kingpin, the Duke's "ascension" is announced city-wide with extra fanfare
+- Duke's Challenge: the Duke can issue one daily mini-challenge to the city (e.g., "first to poop 3 cars earns 50c from me") — spending from their own coins, creating a mini-economy of noble challenges
+- Seasonal Cherry Blossoms: park fills with pink petal effects during spring events

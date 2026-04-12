@@ -106,7 +106,7 @@ window.Sprites = {
   },
 
   // === NAME TAG ===
-  drawNameTag(ctx, x, y, name, level, type, isPlayer, mafiaTitle, gangTag, gangColor, tattoosEquipped, prestige, eagleFeather, idolBadge, royaleChampBadge, skillTreeMaster, fightingChampBadge, constellationBadge) {
+  drawNameTag(ctx, x, y, name, level, type, isPlayer, mafiaTitle, gangTag, gangColor, tattoosEquipped, prestige, eagleFeather, idolBadge, royaleChampBadge, skillTreeMaster, fightingChampBadge, constellationBadge, courtTitle) {
     const text = `${name} [Lv.${level}]`;
     ctx.font = 'bold 11px Courier New';
     ctx.textAlign = 'center';
@@ -246,6 +246,30 @@ window.Sprites = {
       ctx.shadowBlur = 0;
       ctx.font = 'bold 11px Courier New';
       offsetY += 14;
+    }
+
+    // Royal Court title badge — Duke (gold), Baron (silver), Count (bronze)
+    if (courtTitle) {
+      const COURT_EMOJIS = { Duke: '👑', Baron: '🥈', Count: '🥉' };
+      const COURT_COLORS = { Duke: '#ffd700', Baron: '#c8c8d0', Count: '#cd8c5a' };
+      const COURT_BG = { Duke: 'rgba(55,38,0,0.93)', Baron: 'rgba(35,35,45,0.93)', Count: 'rgba(48,28,8,0.93)' };
+      const COURT_BORDER = { Duke: '#d4a800', Baron: '#9090a0', Count: '#9a6535' };
+      ctx.font = '10px serif';
+      const emoji = COURT_EMOJIS[courtTitle] || '';
+      const cStr = `${emoji} ${courtTitle.toUpperCase()}`;
+      const cw = ctx.measureText(cStr).width + 10;
+      ctx.fillStyle = COURT_BG[courtTitle] || 'rgba(30,30,30,0.90)';
+      ctx.fillRect(x - cw / 2, y - 52 - offsetY, cw, 14);
+      ctx.strokeStyle = COURT_BORDER[courtTitle] || '#888';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(x - cw / 2, y - 52 - offsetY, cw, 14);
+      ctx.shadowColor = COURT_COLORS[courtTitle] || '#fff';
+      ctx.shadowBlur = courtTitle === 'Duke' ? 8 : 5;
+      ctx.fillStyle = COURT_COLORS[courtTitle] || '#fff';
+      ctx.fillText(cStr, x, y - 41 - offsetY);
+      ctx.shadowBlur = 0;
+      ctx.font = 'bold 11px Courier New';
+      offsetY += 15;
     }
 
     // Gang tag badge

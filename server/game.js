@@ -323,6 +323,12 @@ class GameEngine {
     this.kingpinCheckTimer = 0;
     this.kingpinDecree = null; // { type, endsAt, kingpinId, kingpinName } — active city-wide decree
 
+    // === ROYAL COURT ===
+    // Top-3 richest birds who aren't the Kingpin earn noble titles: Duke, Baron, Count
+    // Each earns +10 coins passive tribute every 30s. Titles visible on nametags.
+    this.royalCourt = []; // [{ birdId, birdName, gangTag, gangColor, prestige, title, coins, lastTribute }]
+    this.royalCourtCheckTimer = 0;
+
     // === DETHRONEMENT POOL (City Hall Bounty Board) ===
     // Any bird can contribute coins to this pool. When the Kingpin is dethroned,
     // the entire pool goes to the bird who lands the killing 3rd hit.
@@ -1480,6 +1486,7 @@ class GameEngine {
 
     // === Kingpin System ===
     this._updateKingpin(now);
+    this._updateRoyalCourt(now);
     this._updateKingpinDecree(now);
     this._tickRevoltWindow(now);
 
@@ -5495,6 +5502,7 @@ class GameEngine {
           fightingChampBadge: b.fightingChampBadge || false,
           skillTreeMaster: b.skillTreeMaster || false,
           constellationBadge: b.constellationBadge || false,
+          courtTitle: (() => { const cm = this.royalCourt.find(m => m.birdId === b.id); return cm ? cm.title : null; })(),
           stardustCloakUntil: b.stardustCloakUntil || 0,
           cometTrailUntil: b.cometTrailUntil || 0,
           isFlu: b.fluUntil > now,
@@ -6151,6 +6159,8 @@ class GameEngine {
         // Kingpin: are YOU the kingpin?
         isKingpin: this.kingpin ? this.kingpin.birdId === bird.id : false,
         kingpinDecreesAvailable: (this.kingpin && this.kingpin.birdId === bird.id) ? (this.kingpin.decreesAvailable || 0) : 0,
+        // Royal Court: what noble title do YOU hold (if any)?
+        myCourtTitle: (() => { const cm = this.royalCourt.find(m => m.birdId === bird.id); return cm ? cm.title : null; })(),
         // Gang
         gangId: bird.gangId,
         gangName: bird.gangName,
@@ -6224,6 +6234,15 @@ class GameEngine {
         endsAt: this.kingpinDecree.endsAt,
         kingpinName: this.kingpinDecree.kingpinName,
       } : null,
+      // Royal Court — top-3 richest non-Kingpin birds with noble titles
+      royalCourt: this.royalCourt.map(m => ({
+        birdId: m.birdId,
+        birdName: m.birdName,
+        gangTag: m.gangTag,
+        gangColor: m.gangColor,
+        title: m.title,
+        coins: m.coins,
+      })),
       // Dethronement Pool (City Hall Bounty Board)
       dethronementPool: {
         total: this.dethronementPool.total,
@@ -11928,7 +11947,7 @@ class GameEngine {
           hitCount: new Map(),
           lastPassiveReward: now,
           champShieldActive: champShield, // Royale Champion absorbs the FIRST dethronement hit
-          decreesAvailable: 1, // One Royal Decree per tenure
+          decreesAvailable: (richestBird.prestige >= 5) ? 2 : 1, // P5 LEGEND Kingpins get 2 decrees!
         };
         this.gazetteStats.kingpinCount++;
         this.events.push({
@@ -11937,6 +11956,7 @@ class GameEngine {
           birdName: richestBird.name,
           coins: richestBird.coins,
           champShield: champShield,
+          isLegend: richestBird.prestige >= 5,
         });
       } else if (this.kingpin.birdId !== richestBird.id) {
         // Richer bird is now online — crown passes automatically (bloodless transfer)
@@ -11950,7 +11970,7 @@ class GameEngine {
           hitCount: new Map(),
           lastPassiveReward: now,
           champShieldActive: champShield,
-          decreesAvailable: 1, // Fresh crown = fresh decree
+          decreesAvailable: (richestBird.prestige >= 5) ? 2 : 1, // P5 LEGEND gets 2 decrees!
         };
         this.gazetteStats.kingpinCount++;
         this.events.push({
@@ -11984,6 +12004,90 @@ class GameEngine {
           birdId: kBird.id,
           birdName: kBird.name,
           amount: 20,
+        });
+      }
+    }
+  }
+
+  // ============================================================
+  // ROYAL COURT SYSTEM
+  // Top-3 richest birds (excluding the Kingpin) earn noble titles.
+  // Each earns +10c passive tribute every 30s. Visible on nametags.
+  // ============================================================
+
+  _updateRoyalCourt(now) {
+    if (now - this.royalCourtCheckTimer < 5000) return;
+    this.royalCourtCheckTimer = now;
+
+    const TITLES = ['Duke', 'Baron', 'Count'];
+    const MIN_COINS = 100;
+
+    // Find top-3 richest non-Kingpin, non-AFK birds with >= 100 coins
+    const candidates = [];
+    for (const b of this.birds.values()) {
+      if (b.inNest) continue;
+      if (this.kingpin && b.id === this.kingpin.birdId) continue;
+      if (b.coins >= MIN_COINS) candidates.push(b);
+    }
+    candidates.sort((a, b) => b.coins - a.coins);
+    const topThree = candidates.slice(0, 3);
+
+    const newCourt = topThree.map((b, i) => {
+      const existing = this.royalCourt.find(m => m.birdId === b.id);
+      return {
+        birdId: b.id,
+        birdName: b.name,
+        gangTag: b.gangTag || null,
+        gangColor: b.gangColor || null,
+        prestige: b.prestige || 0,
+        title: TITLES[i],
+        coins: b.coins,
+        lastTribute: existing ? existing.lastTribute : now,
+      };
+    });
+
+    // Fire events for newly titled birds or title changes
+    for (const nm of newCourt) {
+      const old = this.royalCourt.find(m => m.birdId === nm.birdId);
+      if (!old || old.title !== nm.title) {
+        this.events.push({
+          type: 'court_titled',
+          birdId: nm.birdId,
+          birdName: nm.birdName,
+          gangTag: nm.gangTag,
+          title: nm.title,
+        });
+      }
+    }
+
+    // Fire events for birds who LOST their title
+    for (const old of this.royalCourt) {
+      if (!newCourt.find(m => m.birdId === old.birdId)) {
+        this.events.push({
+          type: 'court_lost_title',
+          birdId: old.birdId,
+          birdName: old.birdName,
+          title: old.title,
+        });
+      }
+    }
+
+    this.royalCourt = newCourt;
+
+    // Passive tribute: +10 coins every 30s per court member
+    for (const member of this.royalCourt) {
+      const b = this.birds.get(member.birdId);
+      if (!b) continue;
+      if (now - member.lastTribute >= 30000) {
+        b.coins += 10;
+        member.coins = b.coins;
+        member.lastTribute = now;
+        this.events.push({
+          type: 'court_tribute',
+          birdId: b.id,
+          birdName: b.name,
+          title: member.title,
+          amount: 10,
         });
       }
     }
@@ -12333,10 +12437,15 @@ class GameEngine {
       .map(id => this.birds.get(id))
       .filter(b => b != null);
 
-    // Kingpin loses 40% of coins — higher than normal 28% dethronement
+    // People's March upgrade: 5+ unique participants = 60% loot (the mob justice bonus)
+    const isPeoplesMarch = participants.length >= 5;
+    const lootPct = isPeoplesMarch ? 0.60 : 0.40;
+    const xpBonus = isPeoplesMarch ? 350 : 250;
+
+    // Kingpin loses 40% (or 60% if The People's March fires) of coins
     let totalLoot = 0;
     if (kBird) {
-      totalLoot = Math.min(800, Math.max(100, Math.floor(kBird.coins * 0.40)));
+      totalLoot = Math.min(isPeoplesMarch ? 1200 : 800, Math.max(100, Math.floor(kBird.coins * lootPct)));
       kBird.coins = Math.max(0, kBird.coins - totalLoot);
       kBird.stunnedUntil = now + 3000;
       kBird.comboCount = 0;
@@ -12347,7 +12456,7 @@ class GameEngine {
     const participantNames = [];
     for (const p of participants) {
       p.coins += lootShare;
-      p.xp += 250;
+      p.xp += xpBonus;
       participantNames.push(p.name);
       this._trackDailyProgress(p, 'revolt_participant', 1);
       // Check level-up
@@ -12384,13 +12493,14 @@ class GameEngine {
       totalLoot,
       lootShare,
       poolShare,
+      isPeoplesMarch,
     });
 
     // Epic screen shake for everyone
     this.events.push({ type: 'kingpin_topple_shockwave', x: kingpinPos.x, y: kingpinPos.y });
 
     // Gazette tracking
-    this.gazetteStats.peoplesRevolt = { kingpinName, participantNames };
+    this.gazetteStats.peoplesRevolt = { kingpinName, participantNames, isPeoplesMarch };
 
     // Immediately check for new kingpin
     this.kingpinCheckTimer = 0;
@@ -13196,15 +13306,23 @@ class GameEngine {
       });
     }
 
-    // People's Revolt headline takes priority over generic decree if it happened
+    // People's Revolt / People's March headline takes priority over generic decree if it happened
     if (stats.peoplesRevolt) {
       const r = stats.peoplesRevolt;
       const names = r.participantNames.slice(0, 3).join(', ');
-      headlines.push({
-        icon: '🏴',
-        headline: `THE MASSES REVOLT — ${r.kingpinName} OVERTHROWN BY THE PEOPLE`,
-        subline: `${names} rose up together after Tax Day was the last straw. The crown fell to the streets.`,
-      });
+      if (r.isPeoplesMarch) {
+        headlines.push({
+          icon: '✊',
+          headline: `THE PEOPLE'S MARCH — ${r.participantNames.length} BIRDS SEIZE THE CROWN`,
+          subline: `${names} and others led a 5-bird uprising. ${r.kingpinName} stripped of 60% wealth. City Hall refuses comment.`,
+        });
+      } else {
+        headlines.push({
+          icon: '🏴',
+          headline: `THE MASSES REVOLT — ${r.kingpinName} OVERTHROWN BY THE PEOPLE`,
+          subline: `${names} rose up together after Tax Day was the last straw. The crown fell to the streets.`,
+        });
+      }
     } else if (stats.royalDecrees && stats.royalDecrees.length > 0) {
       const dec = stats.royalDecrees[0];
       const DECREE_HEADLINES = {

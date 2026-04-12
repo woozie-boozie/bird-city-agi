@@ -844,15 +844,17 @@
       const selfIsKingpin = ev.birdId === myId;
       const shieldNote = ev.champShield ? '\n🏆 ROYALE CHAMPION SHIELD — first hit absorbed!' : '';
       const shieldNoteOther = ev.champShield ? '\n🏆 They have a Champion Shield — takes 4 hits to dethrone!' : '';
+      const legendNote = ev.isLegend ? '\n⚜️⚜️⚜️⚜️⚜️ LEGEND KING — 2 ROYAL DECREES this tenure!' : '';
       if (selfIsKingpin) {
         screenShake(10, 700);
-        showAnnouncement(`👑 YOU ARE THE KINGPIN!\n${ev.coins}c makes you the richest bird.\nYou earn tribute — but you are a TARGET!\n⚜️ Press [O] to issue a ROYAL DECREE!${shieldNote}`, '#ffd700', 5000);
+        const decreeLine = ev.isLegend ? '\n⚜️ Press [O] for 2 ROYAL DECREES (LEGEND POWER)!' : '\n⚜️ Press [O] to issue a ROYAL DECREE!';
+        showAnnouncement(`👑 YOU ARE THE KINGPIN!\n${ev.coins}c makes you the richest bird.\nYou earn tribute — but you are a TARGET!${decreeLine}${shieldNote}`, '#ffd700', 5000);
       } else if (ev.oldKingpin) {
-        addEventMessage(`👑 ${ev.birdName} seized the crown from ${ev.oldKingpin}! (${ev.coins}c)${ev.champShield ? ' 🏆 CHAMPION SHIELD active!' : ''}`, '#ffd700');
-        showAnnouncement(`👑 NEW KINGPIN: ${ev.birdName}!\nPoop them 3× to steal the crown!${shieldNoteOther}`, '#ffd700', 4000);
+        addEventMessage(`👑 ${ev.birdName} seized the crown from ${ev.oldKingpin}! (${ev.coins}c)${ev.champShield ? ' 🏆 CHAMPION SHIELD!' : ''}${ev.isLegend ? ' ⚜️ LEGEND — 2 decrees!' : ''}`, '#ffd700');
+        showAnnouncement(`👑 NEW KINGPIN: ${ev.birdName}!\nPoop them 3× to steal the crown!${shieldNoteOther}${legendNote}`, '#ffd700', 4000);
       } else {
-        addEventMessage(`👑 ${ev.birdName} has been crowned KINGPIN! (${ev.coins}c)${ev.champShield ? ' 🏆 CHAMPION SHIELD active!' : ''}`, '#ffd700');
-        showAnnouncement(`👑 KINGPIN: ${ev.birdName}!\nPoop them 3× to dethrone and loot them!${shieldNoteOther}`, '#ffd700', 4000);
+        addEventMessage(`👑 ${ev.birdName} has been crowned KINGPIN! (${ev.coins}c)${ev.champShield ? ' 🏆 CHAMPION SHIELD!' : ''}${ev.isLegend ? ' ⚜️ LEGEND — 2 decrees!' : ''}`, '#ffd700');
+        showAnnouncement(`👑 KINGPIN: ${ev.birdName}!\nPoop them 3× to dethrone and loot them!${shieldNoteOther}${legendNote}`, '#ffd700', 4000);
       }
       effects.push({ type: 'screen_shake', intensity: 6, duration: 400, time: now });
     }
@@ -1005,12 +1007,47 @@
       window._revoltWindowUntil = null;
       screenShake(22, 1800);
       const names = ev.participantNames.join(', ');
-      showAnnouncement(`🏴 THE PEOPLE REVOLT!\n${ev.kingpinName} has been OVERTHROWN by the masses!\n${names} each earn ${ev.lootShare}c!`, '#ff6622', 8000);
-      addEventFeedMessage(`🏴 REVOLUTION! ${ev.kingpinName} overthrown by ${names}!`, '#ff4422');
+      if (ev.isPeoplesMarch) {
+        showAnnouncement(`✊ THE PEOPLE'S MARCH!\n${ev.participantNames.length} birds OVERTHROW ${ev.kingpinName}!\nMob justice: ${ev.lootShare}c each!\n⚡ 5+ MARCHERS — 60% LOOT SEIZED!`, '#ff4400', 9000);
+        addEventFeedMessage(`✊ THE PEOPLE'S MARCH — ${ev.participantNames.length} birds seize ${ev.totalLoot}c from ${ev.kingpinName}!`, '#ff4400');
+      } else {
+        showAnnouncement(`🏴 THE PEOPLE REVOLT!\n${ev.kingpinName} has been OVERTHROWN by the masses!\n${names} each earn ${ev.lootShare}c!`, '#ff6622', 8000);
+        addEventFeedMessage(`🏴 REVOLUTION! ${ev.kingpinName} overthrown by ${names}!`, '#ff4422');
+      }
     }
     if (ev.type === 'revolt_failed') {
       window._revoltWindowUntil = null;
       addEventFeedMessage(`🏴 The revolt fizzled... only ${ev.count}/${ev.needed} birds joined the uprising.`, '#886644');
+    }
+
+    // === ROYAL COURT EVENTS ===
+    if (ev.type === 'court_titled') {
+      const COURT_EMOJIS = { Duke: '👑', Baron: '🥈', Count: '🥉' };
+      const COURT_COLORS = { Duke: '#ffd700', Baron: '#c8c8d0', Count: '#cd8c5a' };
+      const emoji = COURT_EMOJIS[ev.title] || '';
+      const color = COURT_COLORS[ev.title] || '#ccc';
+      const tag = ev.gangTag ? `[${ev.gangTag}] ` : '';
+      if (ev.birdId === myId) {
+        screenShake(8, 500);
+        showAnnouncement(`${emoji} YOU ARE NOW THE ${ev.title.toUpperCase()} OF BIRD CITY!\nNoble tribute flows to you every 30 seconds!\nStay rich to keep your title.`, color, 6000);
+        addEventMessage(`${emoji} YOU EARNED THE TITLE OF ${ev.title.toUpperCase()}!`, color);
+      } else {
+        addEventMessage(`${emoji} ${tag}${ev.birdName} is now the ${ev.title} of Bird City!`, color);
+      }
+    }
+    if (ev.type === 'court_tribute') {
+      if (ev.birdId === myId) {
+        const COURT_EMOJIS = { Duke: '👑', Baron: '🥈', Count: '🥉' };
+        const COURT_COLORS = { Duke: '#ffd700', Baron: '#c8c8d0', Count: '#cd8c5a' };
+        // Subtle floating text — no announcement spam
+        addEventMessage(`${COURT_EMOJIS[ev.title] || ''} Noble tribute: +${ev.amount}c (${ev.title})`, COURT_COLORS[ev.title] || '#ccc');
+      }
+    }
+    if (ev.type === 'court_lost_title') {
+      if (ev.birdId === myId) {
+        const COURT_EMOJIS = { Duke: '👑', Baron: '🥈', Count: '🥉' };
+        addEventMessage(`${COURT_EMOJIS[ev.title] || ''} You lost the title of ${ev.title} — your wealth slipped!`, '#888');
+      }
     }
 
     // === KING'S PARDON EVENTS ===
@@ -4205,6 +4242,43 @@
         } else {
           mwBoard.classList.remove('mwb-lockdown-active');
         }
+      }
+    }
+
+    // Royal Court Board — show below Most Wanted Board if court members exist
+    const rcBoard = document.getElementById('royalCourtBoard');
+    if (rcBoard) {
+      const court = gameState.royalCourt;
+      if (!court || court.length === 0) {
+        rcBoard.style.display = 'none';
+      } else {
+        rcBoard.style.display = 'block';
+        // Position below the Most Wanted Board
+        const mwEl = document.getElementById('mostWantedBoard');
+        if (mwEl && mwEl.style.display !== 'none') {
+          const mwBottom = mwEl.getBoundingClientRect().bottom;
+          rcBoard.style.top = (mwBottom + 6) + 'px';
+        } else {
+          rcBoard.style.top = '44px';
+        }
+        const TITLE_INFO = {
+          Duke:  { emoji: '👑', color: '#ffd700' },
+          Baron: { emoji: '🥈', color: '#c8c8d0' },
+          Count: { emoji: '🥉', color: '#cd8c5a' },
+        };
+        const myId2 = gameState.self ? gameState.self.id : null;
+        const rows = court.map(m => {
+          const ti = TITLE_INFO[m.title] || { emoji: '🏅', color: '#ccc' };
+          const isMe = m.birdId === myId2;
+          const tag = m.gangTag ? `<span style="opacity:0.65;font-size:9px">[${m.gangTag}]</span> ` : '';
+          const meText = isMe ? ' 👈' : '';
+          return `<div class="rcb-row${isMe ? ' rcb-me' : ''}" style="color:${ti.color}">
+            <span class="rcb-title-badge">${ti.emoji} ${m.title.toUpperCase()}</span>
+            <span class="rcb-name">${tag}${m.name}${meText}</span>
+            <span class="rcb-coins">${m.coins}c</span>
+          </div>`;
+        }).join('');
+        rcBoard.innerHTML = `<div class="rcb-title">⚜️ ROYAL COURT</div>${rows}`;
       }
     }
 
@@ -7501,7 +7575,7 @@
 
           Sprites.drawBird(ctx, sx, sy, b.rotation, b.type, b.wingPhase, isPlayer, b.birdColor || null);
           ctx.globalAlpha = 1; // Always reset after bird draw
-          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0, b.eagleFeather || false, b.idolBadge || false, b.royaleChampBadge || false, b.skillTreeMaster || false, b.fightingChampBadge || false, b.constellationBadge || false);
+          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0, b.eagleFeather || false, b.idolBadge || false, b.royaleChampBadge || false, b.skillTreeMaster || false, b.fightingChampBadge || false, b.constellationBadge || false, b.courtTitle || null);
 
           // Bird Flu: sneezing emoji indicator above infected birds
           if (b.isFlu) {
@@ -10130,10 +10204,23 @@
       html += '<div class="bm-buff-pill" style="background:rgba(80,0,0,0.85);border-color:#ff2222;color:#ff8888;animation:pulseRed 0.8s infinite alternate;">💀 BOUNTY: ' + s.myHitBounty.reward + 'c — ' + Math.floor(secsLeft / 60) + 'm' + (secsLeft % 60) + 's</div>';
     }
     if (s.isKingpin) {
-      html += '<div class="bm-buff-pill" style="background:rgba(100,80,0,0.9);border-color:#ffd700;color:#ffd700;animation:kingpinGlow 1.2s ease-in-out infinite alternate;font-weight:bold;">👑 KINGPIN — You earn tribute! Stay rich!</div>';
+      const decreeNote = s.kingpinDecreesAvailable >= 2 ? ' ×2 DECREES (LEGEND POWER)' : '';
+      html += `<div class="bm-buff-pill" style="background:rgba(100,80,0,0.9);border-color:#ffd700;color:#ffd700;animation:kingpinGlow 1.2s ease-in-out infinite alternate;font-weight:bold;">👑 KINGPIN — You earn tribute! Stay rich!${decreeNote}</div>`;
       if (s.kingpinDecreesAvailable > 0 && !gameState.activeDecree) {
         html += '<div class="bm-buff-pill" style="background:rgba(120,90,0,0.95);border-color:#ffcc00;color:#ffe044;animation:kingpinGlow 0.5s ease-in-out infinite alternate;cursor:pointer;font-weight:bold;" onclick="toggleDecreePanel()">⚜️ DECREE READY — Press [O] to govern!</div>';
       }
+    }
+    // Royal Court title pill — Duke, Baron, Count
+    if (s.myCourtTitle) {
+      const COURT_STYLES = {
+        Duke:  { bg: 'rgba(55,38,0,0.92)',   border: '#d4a800', color: '#ffd700', anim: 'kingpinGlow 1.4s ease-in-out infinite alternate' },
+        Baron: { bg: 'rgba(35,35,50,0.92)',  border: '#9090a0', color: '#d0d0e0', anim: 'kingpinGlow 2s ease-in-out infinite alternate' },
+        Count: { bg: 'rgba(50,28,8,0.92)',   border: '#9a6535', color: '#cd8c5a', anim: 'kingpinGlow 2.5s ease-in-out infinite alternate' },
+      };
+      const COURT_EMOJIS = { Duke: '👑', Baron: '🥈', Count: '🥉' };
+      const cs = COURT_STYLES[s.myCourtTitle] || COURT_STYLES.Count;
+      const em = COURT_EMOJIS[s.myCourtTitle] || '';
+      html += `<div class="bm-buff-pill" style="background:${cs.bg};border-color:${cs.border};color:${cs.color};animation:${cs.anim};font-weight:bold;">${em} ${s.myCourtTitle.toUpperCase()} — Noble tribute flows every 30s</div>`;
     }
     // King's Pardon: show green legal immunity pill when pardoned
     if (s.pardonedUntil && s.pardonedUntil > now) {

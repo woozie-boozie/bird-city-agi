@@ -1537,6 +1537,64 @@ html, body {
 }
 
 /* ============================================================
+   ROYAL COURT BOARD — noble hierarchy below the Most Wanted Board
+   ============================================================ */
+#royalCourtBoard {
+  position: fixed;
+  top: 44px;  /* will be repositioned by JS based on mostWantedBoard */
+  left: 10px;
+  background: rgba(30, 20, 0, 0.86);
+  border: 2px solid rgba(180, 130, 0, 0.7);
+  border-radius: 10px;
+  padding: 6px 10px;
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  pointer-events: none;
+  z-index: 48;
+  min-width: 155px;
+  max-width: 200px;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+  animation: courtBoardGlow 2.5s ease-in-out infinite alternate;
+}
+@keyframes courtBoardGlow {
+  from { box-shadow: 0 0 4px rgba(180,130,0,0.3); }
+  to   { box-shadow: 0 0 12px rgba(220,170,0,0.6); }
+}
+.rcb-title {
+  color: #d4a800;
+  font-weight: bold;
+  font-size: 10px;
+  letter-spacing: 1px;
+  margin-bottom: 4px;
+}
+.rcb-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 3px;
+}
+.rcb-row.rcb-me {
+  font-weight: bold;
+}
+.rcb-title-badge {
+  font-size: 10px;
+  flex-shrink: 0;
+  min-width: 52px;
+}
+.rcb-name {
+  flex: 1;
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rcb-coins {
+  font-size: 9px;
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+
+/* ============================================================
    COMBO STREAK HUD
    ============================================================ */
 #comboHud {
