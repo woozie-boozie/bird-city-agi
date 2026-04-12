@@ -4117,4 +4117,121 @@ window.Renderer = {
     minimapCtx.fillText('⛸️', cx, cy - 4);
     minimapCtx.restore();
   },
+
+  // ============================================================
+  // CHERRY BLOSSOMS SPRING FESTIVAL — Decorative park trees
+  // 4 blossoming cherry trees placed around the park perimeter.
+  // Drawn in world space after the park background. Only called
+  // from main.js when gameState.cherryBlossoms === true.
+  // ============================================================
+
+  drawCherryBlossomTrees(ctx, camera, now) {
+    // Tree positions around the park (park: x:820-1480, y:920-1530, pond at 1050,1100)
+    const TREES = [
+      { x: 850,  y: 960  },  // northwest corner
+      { x: 1440, y: 960  },  // northeast corner
+      { x: 860,  y: 1490 },  // southwest corner
+      { x: 1440, y: 1490 },  // southeast corner
+      { x: 1050, y: 940  },  // north center (near pond, on path)
+      { x: 1180, y: 1250 },  // pond east (romantic spot)
+    ];
+
+    const t = now * 0.001;
+
+    for (let i = 0; i < TREES.length; i++) {
+      const tree = TREES[i];
+      const sx = tree.x - camera.x + camera.screenW / 2;
+      const sy = tree.y - camera.y + camera.screenH / 2;
+
+      // Cull off-screen trees
+      if (sx < -80 || sx > camera.screenW + 80 || sy < -80 || sy > camera.screenH + 80) continue;
+
+      ctx.save();
+      ctx.translate(sx, sy);
+
+      // === Trunk ===
+      ctx.fillStyle = '#7a4f2e';
+      ctx.beginPath();
+      ctx.roundRect(-4, -12, 8, 22, 2);
+      ctx.fill();
+      // Trunk highlight
+      ctx.fillStyle = 'rgba(200, 150, 100, 0.3)';
+      ctx.beginPath();
+      ctx.roundRect(-2, -10, 3, 18, 1);
+      ctx.fill();
+
+      // === Canopy — layered pink cloud ===
+      // Each tree has a slightly different sway phase
+      const sway = Math.sin(t * 0.7 + i * 1.3) * 1.5;
+      const canopyY = -22 + sway * 0.3;
+
+      // Outer glow (very soft)
+      ctx.fillStyle = 'rgba(255, 182, 210, 0.18)';
+      ctx.beginPath();
+      ctx.ellipse(sway, canopyY - 2, 32, 24, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Main canopy blobs — 5 overlapping circles for fluffy cloud look
+      const BLOBS = [
+        { dx: 0,   dy: 0,   r: 22 },
+        { dx: -14, dy: 4,   r: 17 },
+        { dx: 14,  dy: 4,   r: 17 },
+        { dx: -8,  dy: -10, r: 15 },
+        { dx: 8,   dy: -10, r: 15 },
+        { dx: 0,   dy: -16, r: 13 },
+      ];
+      // Draw deeper blobs first, lighter on top
+      for (let b = 0; b < BLOBS.length; b++) {
+        const blob = BLOBS[b];
+        const pinkness = b === 0 ? 0 : (b < 3 ? 0.08 : 0.15); // outer blobs slightly lighter
+        const hue = 340 + pinkness * 20;
+        ctx.fillStyle = `hsl(${hue}, 80%, ${72 + pinkness * 12}%)`;
+        ctx.globalAlpha = 0.88;
+        ctx.beginPath();
+        ctx.arc(blob.dx + sway, canopyY + blob.dy, blob.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+
+      // Scattered flower petals in canopy (static, small dots)
+      const petalSeed = i * 7 + 123;
+      for (let p = 0; p < 12; p++) {
+        const angle = (p / 12) * Math.PI * 2 + petalSeed;
+        const dist = 6 + ((p * 13 + petalSeed) % 15);
+        const px2 = Math.cos(angle) * dist + sway;
+        const py2 = canopyY - 5 + Math.sin(angle) * dist * 0.6;
+        const pPulse = Math.sin(t * 1.5 + p * 0.8 + i) * 0.3 + 0.7;
+        ctx.fillStyle = `rgba(255, 240, 248, ${pPulse * 0.75})`;
+        ctx.beginPath();
+        ctx.arc(px2, py2, 1.5 + ((p * 3) % 3) * 0.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.restore();
+    }
+  },
+
+  // Cherry Blossom trees on minimap — small pink dots in the park area
+  drawCherryBlossomTreesOnMinimap(minimapCtx, worldWidth, worldHeight) {
+    const mw = minimapCtx.canvas.width;
+    const mh = minimapCtx.canvas.height;
+    const TREES = [
+      { x: 850, y: 960 }, { x: 1440, y: 960 },
+      { x: 860, y: 1490 }, { x: 1440, y: 1490 },
+    ];
+    const t = Date.now() * 0.001;
+    const pulse = 0.6 + 0.4 * Math.sin(t * 1.8);
+    minimapCtx.save();
+    for (const tree of TREES) {
+      const tx = tree.x * (mw / worldWidth);
+      const ty = tree.y * (mh / worldHeight);
+      minimapCtx.globalAlpha = pulse * 0.8;
+      minimapCtx.fillStyle = '#ff99cc';
+      minimapCtx.beginPath();
+      minimapCtx.arc(tx, ty, 2.5, 0, Math.PI * 2);
+      minimapCtx.fill();
+    }
+    minimapCtx.globalAlpha = 1;
+    minimapCtx.restore();
+  },
 };

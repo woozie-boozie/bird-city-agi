@@ -82,6 +82,9 @@ const DAILY_CHALLENGE_POOL = [
   { id: 'chaos_taster', title: 'Chaos Connoisseur', desc: 'Experience 4 different chaos event types in one session', target: 4, trackType: 'chaos_types_seen', reward: { xp: 210, coins: 105 } },
   { id: 'decree_subject',  title: 'Subject',       desc: 'Be affected by 2 different Kingpin decrees in one session', target: 2, trackType: 'decree_affected',   reward: { xp: 200, coins: 100 } },
   { id: 'revolutionary',  title: 'Revolutionary',  desc: "Participate in a People's Revolt against the Kingpin",     target: 1, trackType: 'revolt_participant', reward: { xp: 280, coins: 140 } },
+  // Cherry Blossom Spring Festival challenges (always in pool — active only in April)
+  { id: 'hanami',            title: 'Hanami',            desc: 'Spend 30 seconds near the Sacred Pond during Cherry Blossom season', target: 30, trackType: 'hanami_time',       reward: { xp: 150, coins: 75  } },
+  { id: 'blossom_collector', title: 'Blossom Collector', desc: 'Collect 5 cherry blossom mochi from the park',                       target: 5,  trackType: 'mochi_collected',    reward: { xp: 180, coins: 90  } },
 ];
 
 class GameEngine {
@@ -545,6 +548,21 @@ class GameEngine {
     this.seagullInvasion = null; // null | { seagulls: Map, startedAt, endsAt, repelBonusGiven }
     this.seagullTimer = Date.now() + this._randomRange(25 * 60000, 35 * 60000);
     this._seagullIdCounter = 0;
+
+    // === CHERRY BLOSSOMS SPRING FESTIVAL ===
+    // Active every April — the park fills with pink mochi treats.
+    // Birds collect mochi for +30 food, +50 XP, +20c. Aurora doubles all rewards.
+    // Hanami: spending time near the Sacred Pond earns bonus XP ticks every 15s.
+    this.cherryBlossoms = (new Date().getMonth() === 3); // true in April (month index 3)
+    this.mochiIds = new Set();           // IDs of active mochi items in this.foods
+    this.mochiSpawnTimer = Date.now() + 8000; // first mochi 8s after start
+    this.hanamiTracker = new Map();      // birdId -> { lastBonusAt: 0 }
+    // 8 positions scattered through the park area (820-1480, 920-1530), near pond (1050,1100)
+    this.MOCHI_POSITIONS = [
+      { x: 880, y: 975 }, { x: 1020, y: 940 }, { x: 1310, y: 990 },
+      { x: 1430, y: 1070 }, { x: 940, y: 1390 }, { x: 1130, y: 1480 },
+      { x: 1380, y: 1440 }, { x: 1090, y: 1260 },
+    ];
 
     // === DONUT COP ===
     // A perpetually snacking cop outside the Donut Shop (north road area).
@@ -1476,6 +1494,9 @@ class GameEngine {
     this._updateAurora(dt, now);
     this._tickShootingStar(now);
     this._tickMeteorShower(now);
+
+    // === Cherry Blossoms Spring Festival ===
+    if (this.cherryBlossoms) this._updateCherryBlossoms(now);
 
     // === Underground Sewer ===
     this._updateSewerRats(dt, now);
@@ -3856,6 +3877,47 @@ class GameEngine {
             this.weather.heatPuddleTimer = now + 8000;
           }
           break; // one puddle per tick
+        }
+      }
+    }
+
+    // === Cherry blossom mochi auto-collect (spring seasonal) ===
+    if (this.cherryBlossoms && this.mochiIds.size > 0) {
+      for (const mochiId of this.mochiIds) {
+        const mochi = this.foods.get(mochiId);
+        if (!mochi || !mochi.active) continue;
+        const mdx = bird.x - mochi.x;
+        const mdy = bird.y - mochi.y;
+        if (Math.sqrt(mdx * mdx + mdy * mdy) < 40) {
+          mochi.active = false;
+          this.mochiIds.delete(mochiId);
+          // Aurora × Cherry Blossoms — sacred spring night triples rewards!
+          const sacredNight = !!(this.aurora && this.aurora.endsAt > now);
+          const mult = sacredNight ? 3 : 1;
+          const foodBonus = 30 * mult;
+          const xpBonus   = 50 * mult;
+          const coinBonus = 20 * mult;
+          bird.food = Math.min(100, bird.food + foodBonus);
+          bird.xp   += xpBonus;
+          bird.coins += coinBonus;
+          this._trackDailyProgress(bird, 'mochi_collected', 1);
+          this._trackDailyProgress(bird, 'coins_earned', coinBonus);
+          // Level-up check
+          const newLvl = world.getLevelFromXP(bird.xp);
+          if (newLvl !== bird.level) {
+            bird.level = newLvl;
+            bird.type = world.getBirdTypeForLevel(newLvl);
+            this.events.push({ type: 'evolve', birdId: bird.id, name: bird.name, birdType: bird.type });
+          }
+          this.events.push({
+            type: 'mochi_collected',
+            birdId: bird.id, name: bird.name,
+            food: foodBonus, xp: xpBonus, coins: coinBonus,
+            sacredNight, x: mochi.x, y: mochi.y,
+          });
+          const mId = mochiId;
+          setTimeout(() => { this.foods.delete(mId); }, 5000);
+          break; // one mochi per tick
         }
       }
     }
@@ -6610,6 +6672,8 @@ class GameEngine {
         endsAt: this.aurora.endsAt,
         intensity: this.aurora.intensity,
       } : null,
+      // Cherry Blossoms Spring Festival (April only)
+      cherryBlossoms: this.cherryBlossoms,
       // Night Market (aurora bazaar — near Sacred Pond)
       nightMarket: this.nightMarket ? { x: this.nightMarket.x, y: this.nightMarket.y } : null,
       // Ice Rink (blizzard-only)
@@ -13358,6 +13422,15 @@ class GameEngine {
       });
     }
 
+    // Cherry Blossom seasonal headline (always last, adds seasonal flavour)
+    if (this.cherryBlossoms) {
+      headlines.push({
+        icon: '🌸',
+        headline: 'CHERRY BLOSSOM SEASON IN FULL BLOOM — PARK OVERRUN WITH MOCHI',
+        subline: 'Spring has arrived! Mochi treats scattered throughout the park. Pond glows pink at night.',
+      });
+    }
+
     // Default headline if nothing notable happened
     if (headlines.length === 0) {
       headlines.push({
@@ -14955,6 +15028,70 @@ class GameEngine {
         birdIds:   members.map(m => m.id),
       });
       console.log(`[GameEngine] ✨ Gang Aurora Ritual: [${gangTag}] (${members.length} birds) — bonus cosmic fish!`);
+    }
+  }
+
+  // ============================================================
+  // CHERRY BLOSSOMS SPRING FESTIVAL
+  // Active every April. Mochi treats scattered in the park. Hanami
+  // bonus near the Sacred Pond. Aurora × blossoms = triple rewards.
+  // ============================================================
+
+  _updateCherryBlossoms(now) {
+    // Spawn mochi items in the park (up to 4 at a time)
+    if (now >= this.mochiSpawnTimer && this.mochiIds.size < 4 && this.birds.size > 0) {
+      // Pick a free position not too close to an existing mochi
+      const available = this.MOCHI_POSITIONS.filter(pos => {
+        for (const mid of this.mochiIds) {
+          const m = this.foods.get(mid);
+          if (m) {
+            const dx = m.x - pos.x, dy = m.y - pos.y;
+            if (Math.sqrt(dx * dx + dy * dy) < 130) return false;
+          }
+        }
+        return true;
+      });
+      if (available.length > 0) {
+        const pos = available[Math.floor(Math.random() * available.length)];
+        const mId = `mochi_${now}_${Math.random().toFixed(4)}`;
+        this.foods.set(mId, { id: mId, x: pos.x, y: pos.y, type: 'mochi', active: true, value: 1 });
+        this.mochiIds.add(mId);
+        if (this.mochiIds.size === 1) {
+          // First mochi of the batch — announce!
+          this.events.push({ type: 'mochi_appeared' });
+        }
+      }
+      this.mochiSpawnTimer = now + this._randomRange(40000, 70000);
+    }
+
+    // Remove stale mochi whose foods entry was deleted (cleanup)
+    for (const mid of this.mochiIds) {
+      const m = this.foods.get(mid);
+      if (!m || !m.active) this.mochiIds.delete(mid);
+    }
+
+    // Hanami bonus — birds near the Sacred Pond earn passive XP ticks every 15s
+    const POND_CX = 1050, POND_CY = 1100, HANAMI_RADIUS = 200;
+    const HANAMI_INTERVAL = 15000; // 15 seconds between bonuses
+    for (const bird of this.birds.values()) {
+      if (bird.inSewer) continue;
+      const dx = bird.x - POND_CX, dy = bird.y - POND_CY;
+      if (Math.sqrt(dx * dx + dy * dy) > HANAMI_RADIUS) continue;
+      // Hanami XP tick every 15s — also tracks daily challenge (15 per tick, target 30 = 2 ticks = 30s)
+      if (!this.hanamiTracker.has(bird.id)) this.hanamiTracker.set(bird.id, { lastBonusAt: 0 });
+      const ht = this.hanamiTracker.get(bird.id);
+      if (now - ht.lastBonusAt >= HANAMI_INTERVAL) {
+        ht.lastBonusAt = now;
+        bird.xp += 5;
+        this._trackDailyProgress(bird, 'hanami_time', 15); // 15 seconds worth toward 30s target
+        this.events.push({
+          type: 'hanami_bonus',
+          birdId: bird.id,
+          name: bird.name,
+          xp: 5,
+          x: bird.x, y: bird.y,
+        });
+      }
     }
   }
 

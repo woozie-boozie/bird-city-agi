@@ -783,6 +783,55 @@ window.Sprites = {
       ctx.lineWidth = 0.5;
       ctx.strokeRect(-8, -4, 16, 10);
       ctx.strokeRect(-6, -8, 12, 6);
+    } else if (type === 'mochi') {
+      // Cherry blossom mochi — spring seasonal treat from the park
+      const t = Date.now();
+      const pulse = 0.5 + 0.5 * Math.sin(t * 0.003);
+      // Soft pink outer glow
+      const mochiGrad = ctx.createRadialGradient(0, 0, 3, 0, 0, 14);
+      mochiGrad.addColorStop(0, `rgba(255, 180, 210, ${0.35 + pulse * 0.2})`);
+      mochiGrad.addColorStop(1, 'rgba(255, 180, 210, 0)');
+      ctx.fillStyle = mochiGrad;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 14, 14, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Mochi body — white-pink soft oval
+      ctx.fillStyle = `rgba(255, 242, 248, 0.97)`;
+      ctx.beginPath();
+      ctx.ellipse(0, 2, 10, 7.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Subtle pink tinge on the mochi base
+      ctx.fillStyle = `rgba(255, 200, 220, 0.45)`;
+      ctx.beginPath();
+      ctx.ellipse(0, 4.5, 8, 3.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Pink ring seam around middle
+      ctx.strokeStyle = `rgba(255, 160, 195, ${0.5 + pulse * 0.3})`;
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.ellipse(0, 2, 7, 5, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      // Cherry blossom flower on top (5 petals + center)
+      const petalColors = ['#ffaac8', '#ff88b4', '#ffbbcc', '#ff99b8', '#ffc0d0'];
+      for (let p = 0; p < 5; p++) {
+        const pa = (p / 5) * Math.PI * 2 - Math.PI / 2;
+        const px = Math.cos(pa) * 3.8;
+        const py = -6 + Math.sin(pa) * 2.5;
+        ctx.fillStyle = petalColors[p];
+        ctx.beginPath();
+        ctx.ellipse(px, py, 2.2, 1.6, pa, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // Golden flower center
+      ctx.fillStyle = `rgba(255, 215, 0, ${0.8 + pulse * 0.2})`;
+      ctx.beginPath();
+      ctx.arc(0, -6, 1.8, 0, Math.PI * 2);
+      ctx.fill();
+      // "🌸" floating label above
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(200, 80, 130, 0.85)';
+      ctx.fillText('🌸', 0, -15);
     } else {
       // Generic food blob
       ctx.beginPath();

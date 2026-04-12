@@ -2665,6 +2665,35 @@ Bird City now has a full aristocracy beneath the crown. The top-3 richest non-Ki
 
 **Creative intent**: The Royal Court creates a new social tier that didn't exist before. Being the Kingpin was always the goal — but now the Duke, Baron, and Count are visible to every bird on the server. Rich players who aren't the Kingpin now have status AND passive income. Two gangs competing for the Duke position (to see their gang tag next to the gold crown badge) is a new form of rivalry. The People's March upgrade makes large-scale revolts dramatically more rewarding — organizing 5 birds to revolt simultaneously is hard, but a 60% loot split makes it worth coordinating. A P5 LEGEND Kingpin with 2 decrees can reshape the city twice per tenure — issue Gold Rush then wait for a Crime Wave for a 4× coin moment, THEN drop a second Gold Rush on top of it. Pure SOCIAL + PROGRESSION + SPECTACLE energy — Bird City now has full feudal hierarchy.
 
+**Session 80 — 2026-04-12: Cherry Blossom Spring Festival — Seasonal Beauty Transforms the City**
+April brings Bird City's first seasonal transformation. Pink cherry blossom trees bloom in the park, petals drift across every screen, mochi treats scatter through the grounds, and meditating near the Sacred Pond at night earns a Hanami bonus. For the first time, the city is BEAUTIFUL.
+
+**Visual Spectacle:**
+- 6 animated cherry blossom trees bloom throughout the park (4 corners + north center + pond east) — each sways gently on a unique sine-wave, fluffy multi-blob pink canopy, sparkling white petal particles orbiting the branches
+- 70 screen-space falling petals drift across the entire city: oval pink shapes with subtle veins, independent sway/rotation, randomized sizes and speeds, wrapping at screen edges
+- `🌸 SPRING` badge appears in the top HUD area alongside weather and aurora badges
+- Pink tree dots on the minimap mark each blossom tree location
+- All visuals tied to `gameState.cherryBlossoms` flag — auto-activates in April (month 3)
+
+**Mochi Treats (seasonal food):**
+- Up to 4 cherry blossom mochi spawn in the park every 40–70 seconds while any player is online
+- Custom sprite: radial pink glow, white-pink oval body with seam detail, 5-petal cherry blossom flower on top with golden center — unmistakable seasonal item
+- Fly within 40px to auto-collect: +30 food, +50 XP, +20 coins
+- **Sacred Spring Night**: when both Aurora and Cherry Blossoms are active simultaneously, mochi rewards TRIPLE (+90 food, +150 XP, +60 coins) — the rarest and most beautiful night in the game
+
+**Hanami Bonus (meditating by the pond):**
+- Fly within 200px of the Sacred Pond during Cherry Blossom season: earn +5 XP every 15 seconds passively
+- Daily challenge progress tracks toward "Hanami" (spend 30 cumulative seconds near the pond)
+- The pond becomes a peaceful power spot — not just for combat grind, but for contemplative XP farming
+
+**Two new daily challenges:**
+- 🌸 **Hanami**: Spend 30 seconds near the Sacred Pond during Cherry Blossom season (150 XP, 75c)
+- 🌸 **Blossom Collector**: Collect 5 cherry blossom mochi from the park (180 XP, 90c)
+
+**Gazette tracking:** "🌸 CHERRY BLOSSOM SEASON IN FULL BLOOM — PARK OVERRUN WITH MOCHI" headline during morning editions when blossoms are active.
+
+**Creative intent**: Bird City has been pure CARNAGE from session 1. This is the first time the city offers something genuinely BEAUTIFUL and peaceful. The cherry blossom trees transform the park from a flat green zone into a stunning visual landmark. Petals drifting across the screen while you're in the middle of a police chase create tonal whiplash that's uniquely Bird City. The Hanami daily challenge rewards players for simply BEING in the park — flying near the pond, watching the petals fall, earning quiet XP. The Sacred Spring Night combo (Aurora + Cherry Blossoms) is the game's most magical moment — a glowing pink-and-teal park with tripled mochi rewards for the birds who discover it. Pure DISCOVERY + SPECTACLE + RETENTION energy — the city now has its first seasonal soul.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -2874,4 +2903,8 @@ Built the Territory Control System on top of the existing upstream code:
 - Royal Court × Gang War: Court members who join a gang war get +15% coin bonus on gang war kills (nobility fights back)
 - Royal Court × Kingpin Dethronement: if the Kingpin is dethroned and a Court member becomes the new Kingpin, the Duke's "ascension" is announced city-wide with extra fanfare
 - Duke's Challenge: the Duke can issue one daily mini-challenge to the city (e.g., "first to poop 3 cars earns 50c from me") — spending from their own coins, creating a mini-economy of noble challenges
-- Seasonal Cherry Blossoms: park fills with pink petal effects during spring events
+- ~~Seasonal Cherry Blossoms: park fills with pink petal effects during spring events~~ (DONE Session 80)
+- Mochi + crime wave: during crime wave, mochi vanishes as shopkeepers hide their goods — 2× coin reward if you find the stash
+- Sakura Viewing Party: if 4+ birds are all near the Sacred Pond simultaneously during cherry blossom season, a burst of cooperative XP fires for all of them (+100 XP each)
+- Cherry Blossom × Kingpin: Kingpin who passes through the park during spring gets a "Blossom Crown" visual (pink petals orbiting the crown) — cosmetic flavor for the season
+- Hanami Festival Event: once per night during spring, a special Hanami lantern floats up from the pond — first bird to catch it earns 200c + a rare seasonal badge

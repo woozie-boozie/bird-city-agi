@@ -3014,6 +3014,26 @@
       }
     }
 
+    // === CHERRY BLOSSOM EVENTS ===
+    if (ev.type === 'mochi_collected') {
+      const isMe = ev.birdId === myId;
+      if (isMe) {
+        const msg = ev.sacredNight
+          ? `🌸✨ SACRED SPRING NIGHT! +${ev.food} food +${ev.xp} XP +${ev.coins}c (3×!)`
+          : `🌸 CHERRY BLOSSOM MOCHI! +${ev.food} food +${ev.xp} XP +${ev.coins}c`;
+        showAnnouncement(msg, '#ff99cc', 3000);
+        effects.push({ type: 'text', x: ev.x, y: ev.y, text: `+${ev.xp} XP 🌸`, color: '#ff88b4', size: 14, time: performance.now(), duration: 2200 });
+      } else {
+        addEventMessage(`🌸 ${ev.name} collected cherry blossom mochi!${ev.sacredNight ? ' (Sacred Spring Night 3×!)' : ''}`, '#ff99cc');
+      }
+    }
+    if (ev.type === 'mochi_appeared') {
+      addEventMessage('🌸 Cherry blossom mochi appeared in the Park! Find them for XP and coins.', '#ff99cc');
+    }
+    if (ev.type === 'hanami_bonus' && ev.birdId === myId) {
+      effects.push({ type: 'text', x: ev.x, y: ev.y, text: '+5 XP 🌸', color: '#ffaac8', size: 11, time: performance.now(), duration: 1800 });
+    }
+
     // === UNDERGROUND SEWER EVENTS ===
     if (ev.type === 'sewer_enter') {
       const isMe = ev.birdId === myId;
@@ -6154,6 +6174,69 @@
   }
 
   // ============================================================
+  // CHERRY BLOSSOMS — falling pink petals (screen-space, seasonal)
+  // ============================================================
+  let _cherryPetals = null;
+  function _ensureCherryPetals(sw, sh) {
+    if (_cherryPetals && _cherryPetals.sw === sw && _cherryPetals.sh === sh) return;
+    _cherryPetals = { sw, sh, petals: [] };
+    for (let i = 0; i < 70; i++) {
+      _cherryPetals.petals.push({
+        x:       Math.random() * sw,
+        y:       Math.random() * sh,
+        size:    2.0 + Math.random() * 3.5,  // petal size
+        speed:   18 + Math.random() * 30,    // fall speed px/s
+        sway:    Math.random() * Math.PI * 2, // horizontal sway phase
+        swayAmp: 15 + Math.random() * 30,    // sway amplitude
+        swaySpd: 0.4 + Math.random() * 0.8,  // sway frequency
+        rotation: Math.random() * Math.PI * 2,
+        rotSpeed: (Math.random() - 0.5) * 3.0, // tumble speed rad/s
+        opacity:  0.55 + Math.random() * 0.4,
+        // Petal shape: oval rotated by rotation
+        ratiox: 0.8 + Math.random() * 0.5,  // x radius multiplier
+        ratioy: 0.4 + Math.random() * 0.4,  // y radius multiplier (flatter petal)
+      });
+    }
+  }
+
+  function drawCherryBlossomPetals(ctx, now, dt, sw, sh) {
+    _ensureCherryPetals(sw, sh);
+    ctx.save();
+    for (const petal of _cherryPetals.petals) {
+      // Animate
+      petal.y += petal.speed * dt;
+      petal.x += Math.sin(petal.sway) * petal.swayAmp * dt * petal.swaySpd;
+      petal.sway += petal.swaySpd * dt;
+      petal.rotation += petal.rotSpeed * dt;
+      // Wrap
+      if (petal.y > sh + 10) { petal.y = -10; petal.x = Math.random() * sw; }
+      if (petal.x > sw + 20) petal.x -= sw + 40;
+      if (petal.x < -20) petal.x += sw + 40;
+
+      ctx.save();
+      ctx.translate(petal.x, petal.y);
+      ctx.rotate(petal.rotation);
+      ctx.globalAlpha = petal.opacity;
+      // Petal color — varied pink/white tones
+      const hue = 330 + Math.sin(petal.sway * 0.5) * 15;
+      ctx.fillStyle = `hsl(${hue}, 85%, 85%)`;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, petal.size * petal.ratiox, petal.size * petal.ratioy, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Subtle vein line down center of petal
+      ctx.strokeStyle = `hsla(${hue - 10}, 70%, 72%, ${petal.opacity * 0.5})`;
+      ctx.lineWidth = 0.6;
+      ctx.beginPath();
+      ctx.moveTo(0, -petal.size * petal.ratiox * 0.5);
+      ctx.lineTo(0,  petal.size * petal.ratiox * 0.5);
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  // ============================================================
   // TORNADO — world-space drawing (call before zoom ctx.restore())
   // ============================================================
   // Tornado debris particles (lazily initialized, static offsets)
@@ -6720,6 +6803,27 @@
       ctx.globalAlpha = 1;
       ctx.restore();
     }
+
+    // === CHERRY BLOSSOM SPRING badge ===
+    if (gameState.cherryBlossoms) {
+      const springPulse = Math.sin(now * 0.0015) * 0.12 + 0.88;
+      const springBadgeY = 6 + (weather && badges[weather.type] ? 28 : 0) + (gameState.aurora && gameState.aurora.endsAt > now ? 28 : 0);
+      ctx.save();
+      ctx.globalAlpha = springPulse * 0.9;
+      ctx.fillStyle = 'rgba(80, 20, 40, 0.82)';
+      ctx.beginPath();
+      ctx.roundRect(sw / 2 - 192, springBadgeY, 100, 22, 5);
+      ctx.fill();
+      ctx.strokeStyle = '#ff88bb';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.fillStyle = '#ffccee';
+      ctx.font = 'bold 10px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('🌸 SPRING', sw / 2 - 142, springBadgeY + 15);
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
   }
 
   // ============================================================
@@ -6848,6 +6952,10 @@
 
     Renderer.drawRoads(ctx, camera);
     Renderer.drawPark(ctx, camera, gameState ? gameState.dayTime : undefined, now);
+    // Cherry Blossom Spring Festival — decorative trees in the park
+    if (gameState && gameState.cherryBlossoms) {
+      Renderer.drawCherryBlossomTrees(ctx, camera, now);
+    }
 
     // The Arena (drawn on ground level, below buildings)
     if (worldData && worldData.arena) {
@@ -7874,6 +7982,11 @@
     // Weather effects (screen-space, drawn over day/night overlay)
     // Use gameState.weather as authoritative source (server-synced each tick)
     drawWeather(ctx, camera, now, gameState.weather || weatherState);
+
+    // === CHERRY BLOSSOM PETALS (seasonal, April only) ===
+    if (gameState.cherryBlossoms) {
+      drawCherryBlossomPetals(ctx, now, dt, camera.screenW, camera.screenH);
+    }
 
     // === SEAGULL INVASION HUD ===
     if (gameState.seagullInvasion) {
@@ -8983,6 +9096,11 @@
         minimapCtx.fillText('☄️', mpx, mpy - 4);
         minimapCtx.restore();
       }
+    }
+
+    // Cherry blossom trees on minimap — pink dots during spring
+    if (gameState.cherryBlossoms && worldData) {
+      Renderer.drawCherryBlossomTreesOnMinimap(minimapCtx, worldData.width, worldData.height);
     }
 
     // Pied Piper on minimap — rainbow pulsing dot
