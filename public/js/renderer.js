@@ -4234,4 +4234,149 @@ window.Renderer = {
     minimapCtx.globalAlpha = 1;
     minimapCtx.restore();
   },
+
+  // ============================================================
+  // HANAMI LANTERN — glowing paper lantern rises from Sacred Pond
+  // ============================================================
+  drawHanamiLantern(ctx, camera, lantern, now) {
+    if (!lantern) return;
+    // Compute current animated position (matches server formula)
+    const elapsed = (now - lantern.spawnedAt) / 1000;
+    const curY = lantern.baseY - Math.min(elapsed * 7, 180);
+    const swayX = lantern.x + Math.sin(elapsed * 0.6 + (lantern.floatPhase || 0)) * 20;
+
+    const sx = swayX - camera.x + camera.screenW / 2;
+    const sy = curY - camera.y + camera.screenH / 2;
+    if (sx < -80 || sx > camera.screenW + 80 || sy < -80 || sy > camera.screenH + 80) return;
+
+    const t = now / 1000;
+    const pulse = 0.5 + 0.5 * Math.sin(t * 3.2);
+    const timeLeft = Math.max(0, lantern.expiresAt - now);
+    const urgency = timeLeft < 15000 ? 1 - timeLeft / 15000 : 0;
+
+    ctx.save();
+
+    // Outer warm glow halo
+    const haloR = 50 + 12 * pulse;
+    const haloGrad = ctx.createRadialGradient(sx, sy, 0, sx, sy, haloR);
+    haloGrad.addColorStop(0, `rgba(255, 165, 50, ${0.35 + 0.15 * pulse})`);
+    haloGrad.addColorStop(0.5, `rgba(255, 100, 20, ${0.15 + 0.07 * pulse})`);
+    haloGrad.addColorStop(1, 'rgba(255, 80, 0, 0)');
+    ctx.fillStyle = haloGrad;
+    ctx.beginPath();
+    ctx.arc(sx, sy, haloR, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Lantern body — oval paper body with warm orange/red gradient
+    ctx.save();
+    ctx.translate(sx, sy);
+    const bodyW = 18, bodyH = 24;
+    const bodyGrad = ctx.createRadialGradient(-3, -4, 0, 0, 0, bodyH);
+    bodyGrad.addColorStop(0, '#ffee88');   // bright warm center
+    bodyGrad.addColorStop(0.4, '#ff9933'); // orange mid
+    bodyGrad.addColorStop(1, '#cc3300');   // deep red edge
+    ctx.fillStyle = bodyGrad;
+    ctx.shadowColor = `rgba(255, 160, 50, ${0.8 + 0.2 * pulse})`;
+    ctx.shadowBlur = 18 + 8 * pulse;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, bodyW, bodyH, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Horizontal ribs on the lantern body (3 rings)
+    ctx.strokeStyle = `rgba(200, 60, 0, 0.55)`;
+    ctx.lineWidth = 1.2;
+    for (let i = -1; i <= 1; i++) {
+      const ry = i * 8;
+      const rx = Math.sqrt(Math.max(0, bodyW * bodyW * (1 - (ry * ry) / (bodyH * bodyH))));
+      ctx.beginPath();
+      ctx.ellipse(0, ry, rx * 0.92, 4, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // Top cap
+    ctx.fillStyle = '#cc4400';
+    ctx.beginPath();
+    ctx.ellipse(0, -bodyH, bodyW * 0.55, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Bottom cap + hanging tassel
+    ctx.fillStyle = '#cc4400';
+    ctx.beginPath();
+    ctx.ellipse(0, bodyH, bodyW * 0.55, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Tassel string
+    ctx.strokeStyle = '#ffcc66';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(0, bodyH + 5);
+    ctx.lineTo(0, bodyH + 12);
+    ctx.stroke();
+    // Tassel tuft
+    for (let i = -2; i <= 2; i++) {
+      ctx.beginPath();
+      ctx.moveTo(i * 2.5, bodyH + 12);
+      ctx.lineTo(i * 3.5 + (Math.sin(t * 4 + i) * 2), bodyH + 20);
+      ctx.stroke();
+    }
+
+    // Inner light glow
+    const innerGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, bodyW * 0.65);
+    innerGrad.addColorStop(0, `rgba(255, 255, 200, ${0.6 + 0.3 * pulse})`);
+    innerGrad.addColorStop(1, 'rgba(255, 200, 50, 0)');
+    ctx.fillStyle = innerGrad;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, bodyW * 0.65, bodyH * 0.65, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+
+    // String going upward (the lantern is floating, held by nothing — but implies ascent)
+    ctx.strokeStyle = `rgba(200, 120, 50, 0.35)`;
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.moveTo(sx, sy - bodyH - 5);
+    ctx.lineTo(sx + Math.sin(t * 1.5) * 6, sy - bodyH - 20);
+    ctx.stroke();
+
+    // Label "🏮 CATCH IT!" with urgency pulse
+    const labelAlpha = urgency > 0 ? (0.7 + 0.3 * Math.sin(now * 0.02)) : (0.75 + 0.25 * pulse);
+    ctx.globalAlpha = labelAlpha;
+    ctx.font = 'bold 11px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = urgency > 0.5 ? '#ff4400' : '#ffdd88';
+    ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+    ctx.lineWidth = 3;
+    const label = urgency > 0 ? '🏮 HURRY!' : '🏮 CATCH IT!';
+    ctx.strokeText(label, sx, sy - 36);
+    ctx.fillText(label, sx, sy - 36);
+    ctx.globalAlpha = 1;
+
+    ctx.restore();
+  },
+
+  drawHanamiLanternOnMinimap(minimapCtx, worldData, lantern, now) {
+    if (!lantern) return;
+    const mw = worldData.minimapW, mh = worldData.minimapH;
+    const worldWidth = worldData.worldWidth, worldHeight = worldData.worldHeight;
+    // Compute current animated lantern position
+    const elapsed = (now - lantern.spawnedAt) / 1000;
+    const curY = lantern.baseY - Math.min(elapsed * 7, 180);
+    const swayX = lantern.x + Math.sin(elapsed * 0.6 + (lantern.floatPhase || 0)) * 20;
+    const mx = swayX * (mw / worldWidth);
+    const my = curY * (mh / worldHeight);
+
+    const pulse = 0.5 + 0.5 * Math.sin(now * 0.006);
+    minimapCtx.save();
+    minimapCtx.globalAlpha = 0.7 + 0.3 * pulse;
+    minimapCtx.shadowColor = '#ff9944';
+    minimapCtx.shadowBlur = 6;
+    minimapCtx.font = `${7 + Math.round(pulse * 2)}px sans-serif`;
+    minimapCtx.textAlign = 'center';
+    minimapCtx.textBaseline = 'middle';
+    minimapCtx.fillText('🏮', mx, my);
+    minimapCtx.shadowBlur = 0;
+    minimapCtx.globalAlpha = 1;
+    minimapCtx.restore();
+  },
 };

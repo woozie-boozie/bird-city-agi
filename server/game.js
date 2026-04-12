@@ -85,6 +85,7 @@ const DAILY_CHALLENGE_POOL = [
   // Cherry Blossom Spring Festival challenges (always in pool — active only in April)
   { id: 'hanami',            title: 'Hanami',            desc: 'Spend 30 seconds near the Sacred Pond during Cherry Blossom season', target: 30, trackType: 'hanami_time',       reward: { xp: 150, coins: 75  } },
   { id: 'blossom_collector', title: 'Blossom Collector', desc: 'Collect 5 cherry blossom mochi from the park',                       target: 5,  trackType: 'mochi_collected',    reward: { xp: 180, coins: 90  } },
+  { id: 'lantern_catcher',   title: 'Lantern Catcher',   desc: 'Catch the Hanami Lantern floating from the Sacred Pond on a spring night', target: 1, trackType: 'hanami_lantern', reward: { xp: 250, coins: 125 } },
 ];
 
 class GameEngine {
@@ -509,6 +510,17 @@ class GameEngine {
     this.meteorShower = null; // null | { stars: Map(id -> { x, y, expiresAt, streakAngle, claimed }) }
     this.meteorShowerTriggeredThisAurora = false;
 
+    // === HANAMI LANTERN — spring night spectacle (cherry blossom season) ===
+    // Once per night during April, a glowing paper lantern rises from the Sacred Pond.
+    // First bird within 60px in 90 seconds claims it — earns 200c + 120 XP + 🏮 badge.
+    this.hanamiLantern = null;                // null | { x, y, baseY, spawnedAt, expiresAt, floatPhase }
+    this.hanamiLanternFiredThisNight = false; // one lantern per night cycle
+    this.hanamiLanternScheduledAt = null;     // scheduled spawn timestamp
+    // === SAKURA VIEWING PARTY — 4+ birds near the pond → group XP burst ===
+    this.sakuraPartyLastFired = 0;            // 3-minute cooldown between bursts
+    // === MOCHI × CRIME WAVE — shopkeepers hide their wares during lawlessness ===
+    this.mochiCrimeWaveBonus = false;         // flag: restoring mochi with 2× coins
+
     // === NIGHT MARKET ===
     // A celestial bazaar that materializes near the Sacred Pond only when the Aurora Borealis
     // is active. Birds spend Cosmic Fish tokens (earned by catching cosmic fish) on rare items.
@@ -908,6 +920,7 @@ class GameEngine {
       vpMachineCooldowns: {},      // machineId → timestamp (last use)
       // === PIGEON FIGHTING CHAMPIONSHIP ===
       fightingChampBadge: false,   // session-only: won the bracket tournament this session
+      hanamiLanternBadge: false,   // session-only: caught the Hanami Lantern at the Sacred Pond
       tournamentWins: saved ? (saved.tournament_wins || 0) : 0,  // lifetime championship wins (persistent)
       // === BIRD CITY IDOL HALL OF FAME ===
       idolWins: saved ? (saved.idol_wins || 0) : 0,   // lifetime idol wins (persistent)
@@ -3892,8 +3905,11 @@ class GameEngine {
           mochi.active = false;
           this.mochiIds.delete(mochiId);
           // Aurora × Cherry Blossoms — sacred spring night triples rewards!
+          // Mochi × Crime Wave — mochi hidden during crime wave restores with 2× coin bonus!
           const sacredNight = !!(this.aurora && this.aurora.endsAt > now);
-          const mult = sacredNight ? 3 : 1;
+          const crimeWaveBonus = !!(mochi.crimeWaveBonus);
+          if (crimeWaveBonus) mochi.crimeWaveBonus = false;
+          const mult = sacredNight ? 3 : crimeWaveBonus ? 2 : 1;
           const foodBonus = 30 * mult;
           const xpBonus   = 50 * mult;
           const coinBonus = 20 * mult;
@@ -3913,7 +3929,7 @@ class GameEngine {
             type: 'mochi_collected',
             birdId: bird.id, name: bird.name,
             food: foodBonus, xp: xpBonus, coins: coinBonus,
-            sacredNight, x: mochi.x, y: mochi.y,
+            sacredNight, crimeWaveBonus, x: mochi.x, y: mochi.y,
           });
           const mId = mochiId;
           setTimeout(() => { this.foods.delete(mId); }, 5000);
@@ -5485,9 +5501,15 @@ class GameEngine {
           this._startAurora(now);
         }
       }
-      // At dusk: reset aurora trigger flag so each night can have one aurora
+      // At dusk: reset aurora trigger flag + hanami lantern so each night starts fresh
       if (newPhase === 'dusk') {
         this.auroraTriggeredThisNight = false;
+        this.hanamiLanternFiredThisNight = false;
+        this.hanamiLanternScheduledAt = null;
+        if (this.hanamiLantern) {
+          this.hanamiLantern = null;
+          this.events.push({ type: 'hanami_lantern_expired' });
+        }
       }
       // At day: clear aurora and night market
       if (newPhase === 'day' && this.aurora) {
@@ -5564,6 +5586,7 @@ class GameEngine {
           fightingChampBadge: b.fightingChampBadge || false,
           skillTreeMaster: b.skillTreeMaster || false,
           constellationBadge: b.constellationBadge || false,
+          hanamiLanternBadge: b.hanamiLanternBadge || false,
           courtTitle: (() => { const cm = this.royalCourt.find(m => m.birdId === b.id); return cm ? cm.title : null; })(),
           stardustCloakUntil: b.stardustCloakUntil || 0,
           cometTrailUntil: b.cometTrailUntil || 0,
@@ -6630,6 +6653,7 @@ class GameEngine {
       idolBadge: bird.idolBadge || false,
       royaleChampBadge: bird.royaleChampBadge || false,
       fightingChampBadge: bird.fightingChampBadge || false,
+      hanamiLanternBadge: bird.hanamiLanternBadge || false,
       nearIdolStage: (() => {
         const dx = bird.x - this.IDOL_STAGE_POS.x;
         const dy = bird.y - this.IDOL_STAGE_POS.y;
@@ -6674,6 +6698,15 @@ class GameEngine {
       } : null,
       // Cherry Blossoms Spring Festival (April only)
       cherryBlossoms: this.cherryBlossoms,
+      // Hanami Lantern — glowing paper lantern that rises from the Sacred Pond on spring nights
+      hanamiLantern: this.hanamiLantern ? {
+        x: this.hanamiLantern.x,
+        y: this.hanamiLantern.y,
+        baseY: this.hanamiLantern.baseY,
+        spawnedAt: this.hanamiLantern.spawnedAt,
+        expiresAt: this.hanamiLantern.expiresAt,
+        floatPhase: this.hanamiLantern.floatPhase,
+      } : null,
       // Night Market (aurora bazaar — near Sacred Pond)
       nightMarket: this.nightMarket ? { x: this.nightMarket.x, y: this.nightMarket.y } : null,
       // Ice Rink (blizzard-only)
@@ -14877,12 +14910,45 @@ class GameEngine {
       this.gazetteStats.crimeWaves++;
       // Reset timer for next crime wave: 40–60 minutes after this one ends
       this.crimeWaveTimer = now + CRIME_WAVE_DURATION + this._randomRange(40 * 60000, 60 * 60000);
+      // Mochi × Crime Wave: 70% of mochi items vanish as shopkeepers hide their goods!
+      if (this.cherryBlossoms && this.mochiIds.size > 0) {
+        let hiddenCount = 0;
+        for (const mochiId of this.mochiIds) {
+          const m = this.foods.get(mochiId);
+          if (m && m.active && Math.random() < 0.70) {
+            m.active = false;
+            m.hiddenByCrimeWave = true;
+            hiddenCount++;
+          }
+        }
+        if (hiddenCount > 0) {
+          this.mochiCrimeWaveBonus = true;
+          this.events.push({ type: 'mochi_crime_wave_hidden', count: hiddenCount });
+        }
+      }
     }
 
     // End the crime wave
     if (this.crimeWave && now >= this.crimeWave.endsAt) {
       this.crimeWave = null;
       this.events.push({ type: 'crime_wave_end' });
+      // Restore hidden mochi with a 2× coin bonus tag
+      if (this.mochiCrimeWaveBonus) {
+        this.mochiCrimeWaveBonus = false;
+        let restoredCount = 0;
+        for (const mochiId of this.mochiIds) {
+          const m = this.foods.get(mochiId);
+          if (m && m.hiddenByCrimeWave) {
+            m.active = true;
+            m.hiddenByCrimeWave = false;
+            m.crimeWaveBonus = true; // 2× coins when collected
+            restoredCount++;
+          }
+        }
+        if (restoredCount > 0) {
+          this.events.push({ type: 'mochi_crime_wave_restored', count: restoredCount });
+        }
+      }
     }
   }
 
@@ -15093,6 +15159,125 @@ class GameEngine {
         });
       }
     }
+
+    // === HANAMI LANTERN — once per night, a glowing lantern rises from the pond ===
+    if (this.dayPhase === 'night') {
+      if (!this.hanamiLanternFiredThisNight && !this.hanamiLantern) {
+        // Schedule the lantern 1–4 minutes into the night phase
+        if (!this.hanamiLanternScheduledAt) {
+          this.hanamiLanternScheduledAt = now + this._randomRange(60000, 4 * 60000);
+        } else if (now >= this.hanamiLanternScheduledAt && this.birds.size > 0) {
+          this._spawnHanamiLantern(now);
+        }
+      }
+      if (this.hanamiLantern) this._tickHanamiLantern(now);
+    }
+
+    // === SAKURA VIEWING PARTY — 4+ birds near the pond simultaneously get +100 XP each ===
+    const PARTY_POND_CX = 1050, PARTY_POND_CY = 1100, PARTY_RADIUS = 210;
+    const SAKURA_PARTY_COOLDOWN = 3 * 60000; // 3-minute cooldown
+    if (now - this.sakuraPartyLastFired >= SAKURA_PARTY_COOLDOWN) {
+      const nearbyBirds = [];
+      for (const bird of this.birds.values()) {
+        if (bird.inSewer) continue;
+        const dx = bird.x - PARTY_POND_CX, dy = bird.y - PARTY_POND_CY;
+        if (Math.sqrt(dx * dx + dy * dy) <= PARTY_RADIUS) nearbyBirds.push(bird);
+      }
+      if (nearbyBirds.length >= 4) {
+        this.sakuraPartyLastFired = now;
+        for (const b of nearbyBirds) {
+          b.xp += 100;
+          b.coins += 25;
+          this._trackDailyProgress(b, 'coins_earned', 25);
+        }
+        this.events.push({
+          type: 'sakura_viewing_party',
+          count: nearbyBirds.length,
+          names: nearbyBirds.map(b => b.name),
+          xp: 100, coins: 25,
+        });
+      }
+    }
+  }
+
+  // ============================================================
+  // HANAMI LANTERN — spawn / tick / claim
+  // ============================================================
+
+  _spawnHanamiLantern(now) {
+    this.hanamiLanternFiredThisNight = true;
+    // Spawn near the Sacred Pond center with slight random offset
+    const POND_CX = 1050, POND_CY = 1100;
+    const spawnX = POND_CX + (Math.random() - 0.5) * 80;
+    const spawnY = POND_CY - 10; // just above the pond surface
+    this.hanamiLantern = {
+      x: spawnX,
+      y: spawnY,
+      baseY: spawnY,
+      spawnedAt: now,
+      expiresAt: now + 90000, // 90-second claim window
+      floatPhase: Math.random() * Math.PI * 2,
+    };
+    this.events.push({
+      type: 'hanami_lantern_spawn',
+      x: spawnX,
+      y: spawnY,
+      expiresAt: this.hanamiLantern.expiresAt,
+    });
+  }
+
+  _tickHanamiLantern(now) {
+    const lantern = this.hanamiLantern;
+    if (!lantern) return;
+    // Expire check
+    if (now >= lantern.expiresAt) {
+      this.events.push({ type: 'hanami_lantern_expired' });
+      this.hanamiLantern = null;
+      return;
+    }
+    // Update position: gentle upward float + sine-wave sway
+    const elapsed = (now - lantern.spawnedAt) / 1000; // seconds
+    lantern.y = lantern.baseY - Math.min(elapsed * 7, 180); // rise up to 180px over ~25s
+    lantern.x = (lantern.x !== undefined ? lantern.x : lantern.baseX) +
+      Math.sin(elapsed * 0.6 + lantern.floatPhase) * 8 * 0.05; // small horizontal sway per tick
+
+    // Auto-collect: first bird within 60px
+    for (const bird of this.birds.values()) {
+      if (bird.inSewer || bird.stunnedUntil > now) continue;
+      const dx = bird.x - lantern.x;
+      const dy = bird.y - lantern.y;
+      if (Math.sqrt(dx * dx + dy * dy) < 60) {
+        this._claimHanamiLantern(bird, now);
+        return;
+      }
+    }
+  }
+
+  _claimHanamiLantern(bird, now) {
+    if (!this.hanamiLantern) return;
+    this.hanamiLantern = null;
+
+    bird.coins += 200;
+    bird.xp += 120;
+    bird.hanamiLanternBadge = true; // session-only badge: 🏮
+    this._trackDailyProgress(bird, 'hanami_lantern', 1);
+    this._trackDailyProgress(bird, 'coins_earned', 200);
+
+    // Check for level-up
+    const newLvl = world.getLevelFromXP(bird.xp);
+    if (newLvl !== bird.level) {
+      bird.level = newLvl;
+      bird.type = world.getBirdTypeForLevel(newLvl);
+      this.events.push({ type: 'evolve', birdId: bird.id, name: bird.name, birdType: bird.type });
+    }
+
+    this.events.push({
+      type: 'hanami_lantern_claimed',
+      birdId: bird.id,
+      name: bird.name,
+      gangTag: bird.gangTag || null,
+      coins: 200, xp: 120,
+    });
   }
 
   // ============================================================

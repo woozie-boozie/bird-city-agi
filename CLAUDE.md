@@ -2694,6 +2694,49 @@ April brings Bird City's first seasonal transformation. Pink cherry blossom tree
 
 **Creative intent**: Bird City has been pure CARNAGE from session 1. This is the first time the city offers something genuinely BEAUTIFUL and peaceful. The cherry blossom trees transform the park from a flat green zone into a stunning visual landmark. Petals drifting across the screen while you're in the middle of a police chase create tonal whiplash that's uniquely Bird City. The Hanami daily challenge rewards players for simply BEING in the park — flying near the pond, watching the petals fall, earning quiet XP. The Sacred Spring Night combo (Aurora + Cherry Blossoms) is the game's most magical moment — a glowing pink-and-teal park with tripled mochi rewards for the birds who discover it. Pure DISCOVERY + SPECTACLE + RETENTION energy — the city now has its first seasonal soul.
 
+**Session 81 — 2026-04-12: Hanami Lantern Chase + Sakura Viewing Party + Blossom Crown + Mochi × Crime Wave**
+Four interlocking additions that deepen the Cherry Blossom system into a complete spring identity layer:
+
+**Hanami Lantern Chase (the night's rarest reward):**
+- Once per night during cherry blossom season, a glowing paper lantern floats up from the Sacred Pond (randomly 1–4 minutes into the night phase)
+- The lantern rises 7px/s with a gentle 20px sway, climbing up to 180px — a real race to catch it before it floats too high
+- 90-second claim window — the HUD countdown bar turns orange then red as time runs out
+- First bird to fly within 60px claims it: **+200 coins + 120 XP + permanent 🏮 Hanami Lantern Badge** on their nametag (persists across sessions)
+- Off-screen direction arrow (warm amber) points toward the lantern for birds who can't see it
+- City-wide `hanami_lantern_spawn` event announces "🏮 A HANAMI LANTERN RISES FROM THE POND!" with screen shake
+- New daily challenge: **Lantern Catcher** — catch the Hanami Lantern (250 XP, 125c) — the rarest spring challenge
+
+**Lantern visual (renderer.js):**
+- Warm orange/amber outer glow radial gradient
+- Paper oval body with bright-center → deep-red-edge radial gradient (authentic paper lantern look)
+- 3 horizontal ribs + top/bottom caps + hanging tassel with animated swinging strands
+- Inner soft glow overlay for depth
+- "🏮 CATCH IT!" label switches to "🏮 HURRY!" in red when <15 seconds remain
+- Full animated rendering at real-time world position (computed from `spawnedAt` + `floatPhase` on both server and client)
+- Minimap: animated pulsing 🏮 emoji dot at lantern world position
+
+**Sakura Viewing Party (cooperative spring moment):**
+- If 4+ birds gather simultaneously within 210px of the Sacred Pond during cherry blossom season: **+100 XP + 25 coins for EVERYONE in the group**
+- 3-minute cooldown prevents spam but rewards organic congregation
+- City-wide event feed callout: "🌸 SAKURA VIEWING PARTY — N birds at the pond! +100 XP each!"
+- Naturally emergent: players who see the announcement will spontaneously fly to the pond to join the next party
+
+**Blossom Crown (Kingpin × Cherry Blossom visual):**
+- When the Kingpin flies through the park area (within 500px of park center at x:1200, y:1200) during cherry blossom season: 6 cherry blossom flowers orbit the crown
+- Each petal cluster is a full 5-petal flower in alternating pink shades (#ffb7c5 / #ffd6e0) with gold centers
+- Petals orbit at independent speeds with a flattened elliptical path (suggests the petals are circling, not floating in 2D)
+- Petals fade in smoothly as the Kingpin enters the park, fade out as they leave — fully gradual transition
+- Pure cosmetic spectacle — no gameplay effect. Pure DISCOVERY: players who don't know about this will be surprised the first time they see it
+
+**Mochi × Crime Wave (cross-system synergy):**
+- When a crime wave erupts during cherry blossom season: 70% of active mochi items disappear ("shopkeepers hid their goods!")
+- Hidden mochi reappear when crime wave ends — but now tagged as `crimeWaveBonus = true`
+- Crime wave bonus mochi give **2× rewards** (+60c, +100 XP, +40 food vs normal 30c/50XP/20food)
+- City-wide announcement when mochi is hidden: "🌸🚨 Shopkeepers hid the mochi! Find them when the crime wave ends for 2× rewards!"
+- Restoring announcement: "🌸 The mochi is back — and it's 2× value!" — creates a city-wide sprint to the park after every crime wave ends
+
+**Creative intent**: Session 80 made the park beautiful. Session 81 makes it ALIVE with events. The Hanami Lantern is the park's rarest treasure — a night encounter that only exists during spring and requires being in the right place at the right time. The 🏮 badge is the first purely seasonal cosmetic in the game: impossible to earn outside spring, visible to all players forever. The Sakura Viewing Party rewards congregation — players who fly to the pond together earn a shared reward that no individual can trigger alone. The Blossom Crown turns the park into the Kingpin's symbolic home turf: wearing the crown through cherry blossoms while petals orbit is the most visually magical thing in the game. The mochi × crime wave synergy makes even the chaos systems interact with spring beauty: crime waves now have a spring variant that creates post-wave scrambles. Pure DISCOVERY + SPECTACLE + SOCIAL energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -2904,7 +2947,11 @@ Built the Territory Control System on top of the existing upstream code:
 - Royal Court × Kingpin Dethronement: if the Kingpin is dethroned and a Court member becomes the new Kingpin, the Duke's "ascension" is announced city-wide with extra fanfare
 - Duke's Challenge: the Duke can issue one daily mini-challenge to the city (e.g., "first to poop 3 cars earns 50c from me") — spending from their own coins, creating a mini-economy of noble challenges
 - ~~Seasonal Cherry Blossoms: park fills with pink petal effects during spring events~~ (DONE Session 80)
-- Mochi + crime wave: during crime wave, mochi vanishes as shopkeepers hide their goods — 2× coin reward if you find the stash
-- Sakura Viewing Party: if 4+ birds are all near the Sacred Pond simultaneously during cherry blossom season, a burst of cooperative XP fires for all of them (+100 XP each)
-- Cherry Blossom × Kingpin: Kingpin who passes through the park during spring gets a "Blossom Crown" visual (pink petals orbiting the crown) — cosmetic flavor for the season
-- Hanami Festival Event: once per night during spring, a special Hanami lantern floats up from the pond — first bird to catch it earns 200c + a rare seasonal badge
+- ~~Mochi + crime wave: during crime wave, mochi vanishes as shopkeepers hide their goods — 2× coin reward if you find the stash~~ (DONE Session 81)
+- ~~Sakura Viewing Party: if 4+ birds are all near the Sacred Pond simultaneously during cherry blossom season, a burst of cooperative XP fires for all of them (+100 XP each)~~ (DONE Session 81)
+- ~~Cherry Blossom × Kingpin: Kingpin who passes through the park during spring gets a "Blossom Crown" visual (pink petals orbiting the crown) — cosmetic flavor for the season~~ (DONE Session 81)
+- ~~Hanami Festival Event: once per night during spring, a special Hanami lantern floats up from the pond — first bird to catch it earns 200c + a rare seasonal badge~~ (DONE Session 81)
+- Spring Lantern Festival: multiple lanterns rise simultaneously during full-moon nights (double lantern reward nights)
+- Mochi stash boss: during a crime wave in spring, a hidden mochi stash spawns in the sewer that only has a clue on the minimap (Lunar Lens reveals it)
+- Cherry Blossom × Royale: during cherry blossom season, Bird Royale's safe zone center starts at the Sacred Pond — everyone converges on the most beautiful spot
+- Hanami daily: "Spring Witness — be present in the park when the Hanami Lantern spawns" (not the catcher, just witness it)

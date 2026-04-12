@@ -106,7 +106,7 @@ window.Sprites = {
   },
 
   // === NAME TAG ===
-  drawNameTag(ctx, x, y, name, level, type, isPlayer, mafiaTitle, gangTag, gangColor, tattoosEquipped, prestige, eagleFeather, idolBadge, royaleChampBadge, skillTreeMaster, fightingChampBadge, constellationBadge, courtTitle) {
+  drawNameTag(ctx, x, y, name, level, type, isPlayer, mafiaTitle, gangTag, gangColor, tattoosEquipped, prestige, eagleFeather, idolBadge, royaleChampBadge, skillTreeMaster, fightingChampBadge, constellationBadge, courtTitle, hanamiLanternBadge) {
     const text = `${name} [Lv.${level}]`;
     ctx.font = 'bold 11px Courier New';
     ctx.textAlign = 'center';
@@ -206,6 +206,24 @@ window.Sprites = {
       ctx.shadowBlur = 9;
       ctx.fillStyle = '#ffaa44';
       ctx.fillText('🥊', x, y - 41 - offsetY);
+      ctx.shadowBlur = 0;
+      ctx.font = 'bold 11px Courier New';
+      offsetY += 14;
+    }
+
+    // 🏮 Hanami Lantern Badge — caught the sacred lantern at the pond on a spring night
+    if (hanamiLanternBadge) {
+      ctx.font = '11px serif';
+      const lw = ctx.measureText('🏮').width + 10;
+      ctx.fillStyle = 'rgba(90,30,0,0.92)';
+      ctx.fillRect(x - lw / 2, y - 52 - offsetY, lw, 14);
+      ctx.strokeStyle = '#ff9944';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(x - lw / 2, y - 52 - offsetY, lw, 14);
+      ctx.shadowColor = '#ff7700';
+      ctx.shadowBlur = 9;
+      ctx.fillStyle = '#ffcc88';
+      ctx.fillText('🏮', x, y - 41 - offsetY);
       ctx.shadowBlur = 0;
       ctx.font = 'bold 11px Courier New';
       offsetY += 14;

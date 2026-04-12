@@ -3020,18 +3020,58 @@
       if (isMe) {
         const msg = ev.sacredNight
           ? `🌸✨ SACRED SPRING NIGHT! +${ev.food} food +${ev.xp} XP +${ev.coins}c (3×!)`
-          : `🌸 CHERRY BLOSSOM MOCHI! +${ev.food} food +${ev.xp} XP +${ev.coins}c`;
+          : ev.crimeWaveBonus
+            ? `🌸🚨 CRIME WAVE MOCHI! +${ev.food} food +${ev.xp} XP +${ev.coins}c (2×!)`
+            : `🌸 CHERRY BLOSSOM MOCHI! +${ev.food} food +${ev.xp} XP +${ev.coins}c`;
         showAnnouncement(msg, '#ff99cc', 3000);
         effects.push({ type: 'text', x: ev.x, y: ev.y, text: `+${ev.xp} XP 🌸`, color: '#ff88b4', size: 14, time: performance.now(), duration: 2200 });
       } else {
-        addEventMessage(`🌸 ${ev.name} collected cherry blossom mochi!${ev.sacredNight ? ' (Sacred Spring Night 3×!)' : ''}`, '#ff99cc');
+        const bonusNote = ev.sacredNight ? ' (Sacred Night 3×!)' : ev.crimeWaveBonus ? ' (Crime Wave 2×!)' : '';
+        addEventMessage(`🌸 ${ev.name} collected cherry blossom mochi!${bonusNote}`, '#ff99cc');
       }
     }
     if (ev.type === 'mochi_appeared') {
       addEventMessage('🌸 Cherry blossom mochi appeared in the Park! Find them for XP and coins.', '#ff99cc');
     }
+    if (ev.type === 'mochi_crime_wave_hidden') {
+      addEventMessage(`🌸🚨 Shopkeepers are hiding their mochi during the crime wave! (${ev.count} hidden)`, '#ff8866');
+    }
+    if (ev.type === 'mochi_crime_wave_restored') {
+      showAnnouncement(`🌸 MOCHI RESTOCKED! Crime wave ended — ${ev.count} mochi reappear with 2× coins!`, '#ff99cc', 4000);
+      addEventMessage(`🌸 Mochi shopkeepers return! ${ev.count} mochi back in the park — 2× coins while they last!`, '#ff99cc');
+    }
     if (ev.type === 'hanami_bonus' && ev.birdId === myId) {
       effects.push({ type: 'text', x: ev.x, y: ev.y, text: '+5 XP 🌸', color: '#ffaac8', size: 11, time: performance.now(), duration: 1800 });
+    }
+
+    // === HANAMI LANTERN — Sacred Pond night event (spring only) ===
+    if (ev.type === 'hanami_lantern_spawn') {
+      window._hanamiLanternData = { x: ev.x, y: ev.y, baseY: ev.y, spawnedAt: performance.now(), expiresAt: performance.now() + (ev.expiresAt - Date.now()), floatPhase: Math.random() * Math.PI * 2, serverExpiresAt: ev.expiresAt };
+      screenShake(6, 800);
+      showAnnouncement('🏮 A HANAMI LANTERN rises from the Sacred Pond!\nFly to it and catch it for 200c + 120 XP + 🏮 badge!', '#ff9944', 6000);
+      addEventMessage('🏮 A Hanami Lantern floats up from the Sacred Pond! First bird to catch it wins big!', '#ff9944');
+    }
+    if (ev.type === 'hanami_lantern_claimed') {
+      window._hanamiLanternData = null;
+      const isMe = ev.birdId === myId;
+      if (isMe) {
+        screenShake(10, 1200);
+        showAnnouncement(`🏮 YOU CAUGHT THE HANAMI LANTERN!\n+${ev.coins}c +${ev.xp} XP + 🏮 badge!`, '#ff9944', 6000);
+      } else {
+        const tag = ev.gangTag ? `[${ev.gangTag}] ` : '';
+        addEventMessage(`🏮 ${tag}${ev.name} caught the Hanami Lantern! (+${ev.coins}c +${ev.xp} XP + 🏮 badge)`, '#ff9944');
+      }
+    }
+    if (ev.type === 'hanami_lantern_expired') {
+      window._hanamiLanternData = null;
+      addEventMessage('🏮 The Hanami Lantern drifted away unclaimed...', '#aa7744');
+    }
+
+    // === SAKURA VIEWING PARTY ===
+    if (ev.type === 'sakura_viewing_party') {
+      screenShake(8, 800);
+      showAnnouncement(`🌸 SAKURA VIEWING PARTY!\n${ev.count} birds at the pond — +${ev.xp} XP +${ev.coins}c each!`, '#ff88c8', 5000);
+      addEventMessage(`🌸 SAKURA VIEWING PARTY! ${ev.count} birds gathered at the Sacred Pond — all earn +${ev.xp} XP +${ev.coins}c!`, '#ff88c8');
     }
 
     // === UNDERGROUND SEWER EVENTS ===
@@ -7493,6 +7533,12 @@
       Renderer.drawShootingStarLanding(ctx, camera, _ss, now);
     }
 
+    // Hanami Lantern (spring night event)
+    const _lantern = window._hanamiLanternData || (gameState.self && gameState.self.hanamiLantern);
+    if (_lantern) {
+      Renderer.drawHanamiLantern(ctx, camera, _lantern, now);
+    }
+
     // Pigeon Pied Piper
     if (gameState.self && gameState.self.piper) {
       Renderer.drawPiedPiper(ctx, camera, gameState.self.piper, now);
@@ -7683,7 +7729,7 @@
 
           Sprites.drawBird(ctx, sx, sy, b.rotation, b.type, b.wingPhase, isPlayer, b.birdColor || null);
           ctx.globalAlpha = 1; // Always reset after bird draw
-          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0, b.eagleFeather || false, b.idolBadge || false, b.royaleChampBadge || false, b.skillTreeMaster || false, b.fightingChampBadge || false, b.constellationBadge || false, b.courtTitle || null);
+          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0, b.eagleFeather || false, b.idolBadge || false, b.royaleChampBadge || false, b.skillTreeMaster || false, b.fightingChampBadge || false, b.constellationBadge || false, b.courtTitle || null, b.hanamiLanternBadge || false);
 
           // Bird Flu: sneezing emoji indicator above infected birds
           if (b.isFlu) {
@@ -7807,6 +7853,50 @@
               ctx.fillStyle = `rgba(255, 200, 0, ${crownPulse})`;
               ctx.fillText(`${b.kingpinMyHits}/3`, sx, crownY + 16);
               ctx.restore();
+            }
+            // Blossom Crown — orbiting pink petals during Cherry Blossom season
+            // Only shows when Kingpin is in or near the park area (~x:1200, y:1200)
+            if (gameState.cherryBlossoms) {
+              const PARK_CX = 1200, PARK_CY = 1200, PARK_BLOSSOM_RADIUS = 500;
+              const bwx = b.x, bwy = b.y;
+              const distToPark = Math.hypot(bwx - PARK_CX, bwy - PARK_CY);
+              if (distToPark < PARK_BLOSSOM_RADIUS) {
+                // Fade petals in as the kingpin approaches the park center
+                const petalAlpha = Math.min(1, (PARK_BLOSSOM_RADIUS - distToPark) / 200) * 0.9;
+                const numPetals = 6;
+                ctx.save();
+                for (let pi = 0; pi < numPetals; pi++) {
+                  const baseAngle = (pi / numPetals) * Math.PI * 2;
+                  const orbitSpeed = 0.0008 + pi * 0.00015;
+                  const orbitAngle = baseAngle + now * orbitSpeed;
+                  const orbitR = 32 + Math.sin(now * 0.0012 + pi * 1.3) * 5;
+                  const px = sx + Math.cos(orbitAngle) * orbitR;
+                  const py = sy - 8 + Math.sin(orbitAngle) * orbitR * 0.45; // slightly flattened orbit
+                  const petalRotation = orbitAngle + Math.PI * 0.5 + Math.sin(now * 0.002 + pi) * 0.4;
+                  // Draw a 5-petal cherry blossom
+                  ctx.globalAlpha = petalAlpha;
+                  ctx.save();
+                  ctx.translate(px, py);
+                  ctx.rotate(petalRotation);
+                  const ps = 5; // petal size
+                  for (let k = 0; k < 5; k++) {
+                    const kAngle = (k / 5) * Math.PI * 2;
+                    const pkx = Math.cos(kAngle) * ps;
+                    const pky = Math.sin(kAngle) * ps;
+                    ctx.beginPath();
+                    ctx.ellipse(pkx, pky, ps * 0.7, ps * 0.45, kAngle, 0, Math.PI * 2);
+                    ctx.fillStyle = pi % 2 === 0 ? '#ffb7c5' : '#ffd6e0';
+                    ctx.fill();
+                  }
+                  // Center dot
+                  ctx.beginPath();
+                  ctx.arc(0, 0, 1.5, 0, Math.PI * 2);
+                  ctx.fillStyle = '#ffcc44';
+                  ctx.fill();
+                  ctx.restore();
+                }
+                ctx.restore();
+              }
             }
           }
 
@@ -8589,6 +8679,72 @@
       ctx.restore();
     }
 
+    // === HANAMI LANTERN — countdown bar + direction arrow when off-screen ===
+    const _lanternHud = window._hanamiLanternData || (gameState.self && gameState.self.hanamiLantern);
+    if (_lanternHud) {
+      const elapsed_l = (now - _lanternHud.spawnedAt) / 1000;
+      const curLY = _lanternHud.baseY - Math.min(elapsed_l * 7, 180);
+      const curLX = _lanternHud.x + Math.sin(elapsed_l * 0.6 + (_lanternHud.floatPhase || 0)) * 20;
+      const lsx = curLX - camera.x + camera.screenW / 2;
+      const lsy = curLY - camera.y + camera.screenH / 2;
+      const lTimeLeft = Math.max(0, (_lanternHud.expiresAt || (_lanternHud.spawnedAt + 90000)) - now);
+      const lOnScreen = lsx > 40 && lsx < camera.screenW - 40 && lsy > 40 && lsy < camera.screenH - 40;
+      const lFrac = lTimeLeft / 90000;
+      const lPulse = 0.7 + 0.3 * Math.sin(now * 0.006);
+      // HUD countdown bar
+      const lBarW = 160, lBarH = 12;
+      const lBarX = camera.screenW / 2 - lBarW / 2;
+      const lBarY = 116; // below shooting star bar
+      ctx.save();
+      ctx.globalAlpha = 0.88;
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.beginPath();
+      ctx.roundRect(lBarX - 40, lBarY - 16, lBarW + 80, lBarH + 28, 8);
+      ctx.fill();
+      ctx.fillStyle = '#ffcc88';
+      ctx.font = 'bold 11px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(`🏮 HANAMI LANTERN — ${Math.ceil(lTimeLeft / 1000)}s`, camera.screenW / 2, lBarY - 3);
+      ctx.fillStyle = 'rgba(255,153,60,0.18)';
+      ctx.beginPath();
+      ctx.roundRect(lBarX, lBarY + 2, lBarW, lBarH, 4);
+      ctx.fill();
+      ctx.fillStyle = lFrac > 0.4 ? '#ffcc66' : (lFrac > 0.2 ? '#ff9933' : '#ff4400');
+      ctx.beginPath();
+      ctx.roundRect(lBarX, lBarY + 2, lBarW * lFrac, lBarH, 4);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      // Direction arrow if lantern is off-screen
+      if (!lOnScreen) {
+        const angle = Math.atan2(lsy - camera.screenH / 2, lsx - camera.screenW / 2);
+        const arrowDist = Math.min(camera.screenW, camera.screenH) / 2 - 55;
+        const ax = camera.screenW / 2 + Math.cos(angle) * arrowDist;
+        const ay = camera.screenH / 2 + Math.sin(angle) * arrowDist;
+        ctx.save();
+        ctx.translate(ax, ay);
+        ctx.rotate(angle);
+        ctx.globalAlpha = 0.85 * lPulse;
+        ctx.fillStyle = '#ffcc66';
+        ctx.strokeStyle = '#883300';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(20, 0);
+        ctx.lineTo(-10, -10);
+        ctx.lineTo(-5, 0);
+        ctx.lineTo(-10, 10);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.font = 'bold 9px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#331100';
+        ctx.fillText('🏮', 4, 0);
+        ctx.restore();
+      }
+      ctx.restore();
+    }
+
     // === METEOR SHOWER — direction arrows for each unclaimed landing site ===
     if (window._meteorShowerData && window._meteorShowerData.length > 0) {
       for (const mStar of window._meteorShowerData) {
@@ -9101,6 +9257,13 @@
     // Cherry blossom trees on minimap — pink dots during spring
     if (gameState.cherryBlossoms && worldData) {
       Renderer.drawCherryBlossomTreesOnMinimap(minimapCtx, worldData.width, worldData.height);
+    }
+
+    // Hanami Lantern on minimap — pulsing warm orange lantern emoji
+    const _minimapLantern = window._hanamiLanternData || (gameState.self && gameState.self.hanamiLantern);
+    if (_minimapLantern && worldData) {
+      const worldDataMM = { minimapW: minimapCtx.canvas.width, minimapH: minimapCtx.canvas.height, worldWidth: worldData.width, worldHeight: worldData.height };
+      Renderer.drawHanamiLanternOnMinimap(minimapCtx, worldDataMM, _minimapLantern, now);
     }
 
     // Pied Piper on minimap — rainbow pulsing dot
