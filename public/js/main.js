@@ -94,6 +94,11 @@
 
   // === ROYAL DECREE PANEL ===
   let decreePanelVisible = false;
+  window._revoltWindowUntil = null; // timestamp when the People's Revolt window expires
+  window._poopToRevolt = function() {
+    // If revolt window is active, clicking the pill focuses attention — poop with SPACE
+    // (just a visual hint, actual mechanic is via poop hits)
+  };
   let casinoSpinning = false;
   let casinoSpinInterval = null;
   const CASINO_REEL_SYMBOLS = ['🐦', '💩', '🍗', '⭐', '💎', '👑'];
@@ -365,6 +370,12 @@
       prevStateTime = stateTime;
       gameState = state;
       stateTime = performance.now();
+      // Sync revolt window state for players who join mid-revolt
+      if (state.self && state.self.revoltWindowUntil && state.self.revoltWindowUntil > Date.now()) {
+        window._revoltWindowUntil = state.self.revoltWindowUntil;
+      } else if (window._revoltWindowUntil && window._revoltWindowUntil < Date.now()) {
+        window._revoltWindowUntil = null;
+      }
     });
 
     socket.on('events', (events) => {
@@ -932,12 +943,13 @@
 
     // === ROYAL DECREE EVENTS ===
     if (ev.type === 'royal_decree_issued') {
-      const DECREE_NAMES = { gold_rush: '👑 GOLD RUSH', wanted_decree: '⚡ WANTED DECREE', royal_amnesty: '🛡️ ROYAL AMNESTY', tax_day: '💰 TAX DAY' };
+      const DECREE_NAMES = { gold_rush: '👑 GOLD RUSH', wanted_decree: '⚡ WANTED DECREE', royal_amnesty: '🛡️ ROYAL AMNESTY', tax_day: '💰 TAX DAY', kings_pardon: '👑 KING\'S PARDON' };
       const DECREE_DESCS = {
         gold_rush: 'All coin drops DOUBLED city-wide for 60 seconds!',
         wanted_decree: 'All birds immediately gain wanted heat — chaos erupts!',
         royal_amnesty: 'All law enforcement STANDS DOWN for 45 seconds!',
-        tax_day: 'The Kingpin collects 10% of every bird\'s coins!',
+        tax_day: 'The Kingpin collects 10% of every bird\'s coins!\n🏴 REVOLT WINDOW OPENS — 15s to fight back!',
+        kings_pardon: 'The most wanted criminal walks free by royal decree!',
       };
       const selfIsKingpin = ev.kingpinId === myId;
       const decName = DECREE_NAMES[ev.decreeType] || ev.decreeType;
@@ -956,7 +968,7 @@
       if (name) addEventMessage(`⚜️ DECREE EXPIRED: ${name} has ended.`, '#aa8800');
     }
     if (ev.type === 'decree_fail') {
-      const msgs = { not_kingpin: 'Only the Kingpin can issue decrees!', already_used: 'You already used your decree this tenure!', already_active: 'A decree is already in effect!' };
+      const msgs = { not_kingpin: 'Only the Kingpin can issue decrees!', already_used: 'You already used your decree this tenure!', already_active: 'A decree is already in effect!', no_criminals: 'No wanted criminals to pardon — wait for a Most Wanted bird!' };
       if (ev.birdId === myId) showTemporaryPrompt('⚜️ ' + (msgs[ev.reason] || 'Cannot issue decree now.'), 'decreeBanner', 2500);
     }
     if (ev.type === 'decree_wanted_zap') {
@@ -965,11 +977,63 @@
     if (ev.type === 'decree_taxed') {
       if (ev.birdId === myId) {
         effects.push({ type: 'text', x: camera.x, y: camera.y - 30, time: now, duration: 2000, text: `💰 TAX DAY −${ev.amount}c`, color: '#ff8800', size: 15 });
-        showAnnouncement(`💰 THE KINGPIN TAXED YOU: −${ev.amount}c`, '#ff8800', 3500);
+        showAnnouncement(`💰 THE KINGPIN TAXED YOU: −${ev.amount}c\n🏴 REVOLT! Poop the Kingpin — 15 seconds!`, '#ff8800', 4000);
       }
     }
     if (ev.type === 'decree_tax_collected') {
       addEventMessage(`💰 TAX DAY: ${ev.kingpinName} collected ${ev.total}c from the citizens!`, '#ffd700');
+    }
+
+    // === PEOPLE'S REVOLT EVENTS ===
+    if (ev.type === 'revolt_window_start') {
+      window._revoltWindowUntil = Date.now() + ev.windowMs;
+      if (ev.kingpinId !== myId) {
+        // For non-Kingpin birds: show the rage prompt
+        showAnnouncement(`🏴 REVOLT WINDOW — ${Math.round(ev.windowMs / 1000)}s!\n${ev.kingpinName} just taxed everyone.\nPOOP THE KINGPIN! 3 different birds = OVERTHROW!`, '#ff4444', ev.windowMs);
+      } else {
+        showAnnouncement(`⚠️ YOUR TAX DAY OPENED A REVOLT WINDOW!\nBirds have ${Math.round(ev.windowMs / 1000)} seconds to rise up.\nFLY, DODGE, SURVIVE!`, '#ff6600', 4000);
+      }
+      addEventFeedMessage(`🏴 REVOLT WINDOW OPEN! ${Math.round(ev.windowMs / 1000)}s to overthrow ${ev.kingpinName}!`, '#ff4444');
+    }
+    if (ev.type === 'revolt_progress') {
+      addEventFeedMessage(`🏴 REVOLT ${ev.revolters}/3 — ${ev.attackerName} joins the uprising against ${ev.kingpinName}!`, '#ff6622');
+      if (ev.revolters === 2) {
+        addEventFeedMessage(`🏴 ONE MORE BIRD to trigger THE PEOPLE'S REVOLT!`, '#ff4400');
+      }
+    }
+    if (ev.type === 'peoples_revolt') {
+      window._revoltWindowUntil = null;
+      screenShake(22, 1800);
+      const names = ev.participantNames.join(', ');
+      showAnnouncement(`🏴 THE PEOPLE REVOLT!\n${ev.kingpinName} has been OVERTHROWN by the masses!\n${names} each earn ${ev.lootShare}c!`, '#ff6622', 8000);
+      addEventFeedMessage(`🏴 REVOLUTION! ${ev.kingpinName} overthrown by ${names}!`, '#ff4422');
+    }
+    if (ev.type === 'revolt_failed') {
+      window._revoltWindowUntil = null;
+      addEventFeedMessage(`🏴 The revolt fizzled... only ${ev.count}/${ev.needed} birds joined the uprising.`, '#886644');
+    }
+
+    // === KING'S PARDON EVENTS ===
+    if (ev.type === 'kings_pardon_issued') {
+      if (ev.pardonedId === myId) {
+        screenShake(10, 800);
+        showAnnouncement(`👑 ROYAL PARDON!\n${ev.kingpinName} has pardoned you!\nAll heat cleared! Cops stand down for 3 minutes!`, '#44cc88', 6000);
+      } else {
+        showAnnouncement(`👑 ROYAL PARDON\n${ev.kingpinName} grants full pardon to ${ev.pardonedName}!`, '#44cc88', 4000);
+      }
+      addEventFeedMessage(`👑 ROYAL PARDON: ${ev.kingpinName} frees ${ev.pardonedName} from all charges!`, '#44cc88');
+    }
+
+    // === DECREE CROSS-SYSTEM SYNERGIES ===
+    if (ev.type === 'gang_war_decree_boost') {
+      screenShake(10, 600);
+      showAnnouncement(`⚡⚔️ WANTED DECREE + GANG WAR!\n${ev.kingpinName}'s decree supercharges the battle!\nAll gang war kills: 1.5× XP for ${ev.duration}s!`, '#ff8844', 5000);
+      addEventFeedMessage(`⚡⚔️ GANG WAR DECREE BOOST — gang kills give +50% XP for ${ev.duration}s!`, '#ff8844');
+    }
+    if (ev.type === 'gold_rush_crime_wave_combo') {
+      screenShake(12, 700);
+      showAnnouncement(`👑💰🚨 GOLD RUSH + CRIME WAVE!\n${ev.kingpinName}'s decree meets the Crime Wave!\n4× COINS on all poop hits right now!`, '#ffcc00', 5000);
+      addEventFeedMessage(`💰 GOLD RUSH × CRIME WAVE — 4× COINS stacked!`, '#ffcc00');
     }
 
     // === FLOCK EVENTS ===
@@ -7852,6 +7916,56 @@
       ctx.restore();
     }
 
+    // === PEOPLE'S REVOLT WINDOW OVERLAY (non-Kingpin birds only) ===
+    if (window._revoltWindowUntil && window._revoltWindowUntil > now) {
+      const rvTimeLeft = Math.max(0, window._revoltWindowUntil - now);
+      const rvTotal = 15000;
+      const rvFrac = rvTimeLeft / rvTotal;
+      const rvSecs = Math.ceil(rvTimeLeft / 1000);
+
+      // Pulsing red tint overlay — rage building in the city
+      const rvPulse = 0.5 + 0.5 * Math.abs(Math.sin(now * 0.006));
+      ctx.save();
+      ctx.globalAlpha = 0.06 + 0.04 * rvPulse;
+      ctx.fillStyle = '#cc0000';
+      ctx.fillRect(0, 0, camera.screenW, camera.screenH);
+      ctx.globalAlpha = 1;
+      ctx.restore();
+
+      // HUD bar at top (stacks below crime wave bar if active, else at y=132)
+      const hasCrimeWave2 = gameState.self && gameState.self.crimeWave;
+      const rvBarY = hasCrimeWave2 ? 212 : 132;
+      const rvBarW = 200, rvBarH = 12;
+      const rvBarX = camera.screenW / 2 - rvBarW / 2;
+
+      ctx.save();
+      ctx.globalAlpha = 0.92;
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.beginPath();
+      ctx.roundRect(rvBarX - 60, rvBarY - 18, rvBarW + 120, rvBarH + 34, 10);
+      ctx.fill();
+
+      const rvLabelPulse = 0.7 + 0.3 * Math.sin(now * 0.01);
+      ctx.globalAlpha = Math.max(0.7, rvLabelPulse);
+      ctx.fillStyle = '#ff4444';
+      ctx.font = 'bold 11px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(`🏴 REVOLT WINDOW — ${rvSecs}s! POOP THE KINGPIN! (3 birds needed)`, camera.screenW / 2, rvBarY - 4);
+
+      ctx.globalAlpha = 0.8;
+      ctx.fillStyle = 'rgba(80,0,0,0.5)';
+      ctx.beginPath();
+      ctx.roundRect(rvBarX, rvBarY + 2, rvBarW, rvBarH, 4);
+      ctx.fill();
+
+      ctx.fillStyle = rvFrac > 0.5 ? '#ff3333' : rvFrac > 0.25 ? '#ff6600' : '#ffcc00';
+      ctx.beginPath();
+      ctx.roundRect(rvBarX, rvBarY + 2, rvBarW * rvFrac, rvBarH, 4);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+
     // === CITY LOCKDOWN OVERLAY ===
     if (gameState.cityLockdown) {
       const cl = gameState.cityLockdown;
@@ -10021,6 +10135,18 @@
         html += '<div class="bm-buff-pill" style="background:rgba(120,90,0,0.95);border-color:#ffcc00;color:#ffe044;animation:kingpinGlow 0.5s ease-in-out infinite alternate;cursor:pointer;font-weight:bold;" onclick="toggleDecreePanel()">⚜️ DECREE READY — Press [O] to govern!</div>';
       }
     }
+    // King's Pardon: show green legal immunity pill when pardoned
+    if (s.pardonedUntil && s.pardonedUntil > now) {
+      const secs = Math.ceil((s.pardonedUntil - now) / 1000);
+      const mins = Math.floor(secs / 60);
+      const rem = secs % 60;
+      html += `<div class="bm-buff-pill" style="background:rgba(10,80,40,0.92);border-color:#44cc88;color:#88ffaa;animation:kingpinGlow 1.2s ease-in-out infinite alternate;font-weight:bold;">👑 PARDONED — ${mins > 0 ? mins + 'm ' : ''}${rem}s · Cops stand down</div>`;
+    }
+    // People's Revolt window — pulse for non-Kingpin birds while window is open
+    if (!s.isKingpin && window._revoltWindowUntil && window._revoltWindowUntil > now) {
+      const secs = Math.ceil((window._revoltWindowUntil - now) / 1000);
+      html += `<div class="bm-buff-pill" style="background:rgba(100,0,0,0.92);border-color:#ff4444;color:#ffaaaa;animation:pulseRed 0.5s infinite alternate;cursor:pointer;font-weight:bold;" onclick="window._poopToRevolt()">🏴 REVOLT — ${secs}s! POOP THE KINGPIN! (3 needed)</div>`;
+    }
     // Active Royal Decree — shown to ALL players
     if (gameState.activeDecree) {
       const d = gameState.activeDecree;
@@ -11916,9 +12042,16 @@
     tax_day: {
       emoji: '💰',
       name: 'TAX DAY',
-      desc: 'Collect 10% of every bird\'s coins.\nMax 100c per bird — fills your royal treasury.',
+      desc: 'Collect 10% of every bird\'s coins.\nMax 100c per bird — fills your royal treasury.\n⚠️ Opens a 15s REVOLT WINDOW — birds can mob you!',
       duration: 'INSTANT',
       color: '#ff9900',
+    },
+    kings_pardon: {
+      emoji: '👑',
+      name: "KING'S PARDON",
+      desc: 'Grant full legal immunity to the most wanted criminal.\nClears their heat, despawns cops, 3 min no-arrest protection.\nUseful for pardoning a gang ally — or your enemy.',
+      duration: '3 min protection',
+      color: '#44cc88',
     },
   };
 

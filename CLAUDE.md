@@ -2577,6 +2577,46 @@ The Kingpin's role gets its most dramatic upgrade yet. Wear the crown and you no
 
 **Creative intent**: The Kingpin was powerful (tribute income, minimap visibility, dethronement drama) but PASSIVE. Every Kingpin moment was reactive — other birds hunting you. The Royal Decree flips this: now the Kingpin takes INITIATIVE. Tax Day means getting rich in Bird City now has a direct downside for everyone else — the Kingpin literally takes your money. Wanted Decree turns every crime-free bird into a fugitive in seconds. GOLD RUSH is the Kingpin playing populist — "I'll give the city what it wants" — creating a window where the crowd LIKES having a Kingpin. Royal Amnesty is the most dramatic: 45 seconds where every cop vanishes, every bird can crime freely, and the city collectively loses its mind. The one-per-tenure rule makes the choice AGONIZING: do you drop Tax Day early when you first get the crown (when your wallet is fattest) or save Royal Amnesty for when you're at Level 5 Most Wanted? Pure SOCIAL + CARNAGE + SPECTACLE energy — the Kingpin is now Bird City's most powerful role.
 
+**Session 78 — 2026-04-12: The People's Revolt + King's Pardon + Cross-System Synergies**
+The Kingpin's Royal Decree system gets four dramatic expansions that complete its social arc: a 5th decree type (King's Pardon), a People's Revolt mechanic triggered by Tax Day, and two cross-system synergies wiring Decrees into Gang Wars and Crime Waves.
+
+**King's Pardon (5th Decree Type):**
+- Kingpin issues the decree → server finds the highest-heat bird who ISN'T the Kingpin (the city's biggest criminal)
+- That bird instantly gets: all wanted heat cleared, all targeting cops despawned, Bounty Hunter sent off-duty for 2 minutes, active hit contracts cancelled, 3-minute `pardonedUntil` immunity (no new cops spawn while pardoned)
+- The pardoned bird sees: "👑 KING'S PARDON! [Kingpin] pardoned you! 3 minutes of full immunity!" with screen shake
+- City-wide announcement: "👑 KING'S PARDON — [Kingpin] pardoned [Criminal]! They walk free for 3 minutes."
+- Active buffs HUD: pulsing green "👑 PARDONED — Xm Ys · Full immunity" pill for the protected bird
+- Tactical depth: Kingpin pardoning their gang ally mid-pursuit is pure political drama. Kingpin pardoning the city's biggest criminal for goodwill creates fascinating social dynamics.
+- If no criminal has heat: decree is refunded — the Pardon doesn't consume itself fruitlessly
+
+**The People's Revolt (Tax Day mechanic):**
+- When Tax Day fires, a 15-second revolt window opens for all non-Kingpin birds
+- Any bird can poop the Kingpin during this window — revolt participants tracked via `revoltParticipants` Set
+- When 3+ DIFFERENT birds have hit the Kingpin during the window: **The People's Revolt triggers automatically**
+- Revolt loot: 40% of Kingpin's coins split EQUALLY among all revolters (vs normal 28% to one bird)
+- Each revolter: +250 XP + equal share of the dethronement pool
+- City-wide: "✊ THE PEOPLE HAVE SPOKEN! [N] birds overthrow [Kingpin]!" + screen shake + city-wide announcement
+- Revolt window HUD bar: pulsing red countdown bar stacked below crime wave bar — drains right-to-left with color shift from red → orange → yellow
+- Active buffs HUD: pulsing red "✊ REVOLT WINDOW — Xs · Poop the Kingpin!" pill for all non-Kingpin birds
+- Gazette headline (highest priority): "✊ PEOPLE'S REVOLT TOPPLES KINGPIN — THE MASSES ROSE UP!"
+- New daily challenges: "Subject" (be affected by 2 decrees in one session, 200 XP/100c) + "Revolutionary" (participate in a People's Revolt, 280 XP/140c)
+
+**Cross-System: Wanted Decree × Gang War (1.5× kill XP):**
+- When Wanted Decree fires during an active gang war: `gangWarDecreeBoostUntil = now + 30000` set
+- Gang war kills in the next 30 seconds earn 1.5× XP (stacks with aurora 2× for 3× total when both active)
+- `gang_war_decree_boost` event fires to affected gang members: "⚡ WANTED DECREE + GANG WAR — 1.5× kill XP for 30s!"
+
+**Cross-System: Gold Rush × Crime Wave (4× coins announcement):**
+- When Gold Rush decree fires during an active Crime Wave (or Crime Wave starts during Gold Rush): server detects the combo
+- `gold_rush_crime_wave_combo` event fires city-wide: "💰🚨 GOLD RUSH + CRIME WAVE — 4× COIN MOMENT! This is peak Bird City!"
+- Both multipliers (2× Gold Rush, 2× Crime Wave) are already applied mechanically — the announcement makes the combo VISIBLE to all players so they know to lean in
+- Active buffs HUD upgrades the Gold Rush pill to show "💰🚨 GOLD RUSH + CRIME WAVE — 4× COINS!" in gold/red
+
+**State sync fix:**
+- Players joining mid-revolt window now correctly see the revolt HUD — `revoltWindowUntil` sent in every self state snapshot and synced to `window._revoltWindowUntil` on each state update
+
+**Creative intent**: The King's Pardon creates the most unexpected social moment yet — the Kingpin choosing to USE their decree to help a criminal instead of themselves. It's a deeply political act that the whole city watches. Pardoning a gang ally mid-Bounty Hunter chase is a coordinated gang play. Pardoning a rival to buy goodwill is diplomacy. The People's Revolt turns Tax Day from "take coins and endure" to "take coins and brace for uprising" — the Kingpin watches three birds converging with the same purpose, knowing one more hit ends their reign by popular demand. Tax Day is now the most DRAMATIC decree because of what it might trigger. The cross-system synergies wire Decrees into two more systems: gang wars and crime waves now have direct responses to royal power. Pure SOCIAL + CARNAGE + SPECTACLE energy — the city now has a revolution mechanic.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -2764,12 +2804,22 @@ Built the Territory Control System on top of the existing upstream code:
 - Ice Rink cop death animation: when cop exits the rink they do a brief spin (cosmetic, no gameplay effect)
 - Blizzard × Hot Cocoa seagulls: seagulls in blizzard occasionally fly toward hot cocoa first (birds must race seagulls for warmth)
 - ~~Royal Decree — Kingpin issues one city-shaping edict per tenure: Gold Rush (2× coins), Wanted Decree (heat all), Royal Amnesty (no cops 45s), Tax Day (take 10% from all)~~ (DONE Session 77)
-- Royal Decree × Gang War: if Kingpin issues Wanted Decree during an active gang war, gang war kills also give 2× XP (both systems escalate together)
-- Royal Decree daily challenge: "Subject — be affected by 2 different Kingpin decrees in one session" (200 XP, 100c)
+- ~~Royal Decree × Gang War: if Kingpin issues Wanted Decree during an active gang war, gang war kills also give 2× XP (both systems escalate together)~~ (DONE Session 78)
+- ~~Royal Decree daily challenge: "Subject — be affected by 2 different Kingpin decrees in one session" (200 XP, 100c)~~ (DONE Session 78)
 - Kingpin Prestige: after holding the crown for 5+ minutes, unlock a "Kingpin" title badge that persists (like Mafia Rep) — earnable once per session
-- "The People's Revolt" mechanic: if Tax Day decree fires and 3+ birds poop the Kingpin within 10 seconds afterward, they collectively earn 2× the normal dethronement loot (fury bonus)
-- Decree combo: if a Kingpin issues GOLD RUSH and a Crime Wave fires within the 60-second window, city-wide 4× coin moment (Gold Rush × Crime Wave stacked)
-- "Kingpin's Pardon" new decree type: instantly clears the Most Wanted bird's entire heat + despawns all cops targeting them — the Kingpin can pardon a criminal (useful for alliances/gang coordination)
+- ~~"The People's Revolt" mechanic: if Tax Day decree fires and 3+ birds poop the Kingpin within 10 seconds afterward, they collectively earn 2× the normal dethronement loot (fury bonus)~~ (DONE Session 78 — 15s window, 3+ unique birds, 40% loot split equally)
+- ~~Decree combo: if a Kingpin issues GOLD RUSH and a Crime Wave fires within the 60-second window, city-wide 4× coin moment (Gold Rush × Crime Wave stacked)~~ (DONE Session 78)
+- ~~"Kingpin's Pardon" new decree type: instantly clears the Most Wanted bird's entire heat + despawns all cops targeting them — the Kingpin can pardon a criminal (useful for alliances/gang coordination)~~ (DONE Session 78 as King's Pardon — also clears BH + hit contracts + grants 3 min immunity)
 - Bird City Photo Mode: press [P] while in spectator/free-cam mode for a 3-second UI-free screenshot freeze
 - Gazette tracking for duels: "⚔️ [Name] WINS STREET DUEL: defeats [Name] for Xc" headline
 - Royale Champion shield flash visual: golden shield burst effect on the Kingpin sprite when champion absorbs the first dethronement hit
+- Kingpin Prestige: after holding the crown for 5+ minutes, unlock a "Kingpin" title badge that persists (like Mafia Rep) — earnable once per session
+- King's Pardon × Alliance system: if Kingpin pardons a gang member, that gang gets a 2-minute territory capture speed boost (political alliance bonus)
+- Royal Decree daily challenge: "Revolutionary — participate in a People's Revolt" — DONE Session 78
+- "The People's March" upgrade: if revolt has 5+ unique participants instead of 3, Kingpin loses 60% coins instead of 40% (mob justice)
+- Decree cooldown transparency: minimap tooltip on [O] shows when next decree will be available (tenure-based clarity)
+- Prestige Kingpin mechanic: P5 LEGEND Kingpins get 2 decrees per tenure instead of 1 (legendary authority)
+- Royal Court: top-3 richest birds that AREN'T the Kingpin get "Duke/Baron/Count" titles and earn 10c tribute every 30s (minor nobility around the crown)
+- Double-elimination tournament: losers bracket gives everyone a second chance in the Fighting Championship
+- Seasonal city transformation: Cherry Blossoms event — 7-day visual overlay with pink petals falling, unique spring food items, and a special Blossom Viewing festival event at the park pond
+- Graffiti mural: multi-building mega art requires 3+ gang members to paint simultaneously across a whole city block — persistent visual landmark when complete

@@ -80,6 +80,8 @@ const DAILY_CHALLENGE_POOL = [
   { id: 'disco_king',   title: 'Disco King',     desc: 'Hit 8 NPCs during a Disco Fever chaos event',        target: 8, trackType: 'disco_fever_hit',  reward: { xp: 190, coins: 95  } },
   { id: 'coin_grabber', title: 'Money Rain',     desc: 'Collect 10 coins from a Coin Shower event',          target: 10,trackType: 'coin_shower_grab', reward: { xp: 160, coins: 80  } },
   { id: 'chaos_taster', title: 'Chaos Connoisseur', desc: 'Experience 4 different chaos event types in one session', target: 4, trackType: 'chaos_types_seen', reward: { xp: 210, coins: 105 } },
+  { id: 'decree_subject',  title: 'Subject',       desc: 'Be affected by 2 different Kingpin decrees in one session', target: 2, trackType: 'decree_affected',   reward: { xp: 200, coins: 100 } },
+  { id: 'revolutionary',  title: 'Revolutionary',  desc: "Participate in a People's Revolt against the Kingpin",     target: 1, trackType: 'revolt_participant', reward: { xp: 280, coins: 140 } },
 ];
 
 class GameEngine {
@@ -117,6 +119,7 @@ class GameEngine {
     this.gangs = new Map();           // gangId -> { id, name, tag, color, leaderId, leaderName, treasury, members: Set, memberNames: Map, warWithGangId, warEndsAt, warKills, warEnemyKills, createdAt }
     this.gangInvites = new Map();     // targetBirdId -> { fromId, fromName, gangId, gangName, gangTag, gangColor, expiresAt }
     this.gangWarHits = new Map();     // `${attackerBirdId}_${targetBirdId}` -> hit count (tracks 3-poop kills during war)
+    this.gangWarDecreeBoostUntil = 0; // timestamp: Wanted Decree × Gang War → 2× kill XP for 30s
     this.GANG_COLORS = ['#ff3333', '#ff8800', '#ffcc00', '#33cc55', '#3399ff', '#cc44ff', '#ff44aa', '#00ccdd'];
     this._loadGangs();
 
@@ -1478,6 +1481,7 @@ class GameEngine {
     // === Kingpin System ===
     this._updateKingpin(now);
     this._updateKingpinDecree(now);
+    this._tickRevoltWindow(now);
 
     // === Mystery Crate Airdrop ===
     this._tickMysteryCrate(now);
@@ -6140,6 +6144,10 @@ class GameEngine {
           contractorName: this.activeHits.get(bird.id).contractorName,
           expiresAt: this.activeHits.get(bird.id).expiresAt,
         } : null,
+        // King's Pardon: are you currently protected by a royal pardon?
+        pardonedUntil: bird.pardonedUntil || 0,
+        // People's Revolt window: how long until Tax Day revolt window expires (for non-Kingpin birds)
+        revoltWindowUntil: (this.kingpin && this.kingpin.revoltWindowUntil) ? this.kingpin.revoltWindowUntil : 0,
         // Kingpin: are YOU the kingpin?
         isKingpin: this.kingpin ? this.kingpin.birdId === bird.id : false,
         kingpinDecreesAvailable: (this.kingpin && this.kingpin.birdId === bird.id) ? (this.kingpin.decreesAvailable || 0) : 0,
@@ -7774,9 +7782,15 @@ class GameEngine {
       const loot = Math.min(Math.floor(target.coins * 0.18), 150);
       target.coins = Math.max(0, target.coins - loot);
       attacker.coins += loot + 80;
-      // Gang War × Aurora: sacred sky doubles kill XP — the aurora amplifies violence!
+      // Gang War × Aurora: sacred sky doubles kill XP
       const auroraWarBonus = !!this.aurora;
-      attacker.xp += auroraWarBonus ? 300 : 150;
+      // Gang War × Wanted Decree: Kingpin's chaos decree supercharges war kills for 30s
+      const decreeWarBonus = this.gangWarDecreeBoostUntil > now;
+      // Stacking: base 150, aurora 2×, decree 2×, both 3× (150 × 2 × 1.5)
+      let killXp = 150;
+      if (auroraWarBonus) killXp = Math.floor(killXp * 2);
+      if (decreeWarBonus) killXp = Math.floor(killXp * 1.5);
+      attacker.xp += killXp;
       target.comboCount = 0;
       target.stunnedUntil = now + 2000;
 
@@ -7789,7 +7803,7 @@ class GameEngine {
         type: 'gang_war_kill',
         attackerId: attacker.id, attackerName: attacker.name, attackerGangTag: attacker.gangTag, attackerGangColor: attacker.gangColor,
         targetId: target.id, targetName: target.name, targetGangTag: target.gangTag,
-        loot, auroraBonus: auroraWarBonus,
+        loot, auroraBonus: auroraWarBonus, decreeBonus: decreeWarBonus, xp: killXp,
       });
     }
   }
@@ -9447,6 +9461,12 @@ class GameEngine {
     if (this.kingpinDecree && this.kingpinDecree.type === 'royal_amnesty') {
       if (this.copBirds.size > 0) this.copBirds.clear();
       return; // No new cops spawn during amnesty
+    }
+
+    // King's Pardon: pardoned bird is legally immune — no new cop spawns targeting them
+    if (wpBird && wpBird.pardonedUntil > now) {
+      if (this.copBirds.size > 0) this.copBirds.clear();
+      return; // Pardoned birds are off-limits
     }
 
     // BLACKOUT + GHOST MODE = FULL INVISIBILITY: no new spawns, all cops go blind-wander mode
@@ -11981,6 +12001,24 @@ class GameEngine {
     attacker.xp += 35;
     attacker.coins += 10;
 
+    // === PEOPLE'S REVOLT — check if we're in the Tax Day rage window ===
+    if (this.kingpin.revoltWindowUntil && now < this.kingpin.revoltWindowUntil) {
+      if (!this.kingpin.revoltParticipants) this.kingpin.revoltParticipants = new Set();
+      this.kingpin.revoltParticipants.add(attacker.id);
+      const revolters = this.kingpin.revoltParticipants.size;
+      this.events.push({
+        type: 'revolt_progress',
+        attackerName: attacker.name,
+        revolters,
+        needed: 3,
+        kingpinName: this.kingpin.birdName,
+      });
+      if (revolters >= 3) {
+        this._triggerPeoplesRevolt(now);
+        return; // Done — kingpin is gone
+      }
+    }
+
     // === ROYALE CHAMPION SHIELD — absorbs the very first dethronement hit ===
     // If the kingpin won Bird Royale this session, they get one free pass
     if (count === 1 && this.kingpin.champShieldActive) {
@@ -12080,7 +12118,7 @@ class GameEngine {
   // ============================================================
 
   _handleRoyalDecree(bird, decreeType, now) {
-    const VALID_DECREES = ['gold_rush', 'wanted_decree', 'royal_amnesty', 'tax_day'];
+    const VALID_DECREES = ['gold_rush', 'wanted_decree', 'royal_amnesty', 'tax_day', 'kings_pardon'];
     if (!VALID_DECREES.includes(decreeType)) return;
 
     // Must be the current Kingpin
@@ -12107,6 +12145,7 @@ class GameEngine {
       wanted_decree: 0,       // instant effect
       royal_amnesty: 45000,
       tax_day: 0,             // instant effect
+      kings_pardon: 0,        // instant effect
     };
 
     const duration = DECREE_DURATIONS[decreeType];
@@ -12122,9 +12161,22 @@ class GameEngine {
       for (const b of this.birds.values()) {
         if (b.id === bird.id || b.inNest) continue;
         this._addHeat(b.id, 20);
+        // Track for "Subject" daily challenge — affected by a decree
+        if (!b._decreeTypesSeen) b._decreeTypesSeen = new Set();
+        if (!b._decreeTypesSeen.has('wanted_decree')) {
+          b._decreeTypesSeen.add('wanted_decree');
+          this._trackDailyProgress(b, 'decree_affected', 1);
+        }
         targetCount++;
       }
       this.events.push({ type: 'decree_wanted_zap', kingpinName: bird.name, targetCount });
+
+      // === CROSS-SYSTEM: Wanted Decree × Gang War — doubles gang war kill XP for 30s ===
+      const gangWarActive = Array.from(this.gangs.values()).some(g => g.warWithGangId && now < g.warEndsAt);
+      if (gangWarActive) {
+        this.gangWarDecreeBoostUntil = now + 30000;
+        this.events.push({ type: 'gang_war_decree_boost', kingpinName: bird.name, duration: 30 });
+      }
     }
 
     if (decreeType === 'tax_day') {
@@ -12137,10 +12189,101 @@ class GameEngine {
           b.coins -= take;
           totalCollected += take;
           this.events.push({ type: 'decree_taxed', birdId: b.id, birdName: b.name, amount: take });
+          // Track for "Subject" daily challenge
+          if (!b._decreeTypesSeen) b._decreeTypesSeen = new Set();
+          if (!b._decreeTypesSeen.has('tax_day')) {
+            b._decreeTypesSeen.add('tax_day');
+            this._trackDailyProgress(b, 'decree_affected', 1);
+          }
         }
       }
       bird.coins += totalCollected;
       this.events.push({ type: 'decree_tax_collected', kingpinId: bird.id, kingpinName: bird.name, total: totalCollected });
+
+      // === PEOPLE'S REVOLT — Tax Day opens a 15-second rage window ===
+      // If 3+ different birds each poop the Kingpin during this window → OVERTHROW
+      this.kingpin.revoltWindowUntil = now + 15000;
+      this.kingpin.revoltParticipants = new Set();
+      this.events.push({ type: 'revolt_window_start', kingpinName: bird.name, kingpinId: bird.id, windowMs: 15000 });
+    }
+
+    if (decreeType === 'gold_rush') {
+      // === CROSS-SYSTEM: Gold Rush × Crime Wave — announce the 4× stacked combo ===
+      if (this.crimeWave) {
+        this.events.push({ type: 'gold_rush_crime_wave_combo', kingpinName: bird.name });
+      }
+      // Track for "Subject" daily challenge — gold rush helps all birds
+      for (const b of this.birds.values()) {
+        if (b.id === bird.id || b.inNest) continue;
+        if (!b._decreeTypesSeen) b._decreeTypesSeen = new Set();
+        if (!b._decreeTypesSeen.has('gold_rush')) {
+          b._decreeTypesSeen.add('gold_rush');
+          this._trackDailyProgress(b, 'decree_affected', 1);
+        }
+      }
+    }
+
+    if (decreeType === 'royal_amnesty') {
+      // Track for "Subject" daily challenge — amnesty helps all birds
+      for (const b of this.birds.values()) {
+        if (b.id === bird.id || b.inNest) continue;
+        if (!b._decreeTypesSeen) b._decreeTypesSeen = new Set();
+        if (!b._decreeTypesSeen.has('royal_amnesty')) {
+          b._decreeTypesSeen.add('royal_amnesty');
+          this._trackDailyProgress(b, 'decree_affected', 1);
+        }
+      }
+    }
+
+    if (decreeType === 'kings_pardon') {
+      // Find the bird with the highest heat (most wanted) among online non-Kingpin birds
+      let pardoned = null;
+      let highestHeat = 0;
+      for (const b of this.birds.values()) {
+        if (b.id === bird.id || b.inNest) continue;
+        const heat = this.heatScores.get(b.id) || 0;
+        if (heat > highestHeat) { highestHeat = heat; pardoned = b; }
+      }
+      if (!pardoned || highestHeat <= 0) {
+        // No criminals to pardon — refund the decree
+        this.kingpin.decreesAvailable = 1;
+        this.events.push({ type: 'decree_fail', birdId: bird.id, reason: 'no_criminals' });
+        return;
+      }
+
+      // Clear the pardoned bird's heat entirely
+      this.heatScores.delete(pardoned.id);
+
+      // Despawn all cops targeting them
+      for (const [copId, cop] of this.copBirds) {
+        if (cop.targetBirdId === pardoned.id) {
+          this.copBirds.delete(copId);
+        }
+      }
+
+      // Bounty Hunter stands down if targeting them
+      if (this.bountyHunter && this.bountyHunter.targetId === pardoned.id) {
+        this.bountyHunter.state = 'off_duty';
+        this.bountyHunter.offDutyUntil = now + 120000;
+      }
+
+      // Cancel any active hit contracts on them
+      if (this.activeHits.has(pardoned.id)) {
+        this.activeHits.delete(pardoned.id);
+        this.events.push({ type: 'hit_cancelled', targetId: pardoned.id, reason: 'pardoned' });
+      }
+
+      // Grant 3-minute pardon protection (cops won't respawn for them)
+      pardoned.pardonedUntil = now + 180000;
+
+      this.events.push({
+        type: 'kings_pardon_issued',
+        kingpinId: bird.id,
+        kingpinName: bird.name,
+        pardonedId: pardoned.id,
+        pardonedName: pardoned.name,
+        clearedHeat: highestHeat,
+      });
     }
 
     // City-wide decree announcement
@@ -12165,6 +12308,93 @@ class GameEngine {
       this.kingpinDecree = null;
       this.events.push({ type: 'royal_decree_expired', decreeType: ended.type, kingpinName: ended.kingpinName });
     }
+  }
+
+  // Tick the People's Revolt window — if it expires without enough revolters, announce failure
+  _tickRevoltWindow(now) {
+    if (!this.kingpin || !this.kingpin.revoltWindowUntil) return;
+    if (now > this.kingpin.revoltWindowUntil) {
+      const count = this.kingpin.revoltParticipants ? this.kingpin.revoltParticipants.size : 0;
+      if (count > 0 && count < 3) {
+        this.events.push({ type: 'revolt_failed', count, needed: 3 });
+      }
+      this.kingpin.revoltWindowUntil = null;
+      this.kingpin.revoltParticipants = null;
+    }
+  }
+
+  // THE PEOPLE'S REVOLT — 3+ birds hit the Kingpin during the Tax Day rage window
+  _triggerPeoplesRevolt(now) {
+    if (!this.kingpin) return;
+    const kBird = this.birds.get(this.kingpin.birdId);
+
+    // Gather all alive revolt participants
+    const participants = [...(this.kingpin.revoltParticipants || [])]
+      .map(id => this.birds.get(id))
+      .filter(b => b != null);
+
+    // Kingpin loses 40% of coins — higher than normal 28% dethronement
+    let totalLoot = 0;
+    if (kBird) {
+      totalLoot = Math.min(800, Math.max(100, Math.floor(kBird.coins * 0.40)));
+      kBird.coins = Math.max(0, kBird.coins - totalLoot);
+      kBird.stunnedUntil = now + 3000;
+      kBird.comboCount = 0;
+    }
+
+    // Split loot equally among all revolt participants
+    const lootShare = participants.length > 0 ? Math.floor(totalLoot / participants.length) : 0;
+    const participantNames = [];
+    for (const p of participants) {
+      p.coins += lootShare;
+      p.xp += 250;
+      participantNames.push(p.name);
+      this._trackDailyProgress(p, 'revolt_participant', 1);
+      // Check level-up
+      const newLevel = world.getLevelFromXP(p.xp);
+      if (newLevel !== p.level) {
+        p.level = newLevel;
+        p.type = world.getBirdTypeForLevel(newLevel);
+        this.events.push({ type: 'evolve', birdId: p.id, name: p.name, birdType: p.type });
+      }
+    }
+
+    // Dethronement pool splits among all participants too
+    let poolShare = 0;
+    if (this.dethronementPool.total > 0 && participants.length > 0) {
+      poolShare = Math.floor(this.dethronementPool.total / participants.length);
+      for (const p of participants) p.coins += poolShare;
+      this.dethronementPool.lastPaidTo = { name: `THE PEOPLE (${participants.length} birds)`, amount: this.dethronementPool.total };
+      this.dethronementPool.total = 0;
+      this.dethronementPool.topDonor = null;
+    }
+
+    const kingpinName = this.kingpin.birdName;
+    const kingpinPos = { x: kBird ? kBird.x : 1500, y: kBird ? kBird.y : 1500 };
+
+    // Clear revolt state and dethrone
+    this.kingpin.revoltWindowUntil = null;
+    this.kingpin.revoltParticipants = null;
+    this.kingpin = null;
+
+    this.events.push({
+      type: 'peoples_revolt',
+      kingpinName,
+      participantNames,
+      totalLoot,
+      lootShare,
+      poolShare,
+    });
+
+    // Epic screen shake for everyone
+    this.events.push({ type: 'kingpin_topple_shockwave', x: kingpinPos.x, y: kingpinPos.y });
+
+    // Gazette tracking
+    this.gazetteStats.peoplesRevolt = { kingpinName, participantNames };
+
+    // Immediately check for new kingpin
+    this.kingpinCheckTimer = 0;
+    this._updateKingpin(now);
   }
 
   _handlePoolContribute(bird, amount, now) {
@@ -12799,6 +13029,7 @@ class GameEngine {
       meteorShowers:   0,   // meteor showers this cycle
       shootingStars:   0,   // shooting stars this cycle
       royalDecrees:    [],  // [{ type, kingpinName }] — decrees issued this cycle
+      peoplesRevolt:   null, // { kingpinName, participantNames } — if revolt triggered
     };
   }
 
@@ -12965,13 +13196,23 @@ class GameEngine {
       });
     }
 
-    if (stats.royalDecrees && stats.royalDecrees.length > 0) {
+    // People's Revolt headline takes priority over generic decree if it happened
+    if (stats.peoplesRevolt) {
+      const r = stats.peoplesRevolt;
+      const names = r.participantNames.slice(0, 3).join(', ');
+      headlines.push({
+        icon: '🏴',
+        headline: `THE MASSES REVOLT — ${r.kingpinName} OVERTHROWN BY THE PEOPLE`,
+        subline: `${names} rose up together after Tax Day was the last straw. The crown fell to the streets.`,
+      });
+    } else if (stats.royalDecrees && stats.royalDecrees.length > 0) {
       const dec = stats.royalDecrees[0];
       const DECREE_HEADLINES = {
         gold_rush: [`⚜️ KINGPIN ${dec.kingpinName} ISSUES GOLD RUSH DECREE`, 'Coin drops doubled city-wide. Citizens celebrated briefly, then resumed criminal activity.'],
         wanted_decree: [`⚜️ TYRANT KINGPIN ${dec.kingpinName} SENTENCES ENTIRE CITY`, 'All birds declared wanted simultaneously. Cops overwhelmed. The Don reportedly approves.'],
         royal_amnesty: [`⚜️ KINGPIN ${dec.kingpinName} DECLARES ROYAL AMNESTY — LAWLESSNESS ERUPTS`, '45 seconds of no cops. The city made the most of it. Records broken.'],
         tax_day: [`⚜️ KINGPIN ${dec.kingpinName} LEVIES CITY TAX — CITIZENS FURIOUS`, '"They took 10% of my coins," says local bird. "I was going to use those for slots."'],
+        kings_pardon: [`⚜️ KINGPIN ${dec.kingpinName} GRANTS ROYAL PARDON — CRIMINAL WALKS FREE`, 'The Most Wanted bird was cleared of all charges by royal fiat. Cops baffled. Citizens outraged.'],
       };
       const [hl, sl] = DECREE_HEADLINES[dec.type] || [`⚜️ KINGPIN ${dec.kingpinName} ISSUES ROYAL DECREE`, 'City reacts with awe, confusion, and renewed criminal intent.'];
       headlines.push({ icon: '⚜️', headline: hl, subline: sl });
