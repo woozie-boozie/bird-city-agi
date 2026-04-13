@@ -3662,7 +3662,47 @@
       addEventMessage(msg, '#ff8844');
     }
 
-    // === BIRD CITY GAZETTE ===
+    // === MURAL VANDAL EVENTS ===
+    if (ev.type === 'vandal_appeared') {
+      effects.push({ type: 'screen_shake', intensity: 7, duration: 500, time: now });
+      showAnnouncement(`🎨💀 VANDAL CROW SPOTTED!\nHeading for [${ev.gangTag}] ${ev.gangName}'s mural at ${ev.targetZoneName}!\nPOOP HIM 3× TO SCARE HIM OFF!`, '#cc44ff', 8000);
+      addEventMessage(`🎨💀 A Vandal Crow is heading for [${ev.gangTag}]'s mural at ${ev.targetZoneName}! Poop him away!`, '#cc44ff');
+    }
+    if (ev.type === 'vandal_start_vandalizing') {
+      showAnnouncement(`🎨💀 VANDAL REACHED THE MURAL — VANDALIZING!\nHe has ~40 seconds to destroy it!\nFly to ${ev.targetZoneName} and POOP HIM!`, '#ff4400', 6000);
+      addEventMessage(`🎨 Vandal Crow is actively vandalizing the mural at ${ev.targetZoneName}! Stop him!`, '#ff4400');
+    }
+    if (ev.type === 'vandal_hit') {
+      effects.push({ type: 'text', x: ev.x, y: ev.y - 20, time: now, duration: 1200,
+        text: `HIT! ${ev.hitCount}/${ev.hitsRequired}`, color: '#ff6600', size: 14 });
+      if (ev.birdId === myId) {
+        showAnnouncement(`💥 HIT THE VANDAL! ${ev.hitCount}/${ev.hitsRequired} — ${ev.hitsRequired - ev.hitCount} more to scare him off!`, '#ff6600', 2000);
+      }
+      addEventMessage(`💥 ${ev.birdName} hit the Vandal Crow! (${ev.hitCount}/${ev.hitsRequired})`, '#ff6600');
+    }
+    if (ev.type === 'vandal_scared') {
+      effects.push({ type: 'screen_shake', intensity: 10, duration: 700, time: now });
+      showAnnouncement(`🏃 VANDAL SCARED OFF by ${ev.gangTag ? '[' + ev.gangTag + '] ' : ''}${ev.birdName}!\n+150XP +80c — The mural at ${ev.targetZoneName} is SAFE!`, '#44ff88', 6000);
+      addEventMessage(`🎨✅ ${ev.birdName} scared off the Vandal Crow! ${ev.targetZoneName} mural saved! (+150XP +80c)`, '#44ff88');
+    }
+    if (ev.type === 'vandal_mural_destroyed') {
+      effects.push({ type: 'screen_shake', intensity: 12, duration: 800, time: now });
+      showAnnouncement(`💀🎨 MURAL DESTROYED!\nThe Vandal Crow ruined [${ev.gangTag}] ${ev.gangName}'s art at ${ev.targetZoneName}!\nPaint a new one to reclaim the zone!`, '#ff2222', 8000);
+      addEventMessage(`💀 VANDAL CROW DESTROYED the ${ev.gangTag} mural at ${ev.targetZoneName}! Gang art is gone!`, '#ff3333');
+    }
+    if (ev.type === 'vandal_escaped') {
+      addEventMessage(`🎨 The Vandal Crow slipped away. The mural survived... this time.`, '#aaaaaa');
+    }
+    if (ev.type === 'crime_wave_mural_boost') {
+      showAnnouncement(`🚨🎨 CRIME WAVE MURAL RUSH!\n[${ev.gangTag}] painting at ${ev.zoneName} gains +50% paint speed!\nThe chaos fuels their art!`, '#ff6622', 5000);
+      addEventMessage(`🚨🎨 Crime Wave boost! [${ev.gangTag}] paints ${ev.zoneName} mural 50% faster!`, '#ff6622');
+    }
+    if (ev.type === 'gang_war_mural_synergy') {
+      showAnnouncement(`⚔️🎨 GANG WAR MURAL TAKEOVER!\n[${ev.attackGangTag}] captured ${ev.defGangTag}'s mural at ${ev.zoneName}!\n+${ev.warXpBonus}XP +${ev.warCoinBonus}c war bonus for all painters!`, '#ff8844', 5000);
+      addEventMessage(`⚔️🎨 [${ev.attackGangTag}] seized [${ev.defGangTag}]'s mural at ${ev.zoneName} during the war! (+${ev.warXpBonus}XP per painter)`, '#ff8844');
+    }
+
+// === BIRD CITY GAZETTE ===
     if (ev.type === 'gazette_edition') {
       showGazette(ev);
       addEventMessage('📰 The Bird City Gazette MORNING EDITION is out!', '#c8a040');
@@ -7899,6 +7939,16 @@
       }
     }
 
+    // Mural Vandal — rogue crow defacing gang murals
+    if (gameState.muralVandal) {
+      const mv = gameState.muralVandal;
+      const mvSx = mv.x - camera.x + camera.screenW / 2;
+      const mvSy = mv.y - camera.y + camera.screenH / 2;
+      if (mvSx > -margin - 70 && mvSx < camera.screenW + margin + 70 && mvSy > -margin - 70 && mvSy < camera.screenH + margin + 70) {
+        Sprites.drawMuralVandal(ctx, mvSx, mvSy, mv.rotation || 0, mv.vandalizingProgress, mv.hitCount, mv.hitsRequired, mv.state, now);
+      }
+    }
+
     // Seagull Invasion — fast coastal raiders swooping in to steal food
     if (gameState.seagullInvasion && gameState.seagullInvasion.seagulls) {
       for (const sg of gameState.seagullInvasion.seagulls) {
@@ -10229,6 +10279,25 @@
       }
     }
 
+    // Mural Vandal on minimap — pulsing dark purple 🎨 dot
+    if (gameState.muralVandal && worldData) {
+      const mw = minimapCtx.canvas.width;
+      const mh = minimapCtx.canvas.height;
+      const msx = mw / worldData.width;
+      const msy = mh / worldData.height;
+      const mv = gameState.muralVandal;
+      if (mv.state !== 'fleeing') {
+        const mvPulse = 0.6 + 0.4 * Math.sin(performance.now() * 0.01);
+        minimapCtx.fillStyle = `rgba(180,40,220,${mvPulse})`;
+        minimapCtx.beginPath();
+        minimapCtx.arc(mv.x * msx, mv.y * msy, 4, 0, Math.PI * 2);
+        minimapCtx.fill();
+        minimapCtx.font = '8px sans-serif';
+        minimapCtx.textAlign = 'center';
+        minimapCtx.fillText('🎨', mv.x * msx, mv.y * msy + 2);
+      }
+    }
+
     // Draw arena on minimap (static red ring + pulsing dot when active)
     if (worldData && worldData.arena) {
       const mw = minimapCtx.canvas.width;
@@ -11808,6 +11877,19 @@
       const st = EFFECT_STYLES[s.vpPoopEffect.type] || EFFECT_STYLES.spicy;
       const animStyle = st.anim ? `animation:${st.anim};` : '';
       html += `<div class="bm-buff-pill" style="background:${st.bg};border-color:${st.border};color:${st.color};font-weight:bold;${animStyle}">${st.text} · POOP to use!</div>`;
+    }
+
+    // === MURAL VANDAL warning pill (city-wide when vandal is active) ===
+    if (gameState.muralVandal && gameState.muralVandal.state !== 'fleeing') {
+      const mv = gameState.muralVandal;
+      const secs = Math.max(0, Math.ceil((mv.expiresAt - now) / 1000));
+      const isVandalizing = mv.state === 'vandalizing';
+      const pct = Math.round(mv.vandalizingProgress * 100);
+      const urgentStyle = isVandalizing ? 'animation:kingpinGlow 0.4s ease-in-out infinite alternate;' : '';
+      const label = isVandalizing
+        ? `🎨💀 VANDAL DEFACING ${mv.targetZoneName}! ${pct}% — POOP HIM! ${mv.hitCount}/${mv.hitsRequired}`
+        : `🎨💀 VANDAL CROW heading for ${mv.targetZoneName} mural — Intercept & POOP (${secs}s)`;
+      html += `<div class="bm-buff-pill" style="background:rgba(80,20,120,0.9);border-color:#cc44ff;color:#ee88ff;font-weight:bold;${urgentStyle}">${label}</div>`;
     }
 
     // === DUEL REMATCH pill ===

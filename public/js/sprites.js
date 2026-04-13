@@ -5590,4 +5590,167 @@ window.Sprites = {
     ctx.globalAlpha = 1;
     ctx.restore();
   },
+
+  // Mural Vandal — rogue crow in a hoodie with spray paint cans, vandalizes gang murals
+  drawMuralVandal(ctx, x, y, rotation, vandalizingProgress, hitCount, hitsRequired, state, now) {
+    ctx.save();
+    ctx.translate(x, y);
+
+    // Vandalize progress bar (shows how much of the mural has been damaged)
+    if (vandalizingProgress > 0 && state === 'vandalizing') {
+      const barW = 50;
+      const pct = vandalizingProgress;
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.fillRect(-barW / 2, -38, barW, 7);
+      // Red bar shows mural destruction
+      const r = Math.floor(255 * pct);
+      const g = Math.floor(200 * (1 - pct));
+      ctx.fillStyle = `rgb(${r},${g},20)`;
+      ctx.fillRect(-barW / 2, -38, barW * pct, 7);
+      ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(-barW / 2, -38, barW, 7);
+      ctx.font = 'bold 7px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#fff';
+      ctx.fillText('VANDALIZING!', 0, -42);
+    }
+
+    // Hit progress dots (how many hits to scare off)
+    if (hitCount > 0) {
+      const dotY = 22;
+      for (let i = 0; i < hitsRequired; i++) {
+        ctx.fillStyle = i < hitCount ? '#ff6600' : '#333';
+        ctx.beginPath();
+        ctx.arc(-hitsRequired * 4 + i * 8 + 4, dotY, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.font = 'bold 7px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#ff6600';
+      ctx.fillText(`${hitCount}/${hitsRequired}`, 0, dotY + 12);
+    }
+
+    ctx.rotate(rotation);
+
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath();
+    ctx.ellipse(2, 6, 13, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Body — charcoal/dark grey crow
+    ctx.fillStyle = '#1a1a1a';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 13, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Hoodie — dark purple, draped over the crow
+    ctx.fillStyle = '#2d1a4a';
+    ctx.beginPath();
+    ctx.ellipse(-1, -1, 12, 7.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Hoodie front pocket
+    ctx.fillStyle = '#241540';
+    ctx.fillRect(-4, 0, 8, 5);
+
+    // Wings peeking out under the hoodie
+    ctx.fillStyle = '#111';
+    ctx.save();
+    ctx.translate(-2, 0);
+    ctx.beginPath();
+    ctx.ellipse(0, -12, 7, 3, -0.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(0, 12, 7, 3, 0.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Hoodie hood (drawn over wings)
+    ctx.fillStyle = '#2d1a4a';
+    ctx.beginPath();
+    ctx.ellipse(1, -2, 8, 6, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Beak — short and sharp
+    ctx.fillStyle = '#555';
+    ctx.beginPath();
+    ctx.moveTo(13, 0);
+    ctx.lineTo(19, -2);
+    ctx.lineTo(19, 2);
+    ctx.closePath();
+    ctx.fill();
+
+    // Shifty red eyes (smaller, squinting)
+    const eyeBlink = Math.sin(now / 200) > 0.8 ? 0.4 : 1;
+    ctx.fillStyle = `rgba(255,40,40,${eyeBlink})`;
+    ctx.shadowColor = '#ff0000';
+    ctx.shadowBlur = 5;
+    ctx.beginPath();
+    ctx.ellipse(8, -3.5, 2.5, 1.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(8, 3.5, 2.5, 1.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Spray paint can (held in right talon, appears when vandalizing)
+    if (state === 'vandalizing') {
+      ctx.save();
+      ctx.translate(6, 8);
+      ctx.rotate(-0.5);
+      // Can body
+      ctx.fillStyle = '#ff4400';
+      ctx.fillRect(-3, -8, 6, 12);
+      // Can top
+      ctx.fillStyle = '#cc2200';
+      ctx.fillRect(-2, -10, 4, 3);
+      // Nozzle
+      ctx.fillStyle = '#888';
+      ctx.fillRect(2, -11, 2, 2);
+      // Spray effect — animated rainbow dots
+      if (Math.sin(now / 80) > 0) {
+        const hue = (now / 20) % 360;
+        ctx.fillStyle = `hsla(${hue},100%,60%,0.8)`;
+        for (let i = 0; i < 4; i++) {
+          const angle = -0.8 + Math.random() * 0.4;
+          const dist = 6 + Math.random() * 12;
+          ctx.beginPath();
+          ctx.arc(4 + Math.cos(angle) * dist, -9 + Math.sin(angle) * dist, 1.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      ctx.restore();
+    }
+
+    // Backpack with paint cans (small rectangles on the back)
+    ctx.save();
+    ctx.translate(-10, 0);
+    ctx.fillStyle = '#1a0a30';
+    ctx.fillRect(-5, -5, 8, 10);
+    // Two small paint can tops peeking out
+    ctx.fillStyle = '#ff6600';
+    ctx.fillRect(-4, -7, 3, 3);
+    ctx.fillStyle = '#44ff44';
+    ctx.fillRect(-0.5, -7, 3, 3);
+    ctx.restore();
+
+    ctx.restore();
+
+    // Label above sprite (in screen space, no rotation)
+    ctx.save();
+    ctx.translate(x, y);
+    const labelY = state === 'vandalizing' ? -45 : -28;
+    ctx.font = 'bold 9px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    // Pulsing red label
+    const pulse = 0.7 + 0.3 * Math.sin(now / 200);
+    ctx.fillStyle = `rgba(255,60,60,${pulse})`;
+    ctx.shadowColor = '#000';
+    ctx.shadowBlur = 4;
+    ctx.fillText(state === 'fleeing' ? '💨 FLEEING!' : '🎨💀 VANDAL', 0, labelY);
+    ctx.restore();
+  },
 };

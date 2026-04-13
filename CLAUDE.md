@@ -2888,6 +2888,37 @@ The city's largest physical canvases are now claimable by gangs as massive colla
 
 **Creative intent**: Individual graffiti (Session 14) was already powerful for turf expression — but a solo bird tagging buildings is a personal act. The mural system is fundamentally cooperative: you NEED your gang. Three birds have to organize, coordinate, and hold position for nearly a minute — that conversation happening in-game is the feature. Two rival gangs both trying to paint the Downtown Wall at the same time, with painters from each side diving in to reset each other's progress while their gang screams in the event feed — that's the most chaotic, most SOCIAL thing in Bird City. The completed mural as a city-wide gang-colored band across entire building clusters is the most visible territorial marker in the game — visible from across the map, readable on the minimap, glowing in your gang's color. Pure SOCIAL + SPECTACLE + CARNAGE energy.
 
+**Session 86 — 2026-04-13: The Vandal Crow + Mural Cross-System Synergies**
+Gang murals now have a mortal enemy — and two powerful cross-system interactions that make mural warfare deeper.
+
+**The Vandal Crow NPC (`server/game.js`):**
+- Spawns every 25-35 minutes when at least one completed gang mural exists and a player is online
+- Spawns at a random map edge and approaches the target mural zone at 65px/s
+- Custom sprite: charcoal crow in a dark purple hoodie, shifty red squinting eyes, spray paint can held in talon (animates while vandalizing), backpack full of paint cans
+- State machine: `approaching` → `vandalizing` → `fleeing` (scared off or timeout)
+- While vandalizing: progress bar fills 0→1 at 0.025/s (~40 seconds to destroy a mural)
+- **3 poop hits** (mega counts as 2) within 8-second window to scare off
+- Hit rewards: +60 XP +15c per hit; scare-away reward: +150 XP +80c for the shooter + city-wide announcement
+- If progress reaches 1.0: mural is DESTROYED — removed from the map early, city-wide shame announcement
+- 3-minute maximum timeout — if not scared off AND doesn't finish, escapes naturally
+- Active buffs HUD shows "🎨💀 VANDAL heading for [zone]" or "VANDAL DEFACING [zone]! % done" when active
+- Pulsing purple 🎨 dot on minimap; direction arrow when off-screen
+- New daily challenge: **Art Defender** — Scare off the Vandal Crow (200 XP, 100c)
+
+**Crime Wave × Mural Synergy:**
+- During an active Crime Wave, rival gangs paint over existing murals at **+50% speed** (0.018 → 0.027/s per painter)
+- Represents the chaos of crime enabling faster territorial aggression — "the city is in chaos, strike NOW"
+- City-wide announcement fires once per crime wave per zone when the boost activates
+- Creates a compelling reason to start an overtake the moment a Crime Wave erupts
+
+**Gang War × Mural Synergy:**
+- When a gang successfully overtakes a rival gang's mural DURING an active war between those two gangs: each painter earns **+120 XP +55c war bonus** on top of normal mural rewards
+- The overtaking gang also earns 0.5 "kill credit" on the war score per mural captured
+- City-wide `gang_war_mural_synergy` event announces the tactical art warfare: "[TAG] seized [TAG]'s mural — war art bonus!"
+- Makes mural control a real gang war strategy: holding key zones through art becomes a second front
+
+**Creative intent**: The mural system was perfectly cooperative to CREATE — but had no threat once complete. The Vandal Crow adds a dynamic adversary that forces defenders to be PRESENT. A gang that paints Downtown Wall and then wanders off is vulnerable. The 40-second vandalize window means you have to intercept him fast — great reason to stay near your mural after painting. The Crime Wave synergy creates the most chaotic window for mural takeovers: when the whole city is running from cops, a rival gang can paint 50% faster. The gang war synergy makes painting murals part of war strategy — it's no longer just about pooping each other, it's about dominating the city's visual landscape. Pure CARNAGE + SOCIAL + DISCOVERY energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -3119,8 +3150,8 @@ Built the Territory Control System on top of the existing upstream code:
 - Noble Challenge × Seagull Invasion: Baron can "call off" a seagull invasion 30s early by spending 50c (the Baron commands the sky)
 - ~~Graffiti mural: multi-building mega art piece that requires 3+ gang members to paint simultaneously — once complete it's a persistent visual landmark for that session~~ (DONE Session 85)
 - Don Featherstone × Noble challenge: if a Don contract completes during an active noble challenge of the same type, it also counts toward the noble challenge (double-dip reward)
-- Mural × Crime Wave: during a Crime Wave, rival gangs can paint faster (+50% paint rate) — turf wars accelerate in the chaos
-- Mural × Gang War: during an active gang war, painting an enemy gang's mural zone counts as a gang war hit (3 hits to flip = 1 kill)
+- ~~Mural × Crime Wave: during a Crime Wave, rival gangs can paint faster (+50% paint rate) — turf wars accelerate in the chaos~~ (DONE Session 86)
+- ~~Mural × Gang War: during an active gang war, painting an enemy gang's mural zone counts as a gang war hit (3 hits to flip = 1 kill)~~ (DONE Session 86 — bonus XP/coins + 0.5 war kill credit per overtake)
 - Mural × Royal Court: if the Duke's gang owns 3+ murals simultaneously, Duke tribute income doubles for 5 minutes
 - Mural Hall of Fame: track which gangs have painted the most murals across all sessions — show in Gang HQ as "All-Time Murals: 12"
-- Mural Raid Boss: a rogue crow vandal NPC spawns rarely and targets completed murals — poop him off before he ruins your art
+- ~~Mural Raid Boss: a rogue crow vandal NPC spawns rarely and targets completed murals — poop him off before he ruins your art~~ (DONE Session 86 — The Vandal Crow)

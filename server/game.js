@@ -114,6 +114,7 @@ const DAILY_CHALLENGE_POOL = [
   // Gang Mural challenges
   { id: 'mural_painter',  title: 'Muralist',       desc: 'Help paint a gang mural at any zone (hold G with your gang)', target: 1, trackType: 'mural_painted',  reward: { xp: 220, coins: 110 } },
   { id: 'mural_overtaker', title: 'Tag War',       desc: 'Overtake a rival gang\'s mural with your own',                target: 1, trackType: 'mural_overtake', reward: { xp: 280, coins: 140 } },
+  { id: 'art_defender',   title: 'Art Defender',   desc: 'Scare off the Vandal Crow before he destroys a gang mural',   target: 1, trackType: 'vandal_scared',  reward: { xp: 200, coins: 100 } },
 ];
 
 class GameEngine {
@@ -474,6 +475,16 @@ class GameEngine {
     this.crowCartel = null;   // null or { crows: Map, targetZoneId, state, raidEndsAt, holdUntil, defenderRewards }
     this.crowCartelTimer = Date.now() + this._randomRange(20 * 60000, 35 * 60000);
     this._crowCartelIdCounter = 0;
+
+    // === MURAL VANDAL ===
+    // Every 25-35 minutes, a rogue Vandal Crow spawns and targets a completed gang mural.
+    // He approaches the mural zone, then starts vandalizing it (fills 0→1 over ~40 seconds).
+    // Players poop him 3 times to scare him off (+150 XP +80c for the shooter).
+    // Mega poop counts as 2 hits. 8-second hit window resets between hits.
+    // If nobody stops him, the mural is destroyed early — owning gang is shamed city-wide.
+    // Cross-system: Crime Wave gives rival painters +50% paint speed; Gang War mural overtake = gang war hit.
+    this.muralVandal = null;
+    this.muralVandalTimer = Date.now() + this._randomRange(25 * 60000, 35 * 60000);
 
     // === BIRD CITY IDOL ===
     // Every 35-50 minutes, a singing contest opens at the stage in the park.
@@ -1566,6 +1577,9 @@ class GameEngine {
 
     // === Gang Murals ===
     this._updateMurals(dt, now);
+
+    // === Mural Vandal ===
+    this._updateMuralVandal(dt, now);
 
     // === Radio Tower ===
     this._updateRadioTower(dt, now);
@@ -3180,6 +3194,47 @@ class GameEngine {
         if (this.piper.hitCount >= this.piper.hitsRequired) {
           this._defeatPiper(bird, now);
         }
+      } else if (hit.target === 'mural_vandal' && this.muralVandal && this.muralVandal.state !== 'fleeing') {
+        // Poop hit the Mural Vandal — scare him away with enough hits!
+        const vandal = this.muralVandal;
+        const dmg = isMegaPoop ? 2 : 1;
+        // Reset hit window if it's been too long
+        if (now - vandal.lastHitTime > vandal.hitWindow) {
+          vandal.hitCount = 0;
+        }
+        vandal.hitCount += dmg;
+        vandal.lastHitTime = now;
+        xpGain = isMegaPoop ? 100 : 60;
+        bird.coins += isMegaPoop ? 30 : 15;
+        this.events.push({
+          type: 'vandal_hit',
+          birdId: bird.id, birdName: bird.name,
+          hitCount: vandal.hitCount, hitsRequired: vandal.hitsRequired,
+          x: vandal.x, y: vandal.y,
+        });
+        if (vandal.hitCount >= vandal.hitsRequired) {
+          // SCARED OFF!
+          bird.xp += 150;
+          bird.coins += 80;
+          const newLevel = world.getLevelFromXP(bird.xp);
+          if (newLevel > bird.level) {
+            const levelsGained = newLevel - bird.level;
+            bird.skill_points = (bird.skill_points || 0) + levelsGained;
+            bird.level = newLevel;
+            bird.type = world.getBirdTypeForLevel(newLevel);
+            this.events.push({ type: 'evolve', birdId: bird.id, name: bird.name, birdType: bird.type });
+          }
+          vandal.state = 'fleeing';
+          vandal.fleeTargetX = Math.random() < 0.5 ? -100 : 3100;
+          vandal.fleeTargetY = Math.random() < 0.5 ? -100 : 3100;
+          this._trackDailyProgress(bird, 'vandal_scared', 1);
+          this.events.push({
+            type: 'vandal_scared',
+            birdId: bird.id, birdName: bird.name, gangTag: bird.gangTag || null,
+            targetZoneName: vandal.targetZoneName,
+            x: vandal.x, y: vandal.y,
+          });
+        }
       } else if (hit.target === 'crow_cartel' && hit.crow && this.crowCartel) {
         // Poop hit a Crow Cartel member — deal damage!
         const crow = hit.crow;
@@ -4280,6 +4335,16 @@ class GameEngine {
           if (!isMegaPoop) return { target: 'crow_cartel', crow };
           allHits.push({ target: 'crow_cartel', crow });
         }
+      }
+    }
+
+    // Check Mural Vandal — rogue crow that vandalizes gang murals
+    if (this.muralVandal && this.muralVandal.state !== 'fleeing') {
+      const vdx = poop.x - this.muralVandal.x;
+      const vdy = poop.y - this.muralVandal.y;
+      if (Math.sqrt(vdx * vdx + vdy * vdy) < hitRadius + 12) {
+        if (!isMegaPoop) return { target: 'mural_vandal' };
+        allHits.push({ target: 'mural_vandal' });
       }
     }
 
@@ -6558,6 +6623,21 @@ class GameEngine {
         painterCount: p.painters.size,
       })),
       muralZones: MURAL_ZONES,
+      // Mural Vandal — rogue crow that attacks completed murals
+      muralVandal: this.muralVandal ? {
+        x: this.muralVandal.x,
+        y: this.muralVandal.y,
+        state: this.muralVandal.state,
+        targetZoneId: this.muralVandal.targetZoneId,
+        targetZoneName: this.muralVandal.targetZoneName,
+        vandalizingProgress: this.muralVandal.vandalizingProgress,
+        hitCount: this.muralVandal.hitCount,
+        hitsRequired: this.muralVandal.hitsRequired,
+        gangTag: this.muralVandal.gangTag,
+        gangName: this.muralVandal.gangName,
+        expiresAt: this.muralVandal.expiresAt,
+        rotation: this.muralVandal.rotation,
+      } : null,
       eggScramble: this._getEggScrambleState(),
       eggNestZones: world.EGG_NEST_ZONES,
       // Pigeon Mafia Don
@@ -11239,7 +11319,25 @@ class GameEngine {
       }
 
       // Advance progress
-      painting.progress = Math.min(1, painting.progress + dt * MURAL_PAINT_RATE * activePainterCount);
+      // CRIME WAVE × MURAL SYNERGY: rival gangs paint 50% faster during crime waves
+      let paintRateMult = 1.0;
+      const existingMural = this.murals.get(zoneId);
+      const isOvertaking = existingMural && existingMural.gangId !== painting.gangId;
+      if (this.crimeWave && isOvertaking) {
+        paintRateMult = 1.5;
+        // Announce the synergy once per crime wave + zone combo
+        const crimeKey = `crime_mural_${this.crimeWave.startedAt}_${zoneId}`;
+        if (!this._crimeMuralAnnounced) this._crimeMuralAnnounced = new Set();
+        if (!this._crimeMuralAnnounced.has(crimeKey)) {
+          this._crimeMuralAnnounced.add(crimeKey);
+          this.events.push({
+            type: 'crime_wave_mural_boost',
+            gangTag: painting.gangTag, gangName: painting.gangName,
+            zoneName: MURAL_ZONES.find(z => z.id === zoneId)?.name || zoneId,
+          });
+        }
+      }
+      painting.progress = Math.min(1, painting.progress + dt * MURAL_PAINT_RATE * activePainterCount * paintRateMult);
 
       if (painting.progress >= 1) {
         // Mural complete!
@@ -11332,6 +11430,32 @@ class GameEngine {
       overtakeText,
     });
 
+    // GANG WAR × MURAL SYNERGY: overtaking a rival mural during an active gang war earns bonus war XP for all painters
+    if (isOvertake && oldMural) {
+      const paintGang = this.gangs.get(painting.gangId);
+      if (paintGang && paintGang.warWithGangId === oldMural.gangId && now < paintGang.warEndsAt) {
+        // Each painter earns bonus war XP — turf control is now a weapon in gang wars
+        const warXpBonus = 120;
+        const warCoinBonus = 55;
+        for (const pid of painterIds) {
+          const pb = this.birds.get(pid);
+          if (!pb) continue;
+          pb.xp += warXpBonus;
+          pb.coins += warCoinBonus;
+          // Gang war kill credit: log one "mural hit" toward war score
+          paintGang.warKills = (paintGang.warKills || 0) + 0.5; // half-kill credit per mural overtake
+        }
+        this.events.push({
+          type: 'gang_war_mural_synergy',
+          attackGangTag: painting.gangTag, attackGangName: painting.gangName,
+          defGangTag: oldMural.gangTag, defGangName: oldMural.gangName,
+          zoneName: zone.name,
+          warXpBonus, warCoinBonus,
+          painterCount: painterIds.length,
+        });
+      }
+    }
+
     // Gazette tracking
     if (this.gazetteStats) {
       this.gazetteStats.muralsCompleted.push({
@@ -11344,6 +11468,146 @@ class GameEngine {
 
     // Remove from in-progress
     this._muralPainting.delete(zoneId);
+  }
+
+  // ============================================================
+  // MURAL VANDAL SYSTEM
+  // ============================================================
+  _updateMuralVandal(dt, now) {
+    // Spawn timer — only when players are online and a completed mural exists
+    if (!this.muralVandal && now >= this.muralVandalTimer && this.birds.size > 0) {
+      const completedMurals = Array.from(this.murals.entries()).filter(([, m]) => m.expiresAt > now);
+      if (completedMurals.length > 0) {
+        const [zoneId, mural] = completedMurals[Math.floor(Math.random() * completedMurals.length)];
+        this._spawnMuralVandal(zoneId, mural, now);
+      } else {
+        // No murals to vandalize — try again in 5-10 minutes
+        this.muralVandalTimer = now + this._randomRange(5 * 60000, 10 * 60000);
+      }
+      return;
+    }
+
+    if (!this.muralVandal) return;
+    const vandal = this.muralVandal;
+
+    // Check timeout
+    if (now >= vandal.expiresAt) {
+      // Vandal escapes without finishing
+      this.events.push({
+        type: 'vandal_escaped',
+        targetZoneName: vandal.targetZoneName,
+        progress: vandal.vandalizingProgress,
+      });
+      this.muralVandal = null;
+      this.muralVandalTimer = now + this._randomRange(25 * 60000, 35 * 60000);
+      return;
+    }
+
+    if (vandal.state === 'approaching') {
+      // Move toward the target zone center
+      const dx = vandal.targetX - vandal.x;
+      const dy = vandal.targetY - vandal.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 60) {
+        // Close enough — start vandalizing
+        vandal.state = 'vandalizing';
+        this.events.push({
+          type: 'vandal_start_vandalizing',
+          targetZoneId: vandal.targetZoneId,
+          targetZoneName: vandal.targetZoneName,
+          x: vandal.x, y: vandal.y,
+        });
+      } else {
+        const speed = 65 * dt;
+        vandal.x += (dx / dist) * speed;
+        vandal.y += (dy / dist) * speed;
+        vandal.rotation = Math.atan2(dy, dx);
+      }
+
+    } else if (vandal.state === 'vandalizing') {
+      // Check if the mural still exists
+      const mural = this.murals.get(vandal.targetZoneId);
+      if (!mural) {
+        // Mural already gone (expired or overtaken) — vandal leaves satisfied
+        vandal.state = 'fleeing';
+        vandal.fleeTargetX = Math.random() < 0.5 ? -100 : 3100;
+        vandal.fleeTargetY = Math.random() < 0.5 ? -100 : 3100;
+        return;
+      }
+      // Fill vandalize progress
+      vandal.vandalizingProgress = Math.min(1, vandal.vandalizingProgress + dt * 0.025); // ~40s to destroy
+      if (vandal.vandalizingProgress >= 1) {
+        // MURAL DESTROYED!
+        this.murals.delete(vandal.targetZoneId);
+        this.events.push({
+          type: 'vandal_mural_destroyed',
+          targetZoneId: vandal.targetZoneId,
+          targetZoneName: vandal.targetZoneName,
+          gangTag: mural.gangTag, gangName: mural.gangName,
+          x: vandal.x, y: vandal.y,
+        });
+        vandal.state = 'fleeing';
+        vandal.fleeTargetX = Math.random() < 0.5 ? -100 : 3100;
+        vandal.fleeTargetY = Math.random() < 0.5 ? -100 : 3100;
+      }
+
+    } else if (vandal.state === 'fleeing') {
+      const tx = vandal.fleeTargetX;
+      const ty = vandal.fleeTargetY;
+      const dx = tx - vandal.x;
+      const dy = ty - vandal.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 50) {
+        // Off screen — despawn
+        this.muralVandal = null;
+        this.muralVandalTimer = now + this._randomRange(25 * 60000, 35 * 60000);
+      } else {
+        const speed = 200 * dt;
+        vandal.x += (dx / dist) * speed;
+        vandal.y += (dy / dist) * speed;
+        vandal.rotation = Math.atan2(dy, dx);
+      }
+    }
+  }
+
+  _spawnMuralVandal(zoneId, mural, now) {
+    const zone = MURAL_ZONES.find(z => z.id === zoneId);
+    if (!zone) return;
+
+    // Spawn at a random map edge
+    let sx, sy;
+    const edge = Math.floor(Math.random() * 4);
+    if (edge === 0) { sx = -80; sy = Math.random() * 3000; }
+    else if (edge === 1) { sx = 3080; sy = Math.random() * 3000; }
+    else if (edge === 2) { sx = Math.random() * 3000; sy = -80; }
+    else { sx = Math.random() * 3000; sy = 3080; }
+
+    this.muralVandal = {
+      x: sx, y: sy,
+      targetX: zone.x, targetY: zone.y,
+      targetZoneId: zoneId,
+      targetZoneName: zone.name,
+      gangTag: mural.gangTag, gangName: mural.gangName,
+      state: 'approaching',
+      vandalizingProgress: 0,
+      hitCount: 0,
+      hitsRequired: 3,
+      lastHitTime: 0,
+      hitWindow: 8000,
+      rotation: 0,
+      spawnedAt: now,
+      expiresAt: now + 3 * 60000, // 3 minute max
+      fleeTargetX: -100, fleeTargetY: -100,
+    };
+
+    this.events.push({
+      type: 'vandal_appeared',
+      targetZoneId: zoneId, targetZoneName: zone.name,
+      gangTag: mural.gangTag, gangName: mural.gangName,
+      x: sx, y: sy,
+    });
+
+    console.log(`[GameEngine] 🎨💀 Mural Vandal spawned targeting ${zone.name} (${mural.gangTag} ${mural.gangName})`);
   }
 
   // ============================================================
@@ -15359,6 +15623,7 @@ class GameEngine {
     // End the crime wave
     if (this.crimeWave && now >= this.crimeWave.endsAt) {
       this.crimeWave = null;
+      if (this._crimeMuralAnnounced) this._crimeMuralAnnounced.clear();
       this.events.push({ type: 'crime_wave_end' });
       // Restore hidden mochi with a 2× coin bonus tag
       if (this.mochiCrimeWaveBonus) {
