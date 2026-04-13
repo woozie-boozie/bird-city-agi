@@ -86,6 +86,8 @@ const DAILY_CHALLENGE_POOL = [
   { id: 'hanami',            title: 'Hanami',            desc: 'Spend 30 seconds near the Sacred Pond during Cherry Blossom season', target: 30, trackType: 'hanami_time',       reward: { xp: 150, coins: 75  } },
   { id: 'blossom_collector', title: 'Blossom Collector', desc: 'Collect 5 cherry blossom mochi from the park',                       target: 5,  trackType: 'mochi_collected',    reward: { xp: 180, coins: 90  } },
   { id: 'lantern_catcher',   title: 'Lantern Catcher',   desc: 'Catch the Hanami Lantern floating from the Sacred Pond on a spring night', target: 1, trackType: 'hanami_lantern', reward: { xp: 250, coins: 125 } },
+  { id: 'spring_witness',    title: 'Spring Witness',    desc: 'Be near the Sacred Pond when a Hanami Lantern rises during Cherry Blossom season', target: 1, trackType: 'spring_witness', reward: { xp: 150, coins: 75 } },
+  { id: 'duke_challenge_winner', title: 'Noble Victor',  desc: "Complete a Duke's Challenge and claim the prize coins",                              target: 1, trackType: 'duke_challenge_won', reward: { xp: 180, coins: 90 } },
 ];
 
 class GameEngine {
@@ -516,6 +518,10 @@ class GameEngine {
     this.hanamiLantern = null;                // null | { x, y, baseY, spawnedAt, expiresAt, floatPhase }
     this.hanamiLanternFiredThisNight = false; // one lantern per night cycle
     this.hanamiLanternScheduledAt = null;     // scheduled spawn timestamp
+
+    // === DUKE'S CHALLENGE — noble mini-challenge issued by the current Duke ===
+    this.dukeChallenge = null;          // null | { type, target, reward, dukeId, dukeName, gangTag, expiresAt, progress: Map }
+    this.dukeChallengeLastIssued = {};  // birdId -> ms timestamp (5-min per-duke cooldown)
     // === SAKURA VIEWING PARTY — 4+ birds near the pond → group XP burst ===
     this.sakuraPartyLastFired = 0;            // 3-minute cooldown between bursts
     // === MOCHI × CRIME WAVE — shopkeepers hide their wares during lawlessness ===
@@ -1205,6 +1211,14 @@ class GameEngine {
       this._handlePoolContribute(bird, action.amount, now);
     }
 
+    // === Duke's Challenge — noble mini-challenge issued by the Duke ===
+    if (action.type === 'duke_challenge_issue') {
+      this._handleDukeChallengeIssue(bird, action, now);
+    }
+    if (action.type === 'duke_challenge_cancel') {
+      this._handleDukeChallengeCancel(bird, now);
+    }
+
     // === Royal Decree — Kingpin's city-shaping power ===
     if (action.type === 'royal_decree') {
       this._handleRoyalDecree(bird, action.decreeType, now);
@@ -1351,6 +1365,8 @@ class GameEngine {
       }
       // Daily challenge: graffiti tags
       this._trackDailyProgress(bird, 'tags', 1);
+      // Duke's Challenge: tag_buildings type
+      this._incrementDukeChallengeProgress(bird, 'tag_buildings');
 
       // Check for street domination (5+ buildings owned by same team)
       const myTeamId = bird.flockId || bird.id;
@@ -1523,6 +1539,7 @@ class GameEngine {
     this._updateRoyalCourt(now);
     this._updateKingpinDecree(now);
     this._tickRevoltWindow(now);
+    this._tickDukeChallenge(now);
 
     // === Mystery Crate Airdrop ===
     this._tickMysteryCrate(now);
@@ -3506,6 +3523,10 @@ class GameEngine {
       if (hit.target === 'moving_car') {
         this._trackDailyProgress(bird, 'car_hit', 1);
       }
+      // Duke's Challenge: poop_npcs type (NPC, car, human all count)
+      if (hit.target === 'npc' || hit.target === 'event_npc' || hit.target === 'moving_car' || hit.target === 'janitor') {
+        this._incrementDukeChallengeProgress(bird, 'poop_npcs');
+      }
       if (hit.target === 'raccoon') {
         this._trackDailyProgress(bird, 'raccoon_hit', 1);
       }
@@ -3825,6 +3846,8 @@ class GameEngine {
           bird.xp += Math.floor(loot.value * 0.5);
           this.events.push({ type: 'sewer_loot', birdId: bird.id, name: bird.name, value: loot.value, x: loot.x, y: loot.y });
           this._trackDailyProgress(bird, 'sewer_loot', 1);
+          // Duke's Challenge: sewer_loot type
+          this._incrementDukeChallengeProgress(bird, 'sewer_loot');
           this._trackDailyProgress(bird, 'coins_earned', loot.value);
         }
       }
@@ -6246,6 +6269,11 @@ class GameEngine {
         kingpinDecreesAvailable: (this.kingpin && this.kingpin.birdId === bird.id) ? (this.kingpin.decreesAvailable || 0) : 0,
         // Royal Court: what noble title do YOU hold (if any)?
         myCourtTitle: (() => { const cm = this.royalCourt.find(m => m.birdId === bird.id); return cm ? cm.title : null; })(),
+        // Duke's Challenge: personal progress + whether you are the Duke who issued it
+        myDukeChallengeProgress: this.dukeChallenge
+          ? (this.dukeChallenge.progress.get(bird.id) || 0) : 0,
+        isDukeChallengeDuke: this.dukeChallenge
+          ? (this.dukeChallenge.dukeId === bird.id) : false,
         // Gang
         gangId: bird.gangId,
         gangName: bird.gangName,
@@ -6709,6 +6737,18 @@ class GameEngine {
       } : null,
       // Night Market (aurora bazaar — near Sacred Pond)
       nightMarket: this.nightMarket ? { x: this.nightMarket.x, y: this.nightMarket.y } : null,
+      // Duke's Challenge — active mini-challenge issued by the Royal Court Duke
+      dukeChallenge: this.dukeChallenge ? {
+        type: this.dukeChallenge.type,
+        target: this.dukeChallenge.target,
+        reward: this.dukeChallenge.reward,
+        dukeId: this.dukeChallenge.dukeId,
+        dukeName: this.dukeChallenge.dukeName,
+        gangTag: this.dukeChallenge.gangTag,
+        expiresAt: this.dukeChallenge.expiresAt,
+        desc: this.dukeChallenge.desc || '',
+        id: `${this.dukeChallenge.dukeId}_${this.dukeChallenge.expiresAt}`,
+      } : null,
       // Ice Rink (blizzard-only)
       iceRink: this.iceRink || null,
       // Shooting Star (aurora event)
@@ -9381,7 +9421,17 @@ class GameEngine {
   // ============================================================
   _addHeat(birdId, amount) {
     const current = this.heatScores.get(birdId) || 0;
-    this.heatScores.set(birdId, current + amount);
+    const newHeat = current + amount;
+    this.heatScores.set(birdId, newHeat);
+    // Duke's Challenge: reach_heat type — first bird (not the Duke) to hit the target level wins
+    if (this.dukeChallenge && this.dukeChallenge.type === 'reach_heat' && birdId !== this.dukeChallenge.dukeId) {
+      const lvl = this._getWantedLevel(newHeat);
+      if (lvl >= this.dukeChallenge.target && !this.dukeChallenge.progress.get(birdId)) {
+        this.dukeChallenge.progress.set(birdId, 1); // mark as claimed to avoid double-fire
+        const bird = this.birds.get(birdId);
+        if (bird) this._claimDukeChallenge(bird);
+      }
+    }
   }
 
   // Returns 0-5 star wanted level for a given heat value
@@ -12036,6 +12086,8 @@ class GameEngine {
       if (!this.kingpin) {
         // New kingpin!
         const champShield = !!richestBird.royaleChampBadge;
+        // Check noble ascension: was this bird previously a Duke/Baron/Count?
+        const courtMembership = this.royalCourt.find(m => m.birdId === richestBird.id);
         this.kingpin = {
           birdId: richestBird.id,
           birdName: richestBird.name,
@@ -12055,6 +12107,18 @@ class GameEngine {
           champShield: champShield,
           isLegend: richestBird.prestige >= 5,
         });
+        // Noble Ascension fanfare: a court member rises to the throne!
+        if (courtMembership) {
+          const tag = richestBird.gangTag ? `[${richestBird.gangTag}] ` : '';
+          this.events.push({
+            type: 'noble_ascension',
+            birdId: richestBird.id,
+            birdName: richestBird.name,
+            gangTag: richestBird.gangTag || null,
+            fromTitle: courtMembership.title,
+            announcement: `⚜️ NOBLE ASCENSION! ${tag}${richestBird.name} rises from ${courtMembership.title} to claim the CROWN!`,
+          });
+        }
       } else if (this.kingpin.birdId !== richestBird.id) {
         // Richer bird is now online — crown passes automatically (bloodless transfer)
         const oldName = this.kingpin.birdName;
@@ -12226,11 +12290,14 @@ class GameEngine {
       this.kingpin.champShieldActive = false;
       // Reset this attacker's hit count — the hit bounced off
       this.kingpin.hitCount.set(attacker.id, 0);
+      const kpBird = this.birds.get(this.kingpin.birdId);
       this.events.push({
         type: 'champ_shield_broke',
         kingpinName: this.kingpin.birdName,
         attackerName: attacker.name,
         kingpinId: this.kingpin.birdId,
+        x: kpBird ? kpBird.x : null,
+        y: kpBird ? kpBird.y : null,
       });
       // Still give the small bonus (the hit landed, shield just absorbed the dethrone progress)
       return;
@@ -13237,6 +13304,8 @@ class GameEngine {
       shootingStars:   0,   // shooting stars this cycle
       royalDecrees:    [],  // [{ type, kingpinName }] — decrees issued this cycle
       peoplesRevolt:   null, // { kingpinName, participantNames } — if revolt triggered
+      duelResults:     [],  // [{ winnerName, winnerGangTag, loserName, pot }] — street duels
+      dukeChallenges:  [],  // [{ dukeName, challengeType, winnerName, reward }] — duke challenges claimed
     };
   }
 
@@ -13400,6 +13469,28 @@ class GameEngine {
         icon: '🥊',
         headline: `FIGHTING CHAMPIONSHIP: ${tag}${tw.name} WINS THE BRACKET!`,
         subline: `Took home ${tw.pot}c in prize coins. The crowd erupted. Pigeons wept.`,
+      });
+    }
+
+    // Street Duel headline — only print if 3+ duels happened (shows the city was fighting)
+    if (stats.duelResults && stats.duelResults.length >= 3) {
+      const topDuel = stats.duelResults.reduce((best, d) => d.pot > best.pot ? d : best);
+      const tag = topDuel.winnerGangTag ? `[${topDuel.winnerGangTag}] ` : '';
+      headlines.push({
+        icon: '⚔️',
+        headline: `${stats.duelResults.length} STREET DUELS FOUGHT — ${tag}${topDuel.winnerName} TOPS THE BOARD`,
+        subline: `The city's streets ran hot with spontaneous 1v1 poop battles. ${topDuel.winnerName} pocketed ${topDuel.pot}c in the biggest fight.`,
+      });
+    }
+
+    // Duke's Challenge claim headline
+    if (stats.dukeChallenges && stats.dukeChallenges.length > 0) {
+      const dc = stats.dukeChallenges[0];
+      const tag = dc.winnerGangTag ? `[${dc.winnerGangTag}] ` : '';
+      headlines.push({
+        icon: '👑',
+        headline: `DUKE'S CHALLENGE WON: ${tag}${dc.winnerName} CLAIMS THE NOBLE PRIZE`,
+        subline: `${dc.dukeName}'s ${dc.reward}c bounty has been claimed. The Duke nods approvingly. Sort of.`,
       });
     }
 
@@ -15218,6 +15309,16 @@ class GameEngine {
       expiresAt: now + 90000, // 90-second claim window
       floatPhase: Math.random() * Math.PI * 2,
     };
+    // Award spring_witness daily challenge to birds near the pond when lantern spawns
+    for (const b of this.birds.values()) {
+      if (b.inSewer) continue;
+      const dx = b.x - POND_CX;
+      const dy = b.y - POND_CY;
+      if (Math.sqrt(dx * dx + dy * dy) <= 300) {
+        this._trackDailyProgress(b, 'spring_witness', 1);
+        this.events.push({ type: 'spring_witness_bonus', birdId: b.id });
+      }
+    }
     this.events.push({
       type: 'hanami_lantern_spawn',
       x: spawnX,
@@ -16064,8 +16165,9 @@ class GameEngine {
   _tickBirdRoyale(dt, now) {
     const WORLD_W = 3000;
     const WORLD_H = 3000;
-    const CENTER_X = WORLD_W / 2;   // 1500
-    const CENTER_Y = WORLD_H / 2;   // 1500
+    // During Cherry Blossom season: zone centers on the Sacred Pond for dramatic spring convergence!
+    const CENTER_X = this.cherryBlossoms ? 1050 : WORLD_W / 2;
+    const CENTER_Y = this.cherryBlossoms ? 1100 : WORLD_H / 2;
     const START_RADIUS = 1420;      // covers almost the whole map
     const END_RADIUS = 160;         // final panic zone at city center
     const SHRINK_DURATION = 3 * 60 * 1000; // 3 minutes
@@ -16090,6 +16192,7 @@ class GameEngine {
         zoneDrainTimers: new Map(), // birdId -> lastDrainAt
         winner: null,
         survivorXpGiven: false,
+        isSpringRoyale: !!this.cherryBlossoms,
       };
       for (const bird of this.birds.values()) {
         this.events.push({
@@ -16097,10 +16200,11 @@ class GameEngine {
           birdId: bird.id,
           startAt,
           warningDuration: WARNING_DURATION,
+          isSpringRoyale: !!this.cherryBlossoms,
         });
       }
-      this.events.push({ type: 'royale_warning_global', startAt });
-      console.log('[BirdRoyale] Warning phase started. Royale begins in 2 min.');
+      this.events.push({ type: 'royale_warning_global', startAt, isSpringRoyale: !!this.cherryBlossoms });
+      console.log(`[BirdRoyale] Warning phase started. Royale begins in 2 min. Spring: ${!!this.cherryBlossoms}`);
     }
 
     if (!this.birdRoyale) return;
@@ -16666,6 +16770,17 @@ class GameEngine {
       loser.streetDuelId = null;
       // Wipe combo on duel loss
       loser.comboCount = 0;
+    }
+
+    // Gazette tracking — record notable duels for the morning newspaper
+    if (duel.pot > 0 && reason !== 'draw') {
+      if (!this.gazetteStats.duelResults) this.gazetteStats.duelResults = [];
+      this.gazetteStats.duelResults.push({
+        winnerName: winner ? winner.name : '???',
+        winnerGangTag: winner ? (winner.gangTag || null) : null,
+        loserName,
+        pot: duel.pot,
+      });
     }
 
     this.events.push({
@@ -17238,6 +17353,196 @@ class GameEngine {
       loserId,
       loserName,
     });
+  }
+
+  // ============================================================
+  // DUKE'S CHALLENGE SYSTEM
+  // The Duke (top Royal Court member) can spend coins to issue a
+  // city-wide mini-challenge. First bird to complete it wins the pot.
+  // ============================================================
+
+  _handleDukeChallengeIssue(bird, action, now) {
+    // Must be the current Duke (first Royal Court member)
+    const duke = this.royalCourt[0];
+    if (!duke || duke.birdId !== bird.id) {
+      this.events.push({ type: 'duke_challenge_fail', birdId: bird.id, reason: 'not_duke' });
+      return;
+    }
+    // Only one active challenge at a time
+    if (this.dukeChallenge) {
+      this.events.push({ type: 'duke_challenge_fail', birdId: bird.id, reason: 'already_active' });
+      return;
+    }
+    // Per-duke cooldown: 5 minutes
+    const lastIssued = this.dukeChallengeLastIssued[bird.id] || 0;
+    const COOLDOWN = 5 * 60000;
+    if (now - lastIssued < COOLDOWN) {
+      const secs = Math.ceil((COOLDOWN - (now - lastIssued)) / 1000);
+      this.events.push({ type: 'duke_challenge_fail', birdId: bird.id, reason: 'cooldown', cooldownLeft: secs });
+      return;
+    }
+
+    const VALID_TYPES = ['poop_npcs', 'tag_buildings', 'sewer_loot', 'reach_heat'];
+    const challengeType = action.challengeType;
+    if (!VALID_TYPES.includes(challengeType)) return;
+
+    // Validate target within allowed range
+    const TARGET_RANGES = {
+      poop_npcs:    [5, 20],
+      tag_buildings:[2, 5],
+      sewer_loot:   [2, 5],
+      reach_heat:   [2, 5],
+    };
+    const [minT, maxT] = TARGET_RANGES[challengeType];
+    const target = Math.max(minT, Math.min(maxT, Math.floor(Number(action.target)) || minT));
+
+    // Validate reward (50–500c, must have the coins)
+    const reward = Math.max(50, Math.min(500, Math.floor(Number(action.reward)) || 100));
+    if (bird.coins < reward) {
+      this.events.push({ type: 'duke_challenge_fail', birdId: bird.id, reason: 'no_coins' });
+      return;
+    }
+
+    // Validate duration (in ms; client sends seconds)
+    const DURATION_RANGES = {
+      poop_npcs:    [2 * 60000, 5 * 60000],
+      tag_buildings:[3 * 60000, 7 * 60000],
+      sewer_loot:   [3 * 60000, 7 * 60000],
+      reach_heat:   [3 * 60000, 6 * 60000],
+    };
+    const [minD, maxD] = DURATION_RANGES[challengeType];
+    // Client sends duration already in ms (seconds * 1000)
+    const durationMs = Math.max(minD, Math.min(maxD, Math.floor(Number(action.duration)) || minD));
+
+    // Deduct coins from Duke immediately — they're committed
+    bird.coins -= reward;
+    this.dukeChallengeLastIssued[bird.id] = now;
+
+    this.dukeChallenge = {
+      type: challengeType,
+      target,
+      reward,
+      dukeId: bird.id,
+      dukeName: bird.name,
+      gangTag: bird.gangTag || null,
+      expiresAt: now + durationMs,
+      progress: new Map(),
+      desc: '',  // filled in below after label is computed
+    };
+
+    const TYPE_LABELS = {
+      poop_npcs:    `first to poop ${target} NPCs/cars`,
+      tag_buildings:`first to graffiti tag ${target} buildings`,
+      sewer_loot:   `first to collect ${target} sewer loot caches`,
+      reach_heat:   `first to reach Wanted Level ${target}⭐`,
+    };
+    const label = TYPE_LABELS[challengeType];
+    this.dukeChallenge.desc = label;
+    const dukTag = bird.gangTag ? `[${bird.gangTag}] ` : '';
+    this.events.push({
+      type: 'duke_challenge_started',
+      challengeType,
+      target,
+      reward,
+      dukeId: bird.id,
+      dukeName: bird.name,
+      gangTag: bird.gangTag || null,
+      expiresAt: this.dukeChallenge.expiresAt,
+      duration: durationMs,
+      desc: label,
+      label,
+      announcement: `👑 DUKE'S CHALLENGE from ${dukTag}${bird.name}: ${label} — wins ${reward}c!`,
+    });
+  }
+
+  _handleDukeChallengeCancel(bird, now) {
+    if (!this.dukeChallenge || this.dukeChallenge.dukeId !== bird.id) return;
+    // 50% refund on cancel
+    const refund = Math.floor(this.dukeChallenge.reward * 0.5);
+    bird.coins += refund;
+    this.events.push({
+      type: 'duke_challenge_cancelled',
+      birdId: bird.id,
+      dukeName: bird.name,
+      refund,
+    });
+    this.dukeChallenge = null;
+  }
+
+  _tickDukeChallenge(now) {
+    if (!this.dukeChallenge) return;
+    if (now >= this.dukeChallenge.expiresAt) {
+      // Time expired — Duke gets 50% of reward back
+      const duke = this.birds.get(this.dukeChallenge.dukeId);
+      const refund = Math.floor(this.dukeChallenge.reward * 0.5);
+      if (duke) duke.coins += refund;
+      this.events.push({
+        type: 'duke_challenge_expired',
+        dukeName: this.dukeChallenge.dukeName,
+        reward: this.dukeChallenge.reward,
+        refund,
+        label: this.dukeChallenge.type,
+      });
+      this.dukeChallenge = null;
+    }
+  }
+
+  // Called by poop hit, graffiti, sewer loot sections — increments per-bird progress.
+  // `reach_heat` challenges are claimed directly in _addHeat, not here.
+  _incrementDukeChallengeProgress(bird, challengeType, amount = 1) {
+    if (!this.dukeChallenge) return;
+    if (this.dukeChallenge.type !== challengeType) return;
+    if (this.dukeChallenge.dukeId === bird.id) return; // Duke can't win their own challenge
+    if (this.dukeChallenge.progress.get(bird.id) >= this.dukeChallenge.target) return; // already won
+
+    const current = this.dukeChallenge.progress.get(bird.id) || 0;
+    const newCount = current + amount;
+    this.dukeChallenge.progress.set(bird.id, newCount);
+
+    // Broadcast progress to all (keeps tension alive)
+    this.events.push({
+      type: 'duke_challenge_progress',
+      birdId: bird.id,
+      name: bird.name,
+      gangTag: bird.gangTag || null,
+      current: newCount,
+      target: this.dukeChallenge.target,
+    });
+
+    if (newCount >= this.dukeChallenge.target) {
+      this._claimDukeChallenge(bird);
+    }
+  }
+
+  _claimDukeChallenge(bird) {
+    if (!this.dukeChallenge) return;
+    const { reward, dukeName, type } = this.dukeChallenge;
+    bird.coins += reward;
+    bird.xp += 200;
+    this._trackDailyProgress(bird, 'duke_challenge_won', 1);
+    this._trackDailyProgress(bird, 'coins_earned', reward);
+    // Gazette tracking
+    if (!this.gazetteStats.dukeChallenges) this.gazetteStats.dukeChallenges = [];
+    this.gazetteStats.dukeChallenges.push({
+      dukeName,
+      challengeType: type,
+      winnerName: bird.name,
+      winnerGangTag: bird.gangTag || null,
+      reward,
+    });
+
+    const tag = bird.gangTag ? `[${bird.gangTag}] ` : '';
+    this.events.push({
+      type: 'duke_challenge_claimed',
+      winnerId: bird.id,
+      winnerName: bird.name,
+      gangTag: bird.gangTag || null,
+      reward,
+      dukeName,
+      challengeType: type,
+      announcement: `🏆 ${tag}${bird.name} completed the Duke's Challenge and claims ${reward}c! Well played.`,
+    });
+    this.dukeChallenge = null;
   }
 
 }

@@ -376,6 +376,17 @@
       } else if (window._revoltWindowUntil && window._revoltWindowUntil < Date.now()) {
         window._revoltWindowUntil = null;
       }
+      // Sync Duke's Challenge for players who join mid-challenge
+      if (state.dukeChallenge) {
+        if (!window._dukeChallenge || window._dukeChallenge.id !== state.dukeChallenge.id) {
+          window._dukeChallenge = state.dukeChallenge;
+          window._dukeChallengeProgressData = window._dukeChallengeProgressData || {};
+        }
+        // Keep expiresAt in sync from server
+        window._dukeChallenge.expiresAt = state.dukeChallenge.expiresAt;
+      } else if (window._dukeChallenge && !state.dukeChallenge) {
+        window._dukeChallenge = null;
+      }
     });
 
     socket.on('events', (events) => {
@@ -1050,6 +1061,83 @@
       }
     }
 
+    // === NOBLE ASCENSION (court member becomes Kingpin) ===
+    if (ev.type === 'noble_ascension') {
+      screenShake(14, 1000);
+      showAnnouncement(`⚜️ NOBLE ASCENSION!\n${ev.announcement}`, '#ffd700', 8000);
+      addEventMessage(ev.announcement, '#ffd700');
+    }
+
+    // === SPRING WITNESS BONUS ===
+    if (ev.type === 'spring_witness_bonus' && ev.birdId === myId) {
+      showAnnouncement('🌸🏮 SPRING WITNESS!\nYou were present when the Hanami Lantern rose!\nDaily challenge progress awarded!', '#ff99cc', 4000);
+    }
+
+    // === DUKE'S CHALLENGE EVENTS ===
+    if (ev.type === 'duke_challenge_started') {
+      window._dukeChallenge = ev;
+      window._dukeChallengeStartedAt = Date.now();
+      const dTag = ev.gangTag ? `[${ev.gangTag}] ` : '';
+      screenShake(8, 600);
+      showAnnouncement(
+        `👑 DUKE'S CHALLENGE!\n${dTag}${ev.dukeName} issues a city challenge!\n${ev.desc}\nReward: ${ev.reward}c to first completer!\nExpires in ${Math.round(ev.duration / 1000)}s`,
+        '#ffd700', 8000
+      );
+      addEventMessage(`👑 DUKE'S CHALLENGE by ${dTag}${ev.dukeName}: "${ev.desc}" — ${ev.reward}c reward!`, '#ffd700');
+    }
+    if (ev.type === 'duke_challenge_progress') {
+      window._dukeChallengeProgressData = window._dukeChallengeProgressData || {};
+      // Server sends: birdId, name, gangTag, current, target
+      const dcBirdName = ev.birdName || ev.name;
+      const dcProgress = ev.progress !== undefined ? ev.progress : ev.current;
+      window._dukeChallengeProgressData[ev.birdId] = { name: dcBirdName, gangTag: ev.gangTag, progress: dcProgress };
+      if (ev.birdId === myId) {
+        const target = (window._dukeChallenge && window._dukeChallenge.target) || ev.target || 1;
+        const pct = Math.min(100, Math.round((dcProgress / target) * 100));
+        addEventMessage(`👑 Your Duke Challenge progress: ${dcProgress}/${target} (${pct}%)`, '#ffd700');
+      } else {
+        const tag = ev.gangTag ? `[${ev.gangTag}] ` : '';
+        const target = (window._dukeChallenge && window._dukeChallenge.target) || ev.target || 1;
+        addEventMessage(`👑 ${tag}${dcBirdName} progresses: ${dcProgress}/${target}`, '#ccaa00');
+      }
+    }
+    if (ev.type === 'duke_challenge_claimed') {
+      window._dukeChallenge = null;
+      window._dukeChallengeProgressData = {};
+      const tag = ev.gangTag ? `[${ev.gangTag}] ` : '';
+      screenShake(12, 900);
+      if (ev.birdId === myId) {
+        showAnnouncement(`👑🏆 DUKE'S CHALLENGE COMPLETE!\nYou won ${ev.reward}c + ${ev.xp} XP!\nThe Duke is impressed.`, '#ffd700', 7000);
+      } else {
+        showAnnouncement(`👑 ${tag}${ev.birdName} completed the Duke's Challenge!\n+${ev.reward}c +${ev.xp} XP`, '#ffd700', 5000);
+      }
+      addEventMessage(`👑 ${tag}${ev.birdName} claimed the Duke's Challenge! +${ev.reward}c +${ev.xp} XP`, '#ffd700');
+    }
+    if (ev.type === 'duke_challenge_expired') {
+      window._dukeChallenge = null;
+      window._dukeChallengeProgressData = {};
+      const tag = ev.gangTag ? `[${ev.gangTag}] ` : '';
+      addEventMessage(`👑 ${tag}${ev.dukeName}'s challenge expired unclaimed. The Duke is displeased.`, '#aa8800');
+    }
+    if (ev.type === 'duke_challenge_cancelled') {
+      window._dukeChallenge = null;
+      window._dukeChallengeProgressData = {};
+      addEventMessage(`👑 ${ev.dukeName} cancelled their city challenge. (50% refund granted)`, '#aa8800');
+    }
+    if (ev.type === 'duke_challenge_fail' && ev.birdId === myId) {
+      const FAIL_MSGS = {
+        not_duke: 'Only the Duke can issue challenges!',
+        already_active: 'A Duke\'s Challenge is already active! Wait for it to end.',
+        cooldown: `You must wait before issuing another challenge.`,
+        insufficient_coins: 'You don\'t have enough coins to issue that challenge!',
+        invalid_type: 'Invalid challenge type.',
+        invalid_reward: 'Reward must be 20–500 coins.',
+        invalid_target: 'Invalid challenge target value.',
+        no_bird: 'You must be connected to issue challenges.',
+      };
+      addEventMessage(`👑 Challenge failed: ${FAIL_MSGS[ev.reason] || ev.reason}`, '#ff6644');
+    }
+
     // === KING'S PARDON EVENTS ===
     if (ev.type === 'kings_pardon_issued') {
       if (ev.pardonedId === myId) {
@@ -1626,23 +1714,45 @@
     if (ev.type === 'royale_warning' && ev.birdId === myId) {
       effects.push({ type: 'screen_shake', intensity: 12, duration: 1000, time: now });
       const warningSecS = Math.round((ev.startAt - now) / 1000);
-      showAnnouncement(
-        `⚔️ BIRD ROYALE in ${warningSecS}s!\nFly to the SAFE ZONE or be eliminated!\nLast bird alive wins 400 coins + 500 XP!`,
-        '#ff6600', 8000
-      );
+      if (ev.isSpringRoyale) {
+        showAnnouncement(
+          `🌸⚔️ SPRING ROYALE in ${warningSecS}s!\nZone centered on the SACRED POND!\nCherry blossoms watch as you fight for survival!`,
+          '#ff88c8', 8000
+        );
+      } else {
+        showAnnouncement(
+          `⚔️ BIRD ROYALE in ${warningSecS}s!\nFly to the SAFE ZONE or be eliminated!\nLast bird alive wins 400 coins + 500 XP!`,
+          '#ff6600', 8000
+        );
+      }
     }
     if (ev.type === 'royale_warning_global') {
-      addEventMessage('⚔️ BIRD ROYALE starts in 2 minutes! Stay inside the shrinking zone or lose your food fast!', '#ff6600');
+      if (ev.isSpringRoyale) {
+        addEventMessage('🌸⚔️ SPRING ROYALE starts in 2 minutes! Zone centered on the Sacred Pond — cherry blossoms witness all!', '#ff88c8');
+      } else {
+        addEventMessage('⚔️ BIRD ROYALE starts in 2 minutes! Stay inside the shrinking zone or lose your food fast!', '#ff6600');
+      }
     }
     if (ev.type === 'royale_start' && ev.birdId === myId) {
       effects.push({ type: 'screen_shake', intensity: 14, duration: 1000, time: now });
-      showAnnouncement(
-        `⚔️ BIRD ROYALE BEGINS!\n${ev.participantCount} birds enter — one walks out!\nZone shrinks for 3 minutes. DON'T LEAVE THE RING!`,
-        '#ff2200', 7000
-      );
+      if (ev.isSpringRoyale) {
+        showAnnouncement(
+          `🌸⚔️ SPRING ROYALE BEGINS!\n${ev.participantCount} birds circle the Sacred Pond!\nPetals fall as the zone closes!`,
+          '#ff88c8', 7000
+        );
+      } else {
+        showAnnouncement(
+          `⚔️ BIRD ROYALE BEGINS!\n${ev.participantCount} birds enter — one walks out!\nZone shrinks for 3 minutes. DON'T LEAVE THE RING!`,
+          '#ff2200', 7000
+        );
+      }
     }
     if (ev.type === 'royale_start_global') {
-      addEventMessage(`⚔️ BIRD ROYALE HAS BEGUN! ${ev.participantCount} participants. Zone shrinks for 3 minutes!`, '#ff4400');
+      if (ev.isSpringRoyale) {
+        addEventMessage(`🌸⚔️ SPRING ROYALE — ${ev.participantCount} birds around the Sacred Pond! Zone centered on the cherry blossoms!`, '#ff88c8');
+      } else {
+        addEventMessage(`⚔️ BIRD ROYALE HAS BEGUN! ${ev.participantCount} participants. Zone shrinks for 3 minutes!`, '#ff4400');
+      }
     }
     if (ev.type === 'royale_zone_damage' && ev.birdId === myId) {
       // Subtle food drain warning — only show text if food is low
@@ -2104,6 +2214,10 @@
         addEventMessage(`🏆💔 ${ev.kingpinName}'s Royale Champion shield shattered! Now vulnerable to dethronement.`, '#ff8800');
       }
       effects.push({ type: 'screen_shake', intensity: 6, duration: 450, time: now });
+      // Golden shield burst visual at kingpin's world position — expanding ring flash
+      if (ev.x !== undefined && ev.y !== undefined) {
+        window._champShieldFlash = { x: ev.x, y: ev.y, startTime: now, duration: 700 };
+      }
     }
 
     if (ev.type === 'helicopter_recovering') {
@@ -4338,7 +4452,47 @@
             <span class="rcb-coins">${m.coins}c</span>
           </div>`;
         }).join('');
-        rcBoard.innerHTML = `<div class="rcb-title">⚜️ ROYAL COURT</div>${rows}`;
+        // Add Duke's Challenge button if I'm the Duke and no challenge is active
+        const isDuke = gameState.self && gameState.self.myCourtTitle === 'Duke';
+        const dcActive = !!(window._dukeChallenge);
+        const dcBtn = isDuke && !dcActive
+          ? `<button id="dukeChallengeIssueBtn" style="display:block;width:100%;margin-top:5px;background:linear-gradient(135deg,#7a5a00,#b38b00);color:#ffd700;border:1px solid #ffd70088;border-radius:4px;font-size:9px;font-weight:bold;padding:3px 6px;cursor:pointer;letter-spacing:0.5px;">🎯 ISSUE DUKE'S CHALLENGE</button>`
+          : (isDuke && dcActive ? `<div style="font-size:9px;color:#ccaa00;margin-top:4px;text-align:center;">🎯 Challenge active — awaiting completion</div>` : '');
+        rcBoard.innerHTML = `<div class="rcb-title">⚜️ ROYAL COURT</div>${rows}${dcBtn}`;
+        // Wire Duke's Challenge button
+        const dcIssueBtn = document.getElementById('dukeChallengeIssueBtn');
+        if (dcIssueBtn) {
+          dcIssueBtn.onclick = () => openDukeChallengeOverlay();
+        }
+      }
+    }
+
+    // Duke's Challenge HUD bar — shows progress/countdown when active
+    const dcChallenge = window._dukeChallenge;
+    const dcHud = document.getElementById('dukeChallengeHud');
+    if (dcHud) {
+      if (!dcChallenge) {
+        dcHud.style.display = 'none';
+      } else {
+        const now2 = Date.now();
+        const secsLeft = Math.max(0, Math.round((dcChallenge.expiresAt - now2) / 1000));
+        const myProg = (gameState.self && window._dukeChallengeProgressData && window._dukeChallengeProgressData[gameState.self.id])
+          ? window._dukeChallengeProgressData[gameState.self.id].progress
+          : (gameState.self && gameState.self.myDukeChallengeProgress) || 0;
+        const target = dcChallenge.target || 1;
+        const pct = Math.min(100, Math.round((myProg / target) * 100));
+        const amIDuke = gameState.self && gameState.self.isDukeChallengeDuke;
+        const cancelBtn = amIDuke ? ' <button onclick="socket.emit(\'action\',{type:\'duke_challenge_cancel\'})" style="background:rgba(80,0,0,0.7);color:#ff8888;border:1px solid #aa2222;border-radius:2px;font-size:9px;padding:0 4px;cursor:pointer;margin-left:4px;">✕ Cancel (50% refund)</button>' : '';
+        dcHud.style.display = 'block';
+        dcHud.innerHTML = `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+          <span style="font-size:12px;font-weight:bold;color:#ffd700;">👑 DUKE'S CHALLENGE</span>
+          <span style="font-size:10px;color:#ffe066;">${dcChallenge.desc}</span>
+          <span style="font-size:10px;color:#ffcc44;">${myProg}/${target} · ${secsLeft}s · 🏆${dcChallenge.reward}c</span>
+          ${cancelBtn}
+        </div>
+        <div style="width:100%;height:4px;background:rgba(255,255,255,0.1);border-radius:2px;margin-top:3px;">
+          <div style="width:${pct}%;height:4px;background:#ffd700;border-radius:2px;transition:width 0.3s;"></div>
+        </div>`;
       }
     }
 
@@ -8069,6 +8223,39 @@
       }
     }
 
+    // === CHAMPION SHIELD BURST — golden expanding ring at Kingpin position ===
+    if (window._champShieldFlash) {
+      const csf = window._champShieldFlash;
+      const elapsed = now - csf.startTime;
+      if (elapsed < csf.duration) {
+        const t = elapsed / csf.duration; // 0→1
+        const sx = (csf.x - camera.x) * camera.zoom + camera.screenW / 2;
+        const sy = (csf.y - camera.y) * camera.zoom + camera.screenH / 2;
+        const maxR = 80 * camera.zoom;
+        const r = t * maxR;
+        const alpha = (1 - t) * 0.85;
+        ctx.save();
+        ctx.strokeStyle = `rgba(255, 215, 0, ${alpha})`;
+        ctx.lineWidth = (1 - t) * 6 + 1;
+        ctx.shadowColor = '#ffd700';
+        ctx.shadowBlur = 18;
+        ctx.beginPath();
+        ctx.arc(sx, sy, r, 0, Math.PI * 2);
+        ctx.stroke();
+        // Second ring slightly behind
+        const r2 = t * maxR * 0.7;
+        const alpha2 = (1 - t) * 0.5;
+        ctx.strokeStyle = `rgba(255, 245, 150, ${alpha2})`;
+        ctx.lineWidth = (1 - t) * 3;
+        ctx.beginPath();
+        ctx.arc(sx, sy, r2, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      } else {
+        window._champShieldFlash = null;
+      }
+    }
+
     // Weather effects (screen-space, drawn over day/night overlay)
     // Use gameState.weather as authoritative source (server-synced each tick)
     drawWeather(ctx, camera, now, gameState.weather || weatherState);
@@ -9982,6 +10169,98 @@
     bmShopOpen = false;
     const el = document.getElementById('blackMarketShop');
     if (el) el.style.display = 'none';
+  }
+
+  // ============================================================
+  // DUKE'S CHALLENGE OVERLAY
+  // ============================================================
+  function openDukeChallengeOverlay() {
+    if (!gameState || !gameState.self || gameState.self.myCourtTitle !== 'Duke') return;
+    const isDukeEl = document.getElementById('dukeChallengeOverlay');
+    if (isDukeEl) {
+      isDukeEl.style.display = 'block';
+      renderDukeChallengeOverlay();
+    }
+    for (const k in keys) keys[k] = false;
+    syncInput();
+  }
+
+  function closeDukeChallengeOverlay() {
+    const el = document.getElementById('dukeChallengeOverlay');
+    if (el) el.style.display = 'none';
+  }
+
+  function renderDukeChallengeOverlay() {
+    const el = document.getElementById('dukeChallengeOverlay');
+    if (!el || !gameState || !gameState.self) return;
+    const s = gameState.self;
+    const coins = s.coins || 0;
+    const dcActive = !!(window._dukeChallenge);
+
+    const CHALLENGE_TYPES = [
+      { type: 'poop_npcs',   label: '💩 Poop NPCs',          desc: 'First to poop N NPCs/cars wins', targets: [5, 10, 15, 20] },
+      { type: 'tag_buildings', label: '🎨 Tag Buildings',     desc: 'First to graffiti N buildings wins', targets: [2, 4, 6] },
+      { type: 'sewer_loot',  label: '🐀 Sewer Loot',         desc: 'First to collect N sewer caches wins', targets: [1, 2, 3] },
+      { type: 'reach_heat',  label: '⭐ Reach Wanted Level',  desc: 'First to hit the target star level wins', targets: [2, 3, 4] },
+    ];
+
+    if (dcActive) {
+      const dc = window._dukeChallenge;
+      const secsLeft = Math.max(0, Math.round((dc.expiresAt - Date.now()) / 1000));
+      el.innerHTML = `
+        <div style="background:linear-gradient(160deg,#1a1200,#2a2000);border:2px solid #b38b00;border-radius:12px;padding:20px 22px;min-width:320px;max-width:480px;color:#ffe066;font-family:sans-serif;position:relative;">
+          <button onclick="closeDukeChallengeOverlay()" style="position:absolute;top:10px;right:12px;background:none;border:none;color:#ffd700;font-size:18px;cursor:pointer;">✕</button>
+          <div style="font-size:16px;font-weight:bold;color:#ffd700;margin-bottom:12px;">👑 DUKE'S CHALLENGE ACTIVE</div>
+          <div style="font-size:13px;color:#ffe066;margin-bottom:8px;">${dc.desc}</div>
+          <div style="font-size:11px;color:#ccaa00;">Reward: 🏆 ${dc.reward}c &nbsp;|&nbsp; Expires in ${secsLeft}s</div>
+          <button onclick="socket.emit('action',{type:'duke_challenge_cancel'});closeDukeChallengeOverlay();" style="margin-top:14px;background:rgba(80,0,0,0.8);color:#ff8888;border:1px solid #aa2222;border-radius:5px;font-size:11px;padding:6px 14px;cursor:pointer;">✕ Cancel Challenge (50% refund)</button>
+        </div>`;
+      return;
+    }
+
+    // Build issue form
+    let typeRows = CHALLENGE_TYPES.map(ct => {
+      const tgtOptions = ct.targets.map(t => `<option value="${t}">${t}</option>`).join('');
+      return `<tr>
+        <td style="padding:5px 6px;"><label><input type="radio" name="dcType" value="${ct.type}" ${ct.type === 'poop_npcs' ? 'checked' : ''}> ${ct.label}</label></td>
+        <td style="padding:5px 6px;font-size:10px;color:#ccaa44;">${ct.desc}</td>
+        <td style="padding:5px 6px;"><select class="dcTargetSel" data-type="${ct.type}" style="background:#2a2000;color:#ffd700;border:1px solid #b38b00;border-radius:3px;font-size:10px;">${tgtOptions}</select></td>
+      </tr>`;
+    }).join('');
+
+    el.innerHTML = `
+      <div style="background:linear-gradient(160deg,#1a1200,#2a2000);border:2px solid #b38b00;border-radius:12px;padding:20px 22px;min-width:340px;max-width:500px;color:#ffe066;font-family:sans-serif;position:relative;">
+        <button onclick="closeDukeChallengeOverlay()" style="position:absolute;top:10px;right:12px;background:none;border:none;color:#ffd700;font-size:18px;cursor:pointer;">✕</button>
+        <div style="font-size:16px;font-weight:bold;color:#ffd700;margin-bottom:4px;">👑 ISSUE DUKE'S CHALLENGE</div>
+        <div style="font-size:11px;color:#ccaa44;margin-bottom:12px;">Issue a city-wide challenge. First bird to complete it wins your reward. You get 50% back if nobody completes it.</div>
+        <table style="width:100%;border-collapse:collapse;">
+          ${typeRows}
+        </table>
+        <div style="margin-top:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <label style="font-size:11px;">Reward: <input id="dcRewardInput" type="number" min="20" max="500" value="100" style="width:60px;background:#2a2000;color:#ffd700;border:1px solid #b38b00;border-radius:3px;padding:2px 5px;"> coins (your balance: ${coins}c)</label>
+          <label style="font-size:11px;">Duration: <select id="dcDurationSel" style="background:#2a2000;color:#ffd700;border:1px solid #b38b00;border-radius:3px;">
+            <option value="60">60s</option>
+            <option value="90" selected>90s</option>
+            <option value="120">120s</option>
+            <option value="180">3 min</option>
+          </select></label>
+        </div>
+        <div id="dcIssueErr" style="color:#ff6644;font-size:10px;margin-top:6px;min-height:14px;"></div>
+        <button id="dcIssueBtn" style="margin-top:12px;background:linear-gradient(135deg,#7a5a00,#b38b00);color:#ffd700;border:1px solid #ffd70088;border-radius:6px;font-size:13px;font-weight:bold;padding:8px 20px;cursor:pointer;width:100%;">🎯 ISSUE CHALLENGE</button>
+      </div>`;
+
+    document.getElementById('dcIssueBtn').onclick = () => {
+      const typeInput = el.querySelector('input[name="dcType"]:checked');
+      if (!typeInput) { document.getElementById('dcIssueErr').textContent = 'Select a challenge type.'; return; }
+      const type = typeInput.value;
+      const targetSel = el.querySelector(`.dcTargetSel[data-type="${type}"]`);
+      const target = parseInt(targetSel ? targetSel.value : '5');
+      const reward = parseInt(document.getElementById('dcRewardInput').value) || 100;
+      const duration = parseInt(document.getElementById('dcDurationSel').value) * 1000 || 90000;
+      if (reward < 20 || reward > 500) { document.getElementById('dcIssueErr').textContent = 'Reward must be 20–500 coins.'; return; }
+      socket.emit('action', { type: 'duke_challenge_issue', challengeType: type, target, reward, duration });
+      closeDukeChallengeOverlay();
+    };
   }
 
   // ============================================================

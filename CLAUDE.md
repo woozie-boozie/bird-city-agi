@@ -2737,6 +2737,40 @@ Four interlocking additions that deepen the Cherry Blossom system into a complet
 
 **Creative intent**: Session 80 made the park beautiful. Session 81 makes it ALIVE with events. The Hanami Lantern is the park's rarest treasure — a night encounter that only exists during spring and requires being in the right place at the right time. The 🏮 badge is the first purely seasonal cosmetic in the game: impossible to earn outside spring, visible to all players forever. The Sakura Viewing Party rewards congregation — players who fly to the pond together earn a shared reward that no individual can trigger alone. The Blossom Crown turns the park into the Kingpin's symbolic home turf: wearing the crown through cherry blossoms while petals orbit is the most visually magical thing in the game. The mochi × crime wave synergy makes even the chaos systems interact with spring beauty: crime waves now have a spring variant that creates post-wave scrambles. Pure DISCOVERY + SPECTACLE + SOCIAL energy.
 
+**Session 82 — 2026-04-13: Duke's Challenge + Noble Ascension + Spring Royale + Champion Shield Flash**
+Four interlocking additions that complete the Royal Court's social arc and wire existing systems deeper into each other.
+
+**Duke's Challenge (the social power of nobility):**
+- The Duke (richest non-Kingpin bird) can now issue a city-wide mini-challenge from the Royal Court Board — press "🎯 ISSUE DUKE'S CHALLENGE" when holding the Duke title
+- Four challenge types: Poop NPCs (5–20 targets), Tag Buildings (2–5), Sewer Loot (1–3 caches), Reach Wanted Level (2–5 stars)
+- Duke sets the reward (20–500c, deducted immediately from their own coins) and duration (60–180s)
+- First non-Duke bird to complete the challenge claims the full reward + XP + daily challenge progress
+- If nobody completes it: Duke gets 50% refund; same on cancellation
+- City-wide announcement on issue, live progress feed during the challenge, big announcement on claim
+- 5-minute per-Duke cooldown — issues are rare and meaningful
+- New daily challenge: **Noble Victor** — complete a Duke's Challenge (180 XP, 90c)
+- Server-authoritative progress map (Map<birdId, count>); `reach_heat` type hooks into `_addHeat` directly for instant detection
+- Gazette headline: "👑 DUKE'S CHALLENGE: [winner] wins [N]c from the nobility" when claimed
+
+**Noble Ascension (Court member takes the crown):**
+- When a Royal Court member (Duke/Baron/Count) becomes Kingpin, a special `noble_ascension` event fires city-wide with extra fanfare — "⚜️ NOBLE ASCENSION! [Duke] rises from Duke to claim the CROWN!"
+- Creates a narrative moment: the city witnesses a lawful aristocratic succession, not just another rich bird
+
+**Spring Royale × Sacred Pond:**
+- During Cherry Blossom season (April), Bird Royale's safe zone is centered on the Sacred Pond (x:1050, y:1100) instead of the map center
+- All royale announcements acknowledge the spring location: "🌸⚔️ SPRING ROYALE — Zone centered on the Sacred Pond!"
+- Birds converge on the most beautiful spot in the city for their final battle among the petals
+
+**Champion Shield Flash Visual:**
+- When the Royale Champion Kingpin's shield breaks, a golden expanding ring burst plays at the Kingpin's world position — a dramatic visual confirmation of the moment
+- `champ_shield_broke` now includes x,y coordinates, rendered as a pulsing double-ring in-world for 700ms
+
+**Spring Witness daily challenge:**
+- Be present within 300px of the Sacred Pond when a Hanami Lantern rises — awards daily challenge progress immediately
+- `_spawnHanamiLantern` checks all nearby birds and fires `spring_witness_bonus` event for each + tracks daily progress
+
+**Creative intent**: The Royal Court was a status system without player agency — nobles earned tribute passively. The Duke's Challenge turns the title into active POWER. A Duke who drops 200c on a "First to 15 NPCs" challenge while Crime Wave is active creates the wildest 90 seconds in the city. Smaller players race for the reward while the Duke watches their investment pay off in pure spectacle. The Noble Ascension creates narrative continuity between the court system and the kingpin system — watching the Duke seize the crown feels earned, not random. Spring Royale's Sacred Pond center turns the final battle of cherry blossom season into a genuinely cinematic moment: a shrinking ring of surviving birds around the glowing pink pond with petals falling. Pure SOCIAL + PROGRESSION + SPECTACLE energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -2944,8 +2978,8 @@ Built the Territory Control System on top of the existing upstream code:
 - Seasonal city transformation: Cherry Blossoms event — 7-day visual overlay with pink petals falling, unique spring food items, and a special Blossom Viewing festival event at the park pond
 - Graffiti mural: multi-building mega art requires 3+ gang members to paint simultaneously across a whole city block — persistent visual landmark when complete
 - Royal Court × Gang War: Court members who join a gang war get +15% coin bonus on gang war kills (nobility fights back)
-- Royal Court × Kingpin Dethronement: if the Kingpin is dethroned and a Court member becomes the new Kingpin, the Duke's "ascension" is announced city-wide with extra fanfare
-- Duke's Challenge: the Duke can issue one daily mini-challenge to the city (e.g., "first to poop 3 cars earns 50c from me") — spending from their own coins, creating a mini-economy of noble challenges
+- ~~Royal Court × Kingpin Dethronement: if the Kingpin is dethroned and a Court member becomes the new Kingpin, the Duke's "ascension" is announced city-wide with extra fanfare~~ (DONE Session 82 — noble_ascension event)
+- ~~Duke's Challenge: the Duke can issue one daily mini-challenge to the city (e.g., "first to poop 3 cars earns 50c from me") — spending from their own coins, creating a mini-economy of noble challenges~~ (DONE Session 82)
 - ~~Seasonal Cherry Blossoms: park fills with pink petal effects during spring events~~ (DONE Session 80)
 - ~~Mochi + crime wave: during crime wave, mochi vanishes as shopkeepers hide their goods — 2× coin reward if you find the stash~~ (DONE Session 81)
 - ~~Sakura Viewing Party: if 4+ birds are all near the Sacred Pond simultaneously during cherry blossom season, a burst of cooperative XP fires for all of them (+100 XP each)~~ (DONE Session 81)
@@ -2953,5 +2987,10 @@ Built the Territory Control System on top of the existing upstream code:
 - ~~Hanami Festival Event: once per night during spring, a special Hanami lantern floats up from the pond — first bird to catch it earns 200c + a rare seasonal badge~~ (DONE Session 81)
 - Spring Lantern Festival: multiple lanterns rise simultaneously during full-moon nights (double lantern reward nights)
 - Mochi stash boss: during a crime wave in spring, a hidden mochi stash spawns in the sewer that only has a clue on the minimap (Lunar Lens reveals it)
-- Cherry Blossom × Royale: during cherry blossom season, Bird Royale's safe zone center starts at the Sacred Pond — everyone converges on the most beautiful spot
-- Hanami daily: "Spring Witness — be present in the park when the Hanami Lantern spawns" (not the catcher, just witness it)
+- ~~Cherry Blossom × Royale: during cherry blossom season, Bird Royale's safe zone center starts at the Sacred Pond — everyone converges on the most beautiful spot~~ (DONE Session 82)
+- ~~Hanami daily: "Spring Witness — be present in the park when the Hanami Lantern spawns" (not the catcher, just witness it)~~ (DONE Session 82)
+- Duke's Challenge expansion: add more challenge types (e.g. "Win a Street Duel", "Deliver a Golden Egg", "Survive 10s at 4+ wanted stars") — more variety for the Duke's power
+- Baron/Count mini-powers: give the Baron and Count smaller versions of the Duke's power (Baron = 50c challenge; Count = 25c challenge) — extends the nobility system downward
+- Royal Court × Crow Cartel: if the Duke is online when a Crow Cartel raid starts, they earn double XP for defending any territory against the Cartel
+- Royal Court leaderboard: track all-time Duke/Baron/Count tenures per bird (how many times you've been Duke) — show in Hall of Legends
+- Spring Lantern Festival: on the first day of spring (April 1st), two lanterns rise simultaneously — double the prizes, double the race
