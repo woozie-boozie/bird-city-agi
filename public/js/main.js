@@ -1236,6 +1236,45 @@
       addEventMessage(`🥉 Edict failed: ${FAIL_MSGS[ev.reason] || ev.reason}`, '#ff6644');
     }
 
+    // === NOBLE PERKS TIER 2 — Baron's Import + Count's City Intel ===
+    if (ev.type === 'baron_import_catalog' && ev.birdId === myId) {
+      renderBaronImportOverlay(ev.catalog);
+    }
+    if (ev.type === 'baron_import_purchased' && ev.birdId === myId) {
+      closeBaronImportOverlay();
+      screenShake(6, 400);
+      showAnnouncement(`🥈 NOBLE IMPORT!\n${ev.emoji} ${ev.itemName} delivered to your talons!\n−${ev.cost}c (includes 20% import fee)`, '#c8c8d0', 5000);
+      addEventMessage(`🥈 ${ev.announcement}`, '#c8c8d0');
+    }
+    if (ev.type === 'baron_import_purchased' && ev.birdId !== myId) {
+      addEventMessage(`🥈 ${ev.announcement}`, '#a0a0c0');
+    }
+    if (ev.type === 'baron_import_fail' && ev.birdId === myId) {
+      addEventMessage(`🥈 Noble Import failed: ${ev.reason}`, '#ff6644');
+    }
+    if (ev.type === 'count_intel_revealed' && ev.birdId === myId) {
+      window._countIntelTip = { nextType: ev.nextType, emoji: ev.emoji, label: ev.label };
+      screenShake(4, 300);
+      showAnnouncement(`🥉 COUNT'S CITY INTEL!\n${ev.emoji} Next weather: ${ev.label.toUpperCase()}\nBet NOW before the window opens!`, '#cd8c5a', 8000);
+      addEventMessage(`🥉 COUNT'S INTEL: Next weather is ${ev.emoji} ${ev.label}! Place your bet early!`, '#cd8c5a');
+    }
+    if (ev.type === 'count_intel_gang' && ev.birdId === myId) {
+      window._countIntelTip = { nextType: ev.nextType, emoji: ev.emoji, label: ev.label };
+      screenShake(3, 200);
+      showAnnouncement(`🥉 GANG INTEL from ${ev.countName} (Count)!\n${ev.emoji} Next weather: ${ev.label.toUpperCase()}\nBet before the window!`, '#cd8c5a', 6000);
+      addEventMessage(`🥉 Gang intel: ${ev.message}`, '#cd8c5a');
+    }
+    if (ev.type === 'count_intel_fail' && ev.birdId === myId) {
+      addEventMessage(`🥉 City Intel failed: ${ev.reason}`, '#ff6644');
+    }
+    // Clear intel tip once weather arrives (it was correct!)
+    if (ev.type === 'weather_start') {
+      if (window._countIntelTip && window._countIntelTip.nextType === ev.weatherType) {
+        addEventMessage(`🥉 COUNT'S INTEL WAS RIGHT! ${window._countIntelTip.emoji} ${ev.weatherType.toUpperCase()} arrived!`, '#ffd700');
+      }
+      window._countIntelTip = null;
+    }
+
     // === NOBLE CARTEL DEFENSE (Royal Court × Crow Cartel synergy) ===
     if (ev.type === 'noble_cartel_defense') {
       const TITLE_EMOJI = { Duke: '👑', Baron: '🥈', Count: '🥉' };
@@ -4562,7 +4601,7 @@
             <span class="rcb-coins">${m.coins}c</span>
           </div>`;
         }).join('');
-        // Noble challenge buttons
+        // Noble challenge + perk buttons
         const myTitle = gameState.self ? gameState.self.myCourtTitle : null;
         const isDuke   = myTitle === 'Duke';
         const isBaron  = myTitle === 'Baron';
@@ -4570,6 +4609,8 @@
         const dcActive = !!(window._dukeChallenge);
         const bcActive = !!(window._baronChallenge);
         const ccActive = !!(window._countChallenge);
+        const baronImportUsed = gameState.self ? !!gameState.self.baronImportUsed : false;
+        const countIntelUsed  = gameState.self ? !!gameState.self.countIntelUsed  : false;
 
         let nobleBtns = '';
         if (isDuke) {
@@ -4581,20 +4622,43 @@
           nobleBtns += !bcActive
             ? `<button id="baronChallengeIssueBtn" style="display:block;width:100%;margin-top:5px;background:linear-gradient(135deg,#202230,#363860);color:#c8c8d0;border:1px solid #a0a0c088;border-radius:4px;font-size:9px;font-weight:bold;padding:3px 6px;cursor:pointer;">📜 ISSUE BARON'S DECREE</button>`
             : `<div style="font-size:9px;color:#a0a0c0;margin-top:4px;text-align:center;">📜 Decree active…</div>`;
+          // Noble Import perk
+          nobleBtns += !baronImportUsed
+            ? `<button id="baronImportBtn" style="display:block;width:100%;margin-top:4px;background:linear-gradient(135deg,#1a1a30,#2a2a50);color:#a0c8ff;border:1px solid #6080c088;border-radius:4px;font-size:9px;font-weight:bold;padding:3px 6px;cursor:pointer;">📦 NOBLE IMPORT — Buy Black Market item remotely</button>`
+            : `<div style="font-size:9px;color:#606080;margin-top:3px;text-align:center;">📦 Noble Import used this tenure</div>`;
         }
         if (isCount) {
           nobleBtns += !ccActive
             ? `<button id="countChallengeIssueBtn" style="display:block;width:100%;margin-top:5px;background:linear-gradient(135deg,#2a1a08,#5a3a18);color:#cd8c5a;border:1px solid #b07040aa;border-radius:4px;font-size:9px;font-weight:bold;padding:3px 6px;cursor:pointer;">🗒 ISSUE COUNT'S EDICT</button>`
             : `<div style="font-size:9px;color:#a07040;margin-top:4px;text-align:center;">🗒 Edict active…</div>`;
+          // City Intel perk
+          nobleBtns += !countIntelUsed
+            ? `<button id="countIntelBtn" style="display:block;width:100%;margin-top:4px;background:linear-gradient(135deg,#1a2810,#304820);color:#a0d880;border:1px solid #507040aa;border-radius:4px;font-size:9px;font-weight:bold;padding:3px 6px;cursor:pointer;">📡 CITY INTEL — Reveal next weather type privately</button>`
+            : `<div style="font-size:9px;color:#506040;margin-top:3px;text-align:center;">📡 City Intel used this tenure</div>`;
         }
 
-        rcBoard.innerHTML = `<div class="rcb-title">⚜️ ROYAL COURT</div>${rows}${nobleBtns}`;
+        // Tenure record (shows your own court history)
+        let tenureHtml = '';
+        if (gameState.self && (gameState.self.dukeTenures || gameState.self.baronTenures || gameState.self.countTenures)) {
+          const dt = gameState.self.dukeTenures || 0;
+          const bt = gameState.self.baronTenures || 0;
+          const ct = gameState.self.countTenures || 0;
+          tenureHtml = `<div style="font-size:8px;color:#888;margin-top:5px;border-top:1px solid rgba(255,255,255,0.1);padding-top:3px;text-align:center;">Your Court Record: ${dt>0?`👑×${dt} `:''}${bt>0?`🥈×${bt} `:''}${ct>0?`🥉×${ct}`:''}`;
+          if (dt >= 5 || bt >= 10 || ct >= 15) tenureHtml += ` <span style="color:#ffd700;">⚜️ Noble Veteran</span>`;
+          tenureHtml += `</div>`;
+        }
+
+        rcBoard.innerHTML = `<div class="rcb-title">⚜️ ROYAL COURT</div>${rows}${nobleBtns}${tenureHtml}`;
         const dcIssueBtn = document.getElementById('dukeChallengeIssueBtn');
         if (dcIssueBtn) dcIssueBtn.onclick = () => openDukeChallengeOverlay();
         const bcIssueBtn = document.getElementById('baronChallengeIssueBtn');
         if (bcIssueBtn) bcIssueBtn.onclick = () => openBaronChallengeOverlay();
         const ccIssueBtn = document.getElementById('countChallengeIssueBtn');
         if (ccIssueBtn) ccIssueBtn.onclick = () => openCountChallengeOverlay();
+        const biBtn = document.getElementById('baronImportBtn');
+        if (biBtn) biBtn.onclick = () => { socket.emit('action', { type: 'baron_noble_import', itemId: null }); };
+        const ciBtn = document.getElementById('countIntelBtn');
+        if (ciBtn) ciBtn.onclick = () => { socket.emit('action', { type: 'count_city_intel' }); };
       }
     }
 
@@ -5988,8 +6052,14 @@
     } else {
       // Betting interface — show all 8 weather types
       const TYPES = ['rain', 'wind', 'storm', 'fog', 'hailstorm', 'heatwave', 'tornado', 'blizzard'];
+      // Count's City Intel tip — show at top if available
+      const intelTip = window._countIntelTip;
+      const intelHint = intelTip
+        ? `<div style="background:rgba(80,120,60,0.3);border:1px solid #60a040;border-radius:5px;padding:3px 6px;margin-bottom:5px;font-size:9px;color:#a0d880;">🥉 Count's Intel: <strong>${intelTip.emoji} ${intelTip.label.toUpperCase()}</strong> coming!</div>`
+        : '';
       let html = '<div style="color:#aaddff;font-size:12px;margin-bottom:2px;">🌤️ FORECAST BET</div>'
-        + '<div style="color:#7799cc;font-size:9px;margin-bottom:6px;">What\'s next? · ' + secsLeft + 's · Pool: ' + totalPool + 'c</div>';
+        + '<div style="color:#7799cc;font-size:9px;margin-bottom:6px;">What\'s next? · ' + secsLeft + 's · Pool: ' + totalPool + 'c</div>'
+        + intelHint;
 
       for (const t of TYPES) {
         const info = WEATHER_BET_INFO[t];
@@ -10634,6 +10704,57 @@
   }
 
   // ============================================================
+  // BARON'S NOBLE IMPORT OVERLAY
+  // ============================================================
+  function renderBaronImportOverlay(catalog) {
+    const el = document.getElementById('baronImportOverlay');
+    if (!el || !gameState || !gameState.self) return;
+    const coins = gameState.self.coins || 0;
+
+    const rows = catalog.map(item => {
+      const canAfford = coins >= item.importCost;
+      return `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid rgba(160,192,255,0.1);">
+        <span style="font-size:20px;width:28px;text-align:center;">${item.emoji}</span>
+        <div style="flex:1;">
+          <div style="font-size:11px;font-weight:bold;color:#c8d8ff;">${item.name}</div>
+          <div style="font-size:9px;color:#8090a8;">${item.desc}</div>
+        </div>
+        <div style="text-align:right;min-width:80px;">
+          <div style="font-size:9px;color:#8090a8;text-decoration:line-through;">${item.cost}c</div>
+          <div style="font-size:11px;font-weight:bold;color:${canAfford ? '#a0c8ff' : '#666677'};">${item.importCost}c</div>
+          <button onclick="baronImportBuy('${item.id}')" ${!canAfford ? 'disabled' : ''}
+            style="margin-top:3px;background:${canAfford ? 'linear-gradient(135deg,#1a2050,#2a3580)' : 'rgba(40,40,60,0.5)'};color:${canAfford ? '#a0c8ff' : '#555'};border:1px solid ${canAfford ? '#6080c0' : '#333'};border-radius:4px;font-size:9px;padding:2px 8px;cursor:${canAfford ? 'pointer' : 'default'};">
+            ${canAfford ? 'IMPORT' : 'Need coins'}
+          </button>
+        </div>
+      </div>`;
+    }).join('');
+
+    el.innerHTML = `
+      <div style="background:linear-gradient(160deg,#0c0c1e,#151530);border:2px solid #5070b0;border-radius:12px;padding:20px 22px;min-width:320px;max-width:440px;color:#b0c0e0;font-family:sans-serif;position:relative;box-shadow:0 0 30px rgba(80,120,200,0.3);">
+        <button onclick="closeBaronImportOverlay()" style="position:absolute;top:10px;right:12px;background:none;border:none;color:#a0b0d0;font-size:18px;cursor:pointer;">✕</button>
+        <div style="font-size:15px;font-weight:bold;color:#c8d8ff;margin-bottom:2px;">📦 NOBLE IMPORT</div>
+        <div style="font-size:10px;color:#7080a0;margin-bottom:12px;">Baron's privilege: buy any Black Market item remotely.<br>20% import fee applies. One use per Baron tenure.</div>
+        <div style="font-size:10px;color:#8090a8;margin-bottom:10px;">Balance: <span style="color:#c8d8ff;font-weight:bold;">${coins}c</span></div>
+        ${rows}
+        <div style="font-size:9px;color:#556070;margin-top:10px;text-align:center;">No proximity required — noble connections have their privileges.</div>
+      </div>`;
+    el.style.display = 'block';
+    for (const k in keys) keys[k] = false;
+    syncInput();
+  }
+
+  function closeBaronImportOverlay() {
+    const el = document.getElementById('baronImportOverlay');
+    if (el) el.style.display = 'none';
+  }
+
+  window.baronImportBuy = function(itemId) {
+    socket.emit('action', { type: 'baron_noble_import', itemId });
+    closeBaronImportOverlay();
+  };
+
+  // ============================================================
   // PIGEON MAFIA DON OVERLAY
   // ============================================================
   function openDonOverlay() {
@@ -11152,6 +11273,19 @@
       const em = COURT_EMOJIS[s.myCourtTitle] || '';
       html += `<div class="bm-buff-pill" style="background:${cs.bg};border-color:${cs.border};color:${cs.color};animation:${cs.anim};font-weight:bold;">${em} ${s.myCourtTitle.toUpperCase()} — Noble tribute flows every 30s</div>`;
     }
+    // Noble Perk pills — Baron Import available + Count Intel available/active
+    if (s.myCourtTitle === 'Baron' && !s.baronImportUsed) {
+      html += `<div class="bm-buff-pill" style="background:rgba(18,18,40,0.92);border-color:#6080c0;color:#a0c8ff;animation:kingpinGlow 2s ease-in-out infinite alternate;cursor:pointer;font-weight:bold;" onclick="socket.emit('action',{type:'baron_noble_import',itemId:null})">📦 NOBLE IMPORT READY — Click to buy BM item remotely</div>`;
+    }
+    if (s.myCourtTitle === 'Count' && !s.countIntelUsed) {
+      html += `<div class="bm-buff-pill" style="background:rgba(18,30,12,0.92);border-color:#507040;color:#a0d880;animation:kingpinGlow 2.5s ease-in-out infinite alternate;cursor:pointer;font-weight:bold;" onclick="socket.emit('action',{type:'count_city_intel'})">📡 CITY INTEL READY — Click to pre-reveal next weather</div>`;
+    }
+    // Count's Intel active tip — show as a subtle reminder
+    if (window._countIntelTip) {
+      const tip = window._countIntelTip;
+      html += `<div class="bm-buff-pill" style="background:rgba(25,45,15,0.92);border-color:#60a040;color:#c0f0a0;font-weight:bold;">🥉 INTEL: ${tip.emoji} ${tip.label.toUpperCase()} coming! Bet it!</div>`;
+    }
+
     // King's Pardon: show green legal immunity pill when pardoned
     if (s.pardonedUntil && s.pardonedUntil > now) {
       const secs = Math.ceil((s.pardonedUntil - now) / 1000);

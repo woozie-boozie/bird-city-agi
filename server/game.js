@@ -224,6 +224,7 @@ class GameEngine {
     this.heatPuddles = new Map();     // id -> true (water puddle food ids spawned during heatwave)
     this.hotCocoa = new Map();        // id -> true (hot_cocoa food ids spawned during blizzard)
     this.iceRink = null;              // null | { x, y, radius } — random plaza becomes ice rink during blizzard
+    this.scheduledNextWeather = null; // pre-rolled by Count's City Intel — server commits to this type on next spawn
     this.gangRitualCooldowns = new Map(); // gangId -> lastRitualTimestamp (2-min cooldown per gang)
 
     // === GOLDEN EGG SCRAMBLE ===
@@ -945,6 +946,13 @@ class GameEngine {
       oracleEyeUntil:     0,   // timed: see all hidden items on minimap
       lunarLensUntil:    0,   // timed: see all sewer loot caches on minimap
       starPowerUntil:     0,   // timed: +50% XP and coins
+      // === ROYAL COURT NOBLE PERKS (session-only, reset on title change) ===
+      baronImportUsed: false,   // Baron: can import one Black Market item remotely per tenure
+      countIntelUsed:  false,   // Count: can request one weather intel tip per tenure
+      // === ROYAL COURT LEGACY (persistent tenure counters) ===
+      dukeTenures:   saved ? (saved.duke_tenures   || 0) : 0,
+      baronTenures:  saved ? (saved.baron_tenures  || 0) : 0,
+      countTenures:  saved ? (saved.count_tenures  || 0) : 0,
     };
 
     // Determine bird type from XP
@@ -1225,6 +1233,10 @@ class GameEngine {
     if (action.type === 'baron_challenge_cancel') this._handleBaronChallengeCancel(bird, now);
     if (action.type === 'count_challenge_issue') this._handleCountChallengeIssue(bird, action, now);
     if (action.type === 'count_challenge_cancel') this._handleCountChallengeCancel(bird, now);
+
+    // === Noble Perks Tier 2 — Baron's Import + Count's City Intel ===
+    if (action.type === 'baron_noble_import') this._handleBaronImport(bird, action.itemId || null, now);
+    if (action.type === 'count_city_intel')   this._handleCountIntel(bird, now);
 
     // === Royal Decree — Kingpin's city-shaping power ===
     if (action.type === 'royal_decree') {
@@ -4453,16 +4465,22 @@ class GameEngine {
     // Spawn new weather when timer fires
     if (!this.weather && now >= this.weatherTimer) {
       // Rain most common; heatwave/fog/hailstorm are rarer surprises; tornado and blizzard are rarest
-      const roll = Math.random();
+      // Count's City Intel pre-rolls the type — use it if available
       let type;
-      if (roll < 0.22) type = 'rain';
-      else if (roll < 0.42) type = 'wind';
-      else if (roll < 0.53) type = 'storm';
-      else if (roll < 0.63) type = 'fog';
-      else if (roll < 0.74) type = 'hailstorm';
-      else if (roll < 0.85) type = 'heatwave';
-      else if (roll < 0.92) type = 'tornado';
-      else type = 'blizzard';  // 8% — winter blast: snowball poops, hot cocoa warmth, cops shiver
+      if (this.scheduledNextWeather) {
+        type = this.scheduledNextWeather;
+        this.scheduledNextWeather = null; // consume — the intel was correct!
+      } else {
+        const roll = Math.random();
+        if (roll < 0.22) type = 'rain';
+        else if (roll < 0.42) type = 'wind';
+        else if (roll < 0.53) type = 'storm';
+        else if (roll < 0.63) type = 'fog';
+        else if (roll < 0.74) type = 'hailstorm';
+        else if (roll < 0.85) type = 'heatwave';
+        else if (roll < 0.92) type = 'tornado';
+        else type = 'blizzard';  // 8% — winter blast: snowball poops, hot cocoa warmth, cops shiver
+      }
 
       const windAngle = Math.random() * Math.PI * 2;
       let duration, windSpeed, intensity;
@@ -6311,6 +6329,12 @@ class GameEngine {
           ? (this.countChallenge.progress.get(bird.id) || 0) : 0,
         isCountChallengeCount: this.countChallenge
           ? (this.countChallenge.countId === bird.id) : false,
+        // Noble Perks Tier 2
+        baronImportUsed: bird.baronImportUsed || false,
+        countIntelUsed:  bird.countIntelUsed  || false,
+        dukeTenures:   bird.dukeTenures   || 0,
+        baronTenures:  bird.baronTenures  || 0,
+        countTenures:  bird.countTenures  || 0,
         // Gang
         gangId: bird.gangId,
         gangName: bird.gangName,
@@ -7093,6 +7117,9 @@ class GameEngine {
       idol_wins: bird.idolWins || 0,
       cosmic_fish: bird.cosmicFish || 0,
       constellation_badge: bird.constellationBadge || false,
+      duke_tenures:   bird.dukeTenures   || 0,
+      baron_tenures:  bird.baronTenures  || 0,
+      count_tenures:  bird.countTenures  || 0,
     }).catch(e => {
       console.error('[GameEngine] Failed to save bird:', e.message);
     });
@@ -12275,7 +12302,7 @@ class GameEngine {
       };
     });
 
-    // Fire events for newly titled birds or title changes
+    // Fire events for newly titled birds or title changes; reset noble perk flags
     for (const nm of newCourt) {
       const old = this.royalCourt.find(m => m.birdId === nm.birdId);
       if (!old || old.title !== nm.title) {
@@ -12286,6 +12313,16 @@ class GameEngine {
           gangTag: nm.gangTag,
           title: nm.title,
         });
+        // Reset noble perks on new/changed title — fresh tenure starts
+        const b = this.birds.get(nm.birdId);
+        if (b) {
+          b.baronImportUsed = false;
+          b.countIntelUsed  = false;
+          // Increment persistent tenure counter for the new title
+          if (nm.title === 'Duke')  b.dukeTenures  = (b.dukeTenures  || 0) + 1;
+          if (nm.title === 'Baron') b.baronTenures = (b.baronTenures || 0) + 1;
+          if (nm.title === 'Count') b.countTenures = (b.countTenures || 0) + 1;
+        }
       }
     }
 
@@ -17845,6 +17882,146 @@ class GameEngine {
     this._incrementDukeChallengeProgress(bird, challengeType, amount);
     this._incrementBaronChallengeProgress(bird, challengeType, amount);
     this._incrementCountChallengeProgress(bird, challengeType, amount);
+  }
+
+  // ============================================================
+  // NOBLE PERKS TIER 2 — Baron's Import + Count's City Intel
+  // ============================================================
+
+  _handleBaronImport(bird, itemId, now) {
+    // Must hold the Baron title
+    const baronMember = this.royalCourt[1];
+    if (!baronMember || baronMember.birdId !== bird.id) {
+      this.events.push({ type: 'baron_import_fail', birdId: bird.id, reason: 'You must hold the Baron title to use Noble Import.' });
+      return;
+    }
+    if (bird.baronImportUsed) {
+      this.events.push({ type: 'baron_import_fail', birdId: bird.id, reason: 'Noble Import already used this tenure. Hold Baron long enough for a new one.' });
+      return;
+    }
+
+    // If no itemId provided, just open the catalog (no cost)
+    if (!itemId) {
+      const catalog = this.BLACK_MARKET_CATALOG.map(i => ({
+        id: i.id, name: i.name, desc: i.desc, cost: i.cost, emoji: i.emoji,
+        importCost: Math.ceil(i.cost * 1.2), // 20% noble markup
+      }));
+      this.events.push({ type: 'baron_import_catalog', birdId: bird.id, catalog });
+      return;
+    }
+
+    const item = this.BLACK_MARKET_CATALOG.find(i => i.id === itemId);
+    if (!item) {
+      this.events.push({ type: 'baron_import_fail', birdId: bird.id, reason: 'Unknown item.' });
+      return;
+    }
+
+    const importCost = Math.ceil(item.cost * 1.2); // 20% noble import markup
+    if (bird.coins < importCost) {
+      this.events.push({ type: 'baron_import_fail', birdId: bird.id, reason: `Need ${importCost}c (${item.cost}c + 20% import fee). You have ${bird.coins}c.` });
+      return;
+    }
+
+    bird.coins -= importCost;
+    bird.baronImportUsed = true;
+
+    // Apply the same effect as visiting the Black Market
+    switch (itemId) {
+      case 'speed_serum':
+        bird.bmSpeedUntil = now + 30000;
+        break;
+      case 'mega_poop':
+        bird.bmMegaPoops = (bird.bmMegaPoops || 0) + 3;
+        break;
+      case 'disguise_kit':
+        this.heatScores.delete(bird.id);
+        if (this.wantedBirdId === bird.id) {
+          this.wantedBirdId = null;
+          this.copBirds.clear();
+        } else {
+          for (const [cid, cop] of this.copBirds) {
+            if (cop.targetBirdId === bird.id) this.copBirds.delete(cid);
+          }
+        }
+        break;
+      case 'smoke_bomb':
+        bird.bmSmokeBombUntil = now + 15000;
+        break;
+      case 'lucky_charm':
+        bird.bmDoubleXpUntil = now + 300000; // 5 min
+        break;
+      case 'contract_cancel':
+        if (this.bountyHunter && this.bountyHunter.targetId === bird.id) {
+          this.bountyHunter.state = 'off_duty';
+          this.bountyHunter.offDutyUntil = now + 60000;
+        }
+        break;
+    }
+
+    this.events.push({
+      type: 'baron_import_purchased',
+      birdId: bird.id,
+      itemId, itemName: item.name, cost: importCost, emoji: item.emoji,
+      announcement: `🥈 Baron ${bird.name} imported ${item.emoji} ${item.name} through noble channels.`,
+    });
+  }
+
+  _handleCountIntel(bird, now) {
+    // Must hold the Count title
+    const countMember = this.royalCourt[2];
+    if (!countMember || countMember.birdId !== bird.id) {
+      this.events.push({ type: 'count_intel_fail', birdId: bird.id, reason: 'You must hold the Count title to use City Intel.' });
+      return;
+    }
+    if (bird.countIntelUsed) {
+      this.events.push({ type: 'count_intel_fail', birdId: bird.id, reason: 'City Intel already used this tenure. A new tenure begins when your title resets.' });
+      return;
+    }
+
+    // Pre-roll the next weather type and commit to it — Count's intel is self-fulfilling
+    const roll = Math.random();
+    let nextType;
+    if (roll < 0.22)      nextType = 'rain';
+    else if (roll < 0.42) nextType = 'wind';
+    else if (roll < 0.53) nextType = 'storm';
+    else if (roll < 0.63) nextType = 'fog';
+    else if (roll < 0.74) nextType = 'hailstorm';
+    else if (roll < 0.85) nextType = 'heatwave';
+    else if (roll < 0.92) nextType = 'tornado';
+    else                  nextType = 'blizzard';
+
+    this.scheduledNextWeather = nextType;
+    bird.countIntelUsed = true;
+
+    const WEATHER_EMOJIS = { rain:'🌧️', wind:'💨', storm:'⛈️', fog:'🌫️', hailstorm:'🧊', heatwave:'🌡️', tornado:'🌪️', blizzard:'❄️' };
+    const emoji = WEATHER_EMOJIS[nextType] || '🌤️';
+    const label = nextType.charAt(0).toUpperCase() + nextType.slice(1);
+
+    // Private intel to the Count
+    this.events.push({
+      type: 'count_intel_revealed',
+      birdId: bird.id,
+      nextType, emoji, label,
+      message: `🥉 COUNT'S CITY INTEL: Next weather will be ${emoji} ${label.toUpperCase()}! Bet accordingly before the window opens.`,
+    });
+
+    // Share intel with gang members too (the Count's crew gets the tip)
+    if (bird.gangId) {
+      for (const b of this.birds.values()) {
+        if (b.id === bird.id || b.gangId !== bird.gangId) continue;
+        this.events.push({
+          type: 'count_intel_gang',
+          birdId: b.id,
+          nextType, emoji, label,
+          countName: bird.name,
+          message: `🥉 [Gang Intel] ${bird.name} (Count): Next weather is ${emoji} ${label.toUpperCase()} — bet it!`,
+        });
+      }
+    }
+
+    // Subtle city-wide event feed (no spoilers — just says intel was gathered)
+    const tag = bird.gangTag ? `[${bird.gangTag}] ` : '';
+    this.events.push({ type: 'feed', message: `🥉 ${tag}${bird.name} (Count) gathered weather intelligence from city contacts.` });
   }
 
 }

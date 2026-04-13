@@ -2813,6 +2813,42 @@ Extended the Royal Court's power structure downward: the Baron and Count now eac
 
 **Creative intent**: The Royal Court had 4 birds in it (Kingpin + 3 nobles) but only 1 had active power (the Duke). Now 3 out of 4 have something to DO with their title. A session where the Duke issues "Tag 6 buildings," the Baron calls "Stun 5 cops," and the Count announces "Deliver an egg" — all running simultaneously — creates a city where every bird has 3 competing mini-missions pulling their attention. The hierarchy is clear (Duke's challenges are biggest, Count's are smallest) but every tier matters. Two gangs where one has members in all three noble spots can issue coordinated challenges that shape the city's moment-to-moment priorities. Pure SOCIAL + PROGRESSION energy — the aristocracy now actually governs.
 
+**Session 84 — 2026-04-13: Noble Perks Tier 2 — Baron's Import + Count's City Intel**
+The Royal Court's power hierarchy is now complete. The Duke already had challenge power (Session 82). Now the Baron and Count each get one exclusive perk per tenure that rewards holding their title for real.
+
+**Baron's Noble Import (📦 — once per Baron tenure):**
+- Baron sees a "📦 NOBLE IMPORT" button in the Royal Court Board
+- Click to open the Noble Import overlay showing all 6 Black Market items at 1.2× cost (20% noble import markup — no proximity required)
+- Buy any item remotely without visiting the alley at night: Speed Serum, Mega Poop, Disguise Kit, Smoke Bomb, Lucky Charm, or Contract Cancel
+- Original BM cost shown struck-through; import cost in blue; can't afford items greyed out
+- `baronImportUsed = true` after purchase, reset on title change — one use per tenure
+- City-wide feed entry: "🥈 Baron [Name] imported [item] through noble channels"
+- Server-authoritative: applies exact same effects as visiting the Black Market in person
+
+**Count's City Intel (📡 — once per Count tenure):**
+- Count sees a "📡 CITY INTEL" button in the Royal Court Board
+- Click to pre-roll AND commit the next weather type on the server (`this.scheduledNextWeather`)
+- The Count receives a private announcement: "🥉 COUNT'S CITY INTEL: Next weather will be ❄️ BLIZZARD! Bet accordingly"
+- Gang members also receive the intel: "Gang Intel from [Count]: [weather] coming!"
+- The weather betting panel shows a green hint "🥉 Count's Intel: ❄️ BLIZZARD coming!" for players who received the tip
+- City-wide feed says only "[Name] gathered weather intelligence from city contacts" — no spoilers to the public
+- When the weather actually arrives, a confirmation fires: "COUNT'S INTEL WAS RIGHT! ❄️ BLIZZARD arrived!"
+- The intel is self-fulfilling: server pre-commits to that weather type and uses it when spawning — the Count sees the future because the future adapts to them
+
+**Royal Court Legacy Tenures (persistent across sessions):**
+- `dukeTenures`, `baronTenures`, `countTenures` per bird — incremented each time they earn a new title
+- Persisted to Firestore (`duke_tenures`, `baron_tenures`, `count_tenures` fields)
+- Display in the Royal Court Board: "Your Court Record: 👑×3 🥈×7 🥉×12"
+- ⚜️ "Noble Veteran" label appears when totals cross thresholds (5 Duke, 10 Baron, 15 Count tenures)
+
+**Technical details:**
+- `this.scheduledNextWeather` in game engine: pre-rolled type is consumed when weather spawns
+- Baron/Count perk flags reset in `_updateRoyalCourt()` on every title change
+- Active buffs HUD shows: blue "📦 NOBLE IMPORT READY" pill for Baron + green "📡 CITY INTEL READY" pill for Count + active intel tip pill when tip is live
+- Both perks directly accessible from the active buffs HUD as clickable pills (no need to scroll the Royal Court Board)
+
+**Creative intent**: The Baron's Import fills a long-standing frustration: sometimes you're Baron (rich, powerful) but the Black Market is closed (it's daytime). Now your nobility gives you a phone call to the fence. The 20% markup makes it cost more but never inaccessible — perfect for urgent needs like a 5-star Disguise Kit when you can't reach the alley. The Count's Intel creates the most compelling pre-betting window in the game: the Count knows the future, their gang knows the future, and they have 30–60 seconds to bet big before the window even opens. A gang with the Count consistently holding the title and sharing intel gets a systematic edge in weather betting — pure SOCIAL + PROGRESSION synergy. The tenure record turns a session-only title into a lifetime identity: a bird with 👑×15 is recognizably "that bird who's always rich enough to be Duke." Pure PROGRESSION + SOCIAL energy — the nobility now has actual privileges.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
