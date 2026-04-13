@@ -376,16 +376,31 @@
       } else if (window._revoltWindowUntil && window._revoltWindowUntil < Date.now()) {
         window._revoltWindowUntil = null;
       }
-      // Sync Duke's Challenge for players who join mid-challenge
+      // Sync Noble Challenges for players who join mid-challenge
       if (state.dukeChallenge) {
         if (!window._dukeChallenge || window._dukeChallenge.id !== state.dukeChallenge.id) {
           window._dukeChallenge = state.dukeChallenge;
           window._dukeChallengeProgressData = window._dukeChallengeProgressData || {};
         }
-        // Keep expiresAt in sync from server
         window._dukeChallenge.expiresAt = state.dukeChallenge.expiresAt;
       } else if (window._dukeChallenge && !state.dukeChallenge) {
         window._dukeChallenge = null;
+      }
+      if (state.baronChallenge) {
+        if (!window._baronChallenge || window._baronChallenge.id !== state.baronChallenge.id) {
+          window._baronChallenge = state.baronChallenge;
+        }
+        window._baronChallenge.expiresAt = state.baronChallenge.expiresAt;
+      } else if (window._baronChallenge && !state.baronChallenge) {
+        window._baronChallenge = null;
+      }
+      if (state.countChallenge) {
+        if (!window._countChallenge || window._countChallenge.id !== state.countChallenge.id) {
+          window._countChallenge = state.countChallenge;
+        }
+        window._countChallenge.expiresAt = state.countChallenge.expiresAt;
+      } else if (window._countChallenge && !state.countChallenge) {
+        window._countChallenge = null;
       }
     });
 
@@ -1134,8 +1149,103 @@
         invalid_reward: 'Reward must be 20–500 coins.',
         invalid_target: 'Invalid challenge target value.',
         no_bird: 'You must be connected to issue challenges.',
+        no_coins: 'Not enough coins!',
       };
       addEventMessage(`👑 Challenge failed: ${FAIL_MSGS[ev.reason] || ev.reason}`, '#ff6644');
+    }
+
+    // === BARON'S DECREE EVENTS ===
+    if (ev.type === 'baron_challenge_started') {
+      window._baronChallenge = ev;
+      const bTag = ev.gangTag ? `[${ev.gangTag}] ` : '';
+      screenShake(6, 400);
+      showAnnouncement(`🥈 BARON'S DECREE!\n${bTag}${ev.baronName} issues a city challenge!\n${ev.desc}\nReward: ${ev.reward}c! Expires in ${Math.round(ev.duration / 1000)}s`, '#c8c8d0', 6000);
+      addEventMessage(`🥈 BARON'S DECREE by ${bTag}${ev.baronName}: "${ev.desc}" — ${ev.reward}c reward!`, '#c8c8d0');
+    }
+    if (ev.type === 'baron_challenge_progress') {
+      const name2 = ev.birdName || ev.name;
+      const tag2 = ev.gangTag ? `[${ev.gangTag}] ` : '';
+      if (ev.birdId === myId) {
+        addEventMessage(`🥈 Baron progress: ${ev.current}/${ev.target}`, '#c8c8d0');
+      } else {
+        addEventMessage(`🥈 ${tag2}${name2}: ${ev.current}/${ev.target}`, '#a8a8b0');
+      }
+    }
+    if (ev.type === 'baron_challenge_claimed') {
+      window._baronChallenge = null;
+      const tag3 = ev.gangTag ? `[${ev.gangTag}] ` : '';
+      screenShake(10, 700);
+      if (ev.winnerId === myId) {
+        showAnnouncement(`🥈🏆 BARON'S DECREE COMPLETE!\nYou won ${ev.reward}c! The Baron is pleased.`, '#c8c8d0', 6000);
+      } else {
+        showAnnouncement(`🥈 ${tag3}${ev.winnerName} completed the Baron's Decree! +${ev.reward}c`, '#c8c8d0', 4000);
+      }
+      addEventMessage(`🥈 ${tag3}${ev.winnerName} claimed the Baron's Decree! +${ev.reward}c`, '#c8c8d0');
+    }
+    if (ev.type === 'baron_challenge_expired') {
+      window._baronChallenge = null;
+      addEventMessage(`🥈 The Baron's Decree expired unclaimed.`, '#888');
+    }
+    if (ev.type === 'baron_challenge_cancelled') {
+      window._baronChallenge = null;
+      addEventMessage(`🥈 ${ev.baronName} cancelled their Decree. (50% refund)`, '#888');
+    }
+    if (ev.type === 'baron_challenge_fail' && ev.birdId === myId) {
+      const FAIL_MSGS = { not_baron: 'Only the Baron can issue Decrees!', already_active: 'A Baron\'s Decree is already active!', cooldown: 'Decree on cooldown — wait a bit.', no_coins: 'Not enough coins!' };
+      addEventMessage(`🥈 Decree failed: ${FAIL_MSGS[ev.reason] || ev.reason}`, '#ff6644');
+    }
+
+    // === COUNT'S EDICT EVENTS ===
+    if (ev.type === 'count_challenge_started') {
+      window._countChallenge = ev;
+      const cTag = ev.gangTag ? `[${ev.gangTag}] ` : '';
+      screenShake(4, 300);
+      showAnnouncement(`🥉 COUNT'S EDICT!\n${cTag}${ev.countName} issues a mini-challenge!\n${ev.desc}\nReward: ${ev.reward}c! Expires in ${Math.round(ev.duration / 1000)}s`, '#cd8c5a', 5000);
+      addEventMessage(`🥉 COUNT'S EDICT by ${cTag}${ev.countName}: "${ev.desc}" — ${ev.reward}c!`, '#cd8c5a');
+    }
+    if (ev.type === 'count_challenge_progress') {
+      const name4 = ev.birdName || ev.name;
+      if (ev.birdId === myId) {
+        addEventMessage(`🥉 Count progress: ${ev.current}/${ev.target}`, '#cd8c5a');
+      } else {
+        const tag4 = ev.gangTag ? `[${ev.gangTag}] ` : '';
+        addEventMessage(`🥉 ${tag4}${name4}: ${ev.current}/${ev.target}`, '#a07040');
+      }
+    }
+    if (ev.type === 'count_challenge_claimed') {
+      window._countChallenge = null;
+      const tag5 = ev.gangTag ? `[${ev.gangTag}] ` : '';
+      screenShake(8, 600);
+      if (ev.winnerId === myId) {
+        showAnnouncement(`🥉🏆 COUNT'S EDICT COMPLETE!\nYou won ${ev.reward}c! The Count nods approvingly.`, '#cd8c5a', 5000);
+      } else {
+        showAnnouncement(`🥉 ${tag5}${ev.winnerName} completed the Count's Edict! +${ev.reward}c`, '#cd8c5a', 3000);
+      }
+      addEventMessage(`🥉 ${tag5}${ev.winnerName} claimed the Count's Edict! +${ev.reward}c`, '#cd8c5a');
+    }
+    if (ev.type === 'count_challenge_expired') {
+      window._countChallenge = null;
+      addEventMessage(`🥉 The Count's Edict expired unclaimed.`, '#886644');
+    }
+    if (ev.type === 'count_challenge_cancelled') {
+      window._countChallenge = null;
+      addEventMessage(`🥉 ${ev.countName} cancelled their Edict. (50% refund)`, '#886644');
+    }
+    if (ev.type === 'count_challenge_fail' && ev.birdId === myId) {
+      const FAIL_MSGS = { not_count: 'Only the Count can issue Edicts!', already_active: 'A Count\'s Edict is already active!', cooldown: 'Edict on cooldown — wait a bit.', no_coins: 'Not enough coins!' };
+      addEventMessage(`🥉 Edict failed: ${FAIL_MSGS[ev.reason] || ev.reason}`, '#ff6644');
+    }
+
+    // === NOBLE CARTEL DEFENSE (Royal Court × Crow Cartel synergy) ===
+    if (ev.type === 'noble_cartel_defense') {
+      const TITLE_EMOJI = { Duke: '👑', Baron: '🥈', Count: '🥉' };
+      const emoji = TITLE_EMOJI[ev.title] || '⚜️';
+      const tag6 = ev.gangTag ? `[${ev.gangTag}] ` : '';
+      if (ev.birdId === myId) {
+        addEventMessage(`${emoji} NOBLE DEFENSE BONUS! 2× XP for defending ${ev.zoneName} as ${ev.title}!`, '#ffd700');
+      } else {
+        addEventMessage(`${emoji} ${tag6}${ev.birdName} defends ${ev.zoneName} as the ${ev.title}! 2× XP bonus!`, '#ccaa00');
+      }
     }
 
     // === KING'S PARDON EVENTS ===
@@ -4452,18 +4562,39 @@
             <span class="rcb-coins">${m.coins}c</span>
           </div>`;
         }).join('');
-        // Add Duke's Challenge button if I'm the Duke and no challenge is active
-        const isDuke = gameState.self && gameState.self.myCourtTitle === 'Duke';
+        // Noble challenge buttons
+        const myTitle = gameState.self ? gameState.self.myCourtTitle : null;
+        const isDuke   = myTitle === 'Duke';
+        const isBaron  = myTitle === 'Baron';
+        const isCount  = myTitle === 'Count';
         const dcActive = !!(window._dukeChallenge);
-        const dcBtn = isDuke && !dcActive
-          ? `<button id="dukeChallengeIssueBtn" style="display:block;width:100%;margin-top:5px;background:linear-gradient(135deg,#7a5a00,#b38b00);color:#ffd700;border:1px solid #ffd70088;border-radius:4px;font-size:9px;font-weight:bold;padding:3px 6px;cursor:pointer;letter-spacing:0.5px;">🎯 ISSUE DUKE'S CHALLENGE</button>`
-          : (isDuke && dcActive ? `<div style="font-size:9px;color:#ccaa00;margin-top:4px;text-align:center;">🎯 Challenge active — awaiting completion</div>` : '');
-        rcBoard.innerHTML = `<div class="rcb-title">⚜️ ROYAL COURT</div>${rows}${dcBtn}`;
-        // Wire Duke's Challenge button
-        const dcIssueBtn = document.getElementById('dukeChallengeIssueBtn');
-        if (dcIssueBtn) {
-          dcIssueBtn.onclick = () => openDukeChallengeOverlay();
+        const bcActive = !!(window._baronChallenge);
+        const ccActive = !!(window._countChallenge);
+
+        let nobleBtns = '';
+        if (isDuke) {
+          nobleBtns += !dcActive
+            ? `<button id="dukeChallengeIssueBtn" style="display:block;width:100%;margin-top:5px;background:linear-gradient(135deg,#7a5a00,#b38b00);color:#ffd700;border:1px solid #ffd70088;border-radius:4px;font-size:9px;font-weight:bold;padding:3px 6px;cursor:pointer;">🎯 ISSUE DUKE'S CHALLENGE</button>`
+            : `<div style="font-size:9px;color:#ccaa00;margin-top:4px;text-align:center;">🎯 Challenge active…</div>`;
         }
+        if (isBaron) {
+          nobleBtns += !bcActive
+            ? `<button id="baronChallengeIssueBtn" style="display:block;width:100%;margin-top:5px;background:linear-gradient(135deg,#202230,#363860);color:#c8c8d0;border:1px solid #a0a0c088;border-radius:4px;font-size:9px;font-weight:bold;padding:3px 6px;cursor:pointer;">📜 ISSUE BARON'S DECREE</button>`
+            : `<div style="font-size:9px;color:#a0a0c0;margin-top:4px;text-align:center;">📜 Decree active…</div>`;
+        }
+        if (isCount) {
+          nobleBtns += !ccActive
+            ? `<button id="countChallengeIssueBtn" style="display:block;width:100%;margin-top:5px;background:linear-gradient(135deg,#2a1a08,#5a3a18);color:#cd8c5a;border:1px solid #b07040aa;border-radius:4px;font-size:9px;font-weight:bold;padding:3px 6px;cursor:pointer;">🗒 ISSUE COUNT'S EDICT</button>`
+            : `<div style="font-size:9px;color:#a07040;margin-top:4px;text-align:center;">🗒 Edict active…</div>`;
+        }
+
+        rcBoard.innerHTML = `<div class="rcb-title">⚜️ ROYAL COURT</div>${rows}${nobleBtns}`;
+        const dcIssueBtn = document.getElementById('dukeChallengeIssueBtn');
+        if (dcIssueBtn) dcIssueBtn.onclick = () => openDukeChallengeOverlay();
+        const bcIssueBtn = document.getElementById('baronChallengeIssueBtn');
+        if (bcIssueBtn) bcIssueBtn.onclick = () => openBaronChallengeOverlay();
+        const ccIssueBtn = document.getElementById('countChallengeIssueBtn');
+        if (ccIssueBtn) ccIssueBtn.onclick = () => openCountChallengeOverlay();
       }
     }
 
@@ -4492,6 +4623,66 @@
         </div>
         <div style="width:100%;height:4px;background:rgba(255,255,255,0.1);border-radius:2px;margin-top:3px;">
           <div style="width:${pct}%;height:4px;background:#ffd700;border-radius:2px;transition:width 0.3s;"></div>
+        </div>`;
+      }
+    }
+
+    // Baron's Decree HUD bar
+    const bcChallenge = window._baronChallenge;
+    const bcHud = document.getElementById('baronChallengeHud');
+    if (bcHud) {
+      if (!bcChallenge) {
+        bcHud.style.display = 'none';
+      } else {
+        const nowB = Date.now();
+        const secsLeftB = Math.max(0, Math.round((bcChallenge.expiresAt - nowB) / 1000));
+        const myProgB = (gameState.self && gameState.self.myBaronChallengeProgress) || 0;
+        const targetB = bcChallenge.target || 1;
+        const pctB = Math.min(100, Math.round((myProgB / targetB) * 100));
+        const amIBaron = gameState.self && gameState.self.isBaronChallengeBaron;
+        const cancelBtnB = amIBaron ? ' <button onclick="socket.emit(\'action\',{type:\'baron_challenge_cancel\'})" style="background:rgba(60,60,80,0.7);color:#aaaaee;border:1px solid #6666aa;border-radius:2px;font-size:9px;padding:0 4px;cursor:pointer;margin-left:4px;">✕ Cancel (50% refund)</button>' : '';
+        // Position below Duke HUD if Duke HUD is also visible
+        const dcHudVisible = dcChallenge && dcHud && dcHud.style.display !== 'none';
+        bcHud.style.marginTop = dcHudVisible ? '38px' : '0';
+        bcHud.style.display = 'block';
+        bcHud.innerHTML = `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+          <span style="font-size:11px;font-weight:bold;color:#c8c8d0;">🥈 BARON'S DECREE</span>
+          <span style="font-size:10px;color:#d8d8e0;">${bcChallenge.desc}</span>
+          <span style="font-size:10px;color:#b0b0c0;">${myProgB}/${targetB} · ${secsLeftB}s · 🏆${bcChallenge.reward}c</span>
+          ${cancelBtnB}
+        </div>
+        <div style="width:100%;height:3px;background:rgba(255,255,255,0.1);border-radius:2px;margin-top:3px;">
+          <div style="width:${pctB}%;height:3px;background:#c8c8d0;border-radius:2px;transition:width 0.3s;"></div>
+        </div>`;
+      }
+    }
+
+    // Count's Edict HUD bar
+    const ccChallenge = window._countChallenge;
+    const ccHud = document.getElementById('countChallengeHud');
+    if (ccHud) {
+      if (!ccChallenge) {
+        ccHud.style.display = 'none';
+      } else {
+        const nowC = Date.now();
+        const secsLeftC = Math.max(0, Math.round((ccChallenge.expiresAt - nowC) / 1000));
+        const myProgC = (gameState.self && gameState.self.myCountChallengeProgress) || 0;
+        const targetC = ccChallenge.target || 1;
+        const pctC = Math.min(100, Math.round((myProgC / targetC) * 100));
+        const amICount = gameState.self && gameState.self.isCountChallengeCount;
+        const cancelBtnC = amICount ? ' <button onclick="socket.emit(\'action\',{type:\'count_challenge_cancel\'})" style="background:rgba(60,40,20,0.7);color:#ddaa88;border:1px solid #996644;border-radius:2px;font-size:9px;padding:0 4px;cursor:pointer;margin-left:4px;">✕ Cancel (50% refund)</button>' : '';
+        // Stack below Duke and Baron HUDs
+        const bothAbove = (dcChallenge || bcChallenge);
+        ccHud.style.marginTop = bothAbove ? '72px' : (dcChallenge || bcChallenge ? '38px' : '0');
+        ccHud.style.display = 'block';
+        ccHud.innerHTML = `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+          <span style="font-size:10px;font-weight:bold;color:#cd8c5a;">🥉 COUNT'S EDICT</span>
+          <span style="font-size:10px;color:#d8a070;">${ccChallenge.desc}</span>
+          <span style="font-size:10px;color:#b07848;">${myProgC}/${targetC} · ${secsLeftC}s · 🏆${ccChallenge.reward}c</span>
+          ${cancelBtnC}
+        </div>
+        <div style="width:100%;height:3px;background:rgba(255,255,255,0.1);border-radius:2px;margin-top:3px;">
+          <div style="width:${pctC}%;height:3px;background:#cd8c5a;border-radius:2px;transition:width 0.3s;"></div>
         </div>`;
       }
     }
@@ -10198,10 +10389,12 @@
     const dcActive = !!(window._dukeChallenge);
 
     const CHALLENGE_TYPES = [
-      { type: 'poop_npcs',   label: '💩 Poop NPCs',          desc: 'First to poop N NPCs/cars wins', targets: [5, 10, 15, 20] },
-      { type: 'tag_buildings', label: '🎨 Tag Buildings',     desc: 'First to graffiti N buildings wins', targets: [2, 4, 6] },
-      { type: 'sewer_loot',  label: '🐀 Sewer Loot',         desc: 'First to collect N sewer caches wins', targets: [1, 2, 3] },
-      { type: 'reach_heat',  label: '⭐ Reach Wanted Level',  desc: 'First to hit the target star level wins', targets: [2, 3, 4] },
+      { type: 'poop_npcs',     label: '💩 Poop NPCs',          desc: 'First to poop N NPCs/cars wins', targets: [5, 10, 15, 20] },
+      { type: 'tag_buildings', label: '🎨 Tag Buildings',       desc: 'First to graffiti N buildings wins', targets: [2, 4, 6] },
+      { type: 'sewer_loot',   label: '🐀 Sewer Loot',          desc: 'First to collect N sewer caches wins', targets: [1, 2, 3] },
+      { type: 'reach_heat',   label: '⭐ Reach Wanted Level',   desc: 'First to hit the target star level wins', targets: [2, 3, 4] },
+      { type: 'stun_cops',    label: '🚨 Stun Cop Birds',       desc: 'First to poop-stun N cops wins', targets: [3, 5, 8] },
+      { type: 'deliver_egg',  label: '🥚 Deliver Golden Eggs',  desc: 'First to deliver N eggs to a nest wins', targets: [1, 2] },
     ];
 
     if (dcActive) {
@@ -10260,6 +10453,183 @@
       if (reward < 20 || reward > 500) { document.getElementById('dcIssueErr').textContent = 'Reward must be 20–500 coins.'; return; }
       socket.emit('action', { type: 'duke_challenge_issue', challengeType: type, target, reward, duration });
       closeDukeChallengeOverlay();
+    };
+  }
+
+  // ============================================================
+  // BARON'S DECREE OVERLAY
+  // ============================================================
+  function openBaronChallengeOverlay() {
+    if (!gameState || !gameState.self || gameState.self.myCourtTitle !== 'Baron') return;
+    const el = document.getElementById('baronChallengeOverlay');
+    if (!el) return;
+    el.style.display = 'block';
+    renderBaronChallengeOverlay();
+    for (const k in keys) keys[k] = false;
+    syncInput();
+  }
+
+  function closeBaronChallengeOverlay() {
+    const el = document.getElementById('baronChallengeOverlay');
+    if (el) el.style.display = 'none';
+  }
+
+  function renderBaronChallengeOverlay() {
+    const el = document.getElementById('baronChallengeOverlay');
+    if (!el || !gameState || !gameState.self) return;
+    const s = gameState.self;
+    const coins = s.coins || 0;
+    const bcActive = !!(window._baronChallenge);
+
+    if (bcActive) {
+      const bc = window._baronChallenge;
+      const secsLeft = Math.max(0, Math.round((bc.expiresAt - Date.now()) / 1000));
+      el.innerHTML = `
+        <div style="background:linear-gradient(160deg,#10121e,#1e2040);border:2px solid #8080c0;border-radius:12px;padding:20px 22px;min-width:300px;max-width:440px;color:#d0d0e8;font-family:sans-serif;position:relative;">
+          <button onclick="closeBaronChallengeOverlay()" style="position:absolute;top:10px;right:12px;background:none;border:none;color:#c8c8d0;font-size:18px;cursor:pointer;">✕</button>
+          <div style="font-size:15px;font-weight:bold;color:#c8c8d0;margin-bottom:12px;">🥈 BARON'S DECREE ACTIVE</div>
+          <div style="font-size:13px;color:#d0d0e8;margin-bottom:8px;">${bc.desc}</div>
+          <div style="font-size:11px;color:#a0a0c0;">Reward: 🏆 ${bc.reward}c &nbsp;|&nbsp; Expires in ${secsLeft}s</div>
+          <button onclick="socket.emit('action',{type:'baron_challenge_cancel'});closeBaronChallengeOverlay();" style="margin-top:14px;background:rgba(40,40,80,0.8);color:#aaaaee;border:1px solid #6666aa;border-radius:5px;font-size:11px;padding:6px 14px;cursor:pointer;">✕ Cancel Decree (50% refund)</button>
+        </div>`;
+      return;
+    }
+
+    const BARON_TYPES = [
+      { type: 'poop_npcs',    label: '💩 Poop NPCs',       desc: 'First to poop N NPCs/cars wins', targets: [3, 5, 8, 10] },
+      { type: 'tag_buildings',label: '🎨 Tag Buildings',   desc: 'First to graffiti N buildings wins', targets: [1, 2, 3] },
+      { type: 'stun_cops',    label: '🚓 Stun Cops',       desc: 'First to stun N cops with poop wins', targets: [2, 3, 5] },
+    ];
+
+    let typeRows = BARON_TYPES.map(ct => {
+      const tgtOptions = ct.targets.map(t => `<option value="${t}">${t}</option>`).join('');
+      return `<tr>
+        <td style="padding:4px 6px;"><label><input type="radio" name="bcType" value="${ct.type}" ${ct.type === 'poop_npcs' ? 'checked' : ''}> ${ct.label}</label></td>
+        <td style="padding:4px 6px;font-size:10px;color:#a0a0c0;">${ct.desc}</td>
+        <td style="padding:4px 6px;"><select class="bcTargetSel" data-type="${ct.type}" style="background:#1e2040;color:#c8c8d0;border:1px solid #8080c0;border-radius:3px;font-size:10px;">${tgtOptions}</select></td>
+      </tr>`;
+    }).join('');
+
+    el.innerHTML = `
+      <div style="background:linear-gradient(160deg,#10121e,#1e2040);border:2px solid #8080c0;border-radius:12px;padding:20px 22px;min-width:320px;max-width:460px;color:#d0d0e8;font-family:sans-serif;position:relative;">
+        <button onclick="closeBaronChallengeOverlay()" style="position:absolute;top:10px;right:12px;background:none;border:none;color:#c8c8d0;font-size:18px;cursor:pointer;">✕</button>
+        <div style="font-size:15px;font-weight:bold;color:#c8c8d0;margin-bottom:4px;">🥈 ISSUE BARON'S DECREE</div>
+        <div style="font-size:11px;color:#8080a0;margin-bottom:10px;">The Baron's word is law — temporarily. First to complete wins your reward. 50% refund if unclaimed.</div>
+        <table style="width:100%;border-collapse:collapse;">
+          ${typeRows}
+        </table>
+        <div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <label style="font-size:11px;color:#c8c8d0;">Reward: <input id="bcRewardInput" type="number" min="20" max="100" value="40" style="width:55px;background:#1e2040;color:#c8c8d0;border:1px solid #8080c0;border-radius:3px;padding:2px 4px;"> coins (your balance: ${coins}c)</label>
+          <label style="font-size:11px;color:#c8c8d0;">Duration: <select id="bcDurationSel" style="background:#1e2040;color:#c8c8d0;border:1px solid #8080c0;border-radius:3px;">
+            <option value="45">45s</option>
+            <option value="60" selected>60s</option>
+            <option value="90">90s</option>
+            <option value="120">2 min</option>
+          </select></label>
+        </div>
+        <div id="bcIssueErr" style="color:#ff6644;font-size:10px;margin-top:5px;min-height:14px;"></div>
+        <button id="bcIssueBtn" style="margin-top:10px;background:linear-gradient(135deg,#303060,#606090);color:#c8c8d0;border:1px solid #a0a0c088;border-radius:6px;font-size:12px;font-weight:bold;padding:7px 16px;cursor:pointer;width:100%;">📜 ISSUE DECREE</button>
+      </div>`;
+
+    document.getElementById('bcIssueBtn').onclick = () => {
+      const typeInput = el.querySelector('input[name="bcType"]:checked');
+      if (!typeInput) { document.getElementById('bcIssueErr').textContent = 'Select a challenge type.'; return; }
+      const type = typeInput.value;
+      const targetSel = el.querySelector(`.bcTargetSel[data-type="${type}"]`);
+      const target = parseInt(targetSel ? targetSel.value : '3');
+      const reward = parseInt(document.getElementById('bcRewardInput').value) || 40;
+      const duration = parseInt(document.getElementById('bcDurationSel').value) * 1000 || 60000;
+      if (reward < 20 || reward > 100) { document.getElementById('bcIssueErr').textContent = 'Reward must be 20–100 coins.'; return; }
+      socket.emit('action', { type: 'baron_challenge_issue', challengeType: type, target, reward, duration });
+      closeBaronChallengeOverlay();
+    };
+  }
+
+  // ============================================================
+  // COUNT'S EDICT OVERLAY
+  // ============================================================
+  function openCountChallengeOverlay() {
+    if (!gameState || !gameState.self || gameState.self.myCourtTitle !== 'Count') return;
+    const el = document.getElementById('countChallengeOverlay');
+    if (!el) return;
+    el.style.display = 'block';
+    renderCountChallengeOverlay();
+    for (const k in keys) keys[k] = false;
+    syncInput();
+  }
+
+  function closeCountChallengeOverlay() {
+    const el = document.getElementById('countChallengeOverlay');
+    if (el) el.style.display = 'none';
+  }
+
+  function renderCountChallengeOverlay() {
+    const el = document.getElementById('countChallengeOverlay');
+    if (!el || !gameState || !gameState.self) return;
+    const s = gameState.self;
+    const coins = s.coins || 0;
+    const ccActive = !!(window._countChallenge);
+
+    if (ccActive) {
+      const cc = window._countChallenge;
+      const secsLeft = Math.max(0, Math.round((cc.expiresAt - Date.now()) / 1000));
+      el.innerHTML = `
+        <div style="background:linear-gradient(160deg,#1a1008,#2e1e0a);border:2px solid #996644;border-radius:12px;padding:20px 22px;min-width:280px;max-width:400px;color:#d8a070;font-family:sans-serif;position:relative;">
+          <button onclick="closeCountChallengeOverlay()" style="position:absolute;top:10px;right:12px;background:none;border:none;color:#cd8c5a;font-size:18px;cursor:pointer;">✕</button>
+          <div style="font-size:14px;font-weight:bold;color:#cd8c5a;margin-bottom:12px;">🥉 COUNT'S EDICT ACTIVE</div>
+          <div style="font-size:13px;color:#d8a070;margin-bottom:8px;">${cc.desc}</div>
+          <div style="font-size:11px;color:#a07848;">Reward: 🏆 ${cc.reward}c &nbsp;|&nbsp; Expires in ${secsLeft}s</div>
+          <button onclick="socket.emit('action',{type:'count_challenge_cancel'});closeCountChallengeOverlay();" style="margin-top:14px;background:rgba(40,20,10,0.8);color:#ddaa88;border:1px solid #996644;border-radius:5px;font-size:11px;padding:6px 14px;cursor:pointer;">✕ Cancel Edict (50% refund)</button>
+        </div>`;
+      return;
+    }
+
+    const COUNT_TYPES = [
+      { type: 'poop_npcs',  label: '💩 Poop NPCs',       desc: 'First to poop N NPCs/cars wins', targets: [2, 3, 5] },
+      { type: 'deliver_egg',label: '🥚 Deliver Egg',      desc: 'First to deliver a golden egg wins', targets: [1] },
+    ];
+
+    let typeRows = COUNT_TYPES.map(ct => {
+      const tgtOptions = ct.targets.map(t => `<option value="${t}">${t}</option>`).join('');
+      return `<tr>
+        <td style="padding:4px 6px;"><label><input type="radio" name="ccType" value="${ct.type}" ${ct.type === 'poop_npcs' ? 'checked' : ''}> ${ct.label}</label></td>
+        <td style="padding:4px 6px;font-size:10px;color:#a07848;">${ct.desc}</td>
+        <td style="padding:4px 6px;"><select class="ccTargetSel" data-type="${ct.type}" style="background:#2e1e0a;color:#cd8c5a;border:1px solid #996644;border-radius:3px;font-size:10px;">${tgtOptions}</select></td>
+      </tr>`;
+    }).join('');
+
+    el.innerHTML = `
+      <div style="background:linear-gradient(160deg,#1a1008,#2e1e0a);border:2px solid #996644;border-radius:12px;padding:20px 22px;min-width:280px;max-width:420px;color:#d8a070;font-family:sans-serif;position:relative;">
+        <button onclick="closeCountChallengeOverlay()" style="position:absolute;top:10px;right:12px;background:none;border:none;color:#cd8c5a;font-size:18px;cursor:pointer;">✕</button>
+        <div style="font-size:14px;font-weight:bold;color:#cd8c5a;margin-bottom:4px;">🥉 ISSUE COUNT'S EDICT</div>
+        <div style="font-size:11px;color:#886644;margin-bottom:10px;">A modest decree from the Count. Quick rewards for quick deeds. 50% refund if unclaimed.</div>
+        <table style="width:100%;border-collapse:collapse;">
+          ${typeRows}
+        </table>
+        <div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <label style="font-size:11px;color:#d8a070;">Reward: <input id="ccRewardInput" type="number" min="10" max="50" value="25" style="width:50px;background:#2e1e0a;color:#cd8c5a;border:1px solid #996644;border-radius:3px;padding:2px 4px;"> coins (balance: ${coins}c)</label>
+          <label style="font-size:11px;color:#d8a070;">Duration: <select id="ccDurationSel" style="background:#2e1e0a;color:#cd8c5a;border:1px solid #996644;border-radius:3px;">
+            <option value="30">30s</option>
+            <option value="45" selected>45s</option>
+            <option value="60">60s</option>
+            <option value="90">90s</option>
+          </select></label>
+        </div>
+        <div id="ccIssueErr" style="color:#ff6644;font-size:10px;margin-top:5px;min-height:14px;"></div>
+        <button id="ccIssueBtn" style="margin-top:10px;background:linear-gradient(135deg,#4a2a08,#7a4a18);color:#cd8c5a;border:1px solid #99664488;border-radius:6px;font-size:12px;font-weight:bold;padding:7px 16px;cursor:pointer;width:100%;">🗒 ISSUE EDICT</button>
+      </div>`;
+
+    document.getElementById('ccIssueBtn').onclick = () => {
+      const typeInput = el.querySelector('input[name="ccType"]:checked');
+      if (!typeInput) { document.getElementById('ccIssueErr').textContent = 'Select a challenge type.'; return; }
+      const type = typeInput.value;
+      const targetSel = el.querySelector(`.ccTargetSel[data-type="${type}"]`);
+      const target = parseInt(targetSel ? targetSel.value : '2');
+      const reward = parseInt(document.getElementById('ccRewardInput').value) || 25;
+      const duration = parseInt(document.getElementById('ccDurationSel').value) * 1000 || 45000;
+      if (reward < 10 || reward > 50) { document.getElementById('ccIssueErr').textContent = 'Reward must be 10–50 coins.'; return; }
+      socket.emit('action', { type: 'count_challenge_issue', challengeType: type, target, reward, duration });
+      closeCountChallengeOverlay();
     };
   }
 

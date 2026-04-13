@@ -87,7 +87,10 @@ const DAILY_CHALLENGE_POOL = [
   { id: 'blossom_collector', title: 'Blossom Collector', desc: 'Collect 5 cherry blossom mochi from the park',                       target: 5,  trackType: 'mochi_collected',    reward: { xp: 180, coins: 90  } },
   { id: 'lantern_catcher',   title: 'Lantern Catcher',   desc: 'Catch the Hanami Lantern floating from the Sacred Pond on a spring night', target: 1, trackType: 'hanami_lantern', reward: { xp: 250, coins: 125 } },
   { id: 'spring_witness',    title: 'Spring Witness',    desc: 'Be near the Sacred Pond when a Hanami Lantern rises during Cherry Blossom season', target: 1, trackType: 'spring_witness', reward: { xp: 150, coins: 75 } },
-  { id: 'duke_challenge_winner', title: 'Noble Victor',  desc: "Complete a Duke's Challenge and claim the prize coins",                              target: 1, trackType: 'duke_challenge_won', reward: { xp: 180, coins: 90 } },
+  { id: 'duke_challenge_winner',  title: 'Noble Victor',      desc: "Complete a Duke's Challenge and claim the prize coins",    target: 1, trackType: 'duke_challenge_won',  reward: { xp: 180, coins: 90  } },
+  { id: 'baron_challenge_winner', title: 'Baron\'s Champion',  desc: "Complete a Baron's Decree and claim the prize coins",      target: 1, trackType: 'baron_challenge_won', reward: { xp: 120, coins: 60  } },
+  { id: 'count_challenge_winner', title: 'Count\'s Courier',   desc: "Complete a Count's Edict and claim the prize coins",       target: 1, trackType: 'count_challenge_won', reward: { xp: 80,  coins: 40  } },
+  { id: 'noble_triple',           title: 'Court Favourite',    desc: "Complete challenges from Duke, Baron, and Count in one session", target: 3, trackType: 'noble_challenge_won', reward: { xp: 350, coins: 175 } },
 ];
 
 class GameEngine {
@@ -519,9 +522,13 @@ class GameEngine {
     this.hanamiLanternFiredThisNight = false; // one lantern per night cycle
     this.hanamiLanternScheduledAt = null;     // scheduled spawn timestamp
 
-    // === DUKE'S CHALLENGE — noble mini-challenge issued by the current Duke ===
-    this.dukeChallenge = null;          // null | { type, target, reward, dukeId, dukeName, gangTag, expiresAt, progress: Map }
-    this.dukeChallengeLastIssued = {};  // birdId -> ms timestamp (5-min per-duke cooldown)
+    // === NOBLE CHALLENGE SYSTEM — tiered challenges from Duke/Baron/Count ===
+    this.dukeChallenge  = null; // null | { type, target, reward, dukeId,  dukeName,  gangTag, expiresAt, progress: Map }
+    this.baronChallenge = null; // null | { type, target, reward, baronId, baronName, gangTag, expiresAt, progress: Map }
+    this.countChallenge = null; // null | { type, target, reward, countId, countName, gangTag, expiresAt, progress: Map }
+    this.dukeChallengeLastIssued  = {}; // birdId -> ms timestamp (5-min cooldown)
+    this.baronChallengeLastIssued = {}; // birdId -> ms timestamp (3-min cooldown)
+    this.countChallengeLastIssued = {}; // birdId -> ms timestamp (2-min cooldown)
     // === SAKURA VIEWING PARTY — 4+ birds near the pond → group XP burst ===
     this.sakuraPartyLastFired = 0;            // 3-minute cooldown between bursts
     // === MOCHI × CRIME WAVE — shopkeepers hide their wares during lawlessness ===
@@ -1211,13 +1218,13 @@ class GameEngine {
       this._handlePoolContribute(bird, action.amount, now);
     }
 
-    // === Duke's Challenge — noble mini-challenge issued by the Duke ===
-    if (action.type === 'duke_challenge_issue') {
-      this._handleDukeChallengeIssue(bird, action, now);
-    }
-    if (action.type === 'duke_challenge_cancel') {
-      this._handleDukeChallengeCancel(bird, now);
-    }
+    // === Noble Challenge System — Duke/Baron/Count mini-challenges ===
+    if (action.type === 'duke_challenge_issue')  this._handleDukeChallengeIssue(bird, action, now);
+    if (action.type === 'duke_challenge_cancel') this._handleDukeChallengeCancel(bird, now);
+    if (action.type === 'baron_challenge_issue') this._handleBaronChallengeIssue(bird, action, now);
+    if (action.type === 'baron_challenge_cancel') this._handleBaronChallengeCancel(bird, now);
+    if (action.type === 'count_challenge_issue') this._handleCountChallengeIssue(bird, action, now);
+    if (action.type === 'count_challenge_cancel') this._handleCountChallengeCancel(bird, now);
 
     // === Royal Decree — Kingpin's city-shaping power ===
     if (action.type === 'royal_decree') {
@@ -1365,8 +1372,8 @@ class GameEngine {
       }
       // Daily challenge: graffiti tags
       this._trackDailyProgress(bird, 'tags', 1);
-      // Duke's Challenge: tag_buildings type
-      this._incrementDukeChallengeProgress(bird, 'tag_buildings');
+      // Noble Challenges: tag_buildings type
+      this._incrementAllNobleChallenges(bird, 'tag_buildings');
 
       // Check for street domination (5+ buildings owned by same team)
       const myTeamId = bird.flockId || bird.id;
@@ -1540,6 +1547,8 @@ class GameEngine {
     this._updateKingpinDecree(now);
     this._tickRevoltWindow(now);
     this._tickDukeChallenge(now);
+    this._tickBaronChallenge(now);
+    this._tickCountChallenge(now);
 
     // === Mystery Crate Airdrop ===
     this._tickMysteryCrate(now);
@@ -2932,6 +2941,8 @@ class GameEngine {
           this.gazetteStats.copsStunned[bird.id] = { count: 0, name: bird.name, gangTag: bird.gangTag || null };
         }
         this.gazetteStats.copsStunned[bird.id].count++;
+        // Duke's Challenge: stun_cops type
+        this._incrementAllNobleChallenges(bird, 'stun_cops');
       } else if (hit.target === 'bounty_hunter' && this.bountyHunter) {
         // Poop hit the Bounty Hunter! Build up hits — 4 in a row stuns him
         const bh = this.bountyHunter;
@@ -3127,6 +3138,24 @@ class GameEngine {
         crow.hp -= dmg;
         xpGain = isMegaPoop ? (isDon ? 80 : 55) : (isDon ? 35 : 25);
         bird.coins += isDon ? 8 : 4;
+        // ROYAL COURT × CROW CARTEL: nobles defending their realm get 2× XP
+        const courtMember = this.royalCourt.find(m => m.birdId === bird.id);
+        if (courtMember) {
+          xpGain = Math.floor(xpGain * 2);
+          bird.coins += isDon ? 5 : 2;
+          const raidNobleKey = `noble_cartel_${this.crowCartel.raidId || 'raid'}_${bird.id}`;
+          if (!this._nobleCartelAnnounced) this._nobleCartelAnnounced = new Set();
+          if (!this._nobleCartelAnnounced.has(raidNobleKey)) {
+            this._nobleCartelAnnounced.add(raidNobleKey);
+            this.events.push({
+              type: 'noble_cartel_defense',
+              birdId: bird.id, birdName: bird.name,
+              title: courtMember.title,
+              gangTag: bird.gangTag || null,
+              zoneName: this.crowCartel.targetZoneName || 'the zone',
+            });
+          }
+        }
         // GANG WAR × CROW CARTEL: shared enemy bonus — if any gang war is active, 2× XP vs Cartel
         const gangWarActive = Array.from(this.gangs.values()).some(g => g.warWithGangId && now < g.warEndsAt);
         if (gangWarActive) {
@@ -3523,9 +3552,9 @@ class GameEngine {
       if (hit.target === 'moving_car') {
         this._trackDailyProgress(bird, 'car_hit', 1);
       }
-      // Duke's Challenge: poop_npcs type (NPC, car, human all count)
+      // Noble Challenges: poop_npcs type (NPC, car, human all count)
       if (hit.target === 'npc' || hit.target === 'event_npc' || hit.target === 'moving_car' || hit.target === 'janitor') {
-        this._incrementDukeChallengeProgress(bird, 'poop_npcs');
+        this._incrementAllNobleChallenges(bird, 'poop_npcs');
       }
       if (hit.target === 'raccoon') {
         this._trackDailyProgress(bird, 'raccoon_hit', 1);
@@ -3846,8 +3875,8 @@ class GameEngine {
           bird.xp += Math.floor(loot.value * 0.5);
           this.events.push({ type: 'sewer_loot', birdId: bird.id, name: bird.name, value: loot.value, x: loot.x, y: loot.y });
           this._trackDailyProgress(bird, 'sewer_loot', 1);
-          // Duke's Challenge: sewer_loot type
-          this._incrementDukeChallengeProgress(bird, 'sewer_loot');
+          // Noble Challenges: sewer_loot type
+          this._incrementAllNobleChallenges(bird, 'sewer_loot');
           this._trackDailyProgress(bird, 'coins_earned', loot.value);
         }
       }
@@ -6269,11 +6298,19 @@ class GameEngine {
         kingpinDecreesAvailable: (this.kingpin && this.kingpin.birdId === bird.id) ? (this.kingpin.decreesAvailable || 0) : 0,
         // Royal Court: what noble title do YOU hold (if any)?
         myCourtTitle: (() => { const cm = this.royalCourt.find(m => m.birdId === bird.id); return cm ? cm.title : null; })(),
-        // Duke's Challenge: personal progress + whether you are the Duke who issued it
+        // Noble Challenges: personal progress + issuer flags
         myDukeChallengeProgress: this.dukeChallenge
           ? (this.dukeChallenge.progress.get(bird.id) || 0) : 0,
         isDukeChallengeDuke: this.dukeChallenge
           ? (this.dukeChallenge.dukeId === bird.id) : false,
+        myBaronChallengeProgress: this.baronChallenge
+          ? (this.baronChallenge.progress.get(bird.id) || 0) : 0,
+        isBaronChallengeBaron: this.baronChallenge
+          ? (this.baronChallenge.baronId === bird.id) : false,
+        myCountChallengeProgress: this.countChallenge
+          ? (this.countChallenge.progress.get(bird.id) || 0) : 0,
+        isCountChallengeCount: this.countChallenge
+          ? (this.countChallenge.countId === bird.id) : false,
         // Gang
         gangId: bird.gangId,
         gangName: bird.gangName,
@@ -6737,7 +6774,7 @@ class GameEngine {
       } : null,
       // Night Market (aurora bazaar — near Sacred Pond)
       nightMarket: this.nightMarket ? { x: this.nightMarket.x, y: this.nightMarket.y } : null,
-      // Duke's Challenge — active mini-challenge issued by the Royal Court Duke
+      // Noble Challenge System — Duke/Baron/Count mini-challenges
       dukeChallenge: this.dukeChallenge ? {
         type: this.dukeChallenge.type,
         target: this.dukeChallenge.target,
@@ -6748,6 +6785,28 @@ class GameEngine {
         expiresAt: this.dukeChallenge.expiresAt,
         desc: this.dukeChallenge.desc || '',
         id: `${this.dukeChallenge.dukeId}_${this.dukeChallenge.expiresAt}`,
+      } : null,
+      baronChallenge: this.baronChallenge ? {
+        type: this.baronChallenge.type,
+        target: this.baronChallenge.target,
+        reward: this.baronChallenge.reward,
+        baronId: this.baronChallenge.baronId,
+        baronName: this.baronChallenge.baronName,
+        gangTag: this.baronChallenge.gangTag,
+        expiresAt: this.baronChallenge.expiresAt,
+        desc: this.baronChallenge.desc || '',
+        id: `${this.baronChallenge.baronId}_${this.baronChallenge.expiresAt}`,
+      } : null,
+      countChallenge: this.countChallenge ? {
+        type: this.countChallenge.type,
+        target: this.countChallenge.target,
+        reward: this.countChallenge.reward,
+        countId: this.countChallenge.countId,
+        countName: this.countChallenge.countName,
+        gangTag: this.countChallenge.gangTag,
+        expiresAt: this.countChallenge.expiresAt,
+        desc: this.countChallenge.desc || '',
+        id: `${this.countChallenge.countId}_${this.countChallenge.expiresAt}`,
       } : null,
       // Ice Rink (blizzard-only)
       iceRink: this.iceRink || null,
@@ -9423,13 +9482,20 @@ class GameEngine {
     const current = this.heatScores.get(birdId) || 0;
     const newHeat = current + amount;
     this.heatScores.set(birdId, newHeat);
-    // Duke's Challenge: reach_heat type — first bird (not the Duke) to hit the target level wins
+    // Noble Challenges: reach_heat type — first bird (not the issuer) to hit the target level wins
+    const lvl = this._getWantedLevel(newHeat);
     if (this.dukeChallenge && this.dukeChallenge.type === 'reach_heat' && birdId !== this.dukeChallenge.dukeId) {
-      const lvl = this._getWantedLevel(newHeat);
       if (lvl >= this.dukeChallenge.target && !this.dukeChallenge.progress.get(birdId)) {
-        this.dukeChallenge.progress.set(birdId, 1); // mark as claimed to avoid double-fire
+        this.dukeChallenge.progress.set(birdId, 1);
         const bird = this.birds.get(birdId);
         if (bird) this._claimDukeChallenge(bird);
+      }
+    }
+    if (this.baronChallenge && this.baronChallenge.type === 'reach_heat' && birdId !== this.baronChallenge.baronId) {
+      if (lvl >= this.baronChallenge.target && !this.baronChallenge.progress.get(birdId)) {
+        this.baronChallenge.progress.set(birdId, 1);
+        const bird = this.birds.get(birdId);
+        if (bird) this._claimBaronChallenge(bird);
       }
     }
   }
@@ -11998,6 +12064,8 @@ class GameEngine {
             // Daily challenge: egg delivery
             this._trackDailyProgress(carrier, 'egg_delivered', 1);
             this._trackDailyProgress(carrier, 'coins_earned', reward.coins);
+            // Noble Challenges: deliver_egg type
+            this._incrementAllNobleChallenges(carrier, 'deliver_egg');
             delivered = true;
             break;
           }
@@ -17382,7 +17450,7 @@ class GameEngine {
       return;
     }
 
-    const VALID_TYPES = ['poop_npcs', 'tag_buildings', 'sewer_loot', 'reach_heat'];
+    const VALID_TYPES = ['poop_npcs', 'tag_buildings', 'sewer_loot', 'reach_heat', 'stun_cops', 'deliver_egg'];
     const challengeType = action.challengeType;
     if (!VALID_TYPES.includes(challengeType)) return;
 
@@ -17392,6 +17460,8 @@ class GameEngine {
       tag_buildings:[2, 5],
       sewer_loot:   [2, 5],
       reach_heat:   [2, 5],
+      stun_cops:    [3, 8],
+      deliver_egg:  [1, 2],
     };
     const [minT, maxT] = TARGET_RANGES[challengeType];
     const target = Math.max(minT, Math.min(maxT, Math.floor(Number(action.target)) || minT));
@@ -17409,6 +17479,8 @@ class GameEngine {
       tag_buildings:[3 * 60000, 7 * 60000],
       sewer_loot:   [3 * 60000, 7 * 60000],
       reach_heat:   [3 * 60000, 6 * 60000],
+      stun_cops:    [2 * 60000, 5 * 60000],
+      deliver_egg:  [3 * 60000, 8 * 60000],
     };
     const [minD, maxD] = DURATION_RANGES[challengeType];
     // Client sends duration already in ms (seconds * 1000)
@@ -17435,6 +17507,8 @@ class GameEngine {
       tag_buildings:`first to graffiti tag ${target} buildings`,
       sewer_loot:   `first to collect ${target} sewer loot caches`,
       reach_heat:   `first to reach Wanted Level ${target}⭐`,
+      stun_cops:    `first to stun ${target} cop birds with poop`,
+      deliver_egg:  `first to deliver ${target > 1 ? target : 'a'} golden egg${target > 1 ? 's' : ''} to any nest`,
     };
     const label = TYPE_LABELS[challengeType];
     this.dukeChallenge.desc = label;
@@ -17520,29 +17594,257 @@ class GameEngine {
     bird.coins += reward;
     bird.xp += 200;
     this._trackDailyProgress(bird, 'duke_challenge_won', 1);
+    this._trackDailyProgress(bird, 'noble_challenge_won', 1);
     this._trackDailyProgress(bird, 'coins_earned', reward);
     // Gazette tracking
     if (!this.gazetteStats.dukeChallenges) this.gazetteStats.dukeChallenges = [];
     this.gazetteStats.dukeChallenges.push({
-      dukeName,
-      challengeType: type,
-      winnerName: bird.name,
-      winnerGangTag: bird.gangTag || null,
-      reward,
+      dukeName, challengeType: type, winnerName: bird.name,
+      winnerGangTag: bird.gangTag || null, reward,
     });
-
     const tag = bird.gangTag ? `[${bird.gangTag}] ` : '';
     this.events.push({
       type: 'duke_challenge_claimed',
-      winnerId: bird.id,
-      winnerName: bird.name,
-      gangTag: bird.gangTag || null,
-      reward,
-      dukeName,
-      challengeType: type,
+      winnerId: bird.id, winnerName: bird.name, gangTag: bird.gangTag || null,
+      reward, dukeName, challengeType: type,
       announcement: `🏆 ${tag}${bird.name} completed the Duke's Challenge and claims ${reward}c! Well played.`,
     });
     this.dukeChallenge = null;
+  }
+
+  // ============================================================
+  // BARON'S DECREE — scaled-down noble challenge by the Baron
+  // ============================================================
+
+  _handleBaronChallengeIssue(bird, action, now) {
+    const baron = this.royalCourt[1]; // Baron is index 1
+    if (!baron || baron.birdId !== bird.id) {
+      this.events.push({ type: 'baron_challenge_fail', birdId: bird.id, reason: 'not_baron' });
+      return;
+    }
+    if (this.baronChallenge) {
+      this.events.push({ type: 'baron_challenge_fail', birdId: bird.id, reason: 'already_active' });
+      return;
+    }
+    const lastIssued = this.baronChallengeLastIssued[bird.id] || 0;
+    const COOLDOWN = 3 * 60000; // 3-minute cooldown
+    if (now - lastIssued < COOLDOWN) {
+      const secs = Math.ceil((COOLDOWN - (now - lastIssued)) / 1000);
+      this.events.push({ type: 'baron_challenge_fail', birdId: bird.id, reason: 'cooldown', cooldownLeft: secs });
+      return;
+    }
+    const VALID_TYPES = ['poop_npcs', 'tag_buildings', 'stun_cops'];
+    const challengeType = action.challengeType;
+    if (!VALID_TYPES.includes(challengeType)) return;
+    const TARGET_RANGES = { poop_npcs: [3, 10], tag_buildings: [1, 3], stun_cops: [2, 5] };
+    const [minT, maxT] = TARGET_RANGES[challengeType];
+    const target = Math.max(minT, Math.min(maxT, Math.floor(Number(action.target)) || minT));
+    const reward = Math.max(20, Math.min(100, Math.floor(Number(action.reward)) || 40));
+    if (bird.coins < reward) {
+      this.events.push({ type: 'baron_challenge_fail', birdId: bird.id, reason: 'no_coins' });
+      return;
+    }
+    const DURATION_RANGES = { poop_npcs: [45000, 120000], tag_buildings: [60000, 180000], stun_cops: [45000, 120000] };
+    const [minD, maxD] = DURATION_RANGES[challengeType];
+    const durationMs = Math.max(minD, Math.min(maxD, Math.floor(Number(action.duration)) || minD));
+    bird.coins -= reward;
+    this.baronChallengeLastIssued[bird.id] = now;
+    const TYPE_LABELS = {
+      poop_npcs:    `first to poop ${target} NPCs/cars`,
+      tag_buildings:`first to graffiti tag ${target} buildings`,
+      stun_cops:    `first to stun ${target} cop birds with poop`,
+    };
+    const label = TYPE_LABELS[challengeType];
+    this.baronChallenge = {
+      type: challengeType, target, reward,
+      baronId: bird.id, baronName: bird.name, gangTag: bird.gangTag || null,
+      expiresAt: now + durationMs, progress: new Map(), desc: label,
+    };
+    const baronTag = bird.gangTag ? `[${bird.gangTag}] ` : '';
+    this.events.push({
+      type: 'baron_challenge_started',
+      challengeType, target, reward, baronId: bird.id, baronName: bird.name,
+      gangTag: bird.gangTag || null, expiresAt: this.baronChallenge.expiresAt,
+      duration: durationMs, desc: label, label,
+      announcement: `🥈 BARON'S DECREE from ${baronTag}${bird.name}: ${label} — wins ${reward}c!`,
+    });
+  }
+
+  _handleBaronChallengeCancel(bird, now) {
+    if (!this.baronChallenge || this.baronChallenge.baronId !== bird.id) return;
+    const refund = Math.floor(this.baronChallenge.reward * 0.5);
+    bird.coins += refund;
+    this.events.push({ type: 'baron_challenge_cancelled', birdId: bird.id, baronName: bird.name, refund });
+    this.baronChallenge = null;
+  }
+
+  _tickBaronChallenge(now) {
+    if (!this.baronChallenge) return;
+    if (now >= this.baronChallenge.expiresAt) {
+      const baron = this.birds.get(this.baronChallenge.baronId);
+      const refund = Math.floor(this.baronChallenge.reward * 0.5);
+      if (baron) baron.coins += refund;
+      this.events.push({
+        type: 'baron_challenge_expired',
+        baronName: this.baronChallenge.baronName, reward: this.baronChallenge.reward, refund,
+      });
+      this.baronChallenge = null;
+    }
+  }
+
+  _incrementBaronChallengeProgress(bird, challengeType, amount = 1) {
+    if (!this.baronChallenge) return;
+    if (this.baronChallenge.type !== challengeType) return;
+    if (this.baronChallenge.baronId === bird.id) return;
+    if ((this.baronChallenge.progress.get(bird.id) || 0) >= this.baronChallenge.target) return;
+    const current = this.baronChallenge.progress.get(bird.id) || 0;
+    const newCount = current + amount;
+    this.baronChallenge.progress.set(bird.id, newCount);
+    this.events.push({
+      type: 'baron_challenge_progress',
+      birdId: bird.id, name: bird.name, gangTag: bird.gangTag || null,
+      current: newCount, target: this.baronChallenge.target,
+    });
+    if (newCount >= this.baronChallenge.target) this._claimBaronChallenge(bird);
+  }
+
+  _claimBaronChallenge(bird) {
+    if (!this.baronChallenge) return;
+    const { reward, baronName, type } = this.baronChallenge;
+    bird.coins += reward;
+    bird.xp += 100;
+    this._trackDailyProgress(bird, 'baron_challenge_won', 1);
+    this._trackDailyProgress(bird, 'noble_challenge_won', 1);
+    this._trackDailyProgress(bird, 'coins_earned', reward);
+    const tag = bird.gangTag ? `[${bird.gangTag}] ` : '';
+    this.events.push({
+      type: 'baron_challenge_claimed',
+      winnerId: bird.id, winnerName: bird.name, gangTag: bird.gangTag || null,
+      reward, baronName, challengeType: type,
+      announcement: `🥈 ${tag}${bird.name} completed the Baron's Decree and claims ${reward}c!`,
+    });
+    this.baronChallenge = null;
+  }
+
+  // ============================================================
+  // COUNT'S EDICT — smallest noble challenge by the Count
+  // ============================================================
+
+  _handleCountChallengeIssue(bird, action, now) {
+    const count = this.royalCourt[2]; // Count is index 2
+    if (!count || count.birdId !== bird.id) {
+      this.events.push({ type: 'count_challenge_fail', birdId: bird.id, reason: 'not_count' });
+      return;
+    }
+    if (this.countChallenge) {
+      this.events.push({ type: 'count_challenge_fail', birdId: bird.id, reason: 'already_active' });
+      return;
+    }
+    const lastIssued = this.countChallengeLastIssued[bird.id] || 0;
+    const COOLDOWN = 2 * 60000; // 2-minute cooldown
+    if (now - lastIssued < COOLDOWN) {
+      const secs = Math.ceil((COOLDOWN - (now - lastIssued)) / 1000);
+      this.events.push({ type: 'count_challenge_fail', birdId: bird.id, reason: 'cooldown', cooldownLeft: secs });
+      return;
+    }
+    // Count only gets poop_npcs and deliver_egg
+    const VALID_TYPES = ['poop_npcs', 'deliver_egg'];
+    const challengeType = action.challengeType;
+    if (!VALID_TYPES.includes(challengeType)) return;
+    const TARGET_RANGES = { poop_npcs: [2, 5], deliver_egg: [1, 1] };
+    const [minT, maxT] = TARGET_RANGES[challengeType];
+    const target = Math.max(minT, Math.min(maxT, Math.floor(Number(action.target)) || minT));
+    const reward = Math.max(10, Math.min(50, Math.floor(Number(action.reward)) || 25));
+    if (bird.coins < reward) {
+      this.events.push({ type: 'count_challenge_fail', birdId: bird.id, reason: 'no_coins' });
+      return;
+    }
+    const DURATION_RANGES = { poop_npcs: [30000, 90000], deliver_egg: [120000, 300000] };
+    const [minD, maxD] = DURATION_RANGES[challengeType];
+    const durationMs = Math.max(minD, Math.min(maxD, Math.floor(Number(action.duration)) || minD));
+    bird.coins -= reward;
+    this.countChallengeLastIssued[bird.id] = now;
+    const TYPE_LABELS = {
+      poop_npcs:    `first to poop ${target} NPCs/cars`,
+      deliver_egg:  `first to deliver a golden egg to any nest`,
+    };
+    const label = TYPE_LABELS[challengeType];
+    this.countChallenge = {
+      type: challengeType, target, reward,
+      countId: bird.id, countName: bird.name, gangTag: bird.gangTag || null,
+      expiresAt: now + durationMs, progress: new Map(), desc: label,
+    };
+    const countTag = bird.gangTag ? `[${bird.gangTag}] ` : '';
+    this.events.push({
+      type: 'count_challenge_started',
+      challengeType, target, reward, countId: bird.id, countName: bird.name,
+      gangTag: bird.gangTag || null, expiresAt: this.countChallenge.expiresAt,
+      duration: durationMs, desc: label, label,
+      announcement: `🥉 COUNT'S EDICT from ${countTag}${bird.name}: ${label} — wins ${reward}c!`,
+    });
+  }
+
+  _handleCountChallengeCancel(bird, now) {
+    if (!this.countChallenge || this.countChallenge.countId !== bird.id) return;
+    const refund = Math.floor(this.countChallenge.reward * 0.5);
+    bird.coins += refund;
+    this.events.push({ type: 'count_challenge_cancelled', birdId: bird.id, countName: bird.name, refund });
+    this.countChallenge = null;
+  }
+
+  _tickCountChallenge(now) {
+    if (!this.countChallenge) return;
+    if (now >= this.countChallenge.expiresAt) {
+      const count = this.birds.get(this.countChallenge.countId);
+      const refund = Math.floor(this.countChallenge.reward * 0.5);
+      if (count) count.coins += refund;
+      this.events.push({
+        type: 'count_challenge_expired',
+        countName: this.countChallenge.countName, reward: this.countChallenge.reward, refund,
+      });
+      this.countChallenge = null;
+    }
+  }
+
+  _incrementCountChallengeProgress(bird, challengeType, amount = 1) {
+    if (!this.countChallenge) return;
+    if (this.countChallenge.type !== challengeType) return;
+    if (this.countChallenge.countId === bird.id) return;
+    if ((this.countChallenge.progress.get(bird.id) || 0) >= this.countChallenge.target) return;
+    const current = this.countChallenge.progress.get(bird.id) || 0;
+    const newCount = current + amount;
+    this.countChallenge.progress.set(bird.id, newCount);
+    this.events.push({
+      type: 'count_challenge_progress',
+      birdId: bird.id, name: bird.name, gangTag: bird.gangTag || null,
+      current: newCount, target: this.countChallenge.target,
+    });
+    if (newCount >= this.countChallenge.target) this._claimCountChallenge(bird);
+  }
+
+  _claimCountChallenge(bird) {
+    if (!this.countChallenge) return;
+    const { reward, countName, type } = this.countChallenge;
+    bird.coins += reward;
+    bird.xp += 60;
+    this._trackDailyProgress(bird, 'count_challenge_won', 1);
+    this._trackDailyProgress(bird, 'noble_challenge_won', 1);
+    this._trackDailyProgress(bird, 'coins_earned', reward);
+    const tag = bird.gangTag ? `[${bird.gangTag}] ` : '';
+    this.events.push({
+      type: 'count_challenge_claimed',
+      winnerId: bird.id, winnerName: bird.name, gangTag: bird.gangTag || null,
+      reward, countName, challengeType: type,
+      announcement: `🥉 ${tag}${bird.name} completed the Count's Edict and claims ${reward}c!`,
+    });
+    this.countChallenge = null;
+  }
+
+  // Convenience: increment all three active noble challenges for a given type
+  _incrementAllNobleChallenges(bird, challengeType, amount = 1) {
+    this._incrementDukeChallengeProgress(bird, challengeType, amount);
+    this._incrementBaronChallengeProgress(bird, challengeType, amount);
+    this._incrementCountChallengeProgress(bird, challengeType, amount);
   }
 
 }

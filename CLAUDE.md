@@ -2771,6 +2771,48 @@ Four interlocking additions that complete the Royal Court's social arc and wire 
 
 **Creative intent**: The Royal Court was a status system without player agency — nobles earned tribute passively. The Duke's Challenge turns the title into active POWER. A Duke who drops 200c on a "First to 15 NPCs" challenge while Crime Wave is active creates the wildest 90 seconds in the city. Smaller players race for the reward while the Duke watches their investment pay off in pure spectacle. The Noble Ascension creates narrative continuity between the court system and the kingpin system — watching the Duke seize the crown feels earned, not random. Spring Royale's Sacred Pond center turns the final battle of cherry blossom season into a genuinely cinematic moment: a shrinking ring of surviving birds around the glowing pink pond with petals falling. Pure SOCIAL + PROGRESSION + SPECTACLE energy.
 
+**Session 83 — 2026-04-13: Noble Challenge Tiers — Baron's Decree + Count's Edict**
+Extended the Royal Court's power structure downward: the Baron and Count now each have their own mini-challenge powers, giving 3 of the 4 crown-adjacent birds meaningful agency at any given time. Up to 3 noble challenges can run simultaneously — creating maximum noble chaos.
+
+**Baron's Decree (🥈 Silver tier):**
+- Baron presses "🥈 ISSUE BARON'S DECREE" in the Royal Court Board — 3-minute cooldown, 20–100c reward (from Baron's own wallet)
+- Three challenge types: **Poop NPCs** (3–10 targets), **Tag Buildings** (1–3), **Stun Cops** (2–5 cop stun hits)
+- Duration 45–120 seconds; 50% refund if nobody completes or Baron cancels early
+- Silver/blue UI theme — distinct from Duke's gold but clearly part of the same noble hierarchy
+- City-wide announcement on issue + per-progress callouts + big winner announcement on claim
+- Daily challenge: **Baron's Champion** — complete a Baron's Decree (120 XP, 60c)
+
+**Count's Edict (🥉 Bronze tier):**
+- Count presses "🥉 ISSUE COUNT'S EDICT" — 2-minute cooldown, 10–50c reward (smallest stake)
+- Two challenge types: **Poop NPCs** (2–5 targets), **Deliver Golden Egg** (1 egg to any nest)
+- Duration 30–90 seconds; 50% refund on expiry/cancel
+- Bronze/brown UI theme — the humblest noble still has a voice
+- Daily challenge: **Count's Courier** — complete a Count's Edict (80 XP, 40c)
+
+**Court Favourite (meta-daily):**
+- Complete challenges from Duke, Baron, AND Count all in one session → **Court Favourite** daily (350 XP, 175c)
+- Tracks `noble_challenge_won` across all three tiers — requires playing a full session while all three nobles issue challenges
+
+**Two new Duke challenge types (expanding the Duke's menu):**
+- 🚨 **Stun Cop Birds** (3–8 targets): first to poop-stun N cops — rewards aggressive wanted-level play
+- 🥚 **Deliver Golden Eggs** (1–2 eggs): first to deliver eggs to nests — rewards Golden Egg Scramble participation
+
+**Royal Court × Crow Cartel cross-system synergy:**
+- Court members (Duke/Baron/Count) get 2× XP + 50% bonus coins when hitting Cartel crow thugs or Don Corvino during any raid
+- City-wide announcement fires once per bird per raid: "🥈 NOBLE CARTEL DEFENSE! [Name] earns 2× XP fighting the Cartel!"
+- Creates a compelling reason for nobles to defend territories — not just for the territory, but for the prestige
+
+**Technical architecture:**
+- Each tier has fully independent challenge slots: `this.dukeChallenge`, `this.baronChallenge`, `this.countChallenge`
+- All three can run simultaneously — city can have 3 noble challenges active at once
+- `_incrementAllNobleChallenges(bird, type)` convenience wrapper calls all three increment functions at each hook point
+- Progress tracked in `Map<birdId, count>` per challenge; issuers cannot complete their own challenge
+- Hooks wired at: poop NPC/car, tag buildings, sewer loot collect, cop stun, golden egg deliver
+- Client HUD: three stacked bars (gold→silver→bronze), each positioned 38px apart so all three visible simultaneously
+- Separate overlay functions per tier with themed color schemes
+
+**Creative intent**: The Royal Court had 4 birds in it (Kingpin + 3 nobles) but only 1 had active power (the Duke). Now 3 out of 4 have something to DO with their title. A session where the Duke issues "Tag 6 buildings," the Baron calls "Stun 5 cops," and the Count announces "Deliver an egg" — all running simultaneously — creates a city where every bird has 3 competing mini-missions pulling their attention. The hierarchy is clear (Duke's challenges are biggest, Count's are smallest) but every tier matters. Two gangs where one has members in all three noble spots can issue coordinated challenges that shape the city's moment-to-moment priorities. Pure SOCIAL + PROGRESSION energy — the aristocracy now actually governs.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -2989,8 +3031,16 @@ Built the Territory Control System on top of the existing upstream code:
 - Mochi stash boss: during a crime wave in spring, a hidden mochi stash spawns in the sewer that only has a clue on the minimap (Lunar Lens reveals it)
 - ~~Cherry Blossom × Royale: during cherry blossom season, Bird Royale's safe zone center starts at the Sacred Pond — everyone converges on the most beautiful spot~~ (DONE Session 82)
 - ~~Hanami daily: "Spring Witness — be present in the park when the Hanami Lantern spawns" (not the catcher, just witness it)~~ (DONE Session 82)
-- Duke's Challenge expansion: add more challenge types (e.g. "Win a Street Duel", "Deliver a Golden Egg", "Survive 10s at 4+ wanted stars") — more variety for the Duke's power
-- Baron/Count mini-powers: give the Baron and Count smaller versions of the Duke's power (Baron = 50c challenge; Count = 25c challenge) — extends the nobility system downward
-- Royal Court × Crow Cartel: if the Duke is online when a Crow Cartel raid starts, they earn double XP for defending any territory against the Cartel
+- ~~Duke's Challenge expansion: add more challenge types — DONE Session 83 (added stun_cops + deliver_egg)~~
+- ~~Baron/Count mini-powers: give the Baron and Count smaller versions of the Duke's power~~ (DONE Session 83 — Baron's Decree + Count's Edict)
+- ~~Royal Court × Crow Cartel: Court members earn double XP defending against Cartel raids~~ (DONE Session 83)
 - Royal Court leaderboard: track all-time Duke/Baron/Count tenures per bird (how many times you've been Duke) — show in Hall of Legends
 - Spring Lantern Festival: on the first day of spring (April 1st), two lanterns rise simultaneously — double the prizes, double the race
+- Noble Challenge × Gang War: if a gang is at war and the winning gang has a noble, their noble challenges reward +50% to all gang members who complete it
+- Baron's Decree × Crime Wave: if a Baron challenge fires during a Crime Wave, target count is automatically reduced by 1 (easier to complete in the chaos)
+- Royal Decree audio cue: a distinctive "royal horn" sound effect (ASCII art / emoji in the event feed) when any decree or challenge fires city-wide
+- Noble perks tier 2: Baron gets a weekly "import" — can unlock one Black Market item without visiting at night; Count gets a "city tip" — once per tenure reveals the next weather type before the betting window
+- Court member × Pigeon Racing: if the Duke enters a race and wins, they get a "Victor's Purse" multiplying their cut by 1.5× (noble gambling prestige)
+- Noble Challenge × Seagull Invasion: Baron can "call off" a seagull invasion 30s early by spending 50c (the Baron commands the sky)
+- Graffiti mural: multi-building mega art piece that requires 3+ gang members to paint simultaneously — once complete it's a persistent visual landmark for that session
+- Don Featherstone × Noble challenge: if a Don contract completes during an active noble challenge of the same type, it also counts toward the noble challenge (double-dip reward)
