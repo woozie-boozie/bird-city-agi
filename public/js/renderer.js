@@ -1498,6 +1498,219 @@ window.Renderer = {
     }
   },
 
+  // Draw gang mural zones (beacons + completed murals + in-progress painting)
+  drawMurals(ctx, camera, muralZones, murals, muralPainting, selfBird, now) {
+    if (!muralZones || !this.worldData) return;
+    const t = now / 1000;
+
+    // Build quick lookup maps
+    const completedMap = {};
+    if (murals) { for (const m of murals) completedMap[m.zoneId] = m; }
+    const paintingMap = {};
+    if (muralPainting) { for (const p of muralPainting) paintingMap[p.zoneId] = p; }
+
+    for (const zone of muralZones) {
+      const sx = zone.x - camera.x + camera.screenW / 2;
+      const sy = zone.y - camera.y + camera.screenH / 2;
+
+      // Frustum cull (with padding for the full zone radius)
+      if (sx + zone.radius < -60 || sx - zone.radius > camera.screenW + 60 ||
+          sy + zone.radius < -60 || sy - zone.radius > camera.screenH + 60) continue;
+
+      const completed = completedMap[zone.id];
+      const painting  = paintingMap[zone.id];
+
+      // === COMPLETED MURAL: draw vivid art on buildings within the zone ===
+      if (completed) {
+        const fade = completed.expiresAt - now;
+        const alpha = fade < 90000
+          ? Math.max(0, (fade / 90000) * 0.92)
+          : 0.92;
+        if (alpha <= 0) continue;
+
+        ctx.save();
+        ctx.globalAlpha = alpha;
+
+        // Colorize all buildings inside the zone radius
+        for (const b of this.worldData.buildings) {
+          const bcx = b.x + b.w / 2;
+          const bcy = b.y + b.h / 2;
+          const bdx = bcx - zone.x;
+          const bdy = bcy - zone.y;
+          if (bdx * bdx + bdy * bdy > zone.radius * zone.radius) continue;
+
+          const bsx = b.x - camera.x + camera.screenW / 2;
+          const bsy = b.y - camera.y + camera.screenH / 2;
+          if (bsx + b.w < -10 || bsx > camera.screenW + 10 || bsy + b.h < -10 || bsy > camera.screenH + 10) continue;
+
+          // Large colorful mural band across 40% of building height
+          const bandH = Math.floor(b.h * 0.42);
+          const bandY = bsy + b.h - bandH;
+
+          // Gradient fill for the mural band
+          const grad = ctx.createLinearGradient(bsx, bandY, bsx + b.w, bandY);
+          grad.addColorStop(0, completed.gangColor + 'cc');
+          grad.addColorStop(0.5, completed.gangColor + 'ff');
+          grad.addColorStop(1, completed.gangColor + 'aa');
+          ctx.fillStyle = grad;
+          ctx.fillRect(bsx, bandY, b.w, bandH);
+
+          // Dark overlay with gang tag text
+          ctx.fillStyle = 'rgba(0,0,0,0.45)';
+          ctx.fillRect(bsx + 2, bandY + 2, b.w - 4, bandH - 4);
+
+          ctx.fillStyle = '#fff';
+          ctx.font = `bold ${Math.max(8, Math.min(18, Math.floor(b.w / 4)))}px "Courier New", monospace`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.shadowColor = completed.gangColor;
+          ctx.shadowBlur = 8;
+          ctx.fillText('[' + completed.gangTag + ']', bsx + b.w / 2, bandY + bandH / 2);
+          ctx.shadowBlur = 0;
+
+          // Spray paint splatter dots at building corners
+          const splatColor = completed.gangColor;
+          for (let i = 0; i < 6; i++) {
+            const splatX = bsx + (i < 3 ? 6 : b.w - 6) + (Math.sin(i * 1.7 + t * 0.3) * 3);
+            const splatY = bandY + 4 + i * (bandH / 7);
+            ctx.beginPath();
+            ctx.arc(splatX, splatY, 2.5, 0, Math.PI * 2);
+            ctx.fillStyle = splatColor + 'aa';
+            ctx.fill();
+          }
+        }
+
+        // Zone label above the beacon point
+        ctx.shadowColor = completed.gangColor;
+        ctx.shadowBlur = 12;
+        ctx.fillStyle = completed.gangColor;
+        ctx.font = 'bold 11px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(`🎨 [${completed.gangTag}] ${zone.name}`, sx, sy - 16);
+        ctx.shadowBlur = 0;
+        ctx.restore();
+
+      } else {
+        // === ZONE BEACON — unowned or being painted ===
+        const pulse = 0.6 + 0.4 * Math.sin(t * 2.5);
+
+        if (painting) {
+          // Active painting in progress — draw a bright progress ring
+          const progress = painting.progress;
+          const ringColor = painting.gangColor;
+
+          ctx.save();
+          // Outer glow
+          ctx.beginPath();
+          ctx.arc(sx, sy, 32 + 8 * pulse, 0, Math.PI * 2);
+          ctx.fillStyle = ringColor + '22';
+          ctx.fill();
+
+          // Progress arc
+          ctx.beginPath();
+          ctx.arc(sx, sy, 28, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress);
+          ctx.strokeStyle = ringColor;
+          ctx.lineWidth = 6;
+          ctx.stroke();
+
+          // Background track
+          ctx.beginPath();
+          ctx.arc(sx, sy, 28, -Math.PI / 2 + Math.PI * 2 * progress, Math.PI * 1.5);
+          ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+          ctx.lineWidth = 4;
+          ctx.stroke();
+
+          // Spray can icon + progress text
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 12px Arial';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('🎨', sx, sy);
+          ctx.font = 'bold 9px Arial';
+          ctx.fillStyle = ringColor;
+          ctx.fillText(Math.round(progress * 100) + '%', sx, sy + 20);
+          ctx.fillText('[' + painting.gangTag + '] PAINTING...', sx, sy - 40);
+          ctx.fillText('🖌️ ' + painting.painterCount + ' painter' + (painting.painterCount !== 1 ? 's' : ''), sx, sy - 52);
+          ctx.restore();
+
+        } else {
+          // Neutral zone beacon — subtle purple spray can icon
+          ctx.save();
+          ctx.globalAlpha = 0.55 * pulse;
+
+          ctx.beginPath();
+          ctx.arc(sx, sy, 22, 0, Math.PI * 2);
+          ctx.fillStyle = '#aa88ff22';
+          ctx.fill();
+          ctx.strokeStyle = '#aa88ff88';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+
+          ctx.globalAlpha = 0.7 * pulse;
+          ctx.fillStyle = '#ddbbff';
+          ctx.font = '14px Arial';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('🎨', sx, sy);
+
+          ctx.font = '8px Arial';
+          ctx.fillStyle = '#ccaaff';
+          ctx.fillText(zone.name, sx, sy + 30);
+          ctx.restore();
+        }
+      }
+    }
+  },
+
+  // Draw gang mural zones on the minimap
+  drawMuralsOnMinimap(minimapCtx, muralZones, murals, muralPainting, mw, mh, worldWidth, worldHeight) {
+    if (!muralZones) return;
+    const sx = mw / worldWidth;
+    const sy = mh / worldHeight;
+    const now = Date.now();
+
+    const completedMap = {};
+    if (murals) { for (const m of murals) completedMap[m.zoneId] = m; }
+    const paintingMap = {};
+    if (muralPainting) { for (const p of muralPainting) paintingMap[p.zoneId] = p; }
+
+    for (const zone of muralZones) {
+      const mx = zone.x * sx;
+      const my = zone.y * sy;
+      const completed = completedMap[zone.id];
+      const painting  = paintingMap[zone.id];
+
+      if (completed) {
+        // Completed mural — colored dot
+        const t = now / 500;
+        const pulse = 0.7 + 0.3 * Math.sin(t);
+        minimapCtx.beginPath();
+        minimapCtx.arc(mx, my, 4 * pulse, 0, Math.PI * 2);
+        minimapCtx.fillStyle = completed.gangColor;
+        minimapCtx.fill();
+        minimapCtx.font = '7px Arial';
+        minimapCtx.fillStyle = '#fff';
+        minimapCtx.textAlign = 'center';
+        minimapCtx.fillText('🎨', mx, my - 5);
+      } else if (painting) {
+        // In progress — pulsing
+        const t = now / 300;
+        const pulse = 0.6 + 0.4 * Math.sin(t);
+        minimapCtx.beginPath();
+        minimapCtx.arc(mx, my, 3.5 * pulse, 0, Math.PI * 2);
+        minimapCtx.fillStyle = painting.gangColor + 'cc';
+        minimapCtx.fill();
+      } else {
+        // Neutral — subtle purple dot
+        minimapCtx.beginPath();
+        minimapCtx.arc(mx, my, 2.5, 0, Math.PI * 2);
+        minimapCtx.fillStyle = '#9966cc88';
+        minimapCtx.fill();
+      }
+    }
+  },
+
   // Draw the Radio Tower control point
   drawRadioTower(ctx, camera, radioTower, now) {
     if (!radioTower) return;

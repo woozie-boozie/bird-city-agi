@@ -7,6 +7,26 @@ function uid() {
 }
 
 // ============================================================
+// GANG MURAL ZONES — 5 cooperative art landmarks across the city
+// Each zone is a beacon point; nearby buildings get painted when completed
+// ============================================================
+const MURAL_ZONES = [
+  { id: 'downtown',    name: 'Downtown Wall',     x: 2020, y: 1810, radius: 260 },
+  { id: 'mall',        name: 'The Mall Arcade',   x: 2100, y: 340,  radius: 260 },
+  { id: 'cafe',        name: 'Cafe Strip',        x: 390,  y: 1910, radius: 200 },
+  { id: 'residential', name: 'Residential Row',   x: 375,  y: 415,  radius: 235 },
+  { id: 'midtown',     name: 'Midtown South',     x: 2100, y: 2230, radius: 260 },
+];
+// How fast progress fills: 0.018/s per painter. 3 painters = 0.054/s → full in ~18.5s
+// Solo painter = 0.018/s → full in ~55s (doable but clearly designed for cooperation)
+const MURAL_PAINT_RATE    = 0.018; // per painter per second
+const MURAL_DURATION      = 12 * 60 * 1000; // 12 minutes
+const MURAL_PROXIMITY     = 145;   // px from zone center to start painting
+const MURAL_REWARD_XP     = 200;
+const MURAL_REWARD_COINS  = 75;
+const MURAL_OVERTAKE_BONUS_XP = 280; // bonus for painting OVER a rival's mural
+
+// ============================================================
 // DAILY CHALLENGE POOL — 3 picked each UTC day via seeded random
 // ============================================================
 // ============================================================
@@ -91,6 +111,9 @@ const DAILY_CHALLENGE_POOL = [
   { id: 'baron_challenge_winner', title: 'Baron\'s Champion',  desc: "Complete a Baron's Decree and claim the prize coins",      target: 1, trackType: 'baron_challenge_won', reward: { xp: 120, coins: 60  } },
   { id: 'count_challenge_winner', title: 'Count\'s Courier',   desc: "Complete a Count's Edict and claim the prize coins",       target: 1, trackType: 'count_challenge_won', reward: { xp: 80,  coins: 40  } },
   { id: 'noble_triple',           title: 'Court Favourite',    desc: "Complete challenges from Duke, Baron, and Count in one session", target: 3, trackType: 'noble_challenge_won', reward: { xp: 350, coins: 175 } },
+  // Gang Mural challenges
+  { id: 'mural_painter',  title: 'Muralist',       desc: 'Help paint a gang mural at any zone (hold G with your gang)', target: 1, trackType: 'mural_painted',  reward: { xp: 220, coins: 110 } },
+  { id: 'mural_overtaker', title: 'Tag War',       desc: 'Overtake a rival gang\'s mural with your own',                target: 1, trackType: 'mural_overtake', reward: { xp: 280, coins: 140 } },
 ];
 
 class GameEngine {
@@ -267,6 +290,13 @@ class GameEngine {
     // buildingIdx -> { ownerBirdId, ownerName, ownerColor, flockId, flockName, taggedAt, expiresAt }
     this.graffiti = new Map();
     this._lastGraffitiClean = Date.now();
+
+    // === GANG MURALS ===
+    // Multi-building cooperative gang art — requires 3+ gang members painting simultaneously
+    // zoneId -> { gangId, gangTag, gangColor, gangName, createdAt, expiresAt, painterNames }
+    this.murals = new Map();
+    // zoneId -> { gangId, gangTag, gangColor, gangName, progress (0-1), painters: Map(birdId -> lastHoldAt) }
+    this._muralPainting = new Map();
 
     // === RADIO TOWER ===
     // Contested control point — hold E to capture, press T to broadcast
@@ -1420,6 +1450,11 @@ class GameEngine {
     if (action.type === 'exit_sewer') {
       this._handleExitSewer(bird, now);
     }
+
+    // === Gang Mural Painting ===
+    if (action.type === 'mural_paint') {
+      this._handleMuralPaint(bird, action, now);
+    }
     }
   }
 
@@ -1528,6 +1563,9 @@ class GameEngine {
 
     // === Graffiti ===
     this._updateGraffiti(now);
+
+    // === Gang Murals ===
+    this._updateMurals(dt, now);
 
     // === Radio Tower ===
     this._updateRadioTower(dt, now);
@@ -6500,6 +6538,26 @@ class GameEngine {
           flockName: tag.flockName,
           expiresAt: tag.expiresAt,
         })),
+      // Gang murals — completed city art landmarks
+      murals: Array.from(this.murals.entries())
+        .filter(([, m]) => m.expiresAt > now)
+        .map(([zoneId, m]) => ({
+          zoneId,
+          gangTag: m.gangTag,
+          gangColor: m.gangColor,
+          gangName: m.gangName,
+          zoneName: m.zoneName,
+          expiresAt: m.expiresAt,
+        })),
+      // Active mural paintings in progress
+      muralPainting: Array.from(this._muralPainting.entries()).map(([zoneId, p]) => ({
+        zoneId,
+        gangTag: p.gangTag,
+        gangColor: p.gangColor,
+        progress: p.progress,
+        painterCount: p.painters.size,
+      })),
+      muralZones: MURAL_ZONES,
       eggScramble: this._getEggScrambleState(),
       eggNestZones: world.EGG_NEST_ZONES,
       // Pigeon Mafia Don
@@ -11126,6 +11184,169 @@ class GameEngine {
   }
 
   // ============================================================
+  // GANG MURAL SYSTEM
+  // ============================================================
+  _handleMuralPaint(bird, action, now) {
+    // Must be in a gang
+    if (!bird.gangId) return;
+    const gang = this.gangs.get(bird.gangId);
+    if (!gang) return;
+
+    const zoneId = action.zoneId;
+    const zone = MURAL_ZONES.find(z => z.id === zoneId);
+    if (!zone) return;
+
+    // Proximity check
+    const dx = bird.x - zone.x;
+    const dy = bird.y - zone.y;
+    if (Math.sqrt(dx * dx + dy * dy) > MURAL_PROXIMITY) return;
+
+    // Get or create painting state for this zone
+    let painting = this._muralPainting.get(zoneId);
+    if (!painting || painting.gangId !== bird.gangId) {
+      // New gang starting to paint (or different gang taking over)
+      painting = {
+        gangId: bird.gangId,
+        gangTag: gang.tag,
+        gangColor: gang.color,
+        gangName: gang.name,
+        progress: 0,
+        painters: new Map(),
+        startedAt: now,
+      };
+      this._muralPainting.set(zoneId, painting);
+    }
+
+    // Register this bird as actively painting (refresh timestamp)
+    painting.painters.set(bird.id, now);
+  }
+
+  _updateMurals(dt, now) {
+    // Advance in-progress murals based on active painters
+    for (const [zoneId, painting] of this._muralPainting.entries()) {
+      // Prune painters who haven't sent a paint action in the last 600ms (they let go of G)
+      for (const [painterId, lastHold] of painting.painters.entries()) {
+        if (now - lastHold > 600) painting.painters.delete(painterId);
+      }
+
+      // Count painters who are active gang members
+      const activePainterCount = painting.painters.size;
+      if (activePainterCount === 0) {
+        // Nobody painting — drain progress slowly (10s to drain fully)
+        painting.progress = Math.max(0, painting.progress - dt * 0.1);
+        if (painting.progress <= 0) this._muralPainting.delete(zoneId);
+        continue;
+      }
+
+      // Advance progress
+      painting.progress = Math.min(1, painting.progress + dt * MURAL_PAINT_RATE * activePainterCount);
+
+      if (painting.progress >= 1) {
+        // Mural complete!
+        this._completeMural(zoneId, painting, now);
+      }
+    }
+
+    // Expire old murals every 30s
+    for (const [zoneId, mural] of this.murals.entries()) {
+      if (mural.expiresAt <= now) {
+        this.murals.delete(zoneId);
+        this.events.push({ type: 'mural_expired', zoneName: mural.zoneName });
+      }
+    }
+  }
+
+  _completeMural(zoneId, painting, now) {
+    const zone = MURAL_ZONES.find(z => z.id === zoneId);
+    if (!zone) return;
+
+    const isOvertake = this.murals.has(zoneId);
+    const oldMural = isOvertake ? this.murals.get(zoneId) : null;
+
+    // Build painter name list from active birds
+    const painterNames = [];
+    const painterIds = Array.from(painting.painters.keys());
+    for (const pid of painterIds) {
+      const pb = this.birds.get(pid);
+      if (pb) painterNames.push(pb.name);
+    }
+
+    // Save completed mural
+    this.murals.set(zoneId, {
+      gangId: painting.gangId,
+      gangTag: painting.gangTag,
+      gangColor: painting.gangColor,
+      gangName: painting.gangName,
+      zoneName: zone.name,
+      createdAt: now,
+      expiresAt: now + MURAL_DURATION,
+      painterNames,
+    });
+
+    // Reward all active painters
+    for (const pid of painterIds) {
+      const pb = this.birds.get(pid);
+      if (!pb) continue;
+      const xpBonus = isOvertake ? MURAL_OVERTAKE_BONUS_XP : MURAL_REWARD_XP;
+      pb.xp += xpBonus;
+      pb.coins += MURAL_REWARD_COINS;
+      // Level check
+      const newLevel = world.getLevelFromXP(pb.xp);
+      if (newLevel > pb.level) {
+        const levelsGained = newLevel - pb.level;
+        pb.skill_points = (pb.skill_points || 0) + levelsGained;
+        pb.level = newLevel;
+        const newType = world.getBirdTypeForLevel(newLevel);
+        if (newType !== pb.type) {
+          pb.type = newType;
+          this.events.push({ type: 'evolve', birdId: pb.id, name: pb.name, birdType: newType });
+        }
+      }
+      // Daily challenge tracking
+      this._trackDailyProgress(pb, 'mural_painted', 1);
+      if (isOvertake) this._trackDailyProgress(pb, 'mural_overtake', 1);
+
+      this.events.push({
+        type: 'mural_reward',
+        birdId: pb.id,
+        xp: xpBonus,
+        coins: MURAL_REWARD_COINS,
+      });
+    }
+
+    // City-wide announcement
+    const overtakeText = isOvertake
+      ? ` (overtaking [${oldMural.gangTag}] ${oldMural.gangName}!)`
+      : '';
+    this.events.push({
+      type: 'mural_painted',
+      zoneId,
+      zoneName: zone.name,
+      gangTag: painting.gangTag,
+      gangColor: painting.gangColor,
+      gangName: painting.gangName,
+      painterNames,
+      isOvertake,
+      oldGangTag: oldMural ? oldMural.gangTag : null,
+      oldGangName: oldMural ? oldMural.gangName : null,
+      overtakeText,
+    });
+
+    // Gazette tracking
+    if (this.gazetteStats) {
+      this.gazetteStats.muralsCompleted.push({
+        gangTag: painting.gangTag,
+        gangName: painting.gangName,
+        zoneName: zone.name,
+        isOvertake,
+      });
+    }
+
+    // Remove from in-progress
+    this._muralPainting.delete(zoneId);
+  }
+
+  // ============================================================
   // RADIO TOWER SYSTEM
   // ============================================================
   _updateRadioTower(dt, now) {
@@ -13411,6 +13632,7 @@ class GameEngine {
       peoplesRevolt:   null, // { kingpinName, participantNames } — if revolt triggered
       duelResults:     [],  // [{ winnerName, winnerGangTag, loserName, pot }] — street duels
       dukeChallenges:  [],  // [{ dukeName, challengeType, winnerName, reward }] — duke challenges claimed
+      muralsCompleted: [],  // [{ gangTag, gangName, zoneName, isOvertake }]
     };
   }
 
@@ -13596,6 +13818,16 @@ class GameEngine {
         icon: '👑',
         headline: `DUKE'S CHALLENGE WON: ${tag}${dc.winnerName} CLAIMS THE NOBLE PRIZE`,
         subline: `${dc.dukeName}'s ${dc.reward}c bounty has been claimed. The Duke nods approvingly. Sort of.`,
+      });
+    }
+
+    // Gang Mural headline
+    if (stats.muralsCompleted && stats.muralsCompleted.length > 0) {
+      const topMural = stats.muralsCompleted[stats.muralsCompleted.length - 1];
+      headlines.push({
+        icon: '🎨',
+        headline: `GANG ART TAKES THE CITY: [${topMural.gangTag}] ${topMural.gangName} PAINTS ${topMural.zoneName.toUpperCase()}`,
+        subline: `${stats.muralsCompleted.length} mural${stats.muralsCompleted.length > 1 ? 's' : ''} completed this cycle. The streets are a canvas. The law is not amused.`,
       });
     }
 

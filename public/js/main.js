@@ -248,6 +248,11 @@
   // Graffiti spray state
   let sprayState = null; // { buildingIdx, progress, startTime } while holding G near a building
 
+  // Gang mural painting state
+  let muralPaintState = null;  // { zoneId, zoneName, sendTimer } while holding G near a mural zone
+  const MURAL_PROXIMITY_CLIENT = 145;
+  const MURAL_SEND_INTERVAL = 200; // ms between mural_paint action sends
+
   // Radio Tower state
   let towerCapState = null;     // { progress, startTime } while holding E near tower
   let towerBroadcastOpen = false;
@@ -3493,6 +3498,44 @@
       effects.push({ type: 'screen_shake', intensity: 10, duration: 800, time: now });
     }
 
+    // === GANG MURAL EVENTS ===
+    if (ev.type === 'mural_painted') {
+      const tag = ev.gangTag ? `[${ev.gangTag}] ` : '';
+      const overtakeMsg = ev.isOvertake
+        ? ` — OVERTAKING [${ev.oldGangTag}] ${ev.oldGangName}!`
+        : '';
+      showAnnouncement(
+        `🎨 GANG MURAL COMPLETE!\n${tag}${ev.gangName}\npainted ${ev.zoneName}${overtakeMsg}`,
+        ev.gangColor || '#cc88ff', 6000
+      );
+      addEventMessage(
+        `🎨 [${ev.gangTag}] ${ev.gangName} painted a MURAL at ${ev.zoneName}!${overtakeMsg}`,
+        ev.gangColor || '#cc88ff'
+      );
+      effects.push({ type: 'screen_shake', intensity: 12, duration: 700, time: now });
+      // Spray burst particles at self position
+      if (gameState.self) {
+        for (let p = 0; p < 24; p++) {
+          const angle = Math.random() * Math.PI * 2;
+          const speed = 40 + Math.random() * 80;
+          effects.push({ type: 'particle', x: gameState.self.x, y: gameState.self.y,
+            vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+            color: ev.gangColor || '#cc88ff', time: now,
+            duration: 700 + Math.random() * 500, radius: 4 + Math.random() * 4 });
+        }
+      }
+    }
+    if (ev.type === 'mural_reward') {
+      if (ev.birdId === myId) {
+        const self = gameState.self;
+        effects.push({ type: 'text', x: self ? self.x : camera.x, y: self ? self.y - 30 : camera.y - 30,
+          time: now, duration: 2000, text: `🎨 +${ev.xp}XP +${ev.coins}c MURAL!`, color: '#cc88ff', size: 17 });
+      }
+    }
+    if (ev.type === 'mural_expired') {
+      addEventMessage(`🎨 The ${ev.zoneName} mural has faded...`, '#888');
+    }
+
     // === RADIO TOWER EVENTS ===
     if (ev.type === 'tower_captured') {
       const msg = ev.prevOwnerName
@@ -4021,24 +4064,61 @@
         toggleTowerBroadcastMenu();
       }
     }
-    // Graffiti spray — hold G near a building to tag it
+    // Graffiti spray / Gang Mural — hold G
     if (e.key.toLowerCase() === 'g') {
-      if (gameState && gameState.self && worldData && sprayState === null) {
+      if (gameState && gameState.self && worldData && sprayState === null && muralPaintState === null) {
         const self = gameState.self;
-        let nearest = -1, nearestDist = Infinity;
-        worldData.buildings.forEach((b, idx) => {
-          const bcx = b.x + b.w / 2;
-          const bcy = b.y + b.h / 2;
-          const ddx = self.x - bcx;
-          const ddy = self.y - bcy;
-          const dist = Math.sqrt(ddx * ddx + ddy * ddy);
-          if (dist < 90 && dist < nearestDist) {
-            nearestDist = dist;
-            nearest = idx;
+
+        // Priority: check mural zones first (gang members only)
+        if (self.gangId && gameState.muralZones) {
+          let nearestZone = null, nearestZoneDist = Infinity;
+          for (const zone of gameState.muralZones) {
+            const zdx = self.x - zone.x;
+            const zdy = self.y - zone.y;
+            const zdist = Math.sqrt(zdx * zdx + zdy * zdy);
+            if (zdist < MURAL_PROXIMITY_CLIENT && zdist < nearestZoneDist) {
+              nearestZoneDist = zdist;
+              nearestZone = zone;
+            }
           }
-        });
-        if (nearest !== -1) {
-          sprayState = { buildingIdx: nearest, progress: 0, startTime: performance.now() };
+          if (nearestZone) {
+            muralPaintState = { zoneId: nearestZone.id, zoneName: nearestZone.name, sendTimer: 0 };
+            // Don't fall through to regular graffiti
+          } else {
+            // Regular building graffiti
+            let nearest = -1, nearestDist = Infinity;
+            worldData.buildings.forEach((b, idx) => {
+              const bcx = b.x + b.w / 2;
+              const bcy = b.y + b.h / 2;
+              const ddx = self.x - bcx;
+              const ddy = self.y - bcy;
+              const dist = Math.sqrt(ddx * ddx + ddy * ddy);
+              if (dist < 90 && dist < nearestDist) {
+                nearestDist = dist;
+                nearest = idx;
+              }
+            });
+            if (nearest !== -1) {
+              sprayState = { buildingIdx: nearest, progress: 0, startTime: performance.now() };
+            }
+          }
+        } else {
+          // Not in a gang — regular graffiti only
+          let nearest = -1, nearestDist = Infinity;
+          worldData.buildings.forEach((b, idx) => {
+            const bcx = b.x + b.w / 2;
+            const bcy = b.y + b.h / 2;
+            const ddx = self.x - bcx;
+            const ddy = self.y - bcy;
+            const dist = Math.sqrt(ddx * ddx + ddy * ddy);
+            if (dist < 90 && dist < nearestDist) {
+              nearestDist = dist;
+              nearest = idx;
+            }
+          });
+          if (nearest !== -1) {
+            sprayState = { buildingIdx: nearest, progress: 0, startTime: performance.now() };
+          }
         }
       }
     }
@@ -4048,7 +4128,8 @@
   window.addEventListener('keyup', (e) => {
     keys[e.key.toLowerCase()] = false;
     if (e.key.toLowerCase() === 'g') {
-      sprayState = null; // cancel spray on key release
+      sprayState = null;      // cancel spray on key release
+      muralPaintState = null; // cancel mural painting
     }
     if (e.key.toLowerCase() === 'e') {
       towerCapState = null; // cancel tower capture on key release
@@ -5658,6 +5739,80 @@
   }
 
   // ============================================================
+  // GANG MURAL PAINTING UI — send mural_paint actions while holding G near zone
+  // ============================================================
+  function updateMuralUI(now) {
+    if (!gameState || !gameState.self || !worldData || !gameState.muralZones) return;
+    const s = gameState.self;
+
+    // Active painting: send action every MURAL_SEND_INTERVAL ms while holding G
+    if (muralPaintState !== null) {
+      // Validate still in range
+      const zone = gameState.muralZones.find(z => z.id === muralPaintState.zoneId);
+      if (zone) {
+        const zdx = s.x - zone.x;
+        const zdy = s.y - zone.y;
+        if (Math.sqrt(zdx * zdx + zdy * zdy) > MURAL_PROXIMITY_CLIENT) {
+          muralPaintState = null; // moved away
+          return;
+        }
+        // Send paint action on interval
+        muralPaintState.sendTimer = (muralPaintState.sendTimer || 0);
+        if (now - muralPaintState.sendTimer > MURAL_SEND_INTERVAL) {
+          muralPaintState.sendTimer = now;
+          if (socket && joined) {
+            socket.emit('action', { type: 'mural_paint', zoneId: muralPaintState.zoneId });
+          }
+        }
+      } else {
+        muralPaintState = null;
+      }
+    }
+
+    // Proximity prompt for mural zones — show when near a zone and in a gang (and not already spraying)
+    if (s.gangId && !muralPaintState && !sprayState) {
+      for (const zone of gameState.muralZones) {
+        const zdx = s.x - zone.x;
+        const zdy = s.y - zone.y;
+        const zdist = Math.sqrt(zdx * zdx + zdy * zdy);
+        if (zdist < MURAL_PROXIMITY_CLIENT) {
+          // Check if there's an active mural here by this gang
+          const existingMural = gameState.murals && gameState.murals.find(m => m.zoneId === zone.id);
+          const paintingHere = gameState.muralPainting && gameState.muralPainting.find(p => p.zoneId === zone.id);
+
+          let promptText;
+          if (existingMural && existingMural.gangTag === (gameState.self.gangTag || '')) {
+            promptText = `🎨 Hold [G] to REFRESH your mural at ${zone.name}`;
+          } else if (existingMural) {
+            promptText = `🎨 Hold [G] to OVERTAKE [${existingMural.gangTag}] mural at ${zone.name}! (Extra XP)`;
+          } else if (paintingHere) {
+            promptText = `🖌️ Hold [G] to JOIN the mural at ${zone.name}! (${paintingHere.painterCount} painting)`;
+          } else {
+            promptText = `🎨 Hold [G] with your gang to paint a MURAL at ${zone.name}!`;
+          }
+
+          let muralPrompt = document.getElementById('muralZonePrompt');
+          if (!muralPrompt) {
+            muralPrompt = document.createElement('div');
+            muralPrompt.id = 'muralZonePrompt';
+            muralPrompt.style.cssText = 'position:fixed;bottom:150px;left:50%;transform:translateX(-50%);' +
+              'background:rgba(30,10,60,0.88);color:#cc88ff;font:bold 13px Courier New;' +
+              'padding:8px 18px;border-radius:20px;border:2px solid #9944cc;pointer-events:none;z-index:50;';
+            document.body.appendChild(muralPrompt);
+          }
+          muralPrompt.textContent = promptText;
+          muralPrompt.style.display = 'block';
+          return;
+        }
+      }
+    }
+
+    // Hide prompt if not near any zone
+    const muralPrompt = document.getElementById('muralZonePrompt');
+    if (muralPrompt) muralPrompt.style.display = 'none';
+  }
+
+  // ============================================================
   // GRAFFITI SPRAY UI — proximity prompt + hold progress
   // ============================================================
   function updateSprayUI(now) {
@@ -5725,23 +5880,35 @@
     }
 
     let nearAnyBuilding = false;
-    if (!sprayState) {
-      for (let i = 0; i < worldData.buildings.length; i++) {
-        const b = worldData.buildings[i];
-        const bcx = b.x + b.w / 2;
-        const bcy = b.y + b.h / 2;
-        const ddx = s.x - bcx;
-        const ddy = s.y - bcy;
-        if (Math.sqrt(ddx * ddx + ddy * ddy) < 90) {
-          nearAnyBuilding = true;
-          const existing = gameState.graffiti && gameState.graffiti.find(function(t) { return t.buildingIdx === i; });
-          const cost = (existing && existing.ownerName !== s.name) ? 8 : 5;
-          sprayPrompt.textContent = '🎨 Hold [G] to SPRAY TAG ' + b.name + ' (-' + cost + 'c)';
-          break;
+    // Don't show spray prompt if mural painting is active
+    if (!sprayState && !muralPaintState) {
+      // Check we're not near a mural zone first (mural zone takes priority)
+      let nearMuralZone = false;
+      if (s.gangId && gameState.muralZones) {
+        for (const zone of gameState.muralZones) {
+          const zdx = s.x - zone.x;
+          const zdy = s.y - zone.y;
+          if (Math.sqrt(zdx * zdx + zdy * zdy) < MURAL_PROXIMITY_CLIENT) { nearMuralZone = true; break; }
+        }
+      }
+      if (!nearMuralZone) {
+        for (let i = 0; i < worldData.buildings.length; i++) {
+          const b = worldData.buildings[i];
+          const bcx = b.x + b.w / 2;
+          const bcy = b.y + b.h / 2;
+          const ddx = s.x - bcx;
+          const ddy = s.y - bcy;
+          if (Math.sqrt(ddx * ddx + ddy * ddy) < 90) {
+            nearAnyBuilding = true;
+            const existing = gameState.graffiti && gameState.graffiti.find(function(t) { return t.buildingIdx === i; });
+            const cost = (existing && existing.ownerName !== s.name) ? 8 : 5;
+            sprayPrompt.textContent = '🎨 Hold [G] to SPRAY TAG ' + b.name + ' (-' + cost + 'c)';
+            break;
+          }
         }
       }
     }
-    sprayPrompt.style.display = nearAnyBuilding ? 'block' : 'none';
+    sprayPrompt.style.display = (nearAnyBuilding && !muralPaintState) ? 'block' : 'none';
 
     // Draw spray progress bar in canvas
     if (sprayState !== null && worldData.buildings[sprayState.buildingIdx]) {
@@ -7880,6 +8047,10 @@
     if (gameState.graffiti) {
       Renderer.drawGraffiti(ctx, camera, gameState.graffiti);
     }
+    // Gang murals — completed art + in-progress zones + beacons
+    if (gameState.muralZones) {
+      Renderer.drawMurals(ctx, camera, gameState.muralZones, gameState.murals, gameState.muralPainting, gameState.self, now);
+    }
     Renderer.drawTrees(ctx, camera);
 
     // Radio Tower (drawn after trees — it's a tall landmark)
@@ -9513,6 +9684,7 @@
     updateArenaUI();
     updateFoodTruckHeistUI();
     updateBankHeistUI();
+    updateMuralUI(now);
     updateSprayUI(now);
     updateRadioTowerUI(now);
     updateRaceUI();
@@ -9523,6 +9695,13 @@
 
     // Minimap (now includes activeEvent and cat)
     Renderer.drawMinimap(minimapCtx, worldData, gameState.birds, selfBird, gameState.activeEvent, gameState.cat, gameState.janitor, gameState.territories, gameState.bankHeist, gameState.graffiti);
+
+    // Gang murals on minimap — colored dots for completed murals + neutral dots for zones
+    if (worldData && gameState.muralZones) {
+      const mw = minimapCtx.canvas.width;
+      const mh = minimapCtx.canvas.height;
+      Renderer.drawMuralsOnMinimap(minimapCtx, gameState.muralZones, gameState.murals, gameState.muralPainting, mw, mh, worldData.width, worldData.height);
+    }
 
     // Don Featherstone on minimap — permanent gold 🎩 dot
     if (worldData) {

@@ -2849,6 +2849,45 @@ The Royal Court's power hierarchy is now complete. The Duke already had challeng
 
 **Creative intent**: The Baron's Import fills a long-standing frustration: sometimes you're Baron (rich, powerful) but the Black Market is closed (it's daytime). Now your nobility gives you a phone call to the fence. The 20% markup makes it cost more but never inaccessible — perfect for urgent needs like a 5-star Disguise Kit when you can't reach the alley. The Count's Intel creates the most compelling pre-betting window in the game: the Count knows the future, their gang knows the future, and they have 30–60 seconds to bet big before the window even opens. A gang with the Count consistently holding the title and sharing intel gets a systematic edge in weather betting — pure SOCIAL + PROGRESSION synergy. The tenure record turns a session-only title into a lifetime identity: a bird with 👑×15 is recognizably "that bird who's always rich enough to be Duke." Pure PROGRESSION + SOCIAL energy — the nobility now has actual privileges.
 
+**Session 85 — 2026-04-13: Gang Graffiti Murals — Cooperative Territory Art**
+The city's largest physical canvases are now claimable by gangs as massive collaborative murals — the most SOCIAL expression of territorial identity yet. Five landmark zones across the map can be painted by coordinated gangs, overwritten by rivals, and read at a glance on the minimap as a gang art map of the city.
+
+**Five Mural Zones (permanent landmarks, `server/game.js`):**
+- Downtown Wall (x:2020, y:1810) — the heart of downtown, maximum visibility
+- The Mall Arcade (x:2100, y:340) — northeast corridor near the Mall district
+- Cafe Strip (x:390, y:1910) — southwest cafe quarter, smallest zone
+- Residential Row (x:375, y:415) — northwest corner, gang home turf
+- Midtown South (x:2100, y:2230) — southeast industrial stretch
+
+**Painting Mechanics (`server/game.js`):**
+- 3+ gang members must hold [G] simultaneously within 145px of any zone beacon — below that threshold, the prompt tells you how many more painters you need
+- Solo birds or non-gang birds cannot paint murals at all — this is a gang-only cooperative action
+- Progress fills at 0.018/s per painter (3 painters ≈ 56 seconds, 5 painters ≈ 34 seconds) — a committed group effort
+- Progress drains at 0.1/s if painters drop below 3 (10 seconds to fully drain) — commitment required, not just a casual fly-through
+- **Rival overtake**: a different gang that starts painting resets the progress to 0 — no partial credit for the defenders
+- Completed murals last 12 minutes before fading, then the zone returns to neutral for reclaiming
+- Each painter earns +200 XP +75 coins on completion, +1 Mafia Rep, and `mural_painted` daily challenge progress
+
+**Competitive Dynamics:**
+- Overtaking a rival mural awards painters +280 XP + bonus coins + `mural_overtake` daily challenge progress
+- The overtake moment is announced city-wide: "🎨 [NEW GANG] OVERTOOK [OLD GANG]'s mural at Downtown Wall!"
+- Painting tracked per-contributor for proportional credit messaging
+- City-wide announcements on completion + per-painter reward callouts
+
+**Visual system (`public/js/renderer.js`):**
+- **Neutral zones**: pulsing purple spray-can beacon with zone name label — easily spotted while flying
+- **In-progress**: animated progress arc ring at the zone center with painter count + gang tag label; arc color matches the painting gang's color
+- **Completed murals**: a vivid gang-colored gradient band spanning ALL buildings within the zone radius — like a real city-wide mural. Includes the gang tag in spray-style text, random decorative splatter dots in the gang color, and a subtle fade effect as expiry approaches (last 2 minutes)
+- **Minimap**: pulsing colored dots at all 5 zone positions — completed zones show gang color + 🎨 emoji, in-progress zones show smaller pulsing dot
+
+**Two new daily challenges:**
+- 🎨 **Muralist**: Help paint a gang mural to completion (220 XP, 110c)
+- 🎨 **Tag War**: Overtake a rival gang's mural (280 XP, 140c)
+
+**Gazette headline:** "🎨 GANG ART TAKES THE CITY: [TAG] GangName PAINTS ZONE — N murals completed this cycle. The streets are a canvas. The law is not amused."
+
+**Creative intent**: Individual graffiti (Session 14) was already powerful for turf expression — but a solo bird tagging buildings is a personal act. The mural system is fundamentally cooperative: you NEED your gang. Three birds have to organize, coordinate, and hold position for nearly a minute — that conversation happening in-game is the feature. Two rival gangs both trying to paint the Downtown Wall at the same time, with painters from each side diving in to reset each other's progress while their gang screams in the event feed — that's the most chaotic, most SOCIAL thing in Bird City. The completed mural as a city-wide gang-colored band across entire building clusters is the most visible territorial marker in the game — visible from across the map, readable on the minimap, glowing in your gang's color. Pure SOCIAL + SPECTACLE + CARNAGE energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -2978,7 +3017,7 @@ Built the Territory Control System on top of the existing upstream code:
 - ~~Shooting Star event: rare (30% chance during aurora) — a shooting star crosses the sky and the first bird to "catch" it by flying to its landing spot earns a Mystery Crate-tier item~~ (DONE Session 67)
 - ~~Blizzard weather type — 8th weather, snowball poop radius ×2.2, hot cocoa warmth economy, cop cold debuff~~ (DONE Session 71)
 - Seasonal events: longer-term city transformations (cherry blossoms in "spring")
-- Graffiti mural system: large multi-building art pieces that require a whole gang to paint
+- ~~Graffiti mural system: large multi-building art pieces that require a whole gang to paint~~ (DONE Session 85)
 - ~~Aurora + Gang War: if a gang war erupts during the aurora, all kills give 2× gang war XP — sacred sky amplifies the violence~~ (DONE Session 74)
 - Shooting Star daily challenge: "Stargazer — catch a Shooting Star during the Aurora" (300 XP, 150c) — the rarest weather challenge
 - ~~Comet Trail: a P5 LEGEND bird who catches the Shooting Star leaves a brief golden comet trail behind them for 30 seconds~~ (DONE Session 73 — also triggers on Meteor catch)
@@ -3054,7 +3093,7 @@ Built the Territory Control System on top of the existing upstream code:
 - ~~Royal Court: top-3 richest birds that AREN'T the Kingpin get "Duke/Baron/Count" titles and earn 10c tribute every 30s (minor nobility around the crown)~~ (DONE Session 79)
 - Double-elimination tournament: losers bracket gives everyone a second chance in the Fighting Championship
 - Seasonal city transformation: Cherry Blossoms event — 7-day visual overlay with pink petals falling, unique spring food items, and a special Blossom Viewing festival event at the park pond
-- Graffiti mural: multi-building mega art requires 3+ gang members to paint simultaneously across a whole city block — persistent visual landmark when complete
+- ~~Graffiti mural: multi-building mega art requires 3+ gang members to paint simultaneously across a whole city block — persistent visual landmark when complete~~ (DONE Session 85)
 - Royal Court × Gang War: Court members who join a gang war get +15% coin bonus on gang war kills (nobility fights back)
 - ~~Royal Court × Kingpin Dethronement: if the Kingpin is dethroned and a Court member becomes the new Kingpin, the Duke's "ascension" is announced city-wide with extra fanfare~~ (DONE Session 82 — noble_ascension event)
 - ~~Duke's Challenge: the Duke can issue one daily mini-challenge to the city (e.g., "first to poop 3 cars earns 50c from me") — spending from their own coins, creating a mini-economy of noble challenges~~ (DONE Session 82)
@@ -3078,5 +3117,10 @@ Built the Territory Control System on top of the existing upstream code:
 - Noble perks tier 2: Baron gets a weekly "import" — can unlock one Black Market item without visiting at night; Count gets a "city tip" — once per tenure reveals the next weather type before the betting window
 - Court member × Pigeon Racing: if the Duke enters a race and wins, they get a "Victor's Purse" multiplying their cut by 1.5× (noble gambling prestige)
 - Noble Challenge × Seagull Invasion: Baron can "call off" a seagull invasion 30s early by spending 50c (the Baron commands the sky)
-- Graffiti mural: multi-building mega art piece that requires 3+ gang members to paint simultaneously — once complete it's a persistent visual landmark for that session
+- ~~Graffiti mural: multi-building mega art piece that requires 3+ gang members to paint simultaneously — once complete it's a persistent visual landmark for that session~~ (DONE Session 85)
 - Don Featherstone × Noble challenge: if a Don contract completes during an active noble challenge of the same type, it also counts toward the noble challenge (double-dip reward)
+- Mural × Crime Wave: during a Crime Wave, rival gangs can paint faster (+50% paint rate) — turf wars accelerate in the chaos
+- Mural × Gang War: during an active gang war, painting an enemy gang's mural zone counts as a gang war hit (3 hits to flip = 1 kill)
+- Mural × Royal Court: if the Duke's gang owns 3+ murals simultaneously, Duke tribute income doubles for 5 minutes
+- Mural Hall of Fame: track which gangs have painted the most murals across all sessions — show in Gang HQ as "All-Time Murals: 12"
+- Mural Raid Boss: a rogue crow vandal NPC spawns rarely and targets completed murals — poop him off before he ruins your art
