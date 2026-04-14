@@ -115,6 +115,9 @@ const DAILY_CHALLENGE_POOL = [
   { id: 'mural_painter',  title: 'Muralist',       desc: 'Help paint a gang mural at any zone (hold G with your gang)', target: 1, trackType: 'mural_painted',  reward: { xp: 220, coins: 110 } },
   { id: 'mural_overtaker', title: 'Tag War',       desc: 'Overtake a rival gang\'s mural with your own',                target: 1, trackType: 'mural_overtake', reward: { xp: 280, coins: 140 } },
   { id: 'art_defender',   title: 'Art Defender',   desc: 'Scare off the Vandal Crow before he destroys a gang mural',   target: 1, trackType: 'vandal_scared',  reward: { xp: 200, coins: 100 } },
+  // Great Migration challenges
+  { id: 'migration_rider',   title: 'Flock Rider',    desc: 'Ride the Great Migration formation for 20 cumulative seconds', target: 20, trackType: 'migration_ride',  reward: { xp: 160, coins: 80  } },
+  { id: 'migration_hunter',  title: 'Alpha Hunter',   desc: 'Deal the killing blow to the Migration Alpha Leader',          target: 1,  trackType: 'alpha_kill',      reward: { xp: 300, coins: 150 } },
 ];
 
 class GameEngine {
@@ -616,6 +619,18 @@ class GameEngine {
     this.seagullTimer = Date.now() + this._randomRange(25 * 60000, 35 * 60000);
     this._seagullIdCounter = 0;
 
+    // === THE GREAT MIGRATION ===
+    // Every 20-30 minutes, 14-18 wild migratory birds fly across the city in a V-formation.
+    // An Alpha Leader heads the formation. Players can:
+    //   (1) JOIN: fly within 70px of any flock bird → +30% speed boost in migration direction for 5s
+    //   (2) INTERCEPT: poop the Alpha (120HP, 15HP/hit, 30 for mega) for 400XP+250c
+    // Formation crosses from one map edge to the opposite at 80px/s (~37s to cross).
+    // If Alpha is killed before crossing: city-wide +100XP reward for all contributors.
+    // Gazette: tracks alpha kills.
+    this.migration = null;       // null | { birds: Map, alpha, direction, endsAt, contributors: Map }
+    this.migrationTimer = Date.now() + this._randomRange(20 * 60000, 30 * 60000);
+    this._migrationIdCounter = 0;
+
     // === CHERRY BLOSSOMS SPRING FESTIVAL ===
     // Active every April — the park fills with pink mochi treats.
     // Birds collect mochi for +30 food, +50 XP, +20c. Aurora doubles all rewards.
@@ -956,6 +971,9 @@ class GameEngine {
       mcDiamondPoopUntil:  0,
       mcNukePoop:          false,
       mcMagnetLastPull:    0,
+      // === GREAT MIGRATION ===
+      migrationBoostUntil: 0,   // timestamp: +30% speed boost from riding the migration
+      migrationRideTime:   0,   // cumulative seconds spent riding (for daily challenge)
       // === BIRD FLU ===
       fluUntil: 0,             // timestamp when flu wears off (0 = healthy)
       fluSpreadCooldown: 0,    // timestamp: can't re-spread to another bird until this passes
@@ -1640,6 +1658,9 @@ class GameEngine {
 
     // === Seagull Invasion ===
     this._updateSeagullInvasion(dt, now);
+
+    // === The Great Migration ===
+    this._updateMigration(dt, now);
 
     // === Bird Royale ===
     this._tickBirdRoyale(dt, now);
@@ -2633,6 +2654,11 @@ class GameEngine {
       maxSpeed *= 3.5;
     }
 
+    // Great Migration boost: fly within 70px of a migration flock bird → +30% speed in migration direction
+    if (bird.migrationBoostUntil > now) {
+      maxSpeed *= 1.30;
+    }
+
     // Mystery Crate: Coin Magnet — pull nearby food/coins every 0.5s
     if (bird.mcMagnetUntil > now && now - bird.mcMagnetLastPull > 500) {
       bird.mcMagnetLastPull = now;
@@ -2786,6 +2812,44 @@ class GameEngine {
       const windMult = (bird.skillTreeUnlocked && bird.skillTreeUnlocked.includes('wind_rider')) ? 1.3 : 1.0;
       bird.vx += Math.cos(this.weather.windAngle) * this.weather.windSpeed * dt * windMult;
       bird.vy += Math.sin(this.weather.windAngle) * this.weather.windSpeed * dt * windMult;
+    }
+
+    // Great Migration proximity boost — fly within 70px of any flock bird → +30% speed for 5s
+    // Birds can also apply a gentle directional pull toward the migration direction while boosted
+    if (this.migration && !bird.inSewer) {
+      let nearFormation = false;
+      const MIGRATION_JOIN_RADIUS = 70;
+      // Check flock birds
+      for (const mb of this.migration.birds.values()) {
+        const mdx = mb.x - bird.x;
+        const mdy = mb.y - bird.y;
+        if (Math.sqrt(mdx * mdx + mdy * mdy) < MIGRATION_JOIN_RADIUS) {
+          nearFormation = true;
+          break;
+        }
+      }
+      // Also check near alpha (same reward)
+      if (!nearFormation && this.migration.alpha && this.migration.alpha.hp > 0) {
+        const adx = this.migration.alpha.x - bird.x;
+        const ady = this.migration.alpha.y - bird.y;
+        if (Math.sqrt(adx * adx + ady * ady) < MIGRATION_JOIN_RADIUS) nearFormation = true;
+      }
+      if (nearFormation) {
+        if (bird.migrationBoostUntil < now + 100) {
+          // First time joining this tick — announce if boost wasn't already active
+          if (bird.migrationBoostUntil <= now) {
+            this.events.push({ type: 'migration_joined', birdId: bird.id, birdName: bird.name });
+            this._trackDailyProgress(bird, 'migration_ride', 0); // just open the track (incremented below)
+          }
+        }
+        bird.migrationBoostUntil = now + 5000; // refresh 5s boost while near formation
+        // Track cumulative ride time for daily challenge (per-second)
+        if (!bird._lastMigrationRideTick || now - bird._lastMigrationRideTick >= 1000) {
+          bird._lastMigrationRideTick = now;
+          bird.migrationRideTime = (bird.migrationRideTime || 0) + 1;
+          this._trackDailyProgress(bird, 'migration_ride', 1);
+        }
+      }
     }
 
     // Pied Piper suction force — draws birds toward the Piper within 350px
@@ -3368,6 +3432,27 @@ class GameEngine {
           }
           // After first hit seagull becomes frantic — finds new target
           this.events.push({ type: 'seagull_hit', birdId: bird.id, x: sg.x, y: sg.y });
+        }
+      } else if (hit.target === 'migration_alpha' && this.migration && this.migration.alpha && this.migration.alpha.hp > 0) {
+        // Intercepted the Migration Alpha Leader! Contribute to bringing it down.
+        const alpha = this.migration.alpha;
+        const dmg = isMegaPoop ? 30 : 15;
+        alpha.hp = Math.max(0, alpha.hp - dmg);
+        xpGain = isMegaPoop ? 60 : 30;
+        bird.coins += isMegaPoop ? 20 : 10;
+        // Track per-bird contribution for proportional rewards
+        if (!this.migration.contributors) this.migration.contributors = new Map();
+        this.migration.contributors.set(bird.id, {
+          name: bird.name,
+          gangTag: bird.gangTag || null,
+          dmg: (this.migration.contributors.get(bird.id) ? this.migration.contributors.get(bird.id).dmg : 0) + dmg,
+          xpEarned: (this.migration.contributors.get(bird.id) ? this.migration.contributors.get(bird.id).xpEarned : 0) + xpGain,
+        });
+        this.events.push({ type: 'migration_alpha_hit', birdId: bird.id, x: alpha.x, y: alpha.y, hp: alpha.hp, maxHp: alpha.maxHp, dmg });
+        if (alpha.hp <= 0) {
+          // ALPHA DEFEATED! Big rewards for all contributors
+          this._endMigration('alpha_killed', now, bird.id);
+          this._trackDailyProgress(bird, 'alpha_kill', 1);
         }
       } else if (hit.target === 'hit_target' && hit.hitContract) {
         // Bounty hunting — player hit a bird with an active hit contract
@@ -4380,6 +4465,16 @@ class GameEngine {
         // Actually allow it — targeting yourself with good aim should count
         if (!isMegaPoop) return { target: 'helicopter' };
         allHits.push({ target: 'helicopter' });
+      }
+    }
+
+    // Check Migration Alpha (the big prize — intercept the formation leader for huge rewards)
+    if (this.migration && this.migration.alpha && this.migration.alpha.hp > 0) {
+      const adx = poop.x - this.migration.alpha.x;
+      const ady = poop.y - this.migration.alpha.y;
+      if (Math.sqrt(adx * adx + ady * ady) < hitRadius + 20) {
+        if (!isMegaPoop) return { target: 'migration_alpha' };
+        allHits.push({ target: 'migration_alpha' });
       }
     }
 
@@ -6832,6 +6927,8 @@ class GameEngine {
       mcMagnetUntil:       bird.mcMagnetUntil,
       mcDiamondPoopUntil:  bird.mcDiamondPoopUntil,
       mcNukePoop:          bird.mcNukePoop,
+      // Great Migration
+      migrationBoostUntil: bird.migrationBoostUntil,
       // Bird Flu
       fluUntil:     bird.fluUntil,
       fluOutbreak:  this.fluOutbreak,
@@ -7002,6 +7099,22 @@ class GameEngine {
           })),
         totalCount: this.seagullInvasion.seagulls.size,
         aliveCount: Array.from(this.seagullInvasion.seagulls.values()).filter(sg => sg.state !== 'dead').length,
+      } : null,
+      // Great Migration
+      migration: this.migration ? {
+        endsAt: this.migration.endsAt,
+        dirX: this.migration.dirX,
+        dirY: this.migration.dirY,
+        birds: Array.from(this.migration.birds.values()).map(mb => ({
+          id: mb.id, x: mb.x, y: mb.y, rotation: mb.rotation,
+        })),
+        alpha: this.migration.alpha ? {
+          x: this.migration.alpha.x,
+          y: this.migration.alpha.y,
+          rotation: this.migration.alpha.rotation,
+          hp: this.migration.alpha.hp,
+          maxHp: this.migration.alpha.maxHp,
+        } : null,
       } : null,
       // Bird Royale
       birdRoyale: this.birdRoyale ? {
@@ -13897,6 +14010,8 @@ class GameEngine {
       duelResults:     [],  // [{ winnerName, winnerGangTag, loserName, pot }] — street duels
       dukeChallenges:  [],  // [{ dukeName, challengeType, winnerName, reward }] — duke challenges claimed
       muralsCompleted: [],  // [{ gangTag, gangName, zoneName, isOvertake }]
+      migrations:      0,   // migrations that crossed through the city this cycle
+      alphaKills:      [],  // [{ name, gangTag }] — birds who killed the Migration Alpha
     };
   }
 
@@ -14040,6 +14155,17 @@ class GameEngine {
         icon: '🐦',
         headline: `SEAGULL INVASION HITS CITY — COASTAL RAIDERS STRIP FOOD SUPPLIES`,
         subline: `${stats.seagullInvasions} invasion${stats.seagullInvasions > 1 ? 's' : ''} launched from the coast. Birds urged to "poop back immediately."`,
+      });
+    }
+
+    // Great Migration Alpha kill
+    if (stats.alphaKills && stats.alphaKills.length > 0) {
+      const killer = stats.alphaKills[0];
+      const tag = killer.gangTag ? `[${killer.gangTag}] ` : '';
+      headlines.push({
+        icon: '🦅',
+        headline: `GREAT MIGRATION AMBUSHED — ${tag}${killer.name} SLAYS THE ALPHA LEADER`,
+        subline: 'Bird City's most brazen interception. Migration flock scattered to the winds.',
       });
     }
 
@@ -16456,6 +16582,197 @@ class GameEngine {
         }
       }
     }
+  }
+
+  // ============================================================
+  // THE GREAT MIGRATION — V-formation crossing the city
+  // ============================================================
+
+  _updateMigration(dt, now) {
+    const W = 3000, H = 3000;
+    // Spawn when timer fires and at least 1 player is online
+    if (!this.migration && now >= this.migrationTimer && this.birds.size > 0) {
+      this._spawnMigration(now);
+      return;
+    }
+    if (!this.migration) return;
+
+    const mig = this.migration;
+
+    // Check end conditions: time expired OR alpha exited map
+    if (now >= mig.endsAt) {
+      this._endMigration('timeout', now, null);
+      return;
+    }
+
+    // Move alpha forward along migration direction
+    const alpha = mig.alpha;
+    if (alpha && alpha.hp > 0) {
+      alpha.x += mig.dirX * mig.speed * dt;
+      alpha.y += mig.dirY * mig.speed * dt;
+      alpha.rotation = Math.atan2(mig.dirY, mig.dirX);
+
+      // If alpha exits the map, migration completes naturally
+      if (alpha.x < -200 || alpha.x > W + 200 || alpha.y < -200 || alpha.y > H + 200) {
+        this._endMigration('escaped', now, null);
+        return;
+      }
+    }
+
+    // Move each flock bird toward its V-formation slot (which is relative to alpha)
+    const perpX = -mig.dirY; // perpendicular direction
+    const perpY =  mig.dirX;
+    const backX = -mig.dirX;
+    const backY = -mig.dirY;
+    const ROW_SPACING = 32;
+    const COL_SPREAD  = 26;
+
+    let slotIdx = 0;
+    for (const mb of mig.birds.values()) {
+      const row = Math.floor(slotIdx / 2) + 1;
+      const side = (slotIdx % 2 === 0) ? 1 : -1;
+      // Target position: behind alpha + lateral spread
+      const targetX = alpha.x + backX * row * ROW_SPACING + perpX * side * row * COL_SPREAD;
+      const targetY = alpha.y + backY * row * ROW_SPACING + perpY * side * row * COL_SPREAD;
+
+      // Chase the target position smoothly
+      const chaseDx = targetX - mb.x;
+      const chaseDy = targetY - mb.y;
+      const chaseDist = Math.sqrt(chaseDx * chaseDx + chaseDy * chaseDy);
+      const moveSpeed = mig.speed * 1.15; // slightly faster than alpha to close formation gaps
+      if (chaseDist > 2) {
+        const step = Math.min(moveSpeed * dt, chaseDist);
+        mb.x += (chaseDx / chaseDist) * step;
+        mb.y += (chaseDy / chaseDist) * step;
+      }
+      mb.rotation = Math.atan2(mig.dirY, mig.dirX);
+      slotIdx++;
+    }
+  }
+
+  _spawnMigration(now) {
+    const W = 3000, H = 3000;
+    const numFlockBirds = 14 + Math.floor(Math.random() * 5); // 14-18 flock birds + 1 alpha
+
+    // Pick a random entry edge and the opposite exit edge
+    const edges = ['top', 'right', 'bottom', 'left'];
+    const entryEdge = edges[Math.floor(Math.random() * edges.length)];
+    const exitEdge  = { top: 'bottom', bottom: 'top', left: 'right', right: 'left' }[entryEdge];
+
+    // Compute direction vector (from entry toward exit)
+    let dirX = 0, dirY = 0;
+    if (entryEdge === 'top')    { dirX =  0; dirY =  1; }
+    if (entryEdge === 'bottom') { dirX =  0; dirY = -1; }
+    if (entryEdge === 'left')   { dirX =  1; dirY =  0; }
+    if (entryEdge === 'right')  { dirX = -1; dirY =  0; }
+    // Add slight diagonal variation so it's not perfectly straight
+    const angleVar = (Math.random() - 0.5) * 0.4;
+    const cosA = Math.cos(angleVar), sinA = Math.sin(angleVar);
+    const fdirX = dirX * cosA - dirY * sinA;
+    const fdirY = dirX * sinA + dirY * cosA;
+    const flen = Math.sqrt(fdirX * fdirX + fdirY * fdirY);
+    dirX = fdirX / flen;
+    dirY = fdirY / flen;
+
+    // Spawn alpha at a random point on the entry edge
+    let alphaX = 0, alphaY = 0;
+    const margin = 60;
+    if (entryEdge === 'top')    { alphaX = margin + Math.random() * (W - 2 * margin); alphaY = -margin; }
+    if (entryEdge === 'bottom') { alphaX = margin + Math.random() * (W - 2 * margin); alphaY = H + margin; }
+    if (entryEdge === 'left')   { alphaX = -margin; alphaY = margin + Math.random() * (H - 2 * margin); }
+    if (entryEdge === 'right')  { alphaX = W + margin; alphaY = margin + Math.random() * (H - 2 * margin); }
+
+    const migSpeed = 80; // px/s — steady purposeful flight
+
+    // Build flock birds in their initial V-formation slots
+    const perpX = -dirY, perpY = dirX;
+    const backX = -dirX, backY = -dirY;
+    const ROW_SPACING = 32, COL_SPREAD = 26;
+    const birds = new Map();
+    for (let i = 0; i < numFlockBirds; i++) {
+      const row  = Math.floor(i / 2) + 1;
+      const side = (i % 2 === 0) ? 1 : -1;
+      const bx = alphaX + backX * row * ROW_SPACING + perpX * side * row * COL_SPREAD;
+      const by = alphaY + backY * row * ROW_SPACING + perpY * side * row * COL_SPREAD;
+      const id = 'mig_' + (++this._migrationIdCounter);
+      birds.set(id, { id, x: bx, y: by, rotation: Math.atan2(dirY, dirX) });
+    }
+
+    const alpha = {
+      x: alphaX,
+      y: alphaY,
+      rotation: Math.atan2(dirY, dirX),
+      hp: 120,
+      maxHp: 120,
+    };
+
+    // Time limit: map diagonal / speed + generous buffer (~50-60 seconds to cross full map)
+    const diagDist = Math.sqrt(W * W + H * H);
+    const crossTime = (diagDist / migSpeed) * 1000 + 20000;
+
+    this.migration = {
+      birds,
+      alpha,
+      dirX, dirY,
+      speed: migSpeed,
+      entryEdge, exitEdge,
+      startedAt: now,
+      endsAt: now + crossTime,
+      contributors: new Map(),
+    };
+
+    const EDGE_LABELS = { top: 'north', right: 'east', bottom: 'south', left: 'west' };
+    this.events.push({
+      type: 'migration_start',
+      count: numFlockBirds + 1,
+      entryEdge,
+      exitEdge,
+      label: EDGE_LABELS[entryEdge],
+    });
+
+    if (!this.gazetteStats.migrations) this.gazetteStats.migrations = 0;
+    this.gazetteStats.migrations++;
+    console.log(`[Migration] Spawned — ${numFlockBirds} birds + alpha, from ${entryEdge} to ${exitEdge}`);
+  }
+
+  _endMigration(reason, now, killerBirdId) {
+    if (!this.migration) return;
+    const mig = this.migration;
+
+    if (reason === 'alpha_killed') {
+      // Compute proportional rewards for all contributors
+      const totalDmg = Array.from(mig.contributors.values()).reduce((sum, c) => sum + c.dmg, 0);
+      let killerName = null, killerGangTag = null;
+      for (const [birdId, contrib] of mig.contributors) {
+        const b = this.birds.get(birdId);
+        if (!b) continue;
+        const share = contrib.dmg / Math.max(1, totalDmg);
+        const xpReward  = Math.round(60 + 340 * share);   // 60-400 XP
+        const coinReward = Math.round(20 + 230 * share);  // 20-250c
+        b.xp += xpReward;
+        b.coins += coinReward;
+        const newLevel = world.getLevelFromXP(b.xp);
+        if (newLevel !== b.level) { b.level = newLevel; b.type = world.getBirdTypeForLevel(newLevel); }
+        if (birdId === killerBirdId) { killerName = b.name; killerGangTag = b.gangTag || null; }
+        this.events.push({ type: 'migration_reward', birdId, birdName: b.name, xp: xpReward, coins: coinReward, isKiller: birdId === killerBirdId });
+      }
+      if (!this.gazetteStats.alphaKills) this.gazetteStats.alphaKills = [];
+      if (killerName) this.gazetteStats.alphaKills.push({ name: killerName, gangTag: killerGangTag });
+      this.events.push({
+        type: 'migration_alpha_defeated',
+        killerName, killerGangTag,
+        contributors: Array.from(mig.contributors.values()).map(c => ({ name: c.name, dmg: c.dmg })),
+      });
+    } else {
+      // Migration escaped — announce only if alpha survived
+      if (mig.alpha && mig.alpha.hp > 0) {
+        this.events.push({ type: 'migration_escaped' });
+      }
+    }
+
+    this.migration = null;
+    this.migrationTimer = now + this._randomRange(20 * 60000, 30 * 60000);
+    console.log(`[Migration] Ended (${reason})`);
   }
 
   // ============================================================

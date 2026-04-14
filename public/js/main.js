@@ -3662,6 +3662,49 @@
       addEventMessage(msg, '#ff8844');
     }
 
+    // === GREAT MIGRATION EVENTS ===
+    if (ev.type === 'migration_start') {
+      effects.push({ type: 'screen_shake', intensity: 10, duration: 700, time: now });
+      window._migrationArrowDir = ev.entryEdge; // track for direction arrow
+      showAnnouncement(
+        `🦅 THE GREAT MIGRATION!\n${ev.count} wild birds flying from the ${ev.label}!\nFly near them for +30% speed · Poop the ALPHA for 400XP!`,
+        '#f6ad55', 8000
+      );
+      addEventMessage(`🦅 GREAT MIGRATION entering from the ${ev.label}! Intercept the Alpha for big rewards!`, '#f6ad55');
+    }
+    if (ev.type === 'migration_joined') {
+      if (ev.birdId === myId) {
+        showAnnouncement('🦅 RIDING THE MIGRATION! +30% speed boost!', '#f6ad55', 2500);
+      }
+    }
+    if (ev.type === 'migration_alpha_hit') {
+      if (ev.birdId === myId) {
+        effects.push({ type: 'text', x: ev.x, y: ev.y - 30, time: now, duration: 1000,
+          text: `−${ev.dmg}HP`, color: '#f6ad55', size: 15 });
+      }
+      // Show HP bar flash (handled by sprite itself)
+    }
+    if (ev.type === 'migration_alpha_defeated') {
+      effects.push({ type: 'screen_shake', intensity: 18, duration: 1000, time: now });
+      window._migrationArrowDir = null;
+      const killerTag = ev.killerGangTag ? `[${ev.killerGangTag}] ` : '';
+      const killerStr = ev.killerName ? `${killerTag}${ev.killerName} dealt the killing blow!` : 'The Alpha has fallen!';
+      showAnnouncement(`🏆 ALPHA LEADER DOWN!\n${killerStr}\nContributors rewarded!`, '#ffd700', 7000);
+      addEventMessage(`🦅 MIGRATION ALPHA DEFEATED! ${killerStr}`, '#ffd700');
+    }
+    if (ev.type === 'migration_reward') {
+      if (ev.birdId === myId) {
+        const tag = ev.isKiller ? '🏆 KILLING BLOW! ' : '⚔️ CONTRIBUTOR! ';
+        showAnnouncement(`${tag}+${ev.xp}XP +${ev.coins}c`, '#ffd700', 3000);
+        effects.push({ type: 'text', x: gameState.self ? gameState.self.x : 0, y: gameState.self ? gameState.self.y - 40 : 0,
+          time: now, duration: 2500, text: `+${ev.xp}XP +${ev.coins}c`, color: '#ffd700', size: 16 });
+      }
+    }
+    if (ev.type === 'migration_escaped') {
+      window._migrationArrowDir = null;
+      addEventMessage(`🦅 The migration flock crossed the city safely. Alpha escaped!`, '#aaaaaa');
+    }
+
     // === MURAL VANDAL EVENTS ===
     if (ev.type === 'vandal_appeared') {
       effects.push({ type: 'screen_shake', intensity: 7, duration: 500, time: now });
@@ -7961,6 +8004,29 @@
       }
     }
 
+    // ===== GREAT MIGRATION — V-formation crossing the city =====
+    if (gameState.migration && gameState.migration.birds) {
+      // Draw flock birds
+      for (const mb of gameState.migration.birds) {
+        const mbsx = mb.x - camera.x + camera.screenW / 2;
+        const mbsy = mb.y - camera.y + camera.screenH / 2;
+        if (mbsx > -margin - 50 && mbsx < camera.screenW + margin + 50 &&
+            mbsy > -margin - 50 && mbsy < camera.screenH + margin + 50) {
+          Sprites.drawMigrationBird(ctx, mbsx, mbsy, mb.rotation, now);
+        }
+      }
+      // Draw Alpha Leader
+      if (gameState.migration.alpha) {
+        const al = gameState.migration.alpha;
+        const alsx = al.x - camera.x + camera.screenW / 2;
+        const alsy = al.y - camera.y + camera.screenH / 2;
+        if (alsx > -margin - 80 && alsx < camera.screenW + margin + 80 &&
+            alsy > -margin - 80 && alsy < camera.screenH + margin + 80) {
+          Sprites.drawAlphaMigrationBird(ctx, alsx, alsy, al.rotation, al.hp, al.maxHp, now);
+        }
+      }
+    }
+
     // The Pigeon Mafia Don — permanent NPC at his corner
     {
       const DON_WORLD_X = 1300, DON_WORLD_Y = 2380;
@@ -8797,6 +8863,99 @@
       ctx.fill();
       ctx.globalAlpha = 1;
       ctx.restore();
+    }
+
+    // === GREAT MIGRATION HUD BAR ===
+    if (gameState.migration) {
+      const mig = gameState.migration;
+      const migTimeLeft = Math.max(0, mig.endsAt - now);
+      const alpha = mig.alpha;
+      const alphaHpPct = alpha ? (alpha.hp / alpha.maxHp) : 1;
+
+      // Warm golden tint overlay
+      const migPulse = 0.5 + 0.5 * Math.abs(Math.sin(now * 0.004));
+      ctx.save();
+      ctx.globalAlpha = 0.04 + 0.02 * migPulse;
+      ctx.fillStyle = '#f6ad55';
+      ctx.fillRect(0, 0, camera.screenW, camera.screenH);
+      ctx.globalAlpha = 1;
+      ctx.restore();
+
+      // Stack below crime wave and seagull bars
+      const hasCrimeWave2 = gameState.self && gameState.self.crimeWave;
+      const hasSeagull4 = gameState.seagullInvasion;
+      let migBarY = 132;
+      if (hasCrimeWave2) migBarY += 43;
+      if (hasSeagull4) migBarY += 43;
+      const migBarW = 200, migBarH = 12;
+      const migBarX = camera.screenW / 2 - migBarW / 2;
+
+      ctx.save();
+      ctx.globalAlpha = 0.92;
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.beginPath();
+      ctx.roundRect(migBarX - 60, migBarY - 18, migBarW + 120, migBarH + 32, 10);
+      ctx.fill();
+
+      const migLabelPulse = 0.75 + 0.25 * Math.sin(now * 0.007);
+      ctx.globalAlpha = migLabelPulse;
+      ctx.fillStyle = '#f6ad55';
+      ctx.font = 'bold 11px Arial';
+      ctx.textAlign = 'center';
+      const alphaHpStr = alpha && alpha.hp > 0 ? ` · Alpha ${alpha.hp}/${alpha.maxHp}HP` : ' · ALPHA DOWN!';
+      ctx.fillText(`🦅 GREAT MIGRATION · ${Math.ceil(migTimeLeft / 1000)}s${alphaHpStr}`, camera.screenW / 2, migBarY - 4);
+
+      // Alpha HP bar
+      ctx.globalAlpha = 0.85;
+      ctx.fillStyle = 'rgba(50,30,0,0.6)';
+      ctx.beginPath();
+      ctx.roundRect(migBarX, migBarY + 2, migBarW, migBarH, 4);
+      ctx.fill();
+
+      const alphaBarColor = alphaHpPct > 0.5 ? '#f6ad55' : alphaHpPct > 0.25 ? '#fc8a00' : '#fc5555';
+      ctx.fillStyle = alphaBarColor;
+      ctx.beginPath();
+      ctx.roundRect(migBarX, migBarY + 2, migBarW * Math.max(0, alphaHpPct), migBarH, 4);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.restore();
+
+      // Direction arrow — when migration is completely off-screen, show where it's coming from
+      if (alpha && alpha.hp > 0) {
+        const alSX = alpha.x - camera.x + camera.screenW / 2;
+        const alSY = alpha.y - camera.y + camera.screenH / 2;
+        const pad = 60;
+        const isOffScreen = alSX < pad || alSX > camera.screenW - pad || alSY < pad || alSY > camera.screenH - pad;
+        if (isOffScreen) {
+          const arrAngle = Math.atan2(alSY - camera.screenH / 2, alSX - camera.screenW / 2);
+          const arrRadius = Math.min(camera.screenW, camera.screenH) * 0.42;
+          const arrX = camera.screenW / 2 + Math.cos(arrAngle) * arrRadius;
+          const arrY = camera.screenH / 2 + Math.sin(arrAngle) * arrRadius;
+          const arrowPulse = 0.6 + 0.4 * Math.sin(now * 0.006);
+          ctx.save();
+          ctx.translate(arrX, arrY);
+          ctx.rotate(arrAngle);
+          ctx.globalAlpha = 0.8 + 0.2 * arrowPulse;
+          ctx.fillStyle = '#f6ad55';
+          ctx.strokeStyle = '#7b3f00';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(22, 0);
+          ctx.lineTo(-10, 10);
+          ctx.lineTo(-5, 0);
+          ctx.lineTo(-10, -10);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+          // Emoji
+          ctx.globalAlpha = 1;
+          ctx.font = '14px serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('🦅', 0, 0);
+          ctx.restore();
+        }
+      }
     }
 
     // === CRIME WAVE OVERLAY ===
@@ -9991,6 +10150,39 @@
       minimapCtx.font = 'bold 7px monospace';
       minimapCtx.textAlign = 'left';
       minimapCtx.fillText(`🐦 ${gameState.seagullInvasion.aliveCount}/${gameState.seagullInvasion.totalCount}`, 3, mh - 3);
+    }
+
+    // Great Migration on minimap — white flock birds + pulsing gold alpha dot
+    if (gameState.migration && worldData) {
+      const mw = minimapCtx.canvas.width;
+      const mh = minimapCtx.canvas.height;
+      const migPulse = 0.6 + 0.4 * Math.sin(now * 0.008);
+      if (gameState.migration.birds) {
+        for (const mb of gameState.migration.birds) {
+          const mmx = mb.x * mw / worldData.width;
+          const mmy = mb.y * mh / worldData.height;
+          minimapCtx.fillStyle = `rgba(200,220,255,${0.5 + 0.3 * migPulse})`;
+          minimapCtx.beginPath();
+          minimapCtx.arc(mmx, mmy, 2, 0, Math.PI * 2);
+          minimapCtx.fill();
+        }
+      }
+      if (gameState.migration.alpha && gameState.migration.alpha.hp > 0) {
+        const amx = gameState.migration.alpha.x * mw / worldData.width;
+        const amy = gameState.migration.alpha.y * mh / worldData.height;
+        minimapCtx.save();
+        minimapCtx.shadowColor = '#f5af32';
+        minimapCtx.shadowBlur = 8 + 4 * migPulse;
+        minimapCtx.fillStyle = `rgba(245,175,50,${0.8 + 0.2 * migPulse})`;
+        minimapCtx.beginPath();
+        minimapCtx.arc(amx, amy, 4 + migPulse, 0, Math.PI * 2);
+        minimapCtx.fill();
+        minimapCtx.shadowBlur = 0;
+        minimapCtx.font = '8px sans-serif';
+        minimapCtx.textAlign = 'center';
+        minimapCtx.fillText('🦅', amx, amy - 6);
+        minimapCtx.restore();
+      }
     }
 
     // Bird Royale safe zone ring on minimap

@@ -5753,4 +5753,282 @@ window.Sprites = {
     ctx.fillText(state === 'fleeing' ? '💨 FLEEING!' : '🎨💀 VANDAL', 0, labelY);
     ctx.restore();
   },
+
+  // ============================================================
+  // GREAT MIGRATION — wild migratory birds crossing the city
+  // ============================================================
+
+  /**
+   * Draw a standard migration flock bird (streamlined, dark-feathered traveler).
+   * These are wild birds — sleeker and darker than city pigeons.
+   */
+  drawMigrationBird(ctx, x, y, rotation, now) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rotation);
+
+    // Wing flap animation — steady rhythmic beat (slightly slower than frantic seagulls)
+    const flapPhase = (now / 280 + x * 0.007) % (Math.PI * 2);
+    const wingFlap  = Math.sin(flapPhase) * 0.3;
+
+    // Ground shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.12)';
+    ctx.beginPath();
+    ctx.ellipse(1, 6, 12, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Left wing — dark slate blue-grey (migratory bird coloring)
+    ctx.save();
+    ctx.rotate(-wingFlap - 0.15);
+    ctx.fillStyle = '#4a5568';
+    ctx.beginPath();
+    ctx.ellipse(-4, -10, 9, 3, -0.25, 0, Math.PI * 2);
+    ctx.fill();
+    // Wingtip
+    ctx.fillStyle = '#2d3748';
+    ctx.beginPath();
+    ctx.ellipse(-9, -13, 4.5, 1.8, -0.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Right wing
+    ctx.save();
+    ctx.rotate(wingFlap + 0.15);
+    ctx.fillStyle = '#4a5568';
+    ctx.beginPath();
+    ctx.ellipse(-4, 10, 9, 3, 0.25, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#2d3748';
+    ctx.beginPath();
+    ctx.ellipse(-9, 13, 4.5, 1.8, 0.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Body — sleek and streamlined
+    ctx.fillStyle = '#3a4a5c';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 12, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Belly highlight
+    ctx.fillStyle = '#607080';
+    ctx.beginPath();
+    ctx.ellipse(-1, 0, 6, 3.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Head — slightly smaller, pointed forward
+    ctx.fillStyle = '#2d3748';
+    ctx.beginPath();
+    ctx.ellipse(11, -0.5, 5.5, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Eye — bright amber (wild bird eye)
+    ctx.fillStyle = '#f6ad55';
+    ctx.beginPath();
+    ctx.arc(13, -1, 1.8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#1a202c';
+    ctx.beginPath();
+    ctx.arc(13.2, -1, 0.9, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Beak — sharp and pointed (not round pigeon beak)
+    ctx.fillStyle = '#a0aec0';
+    ctx.beginPath();
+    ctx.moveTo(15.5, -0.5);
+    ctx.lineTo(20, -1.5);
+    ctx.lineTo(19.5, 1.0);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.restore();
+  },
+
+  /**
+   * Draw the Alpha Migration Leader — larger, golden-brown eagle coloring,
+   * more imposing silhouette. HP bar shown below if engaged.
+   */
+  drawAlphaMigrationBird(ctx, x, y, rotation, hp, maxHp, now) {
+    ctx.save();
+    ctx.translate(x, y);
+
+    // Outer aura — a faint golden shimmer around the alpha
+    const auraPulse = 0.4 + 0.3 * Math.sin(now * 0.004);
+    const auraGrad = ctx.createRadialGradient(0, 0, 8, 0, 0, 36);
+    auraGrad.addColorStop(0, `rgba(245,175,50,${auraPulse * 0.55})`);
+    auraGrad.addColorStop(1, 'rgba(245,175,50,0)');
+    ctx.fillStyle = auraGrad;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 36, 36, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.rotate(rotation);
+
+    // HP bar (only show when damaged)
+    if (hp < maxHp) {
+      const barW = 52;
+      const ratio = hp / maxHp;
+      ctx.save();
+      ctx.rotate(-rotation); // screen-aligned bar
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.fillRect(-barW / 2, -38, barW, 7);
+      const barColor = ratio > 0.5 ? '#48bb78' : ratio > 0.25 ? '#f6ad55' : '#fc5555';
+      ctx.fillStyle = barColor;
+      ctx.fillRect(-barW / 2, -38, barW * ratio, 7);
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 7px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(`🦅 ${hp}/${maxHp}`, 0, -43);
+      ctx.restore();
+    }
+
+    // Wing flap — slower, more majestic
+    const flapPhase = (now / 420 + x * 0.005) % (Math.PI * 2);
+    const wingFlap  = Math.sin(flapPhase) * 0.22;
+
+    // Ground shadow — larger, suggests soaring altitude
+    ctx.fillStyle = 'rgba(0,0,0,0.20)';
+    ctx.beginPath();
+    ctx.ellipse(3, 9, 24, 9, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Left wing — rich golden-brown with darker primary feathers
+    ctx.save();
+    ctx.rotate(-wingFlap - 0.1);
+    // Wing base
+    ctx.fillStyle = '#c47f2a';
+    ctx.beginPath();
+    ctx.ellipse(-6, -18, 17, 5.5, -0.2, 0, Math.PI * 2);
+    ctx.fill();
+    // Primary feathers — individual finger tips
+    for (let fi = 0; fi < 4; fi++) {
+      ctx.fillStyle = '#7b5107';
+      ctx.beginPath();
+      const fx = -14 + fi * 3;
+      const fy = -22 - fi * 1.5;
+      ctx.ellipse(fx, fy, 2.5, 6.5, -0.3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Wing secondary gradient
+    ctx.fillStyle = '#a0661e';
+    ctx.beginPath();
+    ctx.ellipse(-8, -14, 12, 3.5, -0.1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Right wing (mirror)
+    ctx.save();
+    ctx.rotate(wingFlap + 0.1);
+    ctx.fillStyle = '#c47f2a';
+    ctx.beginPath();
+    ctx.ellipse(-6, 18, 17, 5.5, 0.2, 0, Math.PI * 2);
+    ctx.fill();
+    for (let fi = 0; fi < 4; fi++) {
+      ctx.fillStyle = '#7b5107';
+      ctx.beginPath();
+      const fx = -14 + fi * 3;
+      const fy = 22 + fi * 1.5;
+      ctx.ellipse(fx, fy, 2.5, 6.5, 0.3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = '#a0661e';
+    ctx.beginPath();
+    ctx.ellipse(-8, 14, 12, 3.5, 0.1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Body — large and powerful
+    ctx.fillStyle = '#8b5e1a';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 20, 11, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Belly — lighter cream underside
+    ctx.fillStyle = '#d4a55a';
+    ctx.beginPath();
+    ctx.ellipse(-2, 0, 11, 6.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Tail feathers
+    ctx.fillStyle = '#6b4510';
+    ctx.beginPath();
+    ctx.moveTo(-18, -6);
+    ctx.lineTo(-28, -9);
+    ctx.lineTo(-26, -2);
+    ctx.lineTo(-18, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#6b4510';
+    ctx.beginPath();
+    ctx.moveTo(-18, 6);
+    ctx.lineTo(-28, 9);
+    ctx.lineTo(-26, 2);
+    ctx.lineTo(-18, 0);
+    ctx.closePath();
+    ctx.fill();
+
+    // Head — large noble eagle head
+    ctx.fillStyle = '#7b4e16';
+    ctx.beginPath();
+    ctx.ellipse(17, -1, 9, 7.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // White head marking (golden eagle style — pale forehead)
+    ctx.fillStyle = '#e8c97a';
+    ctx.beginPath();
+    ctx.ellipse(19, -2, 5, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Eyes — large, fierce glowing amber with slight orange glow
+    ctx.shadowColor = '#f6ad55';
+    ctx.shadowBlur = 8;
+    ctx.fillStyle = '#f6ad55';
+    ctx.beginPath();
+    ctx.arc(20, -1.5, 2.8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#2d1b00';
+    ctx.beginPath();
+    ctx.arc(20.4, -1.5, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+    // Pupil gleam
+    ctx.fillStyle = '#fffbf0';
+    ctx.beginPath();
+    ctx.arc(19.8, -2.2, 0.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Hooked beak — signature eagle feature
+    ctx.fillStyle = '#e8be2a';
+    ctx.beginPath();
+    ctx.moveTo(24, -2);
+    ctx.lineTo(31, -1);
+    ctx.lineTo(30, 2.5);
+    ctx.lineTo(25, 3.5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#b8941a';
+    ctx.beginPath();
+    ctx.moveTo(28, 0);
+    ctx.lineTo(31, -1);
+    ctx.lineTo(30, 2.5);
+    ctx.lineTo(27, 3);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.restore();
+
+    // Label above sprite (screen-aligned, no rotation)
+    ctx.save();
+    ctx.translate(x, y);
+    const labelPulse = 0.7 + 0.3 * Math.sin(now / 350);
+    ctx.font = 'bold 10px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.shadowColor = '#000';
+    ctx.shadowBlur = 6;
+    ctx.fillStyle = `rgba(245,175,50,${labelPulse})`;
+    ctx.fillText('🦅 ALPHA LEADER', 0, -44);
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  },
 };

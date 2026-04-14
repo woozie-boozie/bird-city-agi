@@ -2919,6 +2919,56 @@ Gang murals now have a mortal enemy — and two powerful cross-system interactio
 
 **Creative intent**: The mural system was perfectly cooperative to CREATE — but had no threat once complete. The Vandal Crow adds a dynamic adversary that forces defenders to be PRESENT. A gang that paints Downtown Wall and then wanders off is vulnerable. The 40-second vandalize window means you have to intercept him fast — great reason to stay near your mural after painting. The Crime Wave synergy creates the most chaotic window for mural takeovers: when the whole city is running from cops, a rival gang can paint 50% faster. The gang war synergy makes painting murals part of war strategy — it's no longer just about pooping each other, it's about dominating the city's visual landscape. Pure CARNAGE + SOCIAL + DISCOVERY energy.
 
+**Session 87 — 2026-04-14: The Great Migration — V-Formation Flock Crosses the City**
+Every 20-30 minutes, a majestic V-formation of 14-18 wild migratory birds crosses Bird City from one map edge to the opposite — led by a golden Alpha Leader that players can cooperatively bring down for massive rewards.
+
+**The Migration Flow (`server/game.js`):**
+- Timer fires every 20-30 minutes; picks a random entry edge (top/bottom/left/right) and shoots diagonally toward the opposite side
+- 14-18 wild birds in a classic V-formation behind the Alpha Leader, flying at 95px/s with slight direction variation (±0.4 rad)
+- Formation duration: map diagonal crossing time + 20s buffer (~60-90 seconds total)
+- If the Alpha is NOT killed: migration completes peacefully and despawns at the far edge
+
+**V-Formation Mathematics:**
+- Birds slot into the two arms of the V: row = `floor(i/2)+1`, side = `(i%2===0)?1:-1`
+- Each bird chases its V-slot position via lerp at 1.15× migration speed — creates organic trailing with natural visual lag
+- Slot position = `alpha + backward*(row*ROW_SPACING) + perp*(side*row*COL_SPREAD)` where backward/perp are unit vectors derived from flight direction
+
+**Slipstream Mechanic (proximity boost):**
+- Fly within 70px of any migration bird or the Alpha → earn +30% speed for 5 seconds (`migrationBoostUntil`)
+- Cumulative "ride time" tracked per bird for the **Flock Rider** daily challenge (20 cumulative seconds)
+- A bold bird can surf the formation for free speed across the city — but the Alpha will be moving away
+
+**Alpha Leader Boss Fight:**
+- 120 HP, large golden eagle with glowing amber eyes and detailed primary feathers
+- 15 HP per normal poop hit, 30 HP per mega poop — requires ~4-8 hits to bring down
+- Damage tracked per contributor via `this.migration.contributors` Map
+- On kill: proportional rewards (60-400 XP, 20-250c based on damage share)
+- City-wide announcement + screen shake + kills tracked in Gazette
+- **Alpha Hunter** daily challenge: deal the killing blow (300 XP, 150c)
+- 3-minute respawn timer for the next migration after alpha is killed
+
+**Visual system (`public/js/sprites.js`):**
+- `drawMigrationBird()`: sleek dark slate blue-grey wild bird, pointed beak, amber eye, streamlined silhouette, slow purposeful wing flap (280ms period)
+- `drawAlphaMigrationBird()`: large golden-brown eagle with radial gold aura glow, detailed 4-finger primary feathers per wing, rich `#c47f2a` coloring, hooked golden beak, glowing shadowBlur eyes, HP bar (green→orange→red when damaged), "🦅 ALPHA LEADER" pulsing label
+
+**HUD & Minimap (`public/js/main.js`):**
+- Golden tint overlay pulses gently while migration is active
+- HP bar (stacks below crime wave + seagull bars) showing alpha's health with color transitions
+- Countdown timer showing migration time remaining
+- Off-screen direction arrow: 🦅 emoji arrow pointing toward alpha when not visible on screen
+- **Minimap**: white-blue pulsing dots for each flock bird + golden pulsing dot with 🦅 emoji for the Alpha Leader — trackable from anywhere on the map
+
+**Events & announcements:**
+- `migration_start`: screen shake + "🦅 THE GREAT MIGRATION IS PASSING THROUGH! 14-18 wild birds in V-formation with an Alpha Leader!" + slipstream hint
+- `migration_alpha_hit`: floating "−15HP" / "−30HP" text for the shooter
+- `migration_alpha_defeated`: massive screen shake + city-wide callout with killer name + proportional reward announcements
+- `migration_escaped`: quiet event feed note when formation exits the map naturally
+- `migration_reward`: personal XP/coin popup for all contributors on alpha kill
+
+**Gazette integration:** "🦅 GREAT MIGRATION: [Name] SLAYS THE ALPHA LEADER" headline when alpha is killed this cycle
+
+**Creative intent**: Every major "boss" event in Bird City has been stationary or follows a simple chase pattern. The Great Migration is the first event that CROSSES the city — it doesn't stay in one place. You have to CHASE it. The V-formation creates a visual spectacle: 15+ birds in perfect formation flying in unison across the sky is the most majestic thing that has happened in Bird City. The slipstream mechanic rewards brave birds who fly INTO the formation (getting free speed), while the alpha fight rewards even braver birds who attack the leader. A bird surfing the migration's slipstream while also fighting off cops is peak emergent CARNAGE + SPECTACLE. The 20-30 minute timer means migrations feel special — not too frequent, but frequent enough that you'll see one per long session. Pure DISCOVERY + SPECTACLE + CARNAGE energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
