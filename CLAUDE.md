@@ -2967,6 +2967,39 @@ Every 20-30 minutes, a majestic V-formation of 14-18 wild migratory birds crosse
 
 **Gazette integration:** "🦅 GREAT MIGRATION: [Name] SLAYS THE ALPHA LEADER" headline when alpha is killed this cycle
 
+**Session 89 — 2026-04-14: Gang Siege System — Cooperative Nest Assaults**
+The most tactically deep gang feature yet. Gang leaders can now declare a 4-minute coordinated siege on a rival gang's nest — a full cooperative assault that requires teamwork to win and teamwork to defend.
+
+**The Siege Flow (`server/game.js`):**
+- Gang leader opens Gang HQ ([F]) and sees a new ⚔️ GANG SIEGE section listing all enemy gangs that have active nests
+- Declare a siege costs **300 coins from the gang treasury** — a real collective investment
+- A 4-minute siege clock begins. The enemy nest has a separate **200 HP siege pool** (does NOT touch the base 80 HP nest directly)
+- **Attacking**: Any attacker flies to within the 200px siege zone and poops — each poop hit drains 15 HP from the siege pool (mega poop = 30 HP). All attacker contributions are tracked proportionally.
+- **Defending**: Defenders can poop ANY attacker within 200px of their nest — each hit stuns the attacker for 1.5 seconds and earns +20 XP +8c. Defenders' contributions also tracked.
+- **Victory**: Siege pool hits 0 → attacker wins: steals 25% of defender's treasury (deposited into attacker gang treasury), nest forcibly destroyed with a **20-minute rebuild cooldown** (vs normal 8 min), proportional XP (150-500) and coins (50-250 + treasury share) for attackers
+- **Repelled**: 4-minute timer expires with siege pool still standing → defenders win, proportional XP (80-300) and coins (40-150) for all defenders
+- **Single siege constraint**: a gang can only be in one siege at a time (either attacking or defending), preventing multi-front chaos
+
+**Two new daily challenges:**
+- ⚔️ **Siege Warrior**: Participate in a Gang Siege (attack or defend) — 220 XP, 110c
+- 🏚️ **Nest Raider**: Successfully destroy a rival gang's nest in a Siege — 300 XP, 150c
+
+**Visual system (`public/js/renderer.js`):**
+- **Flaming ring**: 200px radius animated fire ring around the besieged nest (16 flame segments with independent flicker + glow)
+- **Siege HP bar**: 100px-wide bar above the nest showing remaining siege HP pool, color shifts from red→orange as HP drains
+- **Gang tags**: attacker [TAG] ▶ and defender ◀ [TAG] shown below the HP bar
+- **Countdown timer**: seconds remaining displayed below tags, turns red at <30s
+- **Minimap**: pulsing red ⚔️ dot at the nest position, clearly visible from anywhere on the map
+
+**Gang HQ overlay section ([F] key):**
+- Shows active siege status for either role (attacker vs defender) with live HP bar and countdown
+- Non-active leaders see a list of rival gangs with nests and ⚔️ SIEGE buttons (disabled if treasury < 300c)
+- Non-leaders see an informational message
+
+**Gazette integration**: "⚔️ SIEGE VICTORY: [TAG] RANSACKS [TAG]'s nest — treasury raided!" or "🛡️ SIEGE REPELLED: [TAG] defends their nest!" headlines in morning edition.
+
+**Creative intent**: Gang wars were already a great system but felt abstract — kill 3 rival birds, earn XP. Sieges are PHYSICAL. The whole gang needs to converge on one location, pour poop into a flaming zone, while defenders frantically try to stun them away. The 300c treasury cost means the whole gang invested in this siege — everyone wants it to succeed. The 25% treasury steal makes victory concretely meaningful: a gang that's been hoarding coins just got robbed. The 20-minute rebuild penalty means victory locks the enemy out of their respawn anchor and passive XP for a significant time. A siege where 4 attackers are diving into a flaming ring while 3 defenders desperately stun them one by one — that's Bird City's most intense cooperative combat scenario. Pure SOCIAL + CARNAGE + SPECTACLE energy.
+
 **Creative intent**: Every major "boss" event in Bird City has been stationary or follows a simple chase pattern. The Great Migration is the first event that CROSSES the city — it doesn't stay in one place. You have to CHASE it. The V-formation creates a visual spectacle: 15+ birds in perfect formation flying in unison across the sky is the most majestic thing that has happened in Bird City. The slipstream mechanic rewards brave birds who fly INTO the formation (getting free speed), while the alpha fight rewards even braver birds who attack the leader. A bird surfing the migration's slipstream while also fighting off cops is peak emergent CARNAGE + SPECTACLE. The 20-30 minute timer means migrations feel special — not too frequent, but frequent enough that you'll see one per long session. Pure DISCOVERY + SPECTACLE + CARNAGE energy.
 
 **Session 88 — 2026-04-14: The Thunder Dome — Electromagnetic Forced-Proximity Arena**
@@ -3241,3 +3274,9 @@ Built the Territory Control System on top of the existing upstream code:
 - Thunder Dome × Crime Wave: if a Crime Wave erupts while the dome is active, all heat gains inside the dome are ×3 — the dome is the most dangerous place to be a criminal
 - Thunder Dome daily leaderboard: who scored the most dome poop hits this session — shown as a "DOME CHAMPION" badge for the top scorer
 - Thunder Dome × Formation Flying: wedge formation inside the dome gets an additional +15% poop radius — the confined space rewards tight formation play
+- ~~Gang Siege System: gang leaders declare 4-minute coordinated nest assaults, 200 HP siege pool, treasury steal on victory, flaming ring visual~~ (DONE Session 89)
+- Siege alliance mechanic: allied gangs (via shared Don contracts) can join each other's sieges as auxiliary attackers
+- Siege escalation: if a siege is ongoing at the 2-minute mark with >80% HP remaining, a Crow Cartel squad joins the attacker side (the Don sends backup)
+- Mural × Siege synergy: capturing a rival mural during an active siege against that gang counts as a siege hit (-15 HP from siege pool)
+- Great Migration cross-system: if the Alpha Leader is alive during a Gang War, both warring gangs get bonus XP for killing it (shared enemy bonus)
+- Alpha Leader rare drop: 20% chance for the killing blow to earn a "Feather of the Alpha" cosmetic badge (teal, distinct from eagle feather)

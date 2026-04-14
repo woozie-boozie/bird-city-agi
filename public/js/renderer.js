@@ -3049,6 +3049,101 @@ window.Renderer = {
   },
 
   /**
+   * Draw active siege overlays in world space.
+   * sieges: array of siege objects from gameState.activeSieges
+   * nests: array of gangNests
+   */
+  drawSiegeOverlays(ctx, camera, sieges, now) {
+    if (!sieges || sieges.length === 0) return;
+    const t = now / 1000;
+    for (const siege of sieges) {
+      const sx = siege.nestX - camera.x;
+      const sy = siege.nestY - camera.y;
+      const screenW = camera.screenW || 1400;
+      const screenH = camera.screenH || 900;
+      if (sx < -350 || sx > screenW + 350 || sy < -350 || sy > screenH + 350) continue;
+
+      const pct = Math.max(0, siege.hpPool / siege.hpMaxPool);
+      const timeLeft = Math.max(0, siege.endsAt - now);
+      const pulse = 0.5 + 0.5 * Math.sin(t * 4);
+
+      // Flaming ring around nest (attack zone indicator, 200px radius)
+      ctx.save();
+      ctx.globalAlpha = 0.18 + 0.10 * pulse;
+      ctx.beginPath();
+      ctx.arc(sx, sy, 200, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255,60,0,1)`;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+
+      // Animated fire ring border
+      const ringSegments = 16;
+      for (let i = 0; i < ringSegments; i++) {
+        const angle = (i / ringSegments) * Math.PI * 2 + t * 1.5;
+        const flickerR = 200 + 6 * Math.sin(t * 8 + i * 1.3);
+        const fx = sx + Math.cos(angle) * flickerR;
+        const fy = sy + Math.sin(angle) * flickerR;
+        const flameSize = 6 + 4 * Math.sin(t * 12 + i * 0.7);
+        const flameGrad = ctx.createRadialGradient(fx, fy, 0, fx, fy, flameSize);
+        flameGrad.addColorStop(0, '#fff4aa');
+        flameGrad.addColorStop(0.4, '#ff8800');
+        flameGrad.addColorStop(1, 'rgba(255,40,0,0)');
+        ctx.beginPath();
+        ctx.arc(fx, fy, flameSize, 0, Math.PI * 2);
+        ctx.fillStyle = flameGrad;
+        ctx.globalAlpha = 0.7 + 0.3 * pulse;
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+
+      // HP pool bar above the nest
+      const barW = 100;
+      const barH = 9;
+      const barX = sx - barW / 2;
+      const barY = sy - 72;
+      ctx.fillStyle = 'rgba(0,0,0,0.65)';
+      ctx.beginPath();
+      ctx.roundRect(barX - 2, barY - 2, barW + 4, barH + 4, 4);
+      ctx.fill();
+      const hpColor = pct > 0.5 ? '#ff4400' : pct > 0.25 ? '#ff8800' : '#ff0000';
+      ctx.fillStyle = hpColor;
+      ctx.fillRect(barX, barY, barW * pct, barH);
+      ctx.strokeStyle = '#aa2200';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(barX, barY, barW, barH);
+
+      // Siege label
+      ctx.save();
+      ctx.font = `bold 9px 'Courier New',monospace`;
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#ff4444';
+      ctx.shadowColor = '#ff0000';
+      ctx.shadowBlur = 8;
+      ctx.fillText('⚔️ SIEGE', sx, barY - 6);
+      ctx.shadowBlur = 0;
+
+      // Attacker vs Defender tags
+      const atkColor = siege.attackingGangColor || '#ff4444';
+      const defColor = siege.defendingGangColor || '#aaaaaa';
+      ctx.font = `8px 'Courier New',monospace`;
+      ctx.fillStyle = atkColor;
+      ctx.fillText(`[${siege.attackingGangTag}] ▶`, sx - 2, barY + barH + 10);
+      ctx.fillStyle = defColor;
+      ctx.fillText(`◀ [${siege.defendingGangTag}]`, sx + 2, barY + barH + 18);
+
+      // Countdown
+      const secsLeft = Math.ceil(timeLeft / 1000);
+      const countColor = secsLeft <= 30 ? '#ff2222' : '#ffaa44';
+      ctx.fillStyle = countColor;
+      ctx.font = `bold 9px 'Courier New',monospace`;
+      ctx.fillText(`${secsLeft}s`, sx, barY + barH + 28);
+
+      ctx.restore();
+      ctx.restore();
+    }
+  },
+
+  /**
    * Draw gang nests on the minimap.
    */
   drawGangNestsOnMinimap(minimapCtx, worldData, nests, selfGangId, now) {

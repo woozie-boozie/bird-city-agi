@@ -111,6 +111,8 @@ const DAILY_CHALLENGE_POOL = [
   { id: 'baron_challenge_winner', title: 'Baron\'s Champion',  desc: "Complete a Baron's Decree and claim the prize coins",      target: 1, trackType: 'baron_challenge_won', reward: { xp: 120, coins: 60  } },
   { id: 'count_challenge_winner', title: 'Count\'s Courier',   desc: "Complete a Count's Edict and claim the prize coins",       target: 1, trackType: 'count_challenge_won', reward: { xp: 80,  coins: 40  } },
   { id: 'noble_triple',           title: 'Court Favourite',    desc: "Complete challenges from Duke, Baron, and Count in one session", target: 3, trackType: 'noble_challenge_won', reward: { xp: 350, coins: 175 } },
+  { id: 'siege_warrior',         title: 'Siege Warrior',      desc: 'Participate in a Gang Siege (attack or defend)',                target: 1, trackType: 'siege_participated',  reward: { xp: 220, coins: 110 } },
+  { id: 'nest_destroyer',        title: 'Nest Raider',         desc: 'Successfully destroy a rival gang\'s nest in a Siege',         target: 1, trackType: 'siege_victory',       reward: { xp: 300, coins: 150 } },
   // Gang Mural challenges
   { id: 'mural_painter',  title: 'Muralist',       desc: 'Help paint a gang mural at any zone (hold G with your gang)', target: 1, trackType: 'mural_painted',  reward: { xp: 220, coins: 110 } },
   { id: 'mural_overtaker', title: 'Tag War',       desc: 'Overtake a rival gang\'s mural with your own',                target: 1, trackType: 'mural_overtake', reward: { xp: 280, coins: 140 } },
@@ -166,6 +168,13 @@ class GameEngine {
     // Rival gangs can destroy it by pooping on it (80 HP). 8-min rebuild cooldown.
     this.gangNests = new Map();       // gangId -> { gangId, gangTag, gangColor, ownerId, ownerName, x, y, hp, maxHp, auraLastAt, builtAt, destroyedAt, rebuildAvailableAt }
     this._loadGangNests();
+
+    // === GANG SIEGES (cooperative nest assault events) ===
+    // A gang leader can spend 300c from treasury to declare a 4-minute siege on a rival nest.
+    // Attackers poop the nest's siege HP pool. Defenders poop attackers near the nest.
+    // Victory: steal 25% of defender treasury + extended nest rebuild cooldown.
+    // Failure: 300c lost, nest survives.
+    this.sieges = new Map(); // siegeId -> siege object
 
     // === Missions ===
     this.missionBoard = [];           // array of 3 mission defs on the board
@@ -1257,6 +1266,9 @@ class GameEngine {
     if (action.type === 'nest_build') {
       this._handleNestBuild(bird, now);
     }
+    if (action.type === 'siege_declare') {
+      this._handleSiegeDeclare(bird, action.targetGangId, now);
+    }
 
     // === Mission actions ===
     if (action.type === 'accept_mission') {
@@ -1545,6 +1557,9 @@ class GameEngine {
 
     // === Gang Nests ===
     this._tickGangNests(now);
+
+    // === Gang Sieges ===
+    this._tickSieges(now);
 
     // === Missions ===
     this._updateMissions(now);
@@ -3887,6 +3902,57 @@ class GameEngine {
           if (Math.sqrt(ndx * ndx + ndy * ndy) < 35) {
             this._handleNestPoopHit(bird, nest, isMegaPoop, now);
             break;
+          }
+        }
+      }
+
+      // Gang Siege Defense: defenders poop attackers within 200px of their own nest
+      if (bird.gangId) {
+        const mySiege = Array.from(this.sieges.values()).find(
+          s => s.defendingGangId === bird.gangId
+        );
+        if (mySiege) {
+          const myNest = this.gangNests.get(bird.gangId);
+          if (myNest && myNest.destroyedAt === null) {
+            const dnx = poop.x - myNest.x;
+            const dny = poop.y - myNest.y;
+            if (Math.sqrt(dnx * dnx + dny * dny) < 200) {
+              // Check if this poop hit an attacker
+              for (const [targetId, targetBird] of this.birds) {
+                if (targetId === bird.id) continue;
+                if (targetBird.gangId !== mySiege.attackingGangId) continue;
+                const bdx = poop.x - targetBird.x;
+                const bdy = poop.y - targetBird.y;
+                const hitR = isMegaPoop ? 60 : 22;
+                if (Math.sqrt(bdx * bdx + bdy * bdy) < hitR) {
+                  // Defense hit! Track and reward
+                  const defContrib = mySiege.defenseContributors.get(bird.id) || { name: bird.name, hits: 0 };
+                  defContrib.hits++;
+                  mySiege.defenseContributors.set(bird.id, defContrib);
+
+                  bird.xp += isMegaPoop ? 25 : 12;
+                  bird.coins += isMegaPoop ? 10 : 5;
+
+                  this._trackDailyProgress(bird, 'siege_participated', 1);
+
+                  this.events.push({
+                    type: 'siege_defense_hit',
+                    siegeId: mySiege.id,
+                    defenderId: bird.id,
+                    defenderName: bird.name,
+                    defenderGangTag: bird.gangTag,
+                    attackerId: targetBird.id,
+                    attackerName: targetBird.name,
+                    x: targetBird.x,
+                    y: targetBird.y,
+                  });
+
+                  // Stun the attacker briefly (defenders pack a punch)
+                  targetBird.stunnedUntil = Math.max(targetBird.stunnedUntil, now + 1500);
+                  break;
+                }
+              }
+            }
           }
         }
       }
@@ -6916,7 +6982,8 @@ class GameEngine {
         const list = [];
         for (const g of this.gangs.values()) {
           if (g.id === bird.gangId) continue;
-          list.push({ id: g.id, name: g.name, tag: g.tag, color: g.color, onlineCount: g.members.size });
+          const hasNest = this.gangNests.has(g.id) && this.gangNests.get(g.id).alive;
+          list.push({ id: g.id, name: g.name, tag: g.tag, color: g.color, onlineCount: g.members.size, hasNest });
         }
         return list;
       })(),
@@ -6954,6 +7021,32 @@ class GameEngine {
           y: nest.y,
           rebuildAvailableAt: nest.rebuildAvailableAt,
         };
+      })(),
+      // Gang Sieges
+      activeSieges: (() => {
+        const result = [];
+        for (const siege of this.sieges.values()) {
+          result.push({
+            id: siege.id,
+            attackingGangId: siege.attackingGangId,
+            attackingGangTag: siege.attackingGangTag,
+            attackingGangColor: siege.attackingGangColor,
+            attackingGangName: siege.attackingGangName,
+            defendingGangId: siege.defendingGangId,
+            defendingGangTag: siege.defendingGangTag,
+            defendingGangColor: siege.defendingGangColor,
+            defendingGangName: siege.defendingGangName,
+            nestX: siege.nestX,
+            nestY: siege.nestY,
+            endsAt: siege.endsAt,
+            hpPool: siege.hpPool,
+            hpMaxPool: siege.hpMaxPool,
+            // Is this player's gang involved?
+            iAmAttacker: bird.gangId === siege.attackingGangId,
+            iAmDefender: bird.gangId === siege.defendingGangId,
+          });
+        }
+        return result;
       })(),
       // Bioluminescent Pond — Owl Enforcer (night-only)
       owlEnforcer: this.owlEnforcer ? {
@@ -13669,6 +13762,49 @@ class GameEngine {
   }
 
   _handleNestPoopHit(attacker, nest, isMegaPoop, now) {
+    // Check if this nest is under a formal siege by the attacker's gang
+    const siege = Array.from(this.sieges.values()).find(
+      s => s.defendingGangId === nest.gangId && s.attackingGangId === attacker.gangId
+    );
+
+    if (siege) {
+      // === SIEGE POOP HIT — damages the siege HP pool ===
+      const siegeDamage = isMegaPoop ? 30 : 15;
+      siege.hpPool = Math.max(0, siege.hpPool - siegeDamage);
+
+      // Track attacker contribution
+      const contrib = siege.attackContributors.get(attacker.id) || { name: attacker.name, damage: 0 };
+      contrib.damage += siegeDamage;
+      siege.attackContributors.set(attacker.id, contrib);
+
+      // Small per-hit reward
+      const xpGain = isMegaPoop ? 20 : 10;
+      attacker.xp += xpGain;
+      attacker.coins += 5;
+
+      // Daily challenge: siege_participated
+      this._trackDailyProgress(attacker, 'siege_participated', 1);
+
+      this.events.push({
+        type: 'siege_nest_hit',
+        siegeId: siege.id,
+        attackerId: attacker.id,
+        attackerName: attacker.name,
+        attackerGangTag: attacker.gangTag,
+        attackerGangColor: attacker.gangColor,
+        hpPool: siege.hpPool,
+        hpMaxPool: siege.hpMaxPool,
+        x: nest.x,
+        y: nest.y,
+      });
+
+      if (siege.hpPool <= 0) {
+        this._endSiege(siege, 'victory', now);
+      }
+      return; // siege hit takes priority — don't apply normal nest damage
+    }
+
+    // === NORMAL NEST HIT (not part of a formal siege) ===
     const damage = isMegaPoop ? 24 : 8;
     nest.hp = Math.max(0, nest.hp - damage);
 
@@ -13754,6 +13890,201 @@ class GameEngine {
           });
         }
       }
+    }
+  }
+
+  // ============================================================
+  // GANG SIEGE SYSTEM
+  // ============================================================
+
+  _handleSiegeDeclare(bird, targetGangId, now) {
+    if (!bird.gangId) {
+      this.events.push({ type: 'siege_fail', birdId: bird.id, reason: 'no_gang' });
+      return;
+    }
+    const myGang = this.gangs.get(bird.gangId);
+    if (!myGang) {
+      this.events.push({ type: 'siege_fail', birdId: bird.id, reason: 'no_gang' });
+      return;
+    }
+    if (myGang.leaderId !== bird.id) {
+      this.events.push({ type: 'siege_fail', birdId: bird.id, reason: 'not_leader' });
+      return;
+    }
+    if (targetGangId === bird.gangId) {
+      this.events.push({ type: 'siege_fail', birdId: bird.id, reason: 'self_siege' });
+      return;
+    }
+    const targetGang = this.gangs.get(targetGangId);
+    if (!targetGang) {
+      this.events.push({ type: 'siege_fail', birdId: bird.id, reason: 'no_target_gang' });
+      return;
+    }
+    const targetNest = this.gangNests.get(targetGangId);
+    if (!targetNest || targetNest.destroyedAt !== null) {
+      this.events.push({ type: 'siege_fail', birdId: bird.id, reason: 'no_target_nest' });
+      return;
+    }
+    // Only one active siege per attacking gang
+    const existingSiege = Array.from(this.sieges.values()).find(
+      s => s.attackingGangId === bird.gangId || s.defendingGangId === bird.gangId
+    );
+    if (existingSiege) {
+      this.events.push({ type: 'siege_fail', birdId: bird.id, reason: 'already_in_siege' });
+      return;
+    }
+    const SIEGE_COST = 300;
+    if (myGang.treasury < SIEGE_COST) {
+      this.events.push({ type: 'siege_fail', birdId: bird.id, reason: 'no_funds', need: SIEGE_COST });
+      return;
+    }
+    myGang.treasury -= SIEGE_COST;
+
+    const siegeId = `siege_${Date.now()}`;
+    const SIEGE_DURATION = 240000; // 4 minutes
+    const HP_POOL = 200;           // requires coordinated team attack to break
+
+    const siege = {
+      id: siegeId,
+      attackingGangId: bird.gangId,
+      attackingGangTag: myGang.tag,
+      attackingGangColor: myGang.color,
+      attackingGangName: myGang.name,
+      defendingGangId: targetGangId,
+      defendingGangTag: targetGang.tag,
+      defendingGangColor: targetGang.color,
+      defendingGangName: targetGang.name,
+      nestX: targetNest.x,
+      nestY: targetNest.y,
+      startAt: now,
+      endsAt: now + SIEGE_DURATION,
+      hpPool: HP_POOL,
+      hpMaxPool: HP_POOL,
+      attackContributors: new Map(),
+      defenseContributors: new Map(),
+    };
+    this.sieges.set(siegeId, siege);
+
+    // Notify attacking bird
+    this.events.push({ type: 'siege_start', ...this._siegePublicData(siege), declaredBy: bird.id });
+
+    // Gazette tracking
+    if (this.gazetteStats) {
+      this.gazetteStats.siegesDeclared = (this.gazetteStats.siegesDeclared || 0) + 1;
+    }
+  }
+
+  _siegePublicData(siege) {
+    return {
+      siegeId: siege.id,
+      attackingGangId: siege.attackingGangId,
+      attackingGangTag: siege.attackingGangTag,
+      attackingGangColor: siege.attackingGangColor,
+      attackingGangName: siege.attackingGangName,
+      defendingGangId: siege.defendingGangId,
+      defendingGangTag: siege.defendingGangTag,
+      defendingGangColor: siege.defendingGangColor,
+      defendingGangName: siege.defendingGangName,
+      nestX: siege.nestX,
+      nestY: siege.nestY,
+      endsAt: siege.endsAt,
+      hpPool: siege.hpPool,
+      hpMaxPool: siege.hpMaxPool,
+    };
+  }
+
+  _tickSieges(now) {
+    for (const [siegeId, siege] of this.sieges) {
+      // Push 30s and 60s warning events
+      const remaining = siege.endsAt - now;
+      if (!siege._warned30 && remaining <= 30000 && remaining > 0) {
+        siege._warned30 = true;
+        this.events.push({ type: 'siege_warning', siegeId, seconds: 30,
+          attackingGangTag: siege.attackingGangTag, defendingGangTag: siege.defendingGangTag });
+      }
+      if (!siege._warned60 && remaining <= 60000 && remaining > 30000) {
+        siege._warned60 = true;
+        this.events.push({ type: 'siege_warning', siegeId, seconds: 60,
+          attackingGangTag: siege.attackingGangTag, defendingGangTag: siege.defendingGangTag });
+      }
+
+      if (now >= siege.endsAt) {
+        // Time's up — siege repelled
+        this._endSiege(siege, 'repelled', now);
+      }
+    }
+  }
+
+  _endSiege(siege, result, now) {
+    this.sieges.delete(siege.id);
+
+    if (result === 'victory') {
+      // Steal 25% of defender treasury
+      const defenderGang = this.gangs.get(siege.defendingGangId);
+      const nest = this.gangNests.get(siege.defendingGangId);
+      let stolenAmount = 0;
+      if (defenderGang) {
+        stolenAmount = Math.floor(defenderGang.treasury * 0.25);
+        defenderGang.treasury = Math.max(0, defenderGang.treasury - stolenAmount);
+      }
+      // Give stolen treasury to attacking gang
+      const attackingGang = this.gangs.get(siege.attackingGangId);
+      if (attackingGang && stolenAmount > 0) {
+        attackingGang.treasury += stolenAmount;
+      }
+      // Destroy the nest with extended cooldown
+      if (nest && nest.destroyedAt === null) {
+        nest.hp = 0;
+        nest.destroyedAt = now;
+        nest.rebuildAvailableAt = now + 1200000; // 20-minute rebuild after a siege
+        this._saveGangNest(nest);
+      }
+
+      // Proportional rewards to attackers
+      const totalDamage = [...siege.attackContributors.values()].reduce((s, c) => s + c.damage, 0) || 1;
+      for (const [birdId, contrib] of siege.attackContributors) {
+        const b = this.birds.get(birdId);
+        if (!b) continue;
+        const share = contrib.damage / totalDamage;
+        const xpGain  = Math.floor(150 + share * 350); // 150–500 XP
+        const coinsGain = Math.floor(50 + share * 200) + Math.floor(share * stolenAmount);
+        b.xp += xpGain;
+        b.coins += coinsGain;
+        this._trackDailyProgress(b, 'siege_victory', 1);
+        this.events.push({ type: 'siege_attacker_reward', birdId, name: b.name, xp: xpGain, coins: coinsGain });
+      }
+
+      this.events.push({
+        type: 'siege_victory',
+        ...this._siegePublicData({ ...siege, hpPool: 0 }),
+        stolenAmount,
+      });
+
+      if (this.gazetteStats) {
+        this.gazetteStats.siegeVictory = {
+          attackTag: siege.attackingGangTag,
+          defendTag: siege.defendingGangTag,
+        };
+      }
+
+    } else {
+      // Siege repelled — reward defenders proportionally
+      const totalHits = [...siege.defenseContributors.values()].reduce((s, c) => s + c.hits, 0) || 0;
+      for (const [birdId, contrib] of siege.defenseContributors) {
+        const b = this.birds.get(birdId);
+        if (!b) continue;
+        const share = totalHits > 0 ? contrib.hits / totalHits : 1;
+        const xpGain  = Math.floor(80 + share * 220);  // 80–300 XP
+        const coinsGain = Math.floor(40 + share * 110);
+        b.xp += xpGain;
+        b.coins += coinsGain;
+        this.events.push({ type: 'siege_defender_reward', birdId, name: b.name, xp: xpGain, coins: coinsGain });
+      }
+
+      this.events.push({
+        type: 'siege_repelled',
+        ...this._siegePublicData(siege),
+      });
     }
   }
 
@@ -14084,6 +14415,8 @@ class GameEngine {
       alphaKills:      [],  // [{ name, gangTag }] — birds who killed the Migration Alpha
       thunderDomes:    0,   // thunder domes activated this cycle
       thunderDomePoopers: [], // [{ name, gangTag, hits }] — top hitters inside the dome
+      siegesDeclared:  0,   // sieges declared this cycle
+      siegeVictory:    null,// { attackTag, defendTag } if a siege was won this cycle
     };
   }
 
@@ -14321,6 +14654,22 @@ class GameEngine {
       };
       const [hl, sl] = DECREE_HEADLINES[dec.type] || [`⚜️ KINGPIN ${dec.kingpinName} ISSUES ROYAL DECREE`, 'City reacts with awe, confusion, and renewed criminal intent.'];
       headlines.push({ icon: '⚜️', headline: hl, subline: sl });
+    }
+
+    // Gang Siege headline
+    if (stats.siegeVictory) {
+      const sv = stats.siegeVictory;
+      headlines.push({
+        icon: '⚔️',
+        headline: `GANG SIEGE: [${sv.attackTag}] STORMS AND DESTROYS [${sv.defendTag}]'S NEST!`,
+        subline: `A coordinated assault razed the rival gang's home base to the ground. Treasury looted. Rebuild cooldown: 20 minutes.`,
+      });
+    } else if (stats.siegesDeclared > 0) {
+      headlines.push({
+        icon: '🏰',
+        headline: `GANG SIEGE DECLARED — NEST HOLDS AGAINST THE ASSAULT`,
+        subline: 'Defenders rallied and repelled the invaders. The nest stands. For now.',
+      });
     }
 
     if (stats.blizzards > 0) {

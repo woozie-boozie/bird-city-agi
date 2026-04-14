@@ -1416,6 +1416,96 @@
       }
     }
 
+    // === GANG SIEGE EVENTS ===
+    if (ev.type === 'siege_start') {
+      window._activeSieges = window._activeSieges || {};
+      window._activeSieges[ev.siegeId] = ev;
+      effects.push({ type: 'screen_shake', intensity: 10, duration: 600, time: now });
+      const isMyAttack  = gameState && gameState.myGang && gameState.myGang.id === ev.attackingGangId;
+      const isMyDefense = gameState && gameState.myGang && gameState.myGang.id === ev.defendingGangId;
+      showAnnouncement(
+        `⚔️ GANG SIEGE DECLARED!\n[${ev.attackingGangTag}] ${ev.attackingGangName} ATTACKS [${ev.defendingGangTag}] NEST!\n4 minutes — POOP the nest to break it!`,
+        ev.attackingGangColor || '#ff4444', 7000
+      );
+      addEventMessage(
+        `⚔️ [${ev.attackingGangTag}] declared a SIEGE on [${ev.defendingGangTag}]'s nest! 4-minute assault begins!`,
+        ev.attackingGangColor || '#ff4444'
+      );
+      if (isMyAttack) {
+        showAnnouncement('⚔️ YOUR SIEGE HAS BEGUN! Fly to the enemy nest and POOP it down! (200 HP pool)', '#ff4444', 5000);
+      } else if (isMyDefense) {
+        showAnnouncement('🛡️ YOUR NEST IS UNDER SIEGE! Defend it — poop the attackers away!', '#ffaa00', 5000);
+      }
+    }
+    if (ev.type === 'siege_nest_hit') {
+      // Update local siege HP
+      if (window._activeSieges && window._activeSieges[ev.siegeId]) {
+        window._activeSieges[ev.siegeId].hpPool = ev.hpPool;
+      }
+      effects.push({ type: 'float_text', text: `⚔️ -${ev.hpPool > 0 ? (window._activeSieges && window._activeSieges[ev.siegeId] ? (window._activeSieges[ev.siegeId].hpMaxPool - ev.hpPool) : '?') : 'BROKEN'}`, x: ev.x, y: ev.y - 30, color: ev.attackerGangColor || '#ff4444', duration: 1100, time: now });
+      if (ev.attackerId === myId) {
+        addEventMessage(`⚔️ Siege hit! Nest HP pool: ${ev.hpPool}/${ev.hpMaxPool}`, ev.attackerGangColor || '#ff4444');
+      }
+    }
+    if (ev.type === 'siege_defense_hit') {
+      if (ev.defenderId === myId) {
+        effects.push({ type: 'float_text', text: '🛡️ +DEF!', x: ev.x, y: ev.y - 20, color: '#44ff88', duration: 900, time: now });
+        addEventMessage(`🛡️ Defense hit on ${ev.attackerName}! Attacker stunned!`, '#44ff88');
+      } else {
+        // show float text at attacker position for nearby observers
+        effects.push({ type: 'float_text', text: '🛡️ STUNNED!', x: ev.x, y: ev.y - 20, color: '#44ff88', duration: 900, time: now });
+      }
+    }
+    if (ev.type === 'siege_warning') {
+      const atkColor = (window._activeSieges && Object.values(window._activeSieges)[0]) ?
+        Object.values(window._activeSieges)[0].attackingGangColor : '#ffaa44';
+      addEventMessage(`⚔️ SIEGE: ${ev.seconds}s remaining! [${ev.attackingGangTag}] vs [${ev.defendingGangTag}]`, atkColor);
+    }
+    if (ev.type === 'siege_victory') {
+      window._activeSieges = window._activeSieges || {};
+      delete window._activeSieges[ev.siegeId];
+      effects.push({ type: 'screen_shake', intensity: 18, duration: 900, time: now });
+      showAnnouncement(
+        `⚔️ SIEGE VICTORY!\n[${ev.attackingGangTag}] ${ev.attackingGangName} DESTROYED [${ev.defendingGangTag}]'s nest!\nTreasury looted: ${ev.stolenAmount}c — 20-min rebuild!`,
+        ev.attackingGangColor || '#ff4444', 8000
+      );
+      addEventMessage(`⚔️ SIEGE VICTORY! [${ev.attackingGangTag}] smashed [${ev.defendingGangTag}]'s nest! ${ev.stolenAmount}c treasury stolen!`, ev.attackingGangColor || '#ff4444');
+    }
+    if (ev.type === 'siege_repelled') {
+      window._activeSieges = window._activeSieges || {};
+      delete window._activeSieges[ev.siegeId];
+      effects.push({ type: 'screen_shake', intensity: 8, duration: 500, time: now });
+      showAnnouncement(
+        `🛡️ SIEGE REPELLED!\n[${ev.defendingGangTag}] defended their nest against [${ev.attackingGangTag}]!\nThe nest stands!`,
+        ev.defendingGangColor || '#44ff88', 7000
+      );
+      addEventMessage(`🛡️ [${ev.defendingGangTag}] repelled the siege! [${ev.attackingGangTag}] spent 300c for nothing.`, ev.defendingGangColor || '#44ff88');
+    }
+    if (ev.type === 'siege_attacker_reward') {
+      if (ev.birdId === myId) {
+        showAnnouncement(`⚔️ SIEGE REWARD! +${ev.xp} XP +${ev.coins}c (incl. ${ev.treasureShare || 0}c looted treasury)`, '#ffaa44', 4000);
+      }
+    }
+    if (ev.type === 'siege_defender_reward') {
+      if (ev.birdId === myId) {
+        showAnnouncement(`🛡️ DEFENDER REWARD! +${ev.xp} XP +${ev.coins}c for holding the line!`, '#44ff88', 4000);
+      }
+    }
+    if (ev.type === 'siege_fail') {
+      if (ev.birdId === myId) {
+        const REASONS = {
+          no_gang: 'You need a gang to declare a siege.',
+          not_leader: 'Only the gang leader can declare a siege.',
+          self_siege: "You can't siege your own gang.",
+          no_target_gang: 'That gang no longer exists.',
+          no_target_nest: 'That gang has no active nest to siege.',
+          already_in_siege: 'Your gang is already involved in a siege.',
+          no_funds: `Not enough treasury funds. Need 300c, have less.`,
+        };
+        addEventMessage(`⚔️ Siege failed: ${REASONS[ev.reason] || ev.reason}`, '#ff4444');
+      }
+    }
+
     // === CHAOS EVENTS ===
     if (ev.type === 'chaos_event') {
       SoundEngine.eventFanfare();
@@ -8234,6 +8324,10 @@
       const isBlizzard = weatherState && weatherState.type === 'blizzard';
       Renderer.drawGangNests(ctx, camera, gameState.gangNests, selfGangId, now, isBlizzard);
     }
+    // Siege overlays (flaming rings, HP bars)
+    if (gameState.activeSieges && gameState.activeSieges.length > 0) {
+      Renderer.drawSiegeOverlays(ctx, camera, gameState.activeSieges, now);
+    }
 
     // Bird City Idol Stage
     if (worldData && worldData.idolStagePos) {
@@ -10062,6 +10156,33 @@
     if (gameState.gangNests && gameState.gangNests.length > 0 && worldData) {
       const selfGangId = gameState.self && gameState.self.gangId;
       Renderer.drawGangNestsOnMinimap(minimapCtx, worldData, gameState.gangNests, selfGangId, now);
+    }
+    // Active Sieges on minimap — red pulsing ring around besieged nest
+    if (gameState.activeSieges && gameState.activeSieges.length > 0 && worldData) {
+      const mmw = minimapCtx.canvas.width;
+      const mmh = minimapCtx.canvas.height;
+      const msx = mmw / worldData.width;
+      const msy = mmh / worldData.height;
+      const mt = now / 1000;
+      for (const siege of gameState.activeSieges) {
+        const mx = siege.nestX * msx;
+        const my = siege.nestY * msy;
+        const pulse = 0.5 + 0.5 * Math.sin(mt * 5);
+        minimapCtx.save();
+        minimapCtx.globalAlpha = 0.7 + 0.3 * pulse;
+        minimapCtx.beginPath();
+        minimapCtx.arc(mx, my, 5 + 3 * pulse, 0, Math.PI * 2);
+        minimapCtx.strokeStyle = '#ff3300';
+        minimapCtx.lineWidth = 2;
+        minimapCtx.stroke();
+        minimapCtx.fillStyle = 'rgba(255,50,0,0.4)';
+        minimapCtx.fill();
+        minimapCtx.font = 'bold 7px Arial';
+        minimapCtx.textAlign = 'center';
+        minimapCtx.fillStyle = '#ffaa00';
+        minimapCtx.fillText('⚔️', mx, my + 3);
+        minimapCtx.restore();
+      }
     }
 
     // Mystery Crate on minimap
@@ -13174,6 +13295,70 @@
         }
       }
 
+      // === SIEGE SECTION ===
+      const siegeSection = document.getElementById('gangSiegeSection');
+      if (siegeSection) {
+        const siegeStatus = document.getElementById('gangSiegeStatus');
+        const activeSieges = gameState.activeSieges || [];
+        const mySiegeAsAttacker = activeSieges.find(s => s.attackingGangId === myGang.id);
+        const mySiegeAsDefender = activeSieges.find(s => s.defendingGangId === myGang.id);
+        const activeSiege = mySiegeAsAttacker || mySiegeAsDefender;
+
+        if (activeSiege) {
+          const timeLeft = Math.max(0, Math.ceil((activeSiege.endsAt - Date.now()) / 1000));
+          const mins = Math.floor(timeLeft / 60);
+          const secs = timeLeft % 60;
+          const hpPct = Math.floor((activeSiege.hpPool / activeSiege.hpMaxPool) * 100);
+          const hpColor = hpPct > 60 ? '#ff6644' : hpPct > 30 ? '#ff2200' : '#ff0000';
+          if (mySiegeAsAttacker) {
+            siegeStatus.innerHTML = `
+              <div style="color:#ff4444;font-weight:bold;">⚔️ SIEGE IN PROGRESS</div>
+              <div style="color:#ffaa44;font-size:10px;margin-top:3px;">Attacking: [${activeSiege.defendingGangTag}] nest</div>
+              <div style="color:#ff9900;font-size:10px;">Nest HP Pool: <span style="color:${hpColor};">${activeSiege.hpPool}/${activeSiege.hpMaxPool}</span></div>
+              <div style="background:rgba(40,0,0,0.6);height:6px;border-radius:3px;margin:4px 0;overflow:hidden;">
+                <div style="background:${hpColor};width:${hpPct}%;height:100%;border-radius:3px;transition:width 0.2s;"></div>
+              </div>
+              <div style="color:#ffaa44;font-size:10px;">⏱️ ${mins}m${secs}s remaining — POOP the enemy nest!</div>`;
+          } else {
+            siegeStatus.innerHTML = `
+              <div style="color:#ffaa00;font-weight:bold;">🛡️ YOUR NEST IS UNDER SIEGE!</div>
+              <div style="color:#ffcc44;font-size:10px;margin-top:3px;">Attackers: [${activeSiege.attackingGangTag}] ${activeSiege.attackingGangName}</div>
+              <div style="color:#ff9900;font-size:10px;">Nest HP Pool: <span style="color:${hpColor};">${activeSiege.hpPool}/${activeSiege.hpMaxPool}</span></div>
+              <div style="background:rgba(40,0,0,0.6);height:6px;border-radius:3px;margin:4px 0;overflow:hidden;">
+                <div style="background:${hpColor};width:${hpPct}%;height:100%;border-radius:3px;transition:width 0.2s;"></div>
+              </div>
+              <div style="color:#ffcc44;font-size:10px;">⏱️ ${mins}m${secs}s — POOP attackers near your nest!</div>`;
+          }
+        } else {
+          // No active siege — show declare option if leader and enemy gang with nest exists
+          const isLeader = self.gangRole === 'leader';
+          const nestAlive = gameState.myNestStatus && gameState.myNestStatus.alive;
+          const enemyGangsWithNests = (gameState.activeSieges || []).length > 0 ? [] :
+            (gameState.allGangs || []).filter(g => g.id !== myGang.id && g.hasNest);
+
+          if (isLeader) {
+            const siegeable = (gameState.allGangs || []).filter(g => g.id !== myGang.id && g.hasNest);
+            if (siegeable.length === 0) {
+              siegeStatus.innerHTML = `<div style="color:#775544;font-size:10px;">No rival gangs have active nests to siege.</div>`;
+            } else {
+              const hasFunds = myGang.treasury >= 300;
+              siegeStatus.innerHTML = `
+                <div style="color:#cc7744;font-size:10px;margin-bottom:6px;">Declare a 4-minute siege on a rival nest. Cost: 300c from treasury. Victory: steal 25% of their treasury + destroy nest (20-min rebuild).</div>
+                ${!hasFunds ? `<div style="color:#ff4444;font-size:10px;">Not enough treasury (need 300c, have ${myGang.treasury}c).</div>` : ''}
+                <div id="gangSiegeTargets">${siegeable.map(g => `
+                  <div style="display:flex;align-items:center;gap:8px;margin:3px 0;">
+                    <span style="color:${g.color};font-weight:bold;">[${g.tag}]</span>
+                    <span style="color:#cc8866;font-size:10px;">${g.name}</span>
+                    <button onclick="window._declareSiege('${g.id}')" ${!hasFunds ? 'disabled' : ''} style="background:rgba(80,0,0,0.8);color:#ff4444;border:1px solid #880000;border-radius:6px;padding:2px 8px;cursor:pointer;font:10px 'Courier New',monospace;${!hasFunds ? 'opacity:0.4;' : ''}">⚔️ SIEGE</button>
+                  </div>`).join('')}
+                </div>`;
+            }
+          } else {
+            siegeStatus.innerHTML = `<div style="color:#664433;font-size:10px;">Sieges can be declared by the gang leader when enemies have nests.</div>`;
+          }
+        }
+      }
+
       // Invite section (leader only)
       const inviteSection = document.getElementById('gangInviteSection');
       if (inviteSection) {
@@ -13202,6 +13387,9 @@
   };
   window._gangInvite = function(targetId) {
     socket.emit('action', { type: 'gang_invite', targetId });
+  };
+  window._declareSiege = function(targetGangId) {
+    socket.emit('action', { type: 'siege_declare', targetGangId });
   };
 
   // ============================================================
