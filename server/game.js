@@ -118,6 +118,8 @@ const DAILY_CHALLENGE_POOL = [
   // Great Migration challenges
   { id: 'migration_rider',   title: 'Flock Rider',    desc: 'Ride the Great Migration formation for 20 cumulative seconds', target: 20, trackType: 'migration_ride',  reward: { xp: 160, coins: 80  } },
   { id: 'migration_hunter',  title: 'Alpha Hunter',   desc: 'Deal the killing blow to the Migration Alpha Leader',          target: 1,  trackType: 'alpha_kill',      reward: { xp: 300, coins: 150 } },
+  // Thunder Dome challenge
+  { id: 'gladiator',         title: 'Gladiator',      desc: 'Land 10 poop hits inside the Thunder Dome',                    target: 10, trackType: 'thunder_dome_poop', reward: { xp: 200, coins: 100 } },
 ];
 
 class GameEngine {
@@ -252,6 +254,20 @@ class GameEngine {
     this.hotCocoa = new Map();        // id -> true (hot_cocoa food ids spawned during blizzard)
     this.iceRink = null;              // null | { x, y, radius } — random plaza becomes ice rink during blizzard
     this.scheduledNextWeather = null; // pre-rolled by Count's City Intel — server commits to this type on next spawn
+
+    // === THUNDER DOME ===
+    // Every 18-25 minutes an electromagnetic dome descends on a random district.
+    // Birds INSIDE earn +50% XP on all poop hits — but the electric walls push them back if they try to leave.
+    // Birds outside can enter voluntarily. Dome lasts 3 minutes.
+    this.thunderDome = null; // null | { x, y, radius, endsAt, district, poopTracker: Map, shockCooldowns: Map }
+    this.thunderDomeTimer = Date.now() + this._randomRange(18 * 60000, 25 * 60000);
+    this.THUNDER_DOME_DISTRICTS = [
+      { name: 'The Park',      x: 1200, y: 1200 },
+      { name: 'Downtown',      x: 1950, y: 1350 },
+      { name: 'The Mall',      x: 2400, y: 500  },
+      { name: 'Cafe District', x: 500,  y: 1700 },
+      { name: 'The Docks',     x: 1300, y: 2400 },
+    ];
     this.gangRitualCooldowns = new Map(); // gangId -> lastRitualTimestamp (2-min cooldown per gang)
 
     // === GOLDEN EGG SCRAMBLE ===
@@ -1662,6 +1678,9 @@ class GameEngine {
     // === The Great Migration ===
     this._updateMigration(dt, now);
 
+    // === Thunder Dome ===
+    this._tickThunderDome(now);
+
     // === Bird Royale ===
     this._tickBirdRoyale(dt, now);
 
@@ -2885,6 +2904,32 @@ class GameEngine {
     bird.x = Math.max(10, Math.min(world.WORLD_WIDTH - 10, bird.x));
     bird.y = Math.max(10, Math.min(world.WORLD_HEIGHT - 10, bird.y));
 
+    // Thunder Dome: once inside, electric walls push birds back when they try to leave
+    if (this.thunderDome && !bird.inSewer) {
+      const tdx = bird.x - this.thunderDome.x;
+      const tdy = bird.y - this.thunderDome.y;
+      const tdDist = Math.sqrt(tdx * tdx + tdy * tdy);
+      if (tdDist > this.thunderDome.radius) {
+        // Clamp back to inner edge of dome
+        const angle = Math.atan2(tdy, tdx);
+        bird.x = this.thunderDome.x + Math.cos(angle) * (this.thunderDome.radius - 8);
+        bird.y = this.thunderDome.y + Math.sin(angle) * (this.thunderDome.radius - 8);
+        // Bounce velocity: flip outward component, dampen total
+        const outward = bird.vx * Math.cos(angle) + bird.vy * Math.sin(angle);
+        bird.vx -= 1.8 * outward * Math.cos(angle);
+        bird.vy -= 1.8 * outward * Math.sin(angle);
+        bird.vx *= 0.5;
+        bird.vy *= 0.5;
+        // Electric shock: -5 food, 1.5s per-bird cooldown to avoid rapid spam
+        const shockLast = this.thunderDome.shockCooldowns.get(bird.id) || 0;
+        if (now - shockLast > 1500) {
+          this.thunderDome.shockCooldowns.set(bird.id, now);
+          bird.food = Math.max(0, (bird.food || 0) - 5);
+          this.events.push({ type: 'thunder_dome_shock', birdId: bird.id, x: bird.x, y: bird.y });
+        }
+      }
+    }
+
     // Rotation
     if (speed > 5) {
       bird.rotation = Math.atan2(bird.vy, bird.vx);
@@ -3547,6 +3592,18 @@ class GameEngine {
       // Wanted bird XP bonus
       if (this.wantedBirdId === bird.id) {
         xpGain = Math.floor(xpGain * 1.5);
+      }
+
+      // Thunder Dome: +50% XP for ALL poop hits while inside the dome
+      if (this.thunderDome && !bird.inSewer && xpGain > 0) {
+        const tdx = bird.x - this.thunderDome.x;
+        const tdy = bird.y - this.thunderDome.y;
+        if (Math.sqrt(tdx * tdx + tdy * tdy) <= this.thunderDome.radius) {
+          xpGain = Math.floor(xpGain * 1.5);
+          const current = (this.thunderDome.poopTracker.get(bird.id) || 0) + 1;
+          this.thunderDome.poopTracker.set(bird.id, current);
+          this._trackDailyProgress(bird, 'thunder_dome_poop', 1);
+        }
       }
 
       // Disco Fever / Crime Disco: NPC hits give 3× XP (5× during Crime Disco + 3× coins)
@@ -6425,6 +6482,12 @@ class GameEngine {
         inSewer: bird.inSewer,
         onIceRink: bird.onIceRink || false,
         nearNestFirepit: bird.nearNestFirepit || false,
+        insideThunderDome: (() => {
+          if (!this.thunderDome || bird.inSewer) return false;
+          const tdx = bird.x - this.thunderDome.x;
+          const tdy = bird.y - this.thunderDome.y;
+          return Math.sqrt(tdx * tdx + tdy * tdy) <= this.thunderDome.radius;
+        })(),
         flockId: bird.flockId,
         flockName,
         flockMembers,
@@ -7069,6 +7132,13 @@ class GameEngine {
       } : null,
       // Ice Rink (blizzard-only)
       iceRink: this.iceRink || null,
+      // Thunder Dome — electromagnetic arena trapping birds inside for +50% XP
+      thunderDome: this.thunderDome ? {
+        x: this.thunderDome.x, y: this.thunderDome.y,
+        radius: this.thunderDome.radius,
+        endsAt: this.thunderDome.endsAt,
+        district: this.thunderDome.district,
+      } : null,
       // Shooting Star (aurora event)
       shootingStar: this.shootingStar ? {
         x: this.shootingStar.x,
@@ -14012,6 +14082,8 @@ class GameEngine {
       muralsCompleted: [],  // [{ gangTag, gangName, zoneName, isOvertake }]
       migrations:      0,   // migrations that crossed through the city this cycle
       alphaKills:      [],  // [{ name, gangTag }] — birds who killed the Migration Alpha
+      thunderDomes:    0,   // thunder domes activated this cycle
+      thunderDomePoopers: [], // [{ name, gangTag, hits }] — top hitters inside the dome
     };
   }
 
@@ -14165,7 +14237,7 @@ class GameEngine {
       headlines.push({
         icon: '🦅',
         headline: `GREAT MIGRATION AMBUSHED — ${tag}${killer.name} SLAYS THE ALPHA LEADER`,
-        subline: 'Bird City's most brazen interception. Migration flock scattered to the winds.',
+        subline: "Bird City's most brazen interception. Migration flock scattered to the winds.",
       });
     }
 
@@ -14279,6 +14351,23 @@ class GameEngine {
         icon: '🌸',
         headline: 'CHERRY BLOSSOM SEASON IN FULL BLOOM — PARK OVERRUN WITH MOCHI',
         subline: 'Spring has arrived! Mochi treats scattered throughout the park. Pond glows pink at night.',
+      });
+    }
+
+    // Thunder Dome headline
+    if (stats.thunderDomes > 0 && stats.thunderDomePoopers && stats.thunderDomePoopers.length > 0) {
+      const top = stats.thunderDomePoopers[0];
+      const tag = top.gangTag ? `[${top.gangTag}] ` : '';
+      headlines.push({
+        icon: '⚡',
+        headline: `THUNDER DOME DESCENDS — ${tag}${top.name} DOMINATES WITH ${top.hits} HITS`,
+        subline: `Electric walls trap birds for 3 minutes of pure carnage. ${top.name} refuses to leave. Or can't. Unclear.`,
+      });
+    } else if (stats.thunderDomes > 0) {
+      headlines.push({
+        icon: '⚡',
+        headline: `THUNDER DOME DESCENDS ON THE CITY — BIRDS TRAPPED IN ELECTRIC ARENA`,
+        subline: 'Electromagnetic walls confine birds to a single district. Scientists baffled. Birds delighted.',
       });
     }
 
@@ -16776,6 +16865,61 @@ class GameEngine {
   }
 
   // ============================================================
+  // THUNDER DOME — electromagnetic arena that traps birds inside for +50% XP
+  // ============================================================
+
+  _tickThunderDome(now) {
+    // Spawn: fire every 18-25 minutes when at least one player is online
+    if (!this.thunderDome && now >= this.thunderDomeTimer && this.birds.size > 0) {
+      this._spawnThunderDome(now);
+    }
+    if (!this.thunderDome) return;
+
+    // Expire: dome lifts after 3 minutes
+    if (now >= this.thunderDome.endsAt) {
+      // Track gazette stats
+      if (this.thunderDome.poopTracker.size > 0) {
+        let topHitter = null, topHits = 0;
+        for (const [birdId, hits] of this.thunderDome.poopTracker) {
+          if (hits > topHits) {
+            const b = this.birds.get(birdId);
+            if (b) { topHitter = { name: b.name, gangTag: b.gangTag || null, hits }; topHits = hits; }
+          }
+        }
+        if (topHitter) {
+          if (!this.gazetteStats.thunderDomePoopers) this.gazetteStats.thunderDomePoopers = [];
+          this.gazetteStats.thunderDomePoopers.push(topHitter);
+        }
+      }
+      if (!this.gazetteStats.thunderDomes) this.gazetteStats.thunderDomes = 0;
+      this.gazetteStats.thunderDomes++;
+
+      this.events.push({ type: 'thunder_dome_end', district: this.thunderDome.district });
+      this.thunderDome = null;
+      this.thunderDomeTimer = now + this._randomRange(18 * 60000, 25 * 60000);
+    }
+  }
+
+  _spawnThunderDome(now) {
+    const dist = this.THUNDER_DOME_DISTRICTS[Math.floor(Math.random() * this.THUNDER_DOME_DISTRICTS.length)];
+    const RADIUS = 350;
+    this.thunderDome = {
+      x: dist.x, y: dist.y,
+      radius: RADIUS,
+      district: dist.name,
+      endsAt: now + 180000, // 3 minutes
+      poopTracker: new Map(),     // birdId -> hit count
+      shockCooldowns: new Map(),  // birdId -> last shock timestamp
+    };
+    this.events.push({
+      type: 'thunder_dome_start',
+      district: dist.name,
+      x: dist.x, y: dist.y,
+      radius: RADIUS,
+      endsAt: this.thunderDome.endsAt,
+    });
+  }
+
   // SEAGULL INVASION — coastal raiders who steal food en masse
   // ============================================================
 

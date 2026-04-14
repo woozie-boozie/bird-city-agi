@@ -3087,6 +3087,25 @@
       addEventMessage('⛸️ The ice rink has melted as the blizzard clears.', '#88aacc');
     }
 
+    // === THUNDER DOME EVENTS ===
+    if (ev.type === 'thunder_dome_start') {
+      window._thunderDomeData = { x: ev.x, y: ev.y, radius: ev.radius, district: ev.district, endsAt: ev.endsAt };
+      showAnnouncement(`⚡ THUNDER DOME descends on ${ev.district}!`, `Electric walls trap birds inside for +50% XP. Can't leave — can't stop POOPING!`, '#4499ff', 6000);
+      addEventMessage(`⚡ THUNDER DOME descended on ${ev.district}! Birds inside earn +50% XP — but you CANNOT LEAVE!`, '#88aaff');
+      effects.push({ type: 'screen_shake', time: performance.now(), duration: 900, intensity: 16 });
+    }
+    if (ev.type === 'thunder_dome_end') {
+      window._thunderDomeData = null;
+      showAnnouncement('⚡ THUNDER DOME lifts.', `The electromagnetic field over ${ev.district} collapses. Birds scatter.`, '#88aaff', 4000);
+      addEventMessage(`⚡ The Thunder Dome over ${ev.district} has lifted. Birds scatter.`, '#88aaff');
+      effects.push({ type: 'screen_shake', time: performance.now(), duration: 400, intensity: 8 });
+    }
+    if (ev.type === 'thunder_dome_shock') {
+      if (ev.birdId === myId) {
+        addFloatingText(ev.x, ev.y, '⚡ SHOCKED! −5 food', '#88aaff');
+      }
+    }
+
     // === WEATHER BETTING EVENTS ===
     if (ev.type === 'weather_bet_window') {
       const secsLeft = Math.ceil((ev.openUntil - Date.now()) / 1000);
@@ -8273,6 +8292,12 @@
       Renderer.drawIceRink(ctx, camera, gameState.iceRink, now);
     }
 
+    // Thunder Dome — electromagnetic arena (drawn before birds so birds appear inside the ring)
+    const _domeToDraw = gameState.thunderDome || window._thunderDomeData;
+    if (_domeToDraw) {
+      Renderer.drawThunderDome(ctx, camera, _domeToDraw, now);
+    }
+
     // Birds
     if (gameState.birds) {
       for (const bird of gameState.birds) {
@@ -10589,6 +10614,12 @@
       Renderer.drawIceRinkOnMinimap(minimapCtx, gameState.iceRink, worldData.width, worldData.height);
     }
 
+    // Thunder Dome — pulsing electric-blue ring on minimap
+    const _domeForMinimap = gameState.thunderDome || window._thunderDomeData;
+    if (_domeForMinimap && worldData) {
+      Renderer.drawThunderDomeOnMinimap(minimapCtx, { width: worldData.width, height: worldData.height }, _domeForMinimap, now);
+    }
+
     // Night Market — pulsing teal dot near the pond when aurora is active
     if (gameState.nightMarket && worldData) {
       const mw = minimapCtx.canvas.width;
@@ -11685,6 +11716,19 @@
     if (s.raceBoostUntil && s.raceBoostUntil > now) {
       const secs = Math.max(0, Math.ceil((s.raceBoostUntil - now) / 1000));
       html += '<div class="bm-buff-pill" style="background:rgba(100,90,0,0.85);border-color:#ffff44;color:#ffff44;animation:kingpinGlow 0.4s ease-in-out infinite alternate;">⚡ BOOST ×1.7 — ' + secs + 's</div>';
+    }
+    // Thunder Dome: inside (trapped + bonus) or nearby (invitation)
+    const _domeSelf = gameState.thunderDome || window._thunderDomeData;
+    if (_domeSelf) {
+      if (s.insideThunderDome) {
+        const secsLeft = Math.max(0, Math.ceil((_domeSelf.endsAt - now) / 1000));
+        const mins = Math.floor(secsLeft / 60);
+        const rem = secsLeft % 60;
+        html += `<div class="bm-buff-pill" style="background:rgba(0,25,80,0.95);border-color:#4499ff;color:#88ccff;animation:kingpinGlow 0.55s ease-in-out infinite alternate;font-weight:bold;">⚡ INSIDE THUNDER DOME — +50% XP! ${mins}:${rem.toString().padStart(2,'0')} left · TRAPPED</div>`;
+      } else {
+        const secsLeft = Math.max(0, Math.ceil((_domeSelf.endsAt - now) / 1000));
+        html += `<div class="bm-buff-pill" style="background:rgba(0,15,50,0.85);border-color:#2255aa;color:#4488cc;">⚡ THUNDER DOME — ${_domeSelf.district} · Fly in for +50% XP (${Math.floor(secsLeft/60)}:${(secsLeft%60).toString().padStart(2,'0')})</div>`;
+      }
     }
     if (s.puddleBoostUntil && s.puddleBoostUntil > now) {
       const secs = Math.max(0, Math.ceil((s.puddleBoostUntil - now) / 1000));

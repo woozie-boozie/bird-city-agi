@@ -2969,6 +2969,36 @@ Every 20-30 minutes, a majestic V-formation of 14-18 wild migratory birds crosse
 
 **Creative intent**: Every major "boss" event in Bird City has been stationary or follows a simple chase pattern. The Great Migration is the first event that CROSSES the city — it doesn't stay in one place. You have to CHASE it. The V-formation creates a visual spectacle: 15+ birds in perfect formation flying in unison across the sky is the most majestic thing that has happened in Bird City. The slipstream mechanic rewards brave birds who fly INTO the formation (getting free speed), while the alpha fight rewards even braver birds who attack the leader. A bird surfing the migration's slipstream while also fighting off cops is peak emergent CARNAGE + SPECTACLE. The 20-30 minute timer means migrations feel special — not too frequent, but frequent enough that you'll see one per long session. Pure DISCOVERY + SPECTACLE + CARNAGE energy.
 
+**Session 88 — 2026-04-14: The Thunder Dome — Electromagnetic Forced-Proximity Arena**
+A massive electromagnetic dome descends on a random city district every 18-25 minutes, trapping every bird inside for 2.5 minutes. Electric walls bounce birds back. +50% XP for every poop hit inside. Pure CARNAGE in a shrinking social pressure cooker.
+
+**Thunder Dome mechanics (`server/game.js`):**
+- Spawns every 18-25 minutes (when ≥1 player online) at one of 5 city districts: The Park, Downtown, The Mall, Cafe District, The Docks
+- 2.5-minute duration — short enough to feel urgent, long enough for real chaos to develop
+- **Electric wall**: birds who fly beyond the dome radius are bounced back via physically correct velocity reflection (radial component cancellation + 0.5× velocity damping). Every bounce deals −5 food with a 1.5s shock cooldown per bird.
+- **+50% XP bonus**: every poop hit landed by a bird inside the dome earns 1.5× XP. Stacks with all other multipliers — Lucky Charm + Signal Boost + Prestige P5 + Thunder Dome = obscene XP
+- **Per-bird poop tracker**: `poopTracker` Map counts dome poop hits per bird for Gazette stats
+- Underground birds (sewer) are exempt from the electric wall — diving into a manhole is a valid escape
+- **Gazette integration**: "⚡ THUNDER DOME GLADIATORS — [TopBird] landed [N] hits inside the dome!" headline when notable combat occurred
+
+**New daily challenge: Gladiator** — Land 10 poop hits inside the Thunder Dome (200 XP, 100c)
+
+**Visual system (`public/js/renderer.js`):**
+- `drawThunderDome()`: inner blue tint radial gradient fills the dome interior, glowing outer ring (wide soft glow + bright main ring + inner core ring), 8 animated electric arc segments with zigzag multi-vertex math (each arc has independent speed + amplitude), 12 sparks orbiting the ring perimeter
+- "⚡ THUNDER DOME" + district name labels above the ring; MM:SS countdown timer near the top interior
+- `drawThunderDomeOnMinimap()`: scaled glow ring + bright ring + "⚡" emoji at center — trackable from anywhere on the map
+
+**Client HUD (`public/js/main.js`):**
+- `thunder_dome_start` event: screen shake + orange announcement + event feed
+- `thunder_dome_end` event: announcement when dome lifts
+- `thunder_dome_shock` event: floating "⚡ ZAP! −5 food" text at shock position + screen shake
+- **Inside dome**: animated blue pill "⚡ INSIDE THUNDER DOME — +50% XP! M:SS left · TRAPPED"
+- **Outside dome (active)**: subtle blue invitation pill "⚡ THUNDER DOME — [District] · Fly in for +50% XP (M:SS)"
+- Off-screen direction arrow points toward the dome center when it's not visible on screen
+- Minimap: glowing blue ring at district position — trackable from anywhere
+
+**Creative intent**: Bird City had lots of "go somewhere for a reward" mechanics (Sacred Pond, Night Market, Racing Track) but nothing that FORCES birds together by trapping them. The Thunder Dome flips the dynamic: instead of birds choosing to converge, the city MAKES them. Two rivals who were flying in opposite directions suddenly find themselves caged together for 2.5 minutes — and the +50% XP makes both of them want to start pooping. The electric wall bounce is satisfying feedback: you try to flee, get smacked back, and your velocity is half what it was. Sewer escape adds a decision point for seasoned players. The visual — a pulsing electric ring with animated arc lightning descending over a district — is the most dramatic zone event in the game. Pure CARNAGE + SOCIAL + SPECTACLE energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -3205,3 +3235,9 @@ Built the Territory Control System on top of the existing upstream code:
 - Mural × Royal Court: if the Duke's gang owns 3+ murals simultaneously, Duke tribute income doubles for 5 minutes
 - Mural Hall of Fame: track which gangs have painted the most murals across all sessions — show in Gang HQ as "All-Time Murals: 12"
 - ~~Mural Raid Boss: a rogue crow vandal NPC spawns rarely and targets completed murals — poop him off before he ruins your art~~ (DONE Session 86 — The Vandal Crow)
+- ~~The Thunder Dome — electromagnetic arena descends on a random district, traps birds inside, +50% XP, electric wall bounce~~ (DONE Session 88)
+- Thunder Dome × Gang War: if a gang war is active when the dome descends, kills inside the dome count as 2× gang war kills — the dome becomes a killing field
+- Thunder Dome × Kingpin: if the Kingpin is trapped inside the Thunder Dome, their minimap glow turns electric blue + dethronement attempts inside the dome reward +100 XP
+- Thunder Dome × Crime Wave: if a Crime Wave erupts while the dome is active, all heat gains inside the dome are ×3 — the dome is the most dangerous place to be a criminal
+- Thunder Dome daily leaderboard: who scored the most dome poop hits this session — shown as a "DOME CHAMPION" badge for the top scorer
+- Thunder Dome × Formation Flying: wedge formation inside the dome gets an additional +15% poop radius — the confined space rewards tight formation play

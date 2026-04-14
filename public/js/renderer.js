@@ -4592,4 +4592,192 @@ window.Renderer = {
     minimapCtx.globalAlpha = 1;
     minimapCtx.restore();
   },
+
+  // ── Thunder Dome ────────────────────────────────────────────
+  // Electromagnetic arena — pulsing electric ring that traps birds inside for +50% XP.
+  // Visual: multi-layer blue-white glow ring + animated electric arc segments + subtle inner tint.
+  drawThunderDome(ctx, camera, dome, now) {
+    if (!dome) return;
+    const cx = dome.x - camera.x + camera.screenW / 2;
+    const cy = dome.y - camera.y + camera.screenH / 2;
+    const zoom = camera.zoom || 1;
+    const sr = dome.radius * zoom;
+    const t = now / 1000;
+    const pulse = 0.5 + 0.5 * Math.sin(t * 4);
+    const fastPulse = 0.5 + 0.5 * Math.sin(t * 12);
+
+    // ── Inner tint: subtle electric-blue wash inside the dome ──
+    ctx.save();
+    const innerGrd = ctx.createRadialGradient(cx, cy, 0, cx, cy, sr);
+    innerGrd.addColorStop(0, `rgba(30, 80, 200, ${0.04 + 0.04 * pulse})`);
+    innerGrd.addColorStop(0.7, `rgba(50, 100, 220, ${0.03 + 0.02 * pulse})`);
+    innerGrd.addColorStop(1, `rgba(80, 160, 255, 0)`);
+    ctx.beginPath();
+    ctx.arc(cx, cy, sr, 0, Math.PI * 2);
+    ctx.fillStyle = innerGrd;
+    ctx.fill();
+    ctx.restore();
+
+    // ── Outer glow halo: wide soft blue ring ──
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, sr, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(80, 160, 255, ${0.15 + 0.10 * pulse})`;
+    ctx.lineWidth = 28 + 10 * pulse;
+    ctx.shadowColor = '#4499ff';
+    ctx.shadowBlur = 30 + 15 * pulse;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.restore();
+
+    // ── Main ring: bright electric white-blue ──
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, sr, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(150, 210, 255, ${0.7 + 0.25 * pulse})`;
+    ctx.lineWidth = 3 + pulse * 1.5;
+    ctx.shadowColor = '#aaddff';
+    ctx.shadowBlur = 12 + 6 * pulse;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.restore();
+
+    // ── Inner ring: bright core ──
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, sr - 4, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(255, 255, 255, ${0.4 + 0.3 * fastPulse})`;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.restore();
+
+    // ── Electric arc segments: zigzag lightning bolts along the ring ──
+    const NUM_ARCS = 8;
+    ctx.save();
+    ctx.shadowColor = '#88ccff';
+    ctx.shadowBlur = 8;
+    for (let i = 0; i < NUM_ARCS; i++) {
+      // Each arc has a unique time phase so they flicker independently
+      const arcPhase = t * (3 + i * 0.7) + i * (Math.PI * 2 / NUM_ARCS);
+      const arcAlpha = Math.max(0, Math.sin(arcPhase)) * 0.9;
+      if (arcAlpha < 0.05) continue;
+
+      const startAngle = (i / NUM_ARCS) * Math.PI * 2 + t * 0.3;
+      const arcSpan = (Math.PI * 2 / NUM_ARCS) * 0.6;
+      const STEPS = 6;
+
+      ctx.beginPath();
+      ctx.strokeStyle = `rgba(180, 230, 255, ${arcAlpha})`;
+      ctx.lineWidth = 1.5;
+
+      for (let s = 0; s <= STEPS; s++) {
+        const angle = startAngle + (s / STEPS) * arcSpan;
+        // Offset radially inward/outward to create zigzag
+        const zigzag = (s % 2 === 0 ? 1 : -1) * (4 + 6 * Math.sin(arcPhase * 2 + s));
+        const r = sr + zigzag;
+        const px = cx + Math.cos(angle) * r;
+        const py = cy + Math.sin(angle) * r;
+        if (s === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+    }
+    ctx.shadowBlur = 0;
+    ctx.restore();
+
+    // ── Sparks: small bright dots scattered on the ring ──
+    ctx.save();
+    const NUM_SPARKS = 12;
+    for (let i = 0; i < NUM_SPARKS; i++) {
+      const sparkPhase = t * (5 + i * 1.1) + i;
+      const sparkAlpha = Math.max(0, Math.sin(sparkPhase * 3));
+      if (sparkAlpha < 0.2) continue;
+      const angle = (i / NUM_SPARKS) * Math.PI * 2 + t * 0.5 + i * 0.4;
+      const sx = cx + Math.cos(angle) * sr;
+      const sy = cy + Math.sin(angle) * sr;
+      ctx.beginPath();
+      ctx.arc(sx, sy, 2 + 2 * sparkAlpha, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(200, 240, 255, ${sparkAlpha})`;
+      ctx.shadowColor = '#aaddff';
+      ctx.shadowBlur = 6;
+      ctx.fill();
+    }
+    ctx.shadowBlur = 0;
+    ctx.restore();
+
+    // ── Label: "⚡ THUNDER DOME" at top of ring ──
+    const labelY = cy - sr - 16;
+    if (labelY > 10) {
+      ctx.save();
+      ctx.font = 'bold 13px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = `rgba(180, 230, 255, ${0.85 + 0.15 * pulse})`;
+      ctx.shadowColor = '#4499ff';
+      ctx.shadowBlur = 8;
+      ctx.fillText(`⚡ THUNDER DOME`, cx, labelY);
+      // District name just below
+      ctx.font = '11px sans-serif';
+      ctx.fillStyle = `rgba(150, 200, 240, ${0.7 + 0.2 * pulse})`;
+      ctx.fillText(dome.district, cx, labelY + 14);
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    }
+
+    // ── Timer countdown ── (remaining seconds, shown inside ring near top)
+    if (dome.endsAt) {
+      const secsLeft = Math.max(0, Math.ceil((dome.endsAt - now) / 1000));
+      const mins = Math.floor(secsLeft / 60);
+      const secs = secsLeft % 60;
+      const timerStr = `${mins}:${secs.toString().padStart(2, '0')}`;
+      ctx.save();
+      ctx.font = 'bold 11px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = `rgba(120, 200, 255, ${0.8 + 0.2 * fastPulse})`;
+      ctx.shadowColor = '#4488ff';
+      ctx.shadowBlur = 5;
+      ctx.fillText(timerStr, cx, cy - sr + 22);
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    }
+  },
+
+  drawThunderDomeOnMinimap(minimapCtx, worldData, dome, now) {
+    if (!dome) return;
+    const mw = minimapCtx.canvas.width;
+    const mh = minimapCtx.canvas.height;
+    const scaleX = mw / worldData.width;
+    const scaleY = mh / worldData.height;
+    const cx = dome.x * scaleX;
+    const cy = dome.y * scaleY;
+    const r = dome.radius * scaleX;
+
+    const t = now / 1000;
+    const pulse = 0.5 + 0.5 * Math.sin(t * 4);
+
+    minimapCtx.save();
+    // Outer glow
+    minimapCtx.beginPath();
+    minimapCtx.arc(cx, cy, r + 2 + pulse, 0, Math.PI * 2);
+    minimapCtx.strokeStyle = `rgba(80, 160, 255, ${0.35 + 0.25 * pulse})`;
+    minimapCtx.lineWidth = 3 + pulse * 2;
+    minimapCtx.shadowColor = '#4499ff';
+    minimapCtx.shadowBlur = 5 + 3 * pulse;
+    minimapCtx.stroke();
+    minimapCtx.shadowBlur = 0;
+
+    // Inner bright ring
+    minimapCtx.beginPath();
+    minimapCtx.arc(cx, cy, r, 0, Math.PI * 2);
+    minimapCtx.strokeStyle = `rgba(180, 220, 255, ${0.7 + 0.3 * pulse})`;
+    minimapCtx.lineWidth = 1.5;
+    minimapCtx.stroke();
+
+    // ⚡ label in center
+    minimapCtx.font = '9px sans-serif';
+    minimapCtx.textAlign = 'center';
+    minimapCtx.textBaseline = 'middle';
+    minimapCtx.fillStyle = `rgba(180, 220, 255, ${0.8 + 0.2 * pulse})`;
+    minimapCtx.fillText('⚡', cx, cy);
+    minimapCtx.restore();
+  },
 };
