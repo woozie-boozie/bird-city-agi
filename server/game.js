@@ -987,6 +987,8 @@ class GameEngine {
       tattoosEquipped: saved ? this._safeJsonParse(saved.tattoos_equipped, []) : [],
       // === EAGLE FEATHER — rare drop from killing Eagle Overlord ===
       eagleFeather: saved ? (saved.eagle_feather || false) : false,
+      // === FEATHER OF THE ALPHA — rare drop from killing the Great Migration Alpha Leader ===
+      alphaFeather: saved ? (saved.alpha_feather || false) : false,
       // === MYSTERY CRATE active item buffs ===
       mcJetWingsUntil:     0,
       mcRiotShieldUntil:   0,
@@ -3497,7 +3499,18 @@ class GameEngine {
       } else if (hit.target === 'migration_alpha' && this.migration && this.migration.alpha && this.migration.alpha.hp > 0) {
         // Intercepted the Migration Alpha Leader! Contribute to bringing it down.
         const alpha = this.migration.alpha;
-        const dmg = isMegaPoop ? 30 : 15;
+        // Thunder Dome × Migration: alpha takes 2× damage inside the dome's electric field
+        const alphaInDome = this.thunderDome && (() => {
+          const dx = alpha.x - this.thunderDome.x;
+          const dy = alpha.y - this.thunderDome.y;
+          return Math.sqrt(dx * dx + dy * dy) <= this.thunderDome.radius;
+        })();
+        const dmg = (isMegaPoop ? 30 : 15) * (alphaInDome ? 2 : 1);
+        // Announce first dome hit for drama
+        if (alphaInDome && !this.migration._domeSynergyAnnounced) {
+          this.migration._domeSynergyAnnounced = true;
+          this.events.push({ type: 'migration_dome_double', birdId: bird.id, birdName: bird.name });
+        }
         alpha.hp = Math.max(0, alpha.hp - dmg);
         xpGain = isMegaPoop ? 60 : 30;
         bird.coins += isMegaPoop ? 20 : 10;
@@ -5981,6 +5994,7 @@ class GameEngine {
           kingpinMyHits: (this.kingpin && this.kingpin.birdId === b.id) ? (this.kingpin.hitCount.get(bird.id) || 0) : 0,
           tattoosEquipped: b.tattoosEquipped || [],
           eagleFeather: b.eagleFeather || false,
+          alphaFeather: b.alphaFeather || false,
           idolBadge: b.idolBadge || false,
           royaleChampBadge: b.royaleChampBadge || false,
           fightingChampBadge: b.fightingChampBadge || false,
@@ -7081,6 +7095,7 @@ class GameEngine {
       idolLeaderboard: this._cachedIdolLeaderboard || [],
       myIdolWins: bird.idolWins || 0,
       eagleFeather: bird.eagleFeather || false,
+      alphaFeather: bird.alphaFeather || false,
       nearHallOfLegends: (() => {
         const dx = bird.x - this.HALL_OF_LEGENDS_POS.x;
         const dy = bird.y - this.HALL_OF_LEGENDS_POS.y;
@@ -7543,6 +7558,7 @@ class GameEngine {
       tattoos_equipped: JSON.stringify(bird.tattoosEquipped || []),
       prestige: bird.prestige || 0,
       eagle_feather: bird.eagleFeather || false,
+      alpha_feather: bird.alphaFeather || false,
       skill_points: bird.skillPoints || 0,
       skill_tree: JSON.stringify(bird.skillTreeUnlocked || []),
       skill_tree_master: bird.skillTreeMaster || false,
@@ -17220,12 +17236,34 @@ class GameEngine {
       // Compute proportional rewards for all contributors
       const totalDmg = Array.from(mig.contributors.values()).reduce((sum, c) => sum + c.dmg, 0);
       let killerName = null, killerGangTag = null;
+
+      // Gang War × Migration: identify warring gang IDs upfront for the bonus check
+      const warringGangIds = new Set();
+      for (const [, g] of this.gangs) {
+        if (g.warWithGangId && now < g.warEndsAt) {
+          warringGangIds.add(g.id);
+          warringGangIds.add(g.warWithGangId);
+        }
+      }
+      let gangWarBonusRecipients = 0;
+
       for (const [birdId, contrib] of mig.contributors) {
         const b = this.birds.get(birdId);
         if (!b) continue;
         const share = contrib.dmg / Math.max(1, totalDmg);
-        const xpReward  = Math.round(60 + 340 * share);   // 60-400 XP
+        let xpReward  = Math.round(60 + 340 * share);   // 60-400 XP
         const coinReward = Math.round(20 + 230 * share);  // 20-250c
+
+        // Gang War × Migration: +50% XP for contributors who are in a warring gang
+        const inWarGang = b.gangId && warringGangIds.has(b.gangId);
+        let warBonusXp = 0;
+        if (inWarGang) {
+          warBonusXp = Math.round(xpReward * 0.5);
+          xpReward += warBonusXp;
+          gangWarBonusRecipients++;
+          this.events.push({ type: 'migration_gang_war_bonus', birdId, birdName: b.name, xp: warBonusXp });
+        }
+
         b.xp += xpReward;
         b.coins += coinReward;
         const newLevel = world.getLevelFromXP(b.xp);
@@ -17233,6 +17271,25 @@ class GameEngine {
         if (birdId === killerBirdId) { killerName = b.name; killerGangTag = b.gangTag || null; }
         this.events.push({ type: 'migration_reward', birdId, birdName: b.name, xp: xpReward, coins: coinReward, isKiller: birdId === killerBirdId });
       }
+
+      // Gang War × Migration synergy city-wide announcement
+      if (gangWarBonusRecipients > 0) {
+        this.events.push({ type: 'migration_gang_war_synergy', count: gangWarBonusRecipients });
+      }
+
+      // Feather of the Alpha — 20% chance for the killing-blow bird (persistent badge)
+      const killerBird = this.birds.get(killerBirdId);
+      if (killerBird && !killerBird.alphaFeather && Math.random() < 0.20) {
+        killerBird.alphaFeather = true;
+        this._saveBird(killerBird);
+        this.events.push({
+          type: 'alpha_feather_drop',
+          birdId: killerBirdId,
+          birdName: killerBird.name,
+          gangTag: killerBird.gangTag || null,
+        });
+      }
+
       if (!this.gazetteStats.alphaKills) this.gazetteStats.alphaKills = [];
       if (killerName) this.gazetteStats.alphaKills.push({ name: killerName, gangTag: killerGangTag });
       this.events.push({

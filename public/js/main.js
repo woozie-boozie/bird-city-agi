@@ -3843,6 +3843,37 @@
       addEventMessage(`🦅 The migration flock crossed the city safely. Alpha escaped!`, '#aaaaaa');
     }
 
+    // 🦅 Feather of the Alpha — rare drop on killing blow
+    if (ev.type === 'alpha_feather_drop') {
+      const tag = ev.gangTag ? `[${ev.gangTag}] ` : '';
+      effects.push({ type: 'screen_shake', intensity: 10, duration: 700, time: now });
+      if (ev.birdId === myId) {
+        showAnnouncement(`🦅 FEATHER OF THE ALPHA!\nThe fallen leader's feather is yours — worn forever!`, '#ffcc55', 8000);
+      }
+      addEventMessage(`🦅 ${tag}${ev.birdName} earned the FEATHER OF THE ALPHA — a legendary trophy!`, '#ffcc55');
+    }
+
+    // 🦅⚔️ Gang War × Migration — +50% XP synergy
+    if (ev.type === 'migration_gang_war_bonus') {
+      if (ev.birdId === myId) {
+        showAnnouncement(`🦅⚔️ GANG WAR BONUS!\n+${ev.xp}XP extra — gang war makes the migration dangerous!`, '#ff6644', 3500);
+        effects.push({ type: 'text', x: gameState.self ? gameState.self.x : 0, y: gameState.self ? gameState.self.y - 50 : 0,
+          time: now, duration: 2000, text: `⚔️ WAR BONUS +${ev.xp}XP`, color: '#ff8866', size: 14 });
+      }
+    }
+    if (ev.type === 'migration_gang_war_synergy') {
+      addEventMessage(`🦅⚔️ GANG WAR × MIGRATION! ${ev.count} warring birds earn +50% XP for slaying the Alpha!`, '#ff8866');
+    }
+
+    // ⚡🦅 Thunder Dome × Migration — alpha takes 2× damage inside the dome
+    if (ev.type === 'migration_dome_double') {
+      effects.push({ type: 'screen_shake', intensity: 8, duration: 500, time: now });
+      if (ev.birdId === myId) {
+        showAnnouncement(`⚡🦅 DOME SYNERGY!\nAlpha is inside the Thunder Dome — DOUBLE DAMAGE on every hit!`, '#66aaff', 5000);
+      }
+      addEventMessage(`⚡🦅 ${ev.birdName} discovers the synergy — Alpha takes 2× damage inside the Thunder Dome!`, '#66aaff');
+    }
+
     // === MURAL VANDAL EVENTS ===
     if (ev.type === 'vandal_appeared') {
       effects.push({ type: 'screen_shake', intensity: 7, duration: 500, time: now });
@@ -8579,7 +8610,7 @@
 
           Sprites.drawBird(ctx, sx, sy, b.rotation, b.type, b.wingPhase, isPlayer, b.birdColor || null);
           ctx.globalAlpha = 1; // Always reset after bird draw
-          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0, b.eagleFeather || false, b.idolBadge || false, b.royaleChampBadge || false, b.skillTreeMaster || false, b.fightingChampBadge || false, b.constellationBadge || false, b.courtTitle || null, b.hanamiLanternBadge || false, b.domeChampBadge || false);
+          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0, b.eagleFeather || false, b.idolBadge || false, b.royaleChampBadge || false, b.skillTreeMaster || false, b.fightingChampBadge || false, b.constellationBadge || false, b.courtTitle || null, b.hanamiLanternBadge || false, b.domeChampBadge || false, b.alphaFeather || false);
 
           // Bird Flu: sneezing emoji indicator above infected birds
           if (b.isFlu) {

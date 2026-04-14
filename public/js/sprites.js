@@ -106,7 +106,7 @@ window.Sprites = {
   },
 
   // === NAME TAG ===
-  drawNameTag(ctx, x, y, name, level, type, isPlayer, mafiaTitle, gangTag, gangColor, tattoosEquipped, prestige, eagleFeather, idolBadge, royaleChampBadge, skillTreeMaster, fightingChampBadge, constellationBadge, courtTitle, hanamiLanternBadge, domeChampBadge) {
+  drawNameTag(ctx, x, y, name, level, type, isPlayer, mafiaTitle, gangTag, gangColor, tattoosEquipped, prestige, eagleFeather, idolBadge, royaleChampBadge, skillTreeMaster, fightingChampBadge, constellationBadge, courtTitle, hanamiLanternBadge, domeChampBadge, alphaFeather) {
     const text = `${name} [Lv.${level}]`;
     ctx.font = 'bold 11px Courier New';
     ctx.textAlign = 'center';
@@ -243,6 +243,25 @@ window.Sprites = {
       ctx.shadowBlur = 9;
       ctx.fillStyle = '#88ccff';
       ctx.fillText(dStr, x, y - 41 - offsetY);
+      ctx.shadowBlur = 0;
+      ctx.font = 'bold 11px Courier New';
+      offsetY += 14;
+    }
+
+    // 🦅 Feather of the Alpha — rare drop from slaying the Great Migration Alpha Leader
+    if (alphaFeather) {
+      ctx.font = '11px serif';
+      const afStr = '🦅 ALPHA';
+      const afw = ctx.measureText(afStr).width + 10;
+      ctx.fillStyle = 'rgba(30,15,0,0.93)';
+      ctx.fillRect(x - afw / 2, y - 52 - offsetY, afw, 14);
+      ctx.strokeStyle = '#e8a020';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(x - afw / 2, y - 52 - offsetY, afw, 14);
+      ctx.shadowColor = '#ffa500';
+      ctx.shadowBlur = 8;
+      ctx.fillStyle = '#ffcc55';
+      ctx.fillText(afStr, x, y - 41 - offsetY);
       ctx.shadowBlur = 0;
       ctx.font = 'bold 11px Courier New';
       offsetY += 14;

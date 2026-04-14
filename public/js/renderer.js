@@ -3360,11 +3360,17 @@ window.Renderer = {
         ctx.fillText(badges[Math.min(entry.prestige, 5)], cx - 44, ry + ROW_H - 3);
         ctx.shadowBlur = 0;
 
-        // Eagle feather badge
+        // Eagle feather badge + Alpha feather badge
         let nameX = cx - 18;
         if (entry.eagleFeather) {
           ctx.font = '7px serif';
           ctx.fillText('🪶', nameX, ry + ROW_H - 3);
+          nameX += 10;
+        }
+        if (entry.alphaFeather) {
+          ctx.font = '7px serif';
+          ctx.fillStyle = '#ffcc55';
+          ctx.fillText('🦅', nameX, ry + ROW_H - 3);
           nameX += 10;
         }
 

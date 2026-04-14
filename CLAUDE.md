@@ -3063,6 +3063,40 @@ The Thunder Dome gets four interlocking power-ups that wire it into the game's m
 
 **Creative intent**: The Thunder Dome was already the most chaotic zone event in the game. These four synergies make it CONTEXTUALLY explosive: if a gang war is active when the dome falls, it becomes the war's flashpoint. If the Kingpin is inside, every other bird has a financial incentive to follow them in and get the +100 XP bonus on each hit. The Crime Wave + Dome combo is the most dangerous 2.5 minutes in Bird City — triple heat means you can go from 0 to Most Wanted in 5 poop hits. The Gladiator badge gives the best dome fighter a visible session trophy that says "I was the cage champion." Four additions, all emergent, all social, all CARNAGE. Pure CARNAGE + SOCIAL + PROGRESSION energy.
 
+**Session 91 — 2026-04-14: Great Migration Cross-System Synergies + Feather of the Alpha**
+Three interlocking additions that complete the Great Migration's identity as Bird City's most spectacular roaming event — now connected to three other major systems.
+
+**🦅 Feather of the Alpha (persistent badge):**
+- 20% chance for the bird who deals the killing blow to the Migration Alpha Leader to earn `alphaFeather = true`
+- Persisted to Firestore (`alpha_feather` field) — survives all server restarts
+- Renders as a gold/amber `🦅 ALPHA` badge in the nametag stack (between dome champ badge and eagle feather) — warm gold glow, impossible to miss
+- Also shown on Hall of Legends plaques next to the bird's name (`🦅` emoji)
+- City-wide announcement with screen shake when earned: "🦅 [Name] earned the FEATHER OF THE ALPHA!"
+- Distinct from the eagle feather (teal) — amber gold, different color, different source
+- The feather is the rarest cosmetic in the game: you must deal the finishing blow AND win the 20% roll. Killing an alpha is itself rare (requires coordinated effort).
+
+**🦅⚔️ Great Migration × Gang War (+50% XP synergy):**
+- When the Alpha Leader is slain during an active gang war (any gangs), contributors who belong to a warring gang earn +50% extra XP on their migration reward
+- Server identifies all warring gang IDs at the moment of death; applies bonus inside the reward loop
+- Personal announcement fires for each bonus recipient: "🦅⚔️ GANG WAR BONUS! +NXP — gang war makes the migration dangerous!"
+- City-wide synergy callout: "🦅⚔️ GANG WAR × MIGRATION! N warring birds earn +50% XP for slaying the Alpha!"
+- Stacks with prestige bonuses, Lucky Charm, Signal Boost — high-combo warring birds get enormous migration payouts
+- Creates a compelling reason to hunt the migration while at war: it's now doubly profitable
+
+**⚡🦅 Great Migration × Thunder Dome (2× damage):**
+- When the Alpha Leader is physically inside an active Thunder Dome's radius when hit, every poop hit deals DOUBLE damage (15→30, mega 30→60 HP)
+- This means a mega poop instantly removes half the alpha's HP — a four-hit kill becomes a two-hit kill
+- First dome hit fires `migration_dome_double` event: personal "⚡🦅 DOME SYNERGY! Alpha takes 2× damage inside the Thunder Dome!" + city-wide callout
+- `_domeSynergyAnnounced` flag prevents announcement spam on subsequent hits
+- Creates an epic scenario: Thunder Dome drops on the district the migration is crossing → the alpha becomes suddenly, urgently vulnerable → every bird sprints to the dome to capitalize
+
+**Visual & UX:**
+- All three synergies have personal announcements + city-wide event feed callouts
+- Badge renders in warm amber/gold, glowing with `#ffa500` shadow — visually distinct from the teal eagle feather and cyan constellation badge
+- Hall of Legends plaques show `🦅` emoji next to the bird's name (alongside `🪶` for eagle feather)
+
+**Creative intent**: The Great Migration (Session 87) was already spectacular — a V-formation crossing the whole city with a boss at the front. But it felt isolated from other systems. These three synergies make every migration landing feel contextually charged. A gang war erupts RIGHT BEFORE the migration arrives? Now both sides sprint to the alpha for the war bonus, creating a shared-enemy ceasefire moment. A Thunder Dome drops on the migration's path? Suddenly the alpha is an emergency — double damage, time pressure, all birds converging on the same spot. The Alpha Feather is the ultimate migration trophy: rare, permanent, gold, visible to every player who flies near you forever. Pure DISCOVERY + SOCIAL + CARNAGE + PROGRESSION energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -3309,8 +3343,8 @@ Built the Territory Control System on top of the existing upstream code:
 - Siege alliance mechanic: allied gangs (via shared Don contracts) can join each other's sieges as auxiliary attackers
 - Siege escalation: if a siege is ongoing at the 2-minute mark with >80% HP remaining, a Crow Cartel squad joins the attacker side (the Don sends backup)
 - Mural × Siege synergy: capturing a rival mural during an active siege against that gang counts as a siege hit (-15 HP from siege pool)
-- Great Migration cross-system: if the Alpha Leader is alive during a Gang War, both warring gangs get bonus XP for killing it (shared enemy bonus)
-- Alpha Leader rare drop: 20% chance for the killing blow to earn a "Feather of the Alpha" cosmetic badge (teal, distinct from eagle feather)
+- ~~Great Migration cross-system: if the Alpha Leader is alive during a Gang War, both warring gangs get bonus XP for killing it (shared enemy bonus)~~ (DONE Session 91)
+- ~~Alpha Leader rare drop: 20% chance for the killing blow to earn a "Feather of the Alpha" cosmetic badge (amber gold, distinct from eagle feather)~~ (DONE Session 91)
 - ~~Thunder Dome × Gang War: double war kills + 50% kill XP inside dome~~ (DONE Session 90)
 - ~~Thunder Dome × Kingpin: electric blue crown + 100 XP dethronement bonus inside dome~~ (DONE Session 90)
 - ~~Thunder Dome × Crime Wave: ×3 heat inside the dome during crime waves~~ (DONE Session 90)
@@ -3320,5 +3354,5 @@ Built the Territory Control System on top of the existing upstream code:
 - Gang Siege escalation: if siege HP is still >80% after 2 minutes, a Crow Cartel squad joins the attacker side (Don sends backup)
 - Mural × Siege synergy: overtaking a rival mural during an active siege against that gang counts as a siege hit (−15 HP from siege pool)
 - Gladiator Rematch: if the same bird wins the Dome Champion badge 3 sessions in a row, they earn a permanent "⚡ ARENA LEGEND" persistent badge (like Mafia Rep tier)
-- Great Migration × Gang War: both warring gangs get +50% XP for killing the Alpha Leader (shared enemy bonus — ancient rivalry forgotten in the face of the great bird)
+- ~~Great Migration × Gang War: both warring gangs get +50% XP for killing the Alpha Leader (shared enemy bonus — ancient rivalry forgotten in the face of the great bird)~~ (DONE Session 91)
 - Great Migration slipstream racing: during an active race, migration slipstream boost stacks with race boost gates — brief supercharge moment when paths intersect
