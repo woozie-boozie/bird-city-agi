@@ -1863,6 +1863,67 @@
       }
     }
 
+    // === 🌑 BLOOD MOON ===
+    if (ev.type === 'blood_moon_start') {
+      effects.push({ type: 'screen_shake', intensity: 14, duration: 900, time: now });
+      showAnnouncement(
+        `🌑 BLOOD MOON RISES!\nFeral birds roam the city!\n+50% XP & Coins · Night Market CURSED!`,
+        '#cc2200', 9000
+      );
+      addEventMessage(`🌑 BLOOD MOON! ${ev.count} feral birds summoned — +50% XP/Coins all night! Night Market items may backfire!`, '#ff4444');
+    }
+    if (ev.type === 'blood_moon_end') {
+      addEventMessage(`🌑 ${ev.message}`, '#cc6666');
+    }
+    if (ev.type === 'feral_bird_spawn') {
+      // Quiet spawn — just a subtle event feed note
+      if (ev.feralBirds && ev.feralBirds.length > 1) {
+        addEventMessage(`🌑 More feral birds emerge from the shadows...`, '#ff4444');
+      }
+    }
+    if (ev.type === 'feral_steal') {
+      if (ev.targetId === myId) {
+        effects.push({ type: 'screen_shake', intensity: 8, duration: 500, time: now });
+        showAnnouncement(`🌑 FERAL BIRD STOLE ${ev.amount}c FROM YOU!\nPoop it to stop the bleeding!`, '#ff2200', 4000);
+        effects.push({ type: 'text', x: gameState.self ? gameState.self.x : 0,
+          y: gameState.self ? gameState.self.y - 35 : 0,
+          time: now, duration: 2000, text: `-${ev.amount}c 🌑`, color: '#ff3333', size: 15 });
+      } else {
+        const tag = ev.targetGangTag ? `[${ev.targetGangTag}] ` : '';
+        addEventMessage(`🌑 A feral bird stole ${ev.amount}c from ${tag}${ev.targetName}!`, '#ff4444');
+      }
+    }
+    if (ev.type === 'feral_bird_hit') {
+      if (ev.birdId === myId) {
+        effects.push({ type: 'text', x: ev.x, y: ev.y - 25, time: now, duration: 1200,
+          text: `💀 ${ev.hp <= 0 ? 'DEAD' : '1 MORE!'}`, color: '#ff4444', size: 13 });
+      }
+    }
+    if (ev.type === 'feral_bird_killed') {
+      const tag = ev.killerGangTag ? `[${ev.killerGangTag}] ` : '';
+      addEventMessage(`💀 ${tag}${ev.killerName} slew a feral bird! +${ev.xp}XP +${ev.coins}c`, '#ff6666');
+      if (ev.killerId === myId) {
+        showAnnouncement(`💀 FERAL BIRD SLAIN!\n+${ev.xp}XP +${ev.coins}c`, '#ff6666', 3000);
+      }
+    }
+    if (ev.type === 'blood_moon_cleared') {
+      effects.push({ type: 'screen_shake', intensity: 10, duration: 700, time: now });
+      showAnnouncement(`💀 ALL FERAL BIRDS DEFEATED!\n${ev.message}`, '#ffaa44', 6000);
+      addEventMessage(`💀 ${ev.message} ${ev.xp}XP +${ev.coins}c for every online bird!`, '#ffaa44');
+    }
+    if (ev.type === 'blood_moon_survived') {
+      if (ev.birdId === myId) {
+        showAnnouncement(`🌑 BLOOD MOON SURVIVOR!\nYou kept your coins safe all night — daily challenge complete!`, '#ff8855', 5000);
+      }
+    }
+    if (ev.type === 'blood_moon_curse') {
+      if (ev.birdId === myId) {
+        effects.push({ type: 'screen_shake', intensity: 8, duration: 600, time: now });
+        showAnnouncement(ev.message, '#cc0000', 5000);
+        addEventMessage(`🌑 ${ev.message}`, '#cc0000');
+      }
+    }
+
     // === SHOOTING STAR (rare aurora event) ===
     if (ev.type === 'shooting_star_spawn') {
       window._shootingStarData = { x: ev.x, y: ev.y, spawnedAt: ev.spawnedAt, expiresAt: ev.expiresAt, streakAngle: ev.streakAngle };
@@ -7131,6 +7192,17 @@
     }
   }
 
+  // Blood Moon: pulsing crimson vignette at screen edges
+  function drawBloodMoonVignette(ctx, sw, sh, now) {
+    const pulse = 0.5 + 0.5 * Math.sin(now * 0.0015);
+    const grad = ctx.createRadialGradient(sw / 2, sh / 2, sh * 0.3, sw / 2, sh / 2, sh * 0.85);
+    grad.addColorStop(0, 'rgba(80, 0, 0, 0)');
+    grad.addColorStop(0.7, `rgba(120, 0, 0, ${0.05 + pulse * 0.04})`);
+    grad.addColorStop(1, `rgba(180, 0, 0, ${0.15 + pulse * 0.1})`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, sw, sh);
+  }
+
   function drawTornadoInWorld(ctx, camera, weather, now) {
     if (!weather || weather.type !== 'tornado') return;
     const tx = weather.tornadoX;
@@ -8196,6 +8268,18 @@
       }
     }
 
+    // Blood Moon Feral Birds — dark corrupted pigeons with glowing red eyes
+    if (gameState.bloodMoon && gameState.bloodMoon.feralBirds && gameState.bloodMoon.feralBirds.length > 0) {
+      for (const feral of gameState.bloodMoon.feralBirds) {
+        const fsx = feral.x - camera.x + camera.screenW / 2;
+        const fsy = feral.y - camera.y + camera.screenH / 2;
+        if (fsx > -margin - 30 && fsx < camera.screenW + margin + 30 &&
+            fsy > -margin - 30 && fsy < camera.screenH + margin + 30) {
+          Sprites.drawFeralBird(ctx, fsx, fsy, feral.rotation, feral.hp, feral.state, now);
+        }
+      }
+    }
+
     // The Pigeon Mafia Don — permanent NPC at his corner
     {
       const DON_WORLD_X = 1300, DON_WORLD_Y = 2380;
@@ -8931,12 +9015,18 @@
 
     // Day/Night overlay (screen-space, after zoom restore)
     if (gameState.dayTime !== undefined && worldData) {
-      Renderer.drawDayNight(ctx, camera, z, gameState.dayTime, worldData.streetLamps);
+      Renderer.drawDayNight(ctx, camera, z, gameState.dayTime, worldData.streetLamps, gameState.bloodMoon || null);
     }
 
     // Aurora Borealis (screen-space, AFTER darkness overlay — additive blending makes it glow through)
-    if (gameState.aurora) {
+    // Suppressed during Blood Moon (they are mutually exclusive)
+    if (gameState.aurora && !gameState.bloodMoon) {
       Renderer.drawAurora(ctx, camera, gameState.dayTime, gameState.aurora);
+    }
+
+    // Blood Moon crimson pulsing vignette (additional screen-space effect)
+    if (gameState.bloodMoon) {
+      drawBloodMoonVignette(ctx, camera.screenW, camera.screenH, now);
     }
 
     // Shooting Star streak (screen-space, drawn ON TOP of aurora for full spectacle)
@@ -10356,6 +10446,26 @@
       minimapCtx.font = 'bold 7px monospace';
       minimapCtx.textAlign = 'left';
       minimapCtx.fillText(`🐦 ${gameState.seagullInvasion.aliveCount}/${gameState.seagullInvasion.totalCount}`, 3, mh - 3);
+    }
+
+    // Blood Moon feral birds on minimap — pulsing red skull dots
+    if (gameState.bloodMoon && gameState.bloodMoon.feralBirds && worldData) {
+      const mw = minimapCtx.canvas.width;
+      const mh = minimapCtx.canvas.height;
+      const bmpulse = 0.5 + 0.5 * Math.sin(now * 0.004);
+      for (const feral of gameState.bloodMoon.feralBirds) {
+        const fmx = feral.x * mw / worldData.width;
+        const fmy = feral.y * mh / worldData.height;
+        minimapCtx.save();
+        minimapCtx.shadowColor = '#ff0000';
+        minimapCtx.shadowBlur = 5 + 3 * bmpulse;
+        minimapCtx.fillStyle = `rgba(220, ${Math.floor(20 + 30 * bmpulse)}, 20, ${0.7 + 0.3 * bmpulse})`;
+        minimapCtx.beginPath();
+        minimapCtx.arc(fmx, fmy, 2.5 + bmpulse, 0, Math.PI * 2);
+        minimapCtx.fill();
+        minimapCtx.shadowBlur = 0;
+        minimapCtx.restore();
+      }
     }
 
     // Great Migration on minimap — white flock birds + pulsing gold alpha dot
@@ -12138,6 +12248,24 @@
       const secs = Math.ceil((s.lunarLensUntil - now) / 1000);
       const mm = Math.floor(secs / 60), ss = secs % 60;
       html += `<div class="bm-buff-pill" style="background:rgba(0,20,50,0.9);border-color:#88aaff;color:#aaccff;animation:kingpinGlow 1.4s ease-in-out infinite alternate;">🌙 LUNAR LENS — ${mm}m ${ss}s · Sewer caches revealed on minimap</div>`;
+    }
+
+    // === 🌑 BLOOD MOON ===
+    if (gameState.bloodMoon) {
+      const bmLeft = Math.max(0, Math.ceil((gameState.bloodMoon.endsAt - now) / 1000));
+      const bmMins = Math.floor(bmLeft / 60);
+      const bmSecs = bmLeft % 60;
+      const bmCount = gameState.bloodMoon.feralBirds ? gameState.bloodMoon.feralBirds.length : 0;
+      const bmTime = bmMins > 0 ? `${bmMins}m ${bmSecs}s` : `${bmLeft}s`;
+      html += `<div class="bm-buff-pill" style="background:rgba(80,0,0,0.95);border-color:#cc2200;color:#ff6644;font-weight:bold;animation:pulseRed 0.8s infinite alternate;">🌑 BLOOD MOON — ${bmTime} · +50% XP/Coins · ${bmCount} feral birds!</div>`;
+      if (s.bloodMoonStarCursed && s.bloodMoonStarCursed > now) {
+        const secs = Math.ceil((s.bloodMoonStarCursed - now) / 1000);
+        html += `<div class="bm-buff-pill" style="background:rgba(80,0,20,0.9);border-color:#ff3333;color:#ff8888;animation:pulseRed 0.6s infinite alternate;">🌑💀 CURSED STAR POWER — HALF XP for ${secs}s!</div>`;
+      }
+      if (s.bloodMoonExposedUntil && s.bloodMoonExposedUntil > now) {
+        const secs = Math.ceil((s.bloodMoonExposedUntil - now) / 1000);
+        html += `<div class="bm-buff-pill" style="background:rgba(80,0,0,0.9);border-color:#ff0000;color:#ff4444;animation:pulseRed 0.4s infinite alternate;">🌑💀 EXPOSED — Glowing RED — visible to all for ${secs}s!</div>`;
+      }
     }
 
     // Crime Wave — city-wide danger indicator

@@ -6069,4 +6069,147 @@ window.Sprites = {
     ctx.shadowBlur = 0;
     ctx.restore();
   },
+
+  /**
+   * Feral Bird — dark corrupted pigeon with glowing red eyes, summoned during Blood Moon.
+   * Stealthy dark silhouette with menacing crimson glow. hp: 2 (shows indicator at hp=1).
+   */
+  drawFeralBird(ctx, x, y, rotation, hp, state, now) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rotation);
+
+    // Pulsing red aura — the corruption is visible
+    const pulse = 0.5 + 0.5 * Math.sin(now * 0.003 + x * 0.01);
+    ctx.shadowColor = '#cc0000';
+    ctx.shadowBlur = 14 + pulse * 10;
+
+    // Wing flap animation
+    const flapPhase = (now / 240) % (Math.PI * 2);
+    const wingFlap = Math.sin(flapPhase) * 0.35;
+
+    // Ground shadow (subtle under the feral bird)
+    ctx.globalAlpha = 0.2;
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.ellipse(0, 10, 12, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // Wings — flat dark silhouette with red highlight along edge
+    ctx.shadowBlur = 0;
+    // Left wing
+    ctx.save();
+    ctx.rotate(-wingFlap);
+    ctx.fillStyle = '#1a0505';
+    ctx.beginPath();
+    ctx.ellipse(-10, 2, 14, 4.5, -0.25, 0, Math.PI * 2);
+    ctx.fill();
+    // Wing edge — blood-red shimmer
+    ctx.strokeStyle = `rgba(180,0,0,${0.5 + pulse * 0.4})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.ellipse(-10, 2, 14, 4.5, -0.25, Math.PI * 1.3, Math.PI * 1.7);
+    ctx.stroke();
+    ctx.restore();
+
+    // Right wing
+    ctx.save();
+    ctx.rotate(wingFlap);
+    ctx.fillStyle = '#1a0505';
+    ctx.beginPath();
+    ctx.ellipse(-10, -2, 14, 4.5, 0.25, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = `rgba(180,0,0,${0.5 + pulse * 0.4})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.ellipse(-10, -2, 14, 4.5, 0.25, Math.PI * 1.3, Math.PI * 1.7);
+    ctx.stroke();
+    ctx.restore();
+
+    // Body — near-black with dark-red undershadow
+    const bodyGrad = ctx.createRadialGradient(-2, 0, 2, -2, 0, 10);
+    bodyGrad.addColorStop(0, '#2a0808');
+    bodyGrad.addColorStop(1, '#0d0202');
+    ctx.fillStyle = bodyGrad;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 11, 6.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Tail feathers
+    ctx.fillStyle = '#1a0505';
+    ctx.beginPath();
+    ctx.moveTo(-9, 0);
+    ctx.lineTo(-17, 3);
+    ctx.lineTo(-18, -3);
+    ctx.closePath();
+    ctx.fill();
+
+    // Head
+    ctx.fillStyle = '#1e0606';
+    ctx.beginPath();
+    ctx.arc(9, -1, 5.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // GLOWING RED EYES — the signature feature
+    ctx.shadowColor = '#ff0000';
+    ctx.shadowBlur = 12 + pulse * 8;
+    ctx.fillStyle = `rgba(255, ${Math.floor(30 + pulse * 40)}, 30, 1)`;
+    ctx.beginPath();
+    ctx.arc(11, -1.5, 2.2, 0, Math.PI * 2); // eye glow
+    ctx.fill();
+    // Pupil
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#ff0000';
+    ctx.beginPath();
+    ctx.arc(11.5, -1.5, 1, 0, Math.PI * 2);
+    ctx.fill();
+    // Glint
+    ctx.fillStyle = 'rgba(255,200,200,0.8)';
+    ctx.beginPath();
+    ctx.arc(10.8, -2.1, 0.4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Beak — hooked dark beak
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#2c1010';
+    ctx.beginPath();
+    ctx.moveTo(13.5, -1);
+    ctx.lineTo(18, -2.5);
+    ctx.lineTo(17.5, 0.5);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.restore();
+
+    // HP indicator — when down to 1 HP show a warning
+    if (hp <= 1) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.font = 'bold 9px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#ff4444';
+      ctx.shadowColor = '#000';
+      ctx.shadowBlur = 4;
+      ctx.fillText('💀 1 HIT!', 0, -22);
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    }
+
+    // State label — show "STEALING" when in steal state
+    if (state === 'steal') {
+      ctx.save();
+      ctx.translate(x, y);
+      const stealPulse = 0.6 + 0.4 * Math.sin(now * 0.006);
+      ctx.font = 'bold 9px monospace';
+      ctx.textAlign = 'center';
+      ctx.globalAlpha = stealPulse;
+      ctx.fillStyle = '#ffaa00';
+      ctx.shadowColor = '#000';
+      ctx.shadowBlur = 4;
+      ctx.fillText('💰 STEALING!', 0, -30);
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    }
+  },
 };

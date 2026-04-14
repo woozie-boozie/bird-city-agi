@@ -835,7 +835,7 @@ window.Renderer = {
 
   // Draw day/night overlay with street lamp glow holes
   // Called in screen-space (after ctx.restore() removes world zoom)
-  drawDayNight(ctx, camera, zoom, dayTime, streetLamps) {
+  drawDayNight(ctx, camera, zoom, dayTime, streetLamps, bloodMoon) {
     if (dayTime === undefined || dayTime === null) return;
 
     // Compute darkness level (0 = full daylight, ~0.65 = full night)
@@ -872,6 +872,12 @@ window.Renderer = {
     } else {
       // Day — clear
       darkness = 0;
+    }
+
+    // Blood Moon override: crimson tint replaces the normal dark blue overlay
+    if (bloodMoon) {
+      darkness = Math.max(darkness, 0.72); // slightly darker than normal night
+      tr = 80; tg = 5; tb = 5; // deep crimson — the sky bleeds
     }
 
     if (darkness <= 0.01) return;
@@ -923,7 +929,7 @@ window.Renderer = {
     ctx.drawImage(this._nightCanvas, 0, 0);
 
     // Draw stars + moon on top of the darkness overlay (they peek through the night)
-    this._drawStarsAndMoon(ctx, camera, darkness, sw, sh);
+    this._drawStarsAndMoon(ctx, camera, darkness, sw, sh, bloodMoon);
 
     // Draw warm lamp glow dots on top of the darkness
     if (darkness > 0.08 && streetLamps && streetLamps.length) {
@@ -953,7 +959,7 @@ window.Renderer = {
   },
 
   // Internal helper: draw stars + moon on top of the darkness overlay
-  _drawStarsAndMoon(ctx, camera, darkness, sw, sh) {
+  _drawStarsAndMoon(ctx, camera, darkness, sw, sh, bloodMoon) {
     if (darkness < 0.05) return;
 
     // Lazily generate a stable star field
@@ -976,7 +982,7 @@ window.Renderer = {
     const now = Date.now();
     const parallax = 0.04; // stars parallax with camera at 4%
 
-    // Stars
+    // Stars — during Blood Moon they glow red
     ctx.save();
     for (const star of this._stars) {
       // Anchor in screen-space with very slow parallax drift
@@ -985,7 +991,7 @@ window.Renderer = {
 
       const twinkle = Math.sin(now * 0.0018 + star.twinkleOffset) * 0.25 + 0.75;
       ctx.globalAlpha = darkness * star.brightness * twinkle * 0.85;
-      ctx.fillStyle = '#ffffff';
+      ctx.fillStyle = bloodMoon ? '#ff8080' : '#ffffff'; // red-tinted stars during Blood Moon
       ctx.beginPath();
       ctx.arc(sx, sy, star.size, 0, Math.PI * 2);
       ctx.fill();
@@ -996,35 +1002,76 @@ window.Renderer = {
     const moonY = sh * 0.11 + Math.sin(camera.y * 0.00025) * 10;
     const moonR = Math.min(20, sw * 0.028); // scale with screen
 
-    // Glow halo
-    ctx.globalAlpha = darkness * 0.25;
-    const halo = ctx.createRadialGradient(moonX, moonY, moonR * 0.6, moonX, moonY, moonR * 3);
-    halo.addColorStop(0, 'rgba(200, 215, 255, 1)');
-    halo.addColorStop(1, 'rgba(150, 180, 255, 0)');
-    ctx.fillStyle = halo;
-    ctx.beginPath();
-    ctx.arc(moonX, moonY, moonR * 3, 0, Math.PI * 2);
-    ctx.fill();
+    if (bloodMoon) {
+      // Blood Moon: full crimson disc — no crescent, glows like a warning sign
+      // Pulsing blood-red outer halo
+      const pulse = (Math.sin(now * 0.002) * 0.5 + 0.5); // 0-1 pulse
+      ctx.globalAlpha = darkness * (0.3 + pulse * 0.2);
+      const bloodHalo = ctx.createRadialGradient(moonX, moonY, moonR * 0.7, moonX, moonY, moonR * 4);
+      bloodHalo.addColorStop(0, 'rgba(220, 30, 10, 1)');
+      bloodHalo.addColorStop(0.4, 'rgba(180, 0, 0, 0.5)');
+      bloodHalo.addColorStop(1, 'rgba(120, 0, 0, 0)');
+      ctx.fillStyle = bloodHalo;
+      ctx.beginPath();
+      ctx.arc(moonX, moonY, moonR * 4, 0, Math.PI * 2);
+      ctx.fill();
 
-    // Moon disc + crescent in a clipped sub-context
-    ctx.globalAlpha = darkness * 0.90;
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(moonX, moonY, moonR, 0, Math.PI * 2);
-    ctx.fillStyle = '#d8e8ff';
-    ctx.fill();
-    // Crescent: clip to moon, paint shadow offset
-    ctx.clip();
-    ctx.fillStyle = 'rgba(18, 28, 65, 0.65)';
-    ctx.beginPath();
-    ctx.arc(moonX + moonR * 0.40, moonY, moonR * 0.85, 0, Math.PI * 2);
-    ctx.fill();
-    // Craters
-    ctx.fillStyle = 'rgba(160, 180, 220, 0.35)';
-    ctx.beginPath(); ctx.arc(moonX - 5, moonY - 5, 4, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(moonX + 3, moonY + 6, 3, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(moonX - 7, moonY + 4, 2.5, 0, Math.PI * 2); ctx.fill();
-    ctx.restore(); // removes clip
+      // Full blood-red moon disc — no crescent clip
+      ctx.globalAlpha = darkness * 0.95;
+      const moonGrad = ctx.createRadialGradient(moonX - moonR * 0.25, moonY - moonR * 0.25, 0, moonX, moonY, moonR);
+      moonGrad.addColorStop(0, '#ff4040');
+      moonGrad.addColorStop(0.5, '#cc1a00');
+      moonGrad.addColorStop(1, '#7a0000');
+      ctx.fillStyle = moonGrad;
+      ctx.beginPath();
+      ctx.arc(moonX, moonY, moonR, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Dark veins / craters on the blood moon for texture
+      ctx.globalAlpha = darkness * 0.4;
+      ctx.fillStyle = 'rgba(50, 0, 0, 0.6)';
+      ctx.beginPath(); ctx.arc(moonX - 5, moonY + 3, 4.5, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(moonX + 6, moonY - 5, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(moonX - 2, moonY + 8, 3.5, 0, Math.PI * 2); ctx.fill();
+
+      // "🌑" text label under the moon for clarity
+      ctx.globalAlpha = darkness * 0.75;
+      ctx.fillStyle = '#ff6060';
+      ctx.font = `bold ${Math.round(moonR * 0.6)}px monospace`;
+      ctx.textAlign = 'center';
+      ctx.fillText('BLOOD MOON', moonX, moonY + moonR + 14);
+    } else {
+      // Normal crescent moon
+      // Glow halo
+      ctx.globalAlpha = darkness * 0.25;
+      const halo = ctx.createRadialGradient(moonX, moonY, moonR * 0.6, moonX, moonY, moonR * 3);
+      halo.addColorStop(0, 'rgba(200, 215, 255, 1)');
+      halo.addColorStop(1, 'rgba(150, 180, 255, 0)');
+      ctx.fillStyle = halo;
+      ctx.beginPath();
+      ctx.arc(moonX, moonY, moonR * 3, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Moon disc + crescent in a clipped sub-context
+      ctx.globalAlpha = darkness * 0.90;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(moonX, moonY, moonR, 0, Math.PI * 2);
+      ctx.fillStyle = '#d8e8ff';
+      ctx.fill();
+      // Crescent: clip to moon, paint shadow offset
+      ctx.clip();
+      ctx.fillStyle = 'rgba(18, 28, 65, 0.65)';
+      ctx.beginPath();
+      ctx.arc(moonX + moonR * 0.40, moonY, moonR * 0.85, 0, Math.PI * 2);
+      ctx.fill();
+      // Craters
+      ctx.fillStyle = 'rgba(160, 180, 220, 0.35)';
+      ctx.beginPath(); ctx.arc(moonX - 5, moonY - 5, 4, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(moonX + 3, moonY + 6, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(moonX - 7, moonY + 4, 2.5, 0, Math.PI * 2); ctx.fill();
+      ctx.restore(); // removes clip
+    }
 
     ctx.globalAlpha = 1;
     ctx.restore();

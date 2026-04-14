@@ -3097,6 +3097,53 @@ Three interlocking additions that complete the Great Migration's identity as Bir
 
 **Creative intent**: The Great Migration (Session 87) was already spectacular — a V-formation crossing the whole city with a boss at the front. But it felt isolated from other systems. These three synergies make every migration landing feel contextually charged. A gang war erupts RIGHT BEFORE the migration arrives? Now both sides sprint to the alpha for the war bonus, creating a shared-enemy ceasefire moment. A Thunder Dome drops on the migration's path? Suddenly the alpha is an emergency — double damage, time pressure, all birds converging on the same spot. The Alpha Feather is the ultimate migration trophy: rare, permanent, gold, visible to every player who flies near you forever. Pure DISCOVERY + SOCIAL + CARNAGE + PROGRESSION energy.
 
+**Session 92 — 2026-04-14: Blood Moon — Crimson Night of Feral Birds**
+The night cycle's most terrifying event. When the moon rises blood red, the sky bleeds crimson, stars glow red, and 5–8 feral corrupted pigeons with glowing red eyes materialize from the shadows. The city bathes in +50% XP and coins all night — but the Night Market is CURSED, and feral birds steal your coins.
+
+**Blood Moon mechanics (`server/game.js`):**
+- 20% chance per night (mutually exclusive with Aurora — one roll: <30% = aurora, 30-50% = blood moon)
+- Duration: 6–9 minutes of crimson darkness
+- `_startBloodMoon(now)`: spawns 5–8 feral birds from random map edges, sets crimson tint, broadcasts city-wide announcement with screen shake
+- **+50% XP and +50% coins** on all poop hits for ALL birds while blood moon is active — stacks with everything
+- **Feral bird AI** (3-state machine): wander (random drift), hunt (seeks nearest player within 300px at 130px/s), steal (drains 5–20 coins on contact with a 30-second per-bird cooldown)
+- 2 HP each (2 poop hits to kill, or 1 mega poop)
+- Respawning: when fewer than half the feral birds remain, 1–3 new ones emerge from map edges
+- **All slain**: if players clear every feral bird, city-wide +120 XP +60c bonus for every online bird
+- `_checkBloodMoonSurvivors()` at dawn: awards "Blood Moon Survivor" daily challenge to any bird not stolen from during the event
+
+**Night Market Backfire (50% curse chance):**
+- During Blood Moon, each Night Market purchase has a 50% chance of being corrupted:
+  - Stardust Cloak → **Exposed**: you glow RED and everyone sees you for 8 minutes
+  - Comet Trail → **Cursed Trail**: trail is blood red, still visible but marked for hunters
+  - Oracle Eye → **Cursed Oracle**: reveals only dangers (feral birds, cops, traps) — no loot
+  - Star Power → **Halved XP**: REDUCES XP by 50% for 8 minutes instead of boosting it
+  - Lunar Lens → **Betrayal**: broadcasts your location to every cop in the city (+30 heat)
+  - Constellation Badge → slightly tainted cosmetically but still permanently awarded
+- Curse announcements fire with dramatic screen shake; curse debuffs shown in active buffs HUD
+
+**Two new daily challenges (added to pool):**
+- 🌑 **Feral Fighter**: Kill 3 Feral Birds during a Blood Moon (220 XP, 110c)
+- 🌑 **Blood Moon Survivor**: Survive a full Blood Moon night without losing coins to a Feral Bird (250 XP, 120c)
+
+**Visual system:**
+- **Crimson sky overlay**: night tint changes from dark blue (`tr=5, tg=5, tb=35`) to deep crimson (`tr=80, tg=5, tb=5`) — the world is bathed in blood red
+- **Red stars**: all 200 star particles change from `#ffffff` to `#ff8080` during Blood Moon — the whole sky is corrupted
+- **Blood Moon disc**: full crimson moon replaces the normal crescent — radial gradient from bright red center to deep dark red edge, no crescent shadow, dark veins/craters for texture, pulsing red halo glow, "BLOOD MOON" text label below
+- **Screen vignette**: pulsing red radial gradient darkens the screen edges, intensifying and fading with a slow heartbeat rhythm
+- **Feral bird sprite** (`drawFeralBird()`): near-black silhouette with dark-red wing highlights, pulsing red aura shadowBlur, glowing red eyes with bright pupils and glint — the signature feature. Body sways with wing flap animation. Shows "💀 1 HIT!" when at 1 HP, "💰 STEALING!" when in steal state
+- **Minimap**: pulsing red skull dots with red shadowBlur glow at each feral bird's position — trackable from anywhere
+
+**Events & announcements:**
+- `blood_moon_start`: screen shake + crimson announcement + event feed
+- `feral_steal`: personal announcement with coin loss + city-wide callout; floating "-Xc 🌑" text at position
+- `feral_bird_killed`: city-wide kill callout + personal announcement for the killer
+- `blood_moon_cleared`: "ALL FERAL BIRDS DEFEATED" city-wide + +120 XP +60c announcement
+- `blood_moon_survived`: personal congratulations + daily challenge progress
+- `blood_moon_curse`: personal announcement + screen shake when Night Market backfires
+- `blood_moon_end`: quiet dawn announcement "The Blood Moon fades. Dawn cleanses the city."
+
+**Creative intent**: The night cycle had Aurora (beautiful, generous) but nothing truly TERRIFYING. Blood Moon is the anti-aurora — same time slot, opposite vibe. Where aurora gives cosmic fish and star power, Blood Moon gives +50% combat rewards but actively hunts you. The Night Market curse is the killer detail: the shop you relied on at night might BETRAY you tonight, turning a speed serum into a curse or burning your XP gain for 8 minutes. The feral bird design (near-black with glowing red eyes in the crimson sky) hits peak CARNAGE CITY horror aesthetics. A bird running from cops, getting robbed by a feral bird, trying to pop open the Night Market for a Disguise Kit and getting CURSED EXPOSED instead — that sequence creates the kind of "oh no" moment that players share. Pure CARNAGE + DISCOVERY + SPECTACLE energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
