@@ -1354,19 +1354,22 @@
       showGangWarHud(`⚔️ [${ev.gang1Tag}] vs [${ev.gang2Tag}] — GANG WAR!`, 6000);
     }
     if (ev.type === 'gang_war_hit') {
+      const domeHitNote = ev.domeBonus ? ' ⚡ DOME DOUBLE HIT!' : '';
       if (ev.targetId === myId) {
-        addEventMessage(`🎯 [${ev.attackerTag}] ${ev.attackerName} hit you! (${ev.hits}/3)`, '#ff4444');
+        addEventMessage(`🎯 [${ev.attackerTag}] ${ev.attackerName} hit you! (${ev.hits}/3)${domeHitNote}`, '#ff4444');
       }
       if (ev.attackerId === myId) {
-        addEventMessage(`🎯 Hit [${ev.targetTag}] ${ev.targetName}! (${ev.hits}/3)`, '#ff9944');
+        addEventMessage(`🎯 Hit [${ev.targetTag}] ${ev.targetName}! (${ev.hits}/3)${domeHitNote}`, '#ff9944');
       }
     }
     if (ev.type === 'gang_war_kill') {
       SoundEngine.coinPickup && SoundEngine.coinPickup();
       const auroraExtra = ev.auroraBonus ? ' ✨ 2× AURORA XP!' : '';
-      showAnnouncement(`💀 [${ev.attackerGangTag}] ${ev.attackerName} SMOKED [${ev.targetGangTag}] ${ev.targetName}! (+${ev.loot}c)${auroraExtra}`, ev.attackerGangColor || '#ff3333', 4000);
-      const aurFeedMsg = ev.auroraBonus ? ' ✨ AURORA BONUS: 300 XP!' : '';
-      addEventMessage(`💀 [${ev.attackerGangTag}] ${ev.attackerName} ELIMINATED [${ev.targetGangTag}] ${ev.targetName} (+${ev.loot}c loot)${aurFeedMsg}`, '#ff4444');
+      const domeExtra = ev.domeBonus ? ' ⚡ DOME KILL!' : '';
+      showAnnouncement(`💀 [${ev.attackerGangTag}] ${ev.attackerName} SMOKED [${ev.targetGangTag}] ${ev.targetName}! (+${ev.loot}c)${auroraExtra}${domeExtra}`, ev.attackerGangColor || '#ff3333', 4000);
+      const aurFeedMsg = ev.auroraBonus ? ' ✨ AURORA BONUS XP!' : '';
+      const domeFeedMsg = ev.domeBonus ? ' ⚡ DOME KILL +50% XP!' : '';
+      addEventMessage(`💀 [${ev.attackerGangTag}] ${ev.attackerName} ELIMINATED [${ev.targetGangTag}] ${ev.targetName} (+${ev.loot}c loot)${aurFeedMsg}${domeFeedMsg}`, '#ff4444');
       effects.push({ type: 'screen_shake', intensity: 6, duration: 400, time: now });
     }
     if (ev.type === 'gang_war_ended') {
@@ -3194,6 +3197,32 @@
       if (ev.birdId === myId) {
         addFloatingText(ev.x, ev.y, '⚡ SHOCKED! −5 food', '#88aaff');
       }
+    }
+
+    // === THUNDER DOME CROSS-SYSTEM SYNERGIES ===
+    // Dome × Gang War: announcement when dome lands during active war
+    if (ev.type === 'dome_gang_war_synergy') {
+      showAnnouncement(`⚡⚔️ GANG WAR + THUNDER DOME!`, `War kills inside the dome count DOUBLE — the cage is a killing field!`, '#ff6644', 6000);
+      addEventMessage(`⚡⚔️ DOME+WAR SYNERGY in ${ev.district}! Gang war kills count 2× inside the dome!`, '#ff8866');
+    }
+    // Dome × Kingpin: Kingpin trapped at dome spawn
+    if (ev.type === 'dome_kingpin_trapped') {
+      showAnnouncement(`⚡👑 ${ev.kingpinName} IS TRAPPED IN THE THUNDER DOME!`, `Dethronement hits on the Kingpin inside the dome give +100 XP bonus!`, '#4499ff', 6000);
+      addEventMessage(`⚡👑 THE KINGPIN ${ev.kingpinName} is trapped in the dome! Each hit gives you +100 XP!`, '#88ccff');
+    }
+    // Dome × Kingpin hit bonus
+    if (ev.type === 'dome_kingpin_hit_bonus' && ev.attackerId === myId) {
+      addFloatingText(0, 0, `⚡ +${ev.bonus} DOME XP BONUS!`, '#88ccff');
+      addEventMessage(`⚡ You earn +${ev.bonus} XP bonus for hitting the Kingpin in the dome!`, '#88ccff');
+    }
+    // Dome Champion badge awarded
+    if (ev.type === 'dome_champion') {
+      const isMine = ev.birdId === myId;
+      if (isMine) {
+        showAnnouncement('⚡ YOU ARE THE GLADIATOR CHAMPION!', `${ev.hits} dome hits in ${ev.district} — you earned the ⚡ GLADIATOR badge!`, '#4499ff', 8000);
+      }
+      addEventMessage(`⚡ GLADIATOR CHAMPION: ${ev.gangTag ? '[' + ev.gangTag + '] ' : ''}${ev.name} lands ${ev.hits} hits in ${ev.district}!`, '#88ccff');
+      effects.push({ type: 'screen_shake', time: performance.now(), duration: 600, intensity: 12 });
     }
 
     // === WEATHER BETTING EVENTS ===
@@ -8550,7 +8579,7 @@
 
           Sprites.drawBird(ctx, sx, sy, b.rotation, b.type, b.wingPhase, isPlayer, b.birdColor || null);
           ctx.globalAlpha = 1; // Always reset after bird draw
-          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0, b.eagleFeather || false, b.idolBadge || false, b.royaleChampBadge || false, b.skillTreeMaster || false, b.fightingChampBadge || false, b.constellationBadge || false, b.courtTitle || null, b.hanamiLanternBadge || false);
+          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0, b.eagleFeather || false, b.idolBadge || false, b.royaleChampBadge || false, b.skillTreeMaster || false, b.fightingChampBadge || false, b.constellationBadge || false, b.courtTitle || null, b.hanamiLanternBadge || false, b.domeChampBadge || false);
 
           // Bird Flu: sneezing emoji indicator above infected birds
           if (b.isFlu) {
@@ -10400,7 +10429,7 @@
       }
     }
 
-    // Draw Kingpin on minimap — large pulsing gold crown
+    // Draw Kingpin on minimap — large pulsing gold crown (electric blue when inside Thunder Dome)
     if (gameState.kingpin && gameState.kingpin.x !== null && worldData) {
       const mw = minimapCtx.canvas.width;
       const mh = minimapCtx.canvas.height;
@@ -10409,23 +10438,27 @@
       const kx = gameState.kingpin.x * msx;
       const ky = gameState.kingpin.y * msy;
       const kPulse = Math.sin(performance.now() * 0.005) * 0.3 + 0.7;
+      const kingpinInDome = !!(gameState.kingpin.inDome);
+      // Thunder Dome × Kingpin: electric blue crown when trapped in dome
+      const kingpinOuterColor = kingpinInDome ? '#4499ff' : '#ffd700';
+      const kingpinInnerColor = kingpinInDome ? '#88ccff' : '#ffe84d';
       // Outer glow
       minimapCtx.globalAlpha = 0.35 * kPulse;
-      minimapCtx.fillStyle = '#ffd700';
+      minimapCtx.fillStyle = kingpinOuterColor;
       minimapCtx.beginPath();
-      minimapCtx.arc(kx, ky, 7, 0, Math.PI * 2);
+      minimapCtx.arc(kx, ky, kingpinInDome ? 9 : 7, 0, Math.PI * 2);
       minimapCtx.fill();
       // Inner dot
       minimapCtx.globalAlpha = 0.9 * kPulse;
-      minimapCtx.fillStyle = '#ffe84d';
+      minimapCtx.fillStyle = kingpinInnerColor;
       minimapCtx.beginPath();
       minimapCtx.arc(kx, ky, 3.5, 0, Math.PI * 2);
       minimapCtx.fill();
       minimapCtx.globalAlpha = 1;
-      // Crown emoji label
+      // Crown emoji label — lightning bolt if in dome
       minimapCtx.font = 'bold 8px sans-serif';
       minimapCtx.textAlign = 'center';
-      minimapCtx.fillText('👑', kx, ky - 6);
+      minimapCtx.fillText(kingpinInDome ? '⚡' : '👑', kx, ky - 6);
     }
 
     // Draw wanted bird on minimap (flashing red skull)
@@ -11845,7 +11878,17 @@
         const secsLeft = Math.max(0, Math.ceil((_domeSelf.endsAt - now) / 1000));
         const mins = Math.floor(secsLeft / 60);
         const rem = secsLeft % 60;
-        html += `<div class="bm-buff-pill" style="background:rgba(0,25,80,0.95);border-color:#4499ff;color:#88ccff;animation:kingpinGlow 0.55s ease-in-out infinite alternate;font-weight:bold;">⚡ INSIDE THUNDER DOME — +50% XP! ${mins}:${rem.toString().padStart(2,'0')} left · TRAPPED</div>`;
+        const inCrimeWave = !!(gameState.crimeWave);
+        const inKingpinDome = !!(gameState.kingpin && gameState.kingpin.inDome);
+        if (inCrimeWave) {
+          // Thunder Dome × Crime Wave: ×3 heat — blazing danger pill
+          html += `<div class="bm-buff-pill" style="background:rgba(80,0,0,0.95);border-color:#ff4422;color:#ff8866;animation:pulseRed 0.4s infinite alternate;font-weight:bold;">⚡🚨 DOME + CRIME WAVE — ×3 HEAT! Wanted in here? You're dead! ${mins}:${rem.toString().padStart(2,'0')}</div>`;
+        } else if (inKingpinDome) {
+          // Thunder Dome × Kingpin: electric crown prize
+          html += `<div class="bm-buff-pill" style="background:rgba(0,20,70,0.95);border-color:#4499ff;color:#88ccff;animation:kingpinGlow 0.4s ease-in-out infinite alternate;font-weight:bold;">⚡👑 DOME + KINGPIN — Hit ${gameState.kingpin.birdName} for +100 XP BONUS! ${mins}:${rem.toString().padStart(2,'0')}</div>`;
+        } else {
+          html += `<div class="bm-buff-pill" style="background:rgba(0,25,80,0.95);border-color:#4499ff;color:#88ccff;animation:kingpinGlow 0.55s ease-in-out infinite alternate;font-weight:bold;">⚡ INSIDE THUNDER DOME — +50% XP! ${mins}:${rem.toString().padStart(2,'0')} left · TRAPPED</div>`;
+        }
       } else {
         const secsLeft = Math.max(0, Math.ceil((_domeSelf.endsAt - now) / 1000));
         html += `<div class="bm-buff-pill" style="background:rgba(0,15,50,0.85);border-color:#2255aa;color:#4488cc;">⚡ THUNDER DOME — ${_domeSelf.district} · Fly in for +50% XP (${Math.floor(secsLeft/60)}:${(secsLeft%60).toString().padStart(2,'0')})</div>`;
@@ -12070,8 +12113,12 @@
     if (s.crimeWave) {
       const cwLeft = Math.max(0, Math.ceil((s.crimeWave.endsAt - now) / 1000));
       const isPoopParty = gameState.chaosEvent && gameState.chaosEvent.type === 'poop_party';
+      const isInDome = s.insideThunderDome;
       if (isPoopParty) {
         html += `<div class="bm-buff-pill" style="background:rgba(120,0,60,0.9);border-color:#ff44ff;color:#ffaaff;font-weight:bold;animation:pulseRed 0.4s infinite alternate;">🎉🚨 POOP PARTY + CRIME WAVE — ${cwLeft}s · AOE MEGA · 3× HEAT — BE CAREFUL!</div>`;
+      } else if (isInDome) {
+        // Crime Wave × Dome synergy: show ×3 heat warning in the crime wave pill too
+        html += `<div class="bm-buff-pill" style="background:rgba(120,10,0,0.95);border-color:#ff5533;color:#ffaa88;font-weight:bold;animation:pulseRed 0.45s infinite alternate;">⚡🚨 DOME + CRIME WAVE — ${cwLeft}s · ×3 HEAT inside dome · Crime pays DOUBLE</div>`;
       } else {
         html += `<div class="bm-buff-pill" style="background:rgba(120,0,0,0.9);border-color:#ff2222;color:#ff6666;font-weight:bold;animation:pulseRed 0.6s infinite alternate;">🚨 CRIME WAVE — ${cwLeft}s · 2× heat &amp; coins!</div>`;
       }

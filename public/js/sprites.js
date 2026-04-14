@@ -106,7 +106,7 @@ window.Sprites = {
   },
 
   // === NAME TAG ===
-  drawNameTag(ctx, x, y, name, level, type, isPlayer, mafiaTitle, gangTag, gangColor, tattoosEquipped, prestige, eagleFeather, idolBadge, royaleChampBadge, skillTreeMaster, fightingChampBadge, constellationBadge, courtTitle, hanamiLanternBadge) {
+  drawNameTag(ctx, x, y, name, level, type, isPlayer, mafiaTitle, gangTag, gangColor, tattoosEquipped, prestige, eagleFeather, idolBadge, royaleChampBadge, skillTreeMaster, fightingChampBadge, constellationBadge, courtTitle, hanamiLanternBadge, domeChampBadge) {
     const text = `${name} [Lv.${level}]`;
     ctx.font = 'bold 11px Courier New';
     ctx.textAlign = 'center';
@@ -224,6 +224,25 @@ window.Sprites = {
       ctx.shadowBlur = 9;
       ctx.fillStyle = '#ffcc88';
       ctx.fillText('🏮', x, y - 41 - offsetY);
+      ctx.shadowBlur = 0;
+      ctx.font = 'bold 11px Courier New';
+      offsetY += 14;
+    }
+
+    // ⚡ Dome Champion Badge — top gladiator inside a Thunder Dome this session
+    if (domeChampBadge) {
+      ctx.font = '11px serif';
+      const dStr = '⚡ GLADIATOR';
+      const dw = ctx.measureText(dStr).width + 10;
+      ctx.fillStyle = 'rgba(0,20,60,0.92)';
+      ctx.fillRect(x - dw / 2, y - 52 - offsetY, dw, 14);
+      ctx.strokeStyle = '#4499ff';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(x - dw / 2, y - 52 - offsetY, dw, 14);
+      ctx.shadowColor = '#66aaff';
+      ctx.shadowBlur = 9;
+      ctx.fillStyle = '#88ccff';
+      ctx.fillText(dStr, x, y - 41 - offsetY);
       ctx.shadowBlur = 0;
       ctx.font = 'bold 11px Courier New';
       offsetY += 14;

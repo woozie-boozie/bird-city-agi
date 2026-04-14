@@ -3032,6 +3032,37 @@ A massive electromagnetic dome descends on a random city district every 18-25 mi
 
 **Creative intent**: Bird City had lots of "go somewhere for a reward" mechanics (Sacred Pond, Night Market, Racing Track) but nothing that FORCES birds together by trapping them. The Thunder Dome flips the dynamic: instead of birds choosing to converge, the city MAKES them. Two rivals who were flying in opposite directions suddenly find themselves caged together for 2.5 minutes — and the +50% XP makes both of them want to start pooping. The electric wall bounce is satisfying feedback: you try to flee, get smacked back, and your velocity is half what it was. Sewer escape adds a decision point for seasoned players. The visual — a pulsing electric ring with animated arc lightning descending over a district — is the most dramatic zone event in the game. Pure CARNAGE + SOCIAL + SPECTACLE energy.
 
+**Session 90 — 2026-04-14: Thunder Dome Cross-System Synergies + Gladiator Champion Badge**
+The Thunder Dome gets four interlocking power-ups that wire it into the game's most important systems — turning every dome event into a potential city-defining moment.
+
+**Four synergies shipped:**
+
+**⚔️ Thunder Dome × Gang War (double kills + 50% kill XP):**
+- When a dome is active and a gang war is running, poop hits between warring gang members inside the dome count as 2 war hits instead of 1
+- Gang war KILLS inside the dome award 50% more XP — the cage is a killing field
+- On dome spawn, a city-wide `dome_gang_war_synergy` announcement fires if any gang war is active: "⚡⚔️ GANG WAR + THUNDER DOME! War kills inside the dome count DOUBLE — the cage is a killing field!"
+- `gang_war_hit` and `gang_war_kill` events carry a `domeBonus: true` flag for the announcement system
+
+**👑 Thunder Dome × Kingpin (electric blue crown + 100 XP bonus):**
+- If the Kingpin is trapped inside the dome when it spawns: city-wide announcement fires "⚡👑 [Name] IS TRAPPED IN THE THUNDER DOME! Dethronement hits on the Kingpin inside the dome give +100 XP bonus!"
+- `kingpin.inDome` computed server-side every tick and included in state snapshots
+- Dethronement hits on a dome-trapped Kingpin fire `dome_kingpin_hit_bonus` events with the 100 XP bonus
+- Minimap: when Kingpin is inside the dome, crown changes from gold `👑` to electric blue `⚡` — the whole city can see they're trapped
+
+**🚨 Thunder Dome × Crime Wave (×3 heat inside dome):**
+- When a bird inside the Thunder Dome poop-hits during an active Crime Wave, heat generated is ×3 total (Crime Wave ×2 base, dome adds ×1.5 multiplier → net ×3)
+- Inside-dome buff pill upgrades from blue "+50% XP" to red pulsing "⚡🚨 DOME + CRIME WAVE — ×3 HEAT! Every poop escalates fast!"
+- Crime Wave pill also upgrades when the player is inside the dome, calling out the triple heat danger
+
+**⚡ Dome Champion Badge (⚡ GLADIATOR — session nametag badge):**
+- When the Thunder Dome timer expires, the bird with the most dome poop hits gets `domeChampBadge = true`
+- `dome_champion` event fires city-wide: "⚡ GLADIATOR CHAMPION: [Gang][Name] lands N hits in [District]!"
+- Personal announcement for the winner with screen shake: "⚡ YOU ARE THE GLADIATOR CHAMPION!"
+- ⚡ GLADIATOR badge renders in the nametag stack (above Hanami Lantern, below Eagle Feather) — dark blue background, electric blue border, cyan glow — unmistakable from across the map
+- Session-only (like Royale Champion / Idol badges) — shows every session you earn it
+
+**Creative intent**: The Thunder Dome was already the most chaotic zone event in the game. These four synergies make it CONTEXTUALLY explosive: if a gang war is active when the dome falls, it becomes the war's flashpoint. If the Kingpin is inside, every other bird has a financial incentive to follow them in and get the +100 XP bonus on each hit. The Crime Wave + Dome combo is the most dangerous 2.5 minutes in Bird City — triple heat means you can go from 0 to Most Wanted in 5 poop hits. The Gladiator badge gives the best dome fighter a visible session trophy that says "I was the cage champion." Four additions, all emergent, all social, all CARNAGE. Pure CARNAGE + SOCIAL + PROGRESSION energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -3269,10 +3300,10 @@ Built the Territory Control System on top of the existing upstream code:
 - Mural Hall of Fame: track which gangs have painted the most murals across all sessions — show in Gang HQ as "All-Time Murals: 12"
 - ~~Mural Raid Boss: a rogue crow vandal NPC spawns rarely and targets completed murals — poop him off before he ruins your art~~ (DONE Session 86 — The Vandal Crow)
 - ~~The Thunder Dome — electromagnetic arena descends on a random district, traps birds inside, +50% XP, electric wall bounce~~ (DONE Session 88)
-- Thunder Dome × Gang War: if a gang war is active when the dome descends, kills inside the dome count as 2× gang war kills — the dome becomes a killing field
-- Thunder Dome × Kingpin: if the Kingpin is trapped inside the Thunder Dome, their minimap glow turns electric blue + dethronement attempts inside the dome reward +100 XP
-- Thunder Dome × Crime Wave: if a Crime Wave erupts while the dome is active, all heat gains inside the dome are ×3 — the dome is the most dangerous place to be a criminal
-- Thunder Dome daily leaderboard: who scored the most dome poop hits this session — shown as a "DOME CHAMPION" badge for the top scorer
+- ~~Thunder Dome × Gang War: if a gang war is active when the dome descends, kills inside the dome count as 2× gang war kills — the dome becomes a killing field~~ (DONE Session 90)
+- ~~Thunder Dome × Kingpin: if the Kingpin is trapped inside the Thunder Dome, their minimap glow turns electric blue + dethronement attempts inside the dome reward +100 XP~~ (DONE Session 90)
+- ~~Thunder Dome × Crime Wave: if a Crime Wave erupts while the dome is active, all heat gains inside the dome are ×3 — the dome is the most dangerous place to be a criminal~~ (DONE Session 90)
+- ~~Thunder Dome daily leaderboard: who scored the most dome poop hits this session — shown as a "DOME CHAMPION" badge for the top scorer~~ (DONE Session 90 — ⚡ GLADIATOR badge for winner)
 - Thunder Dome × Formation Flying: wedge formation inside the dome gets an additional +15% poop radius — the confined space rewards tight formation play
 - ~~Gang Siege System: gang leaders declare 4-minute coordinated nest assaults, 200 HP siege pool, treasury steal on victory, flaming ring visual~~ (DONE Session 89)
 - Siege alliance mechanic: allied gangs (via shared Don contracts) can join each other's sieges as auxiliary attackers
@@ -3280,3 +3311,14 @@ Built the Territory Control System on top of the existing upstream code:
 - Mural × Siege synergy: capturing a rival mural during an active siege against that gang counts as a siege hit (-15 HP from siege pool)
 - Great Migration cross-system: if the Alpha Leader is alive during a Gang War, both warring gangs get bonus XP for killing it (shared enemy bonus)
 - Alpha Leader rare drop: 20% chance for the killing blow to earn a "Feather of the Alpha" cosmetic badge (teal, distinct from eagle feather)
+- ~~Thunder Dome × Gang War: double war kills + 50% kill XP inside dome~~ (DONE Session 90)
+- ~~Thunder Dome × Kingpin: electric blue crown + 100 XP dethronement bonus inside dome~~ (DONE Session 90)
+- ~~Thunder Dome × Crime Wave: ×3 heat inside the dome during crime waves~~ (DONE Session 90)
+- ~~Dome Champion Badge: ⚡ GLADIATOR session nametag badge for top dome poop hitter~~ (DONE Session 90)
+- Thunder Dome × Formation Flying: wedge formation inside dome gets +15% extra poop radius — confined space rewards tight formation
+- Thunder Dome × Siege: if a siege is ongoing and the dome falls on the nest location, siege hits inside the dome deal 2× damage to the siege pool
+- Gang Siege escalation: if siege HP is still >80% after 2 minutes, a Crow Cartel squad joins the attacker side (Don sends backup)
+- Mural × Siege synergy: overtaking a rival mural during an active siege against that gang counts as a siege hit (−15 HP from siege pool)
+- Gladiator Rematch: if the same bird wins the Dome Champion badge 3 sessions in a row, they earn a permanent "⚡ ARENA LEGEND" persistent badge (like Mafia Rep tier)
+- Great Migration × Gang War: both warring gangs get +50% XP for killing the Alpha Leader (shared enemy bonus — ancient rivalry forgotten in the face of the great bird)
+- Great Migration slipstream racing: during an active race, migration slipstream boost stacks with race boost gates — brief supercharge moment when paths intersect

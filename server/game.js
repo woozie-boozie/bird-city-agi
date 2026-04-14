@@ -1019,6 +1019,7 @@ class GameEngine {
       // === PIGEON FIGHTING CHAMPIONSHIP ===
       fightingChampBadge: false,   // session-only: won the bracket tournament this session
       hanamiLanternBadge: false,   // session-only: caught the Hanami Lantern at the Sacred Pond
+      domeChampBadge: false,        // session-only: top pooper inside a Thunder Dome
       tournamentWins: saved ? (saved.tournament_wins || 0) : 0,  // lifetime championship wins (persistent)
       // === BIRD CITY IDOL HALL OF FAME ===
       idolWins: saved ? (saved.idol_wins || 0) : 0,   // lifetime idol wins (persistent)
@@ -3597,6 +3598,14 @@ class GameEngine {
         if (this.crimeWave && this.weather && this.weather.type === 'blizzard') heatAmt *= 2;
         // Poop Party × Crime Wave: AOE carnage during crime wave = 3× heat total (dangerous combo!)
         if (this.crimeWave && this.chaosEvent && this.chaosEvent.type === 'poop_party') heatAmt = Math.floor(heatAmt * 1.5); // ×2 from crime wave × 1.5 more = ×3 total
+        // Thunder Dome × Crime Wave: inside the electromagnetic cage + crime wave = ×3 total heat (extra ×1.5 on top of crime wave ×2)
+        if (this.crimeWave && this.thunderDome && !bird.inSewer) {
+          const _tdx = bird.x - this.thunderDome.x;
+          const _tdy = bird.y - this.thunderDome.y;
+          if (Math.sqrt(_tdx * _tdx + _tdy * _tdy) <= this.thunderDome.radius) {
+            heatAmt = Math.floor(heatAmt * 1.5); // already ×2 from crimeWave → ×3 total
+          }
+        }
         this._addHeat(bird.id, heatAmt);
       }
       this._addAreaChaos(poop.x, poop.y, 1);
@@ -5978,6 +5987,7 @@ class GameEngine {
           skillTreeMaster: b.skillTreeMaster || false,
           constellationBadge: b.constellationBadge || false,
           hanamiLanternBadge: b.hanamiLanternBadge || false,
+          domeChampBadge: b.domeChampBadge || false,
           courtTitle: (() => { const cm = this.royalCourt.find(m => m.birdId === b.id); return cm ? cm.title : null; })(),
           stardustCloakUntil: b.stardustCloakUntil || 0,
           cometTrailUntil: b.cometTrailUntil || 0,
@@ -6718,6 +6728,13 @@ class GameEngine {
       // Kingpin state (global — for minimap and visual targeting)
       kingpin: this.kingpin ? (() => {
         const kBird = this.birds.get(this.kingpin.birdId);
+        // Thunder Dome × Kingpin: pass inDome flag so clients render electric crown
+        const inDome = (() => {
+          if (!this.thunderDome || !kBird) return false;
+          const dx = kBird.x - this.thunderDome.x;
+          const dy = kBird.y - this.thunderDome.y;
+          return Math.sqrt(dx * dx + dy * dy) <= this.thunderDome.radius;
+        })();
         return {
           birdId: this.kingpin.birdId,
           birdName: this.kingpin.birdName,
@@ -6727,6 +6744,7 @@ class GameEngine {
           x: kBird ? kBird.x : null,
           y: kBird ? kBird.y : null,
           decreesAvailable: this.kingpin.decreesAvailable || 0,
+          inDome,
         };
       })() : null,
       // Active Royal Decree — affects all players
@@ -7134,6 +7152,7 @@ class GameEngine {
       royaleChampBadge: bird.royaleChampBadge || false,
       fightingChampBadge: bird.fightingChampBadge || false,
       hanamiLanternBadge: bird.hanamiLanternBadge || false,
+      domeChampBadge: bird.domeChampBadge || false,
       nearIdolStage: (() => {
         const dx = bird.x - this.IDOL_STAGE_POS.x;
         const dy = bird.y - this.IDOL_STAGE_POS.y;
@@ -8421,14 +8440,22 @@ class GameEngine {
   _handleGangWarHit(attacker, target, now) {
     if (!attacker.gangId || !target.gangId) return;
     const hitKey = `${attacker.id}_${target.id}`;
-    const count = (this.gangWarHits.get(hitKey) || 0) + 1;
+    // Thunder Dome × Gang War: kills inside the dome count double — the cage becomes a killing field
+    const domeBonus = (() => {
+      if (!this.thunderDome || attacker.inSewer) return false;
+      const dx = attacker.x - this.thunderDome.x;
+      const dy = attacker.y - this.thunderDome.y;
+      return Math.sqrt(dx * dx + dy * dy) <= this.thunderDome.radius;
+    })();
+    const increment = domeBonus ? 2 : 1;
+    const count = (this.gangWarHits.get(hitKey) || 0) + increment;
     this.gangWarHits.set(hitKey, count);
 
     this.events.push({
       type: 'gang_war_hit',
       attackerId: attacker.id, attackerName: attacker.name, attackerTag: attacker.gangTag,
       targetId: target.id, targetName: target.name, targetTag: target.gangTag,
-      hits: count, hitsNeeded: 3,
+      hits: count, hitsNeeded: 3, domeBonus,
     });
 
     if (count >= 3) {
@@ -8442,10 +8469,12 @@ class GameEngine {
       const auroraWarBonus = !!this.aurora;
       // Gang War × Wanted Decree: Kingpin's chaos decree supercharges war kills for 30s
       const decreeWarBonus = this.gangWarDecreeBoostUntil > now;
-      // Stacking: base 150, aurora 2×, decree 2×, both 3× (150 × 2 × 1.5)
+      // Stacking: base 150, aurora 2×, decree 1.5×, dome 1.5×, combinations compound
       let killXp = 150;
       if (auroraWarBonus) killXp = Math.floor(killXp * 2);
       if (decreeWarBonus) killXp = Math.floor(killXp * 1.5);
+      // Thunder Dome × Gang War: +50% kill XP when inside the dome (the cage is a killing field)
+      if (domeBonus) killXp = Math.floor(killXp * 1.5);
       attacker.xp += killXp;
       target.comboCount = 0;
       target.stunnedUntil = now + 2000;
@@ -8459,7 +8488,7 @@ class GameEngine {
         type: 'gang_war_kill',
         attackerId: attacker.id, attackerName: attacker.name, attackerGangTag: attacker.gangTag, attackerGangColor: attacker.gangColor,
         targetId: target.id, targetName: target.name, targetGangTag: target.gangTag,
-        loot, auroraBonus: auroraWarBonus, decreeBonus: decreeWarBonus, xp: killXp,
+        loot, auroraBonus: auroraWarBonus, decreeBonus: decreeWarBonus, domeBonus, xp: killXp,
       });
     }
   }
@@ -13129,8 +13158,18 @@ class GameEngine {
     this.kingpin.hitCount.set(attacker.id, count);
 
     // Small bonus for hitting the kingpin
-    attacker.xp += 35;
+    // Thunder Dome × Kingpin: +100 XP bonus when the Kingpin is trapped in the Thunder Dome — electric crown = electric prize
+    const kBirdForDome = this.birds.get(this.kingpin.birdId);
+    const kingpinInDome = kBirdForDome && this.thunderDome ? (() => {
+      const kdx = kBirdForDome.x - this.thunderDome.x;
+      const kdy = kBirdForDome.y - this.thunderDome.y;
+      return Math.sqrt(kdx * kdx + kdy * kdy) <= this.thunderDome.radius;
+    })() : false;
+    attacker.xp += kingpinInDome ? 135 : 35; // 35 base + 100 dome bonus
     attacker.coins += 10;
+    if (kingpinInDome) {
+      this.events.push({ type: 'dome_kingpin_hit_bonus', attackerId: attacker.id, attackerName: attacker.name, bonus: 100 });
+    }
 
     // === PEOPLE'S REVOLT — check if we're in the Tax Day rage window ===
     if (this.kingpin.revoltWindowUntil && now < this.kingpin.revoltWindowUntil) {
@@ -17226,18 +17265,31 @@ class GameEngine {
 
     // Expire: dome lifts after 3 minutes
     if (now >= this.thunderDome.endsAt) {
-      // Track gazette stats
+      // Track gazette stats + award Dome Champion badge to top hitter
       if (this.thunderDome.poopTracker.size > 0) {
-        let topHitter = null, topHits = 0;
+        let topHitter = null, topHits = 0, topHitterId = null;
         for (const [birdId, hits] of this.thunderDome.poopTracker) {
           if (hits > topHits) {
             const b = this.birds.get(birdId);
-            if (b) { topHitter = { name: b.name, gangTag: b.gangTag || null, hits }; topHits = hits; }
+            if (b) { topHitter = { name: b.name, gangTag: b.gangTag || null, hits }; topHits = hits; topHitterId = birdId; }
           }
         }
         if (topHitter) {
           if (!this.gazetteStats.thunderDomePoopers) this.gazetteStats.thunderDomePoopers = [];
           this.gazetteStats.thunderDomePoopers.push(topHitter);
+          // Award Dome Champion session badge — ⚡ GLADIATOR on their nametag
+          const champBird = this.birds.get(topHitterId);
+          if (champBird) {
+            champBird.domeChampBadge = true;
+          }
+          this.events.push({
+            type: 'dome_champion',
+            birdId: topHitterId,
+            name: topHitter.name,
+            gangTag: topHitter.gangTag,
+            hits: topHitter.hits,
+            district: this.thunderDome.district,
+          });
         }
       }
       if (!this.gazetteStats.thunderDomes) this.gazetteStats.thunderDomes = 0;
@@ -17267,6 +17319,22 @@ class GameEngine {
       radius: RADIUS,
       endsAt: this.thunderDome.endsAt,
     });
+    // Thunder Dome × Gang War: announce synergy if an active war is happening
+    const gangWarActive = Array.from(this.gangs.values()).some(g => g.warWithGangId && now < g.warEndsAt);
+    if (gangWarActive) {
+      this.events.push({ type: 'dome_gang_war_synergy', district: dist.name });
+    }
+    // Thunder Dome × Kingpin: announce if Kingpin is inside the dome
+    if (this.kingpin) {
+      const kBird = this.birds.get(this.kingpin.birdId);
+      if (kBird) {
+        const kdx = kBird.x - dist.x;
+        const kdy = kBird.y - dist.y;
+        if (Math.sqrt(kdx * kdx + kdy * kdy) <= RADIUS) {
+          this.events.push({ type: 'dome_kingpin_trapped', kingpinName: this.kingpin.birdName });
+        }
+      }
+    }
   }
 
   // SEAGULL INVASION — coastal raiders who steal food en masse
