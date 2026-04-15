@@ -3144,6 +3144,47 @@ The night cycle's most terrifying event. When the moon rises blood red, the sky 
 
 **Creative intent**: The night cycle had Aurora (beautiful, generous) but nothing truly TERRIFYING. Blood Moon is the anti-aurora — same time slot, opposite vibe. Where aurora gives cosmic fish and star power, Blood Moon gives +50% combat rewards but actively hunts you. The Night Market curse is the killer detail: the shop you relied on at night might BETRAY you tonight, turning a speed serum into a curse or burning your XP gain for 8 minutes. The feral bird design (near-black with glowing red eyes in the crimson sky) hits peak CARNAGE CITY horror aesthetics. A bird running from cops, getting robbed by a feral bird, trying to pop open the Night Market for a Disguise Kit and getting CURSED EXPOSED instead — that sequence creates the kind of "oh no" moment that players share. Pure CARNAGE + DISCOVERY + SPECTACLE energy.
 
+**Session 93 — 2026-04-15: Blood Moon Cross-System Synergies + The Possessed**
+Deepened the Blood Moon system with five interlocking cross-system interactions and a brand-new possession mechanic that turns killing feral birds into a double-edged risk.
+
+**The Possessed Mechanic:**
+- 20% chance: killing a feral bird possesses the shooter for 90 seconds
+- While possessed: +50% poop hit radius, full cop arrest immunity — power comes with a price
+- **Exorcism**: 5 poop hits from different players within 12 seconds drives out the spirit — first to land all 5 wins: +200 XP +75c, steals 15% of the possessed bird's coins (max 150c)
+- Hit tracking window: 5 hits must land within a 12-second moving window (resets on no-hit timeout)
+- Possessed bird gets personal "🌑👁️ POSSESSED" alert + warning when exorcism is in progress; exorcist sees "👁️ X/5" floating hit counter
+- On possession expiry (90s): quiet personal "possession faded" message
+- Two new daily challenges: **Possessed!** (become possessed during a Blood Moon) + **Exorcist** (exorcise a possessed bird)
+- Visual: crimson pulsing radial aura + glowing red eyes overlay on the possessed bird, visible to all nearby players; exorcism progress label "👁️ EXORCISE X/5" floats above them
+
+**Blood Moon × Gang War (+1.5× kill XP):**
+- Gang war kills during an active Blood Moon award 1.5× XP on top of normal rewards
+- `gang_war_kill` event carries `bloodMoonBonus: true` flag — client announces "🌑 1.5× BLOOD MOON XP!"
+- Stacks with Aurora 2× for 3× total when both active simultaneously — the rarest and most profitable combat window
+
+**Blood Moon × Cursed Coin (double drain + possession scatter):**
+- Cursed Coin drains 6 food every 20 seconds during Blood Moon (vs 3 normally) — holding it during the Blood Moon is dramatically more dangerous
+- Coin explosion while Blood Moon is active: scatter coins multiplied 1.5× on top of any Aurora multiplier (total 3× scatter if both active)
+- 15% chance: scatter recipients during Blood Moon explosion also become possessed by the exploding dark energy — the coin's curse spreads
+
+**Blood Moon × Kingpin (doubled tribute):**
+- Kingpin passive tribute rises from +20c → +40c every 30 seconds during Blood Moon
+- The richest bird in the city earns twice as fast — but the feral birds hunt them specifically
+- `kingpin_tribute` event carries `bloodMoon: true` flag — client shows "🌑 (DOUBLED!)" golden-orange pop
+
+**Blood Moon × Thunder Dome (2× XP + stronger shocks):**
+- Thunder Dome XP bonus inside the dome jumps from 1.5× to 2.0× during Blood Moon
+- Electric wall shock damage doubles from 5 → 10 food per bounce during Blood Moon
+- First dome spawn under Blood Moon fires `blood_moon_dome_synergy` city-wide: "🌑⚡ BLOOD MOON + THUNDER DOME — 2× XP inside the cage! Electric shocks deal 10 food!"
+
+**Client polish:**
+- Possessed buff pill: crimson pulsing "🌑👁️ POSSESSED — +50% radius · Arrest immune · Xs ⚠️ EXORCISM X/5!" in active buffs HUD
+- `gang_war_kill` announcement shows blood moon bonus suffix
+- `cursed_coin_drain` shows stronger red warning text during Blood Moon ("+6 food!" vs "+3 food!")
+- `kingpin_tribute` shows "(DOUBLED!)" orange-red text during Blood Moon
+
+**Creative intent**: Blood Moon was already terrifying. Now every existing dangerous system gets amplified when the moon runs crimson. Gang wars become the most lucrative combat in the game. The Kingpin earns faster but the feral birds are more aggressive. The Cursed Coin becomes a genuine death sentence if you're still holding it near the explosion. The possession mechanic turns killing feral birds from straightforward combat into a bet: you get powerful AND painted as a target simultaneously. A Most Wanted bird, possessed, inside the Thunder Dome, under the Blood Moon — that's every dangerous system converging in the most nightmarish, XP-rich 90 seconds in Bird City. Pure CARNAGE + SOCIAL + DISCOVERY energy — the Blood Moon now echoes through the entire city.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)

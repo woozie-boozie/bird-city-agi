@@ -125,6 +125,9 @@ const DAILY_CHALLENGE_POOL = [
   // Blood Moon challenges
   { id: 'blood_moon_hunter',  title: 'Feral Fighter',   desc: 'Kill 3 Feral Birds during a Blood Moon',                     target: 3,  trackType: 'feral_bird_kill',  reward: { xp: 220, coins: 110 } },
   { id: 'blood_moon_survivor', title: 'Blood Moon Survivor', desc: 'Survive a full Blood Moon night without losing coins to a Feral Bird', target: 1, trackType: 'blood_moon_survived', reward: { xp: 250, coins: 120 } },
+  // Session 93: Possession challenges
+  { id: 'possessed',    title: 'Possessed!',  desc: 'Become possessed by a feral spirit during a Blood Moon',       target: 1, trackType: 'became_possessed',  reward: { xp: 200, coins: 100 } },
+  { id: 'exorcist',     title: 'Exorcist',    desc: 'Exorcise a possessed bird by hitting them 5 times',            target: 1, trackType: 'exorcised_bird',   reward: { xp: 180, coins: 90  } },
 ];
 
 class GameEngine {
@@ -599,6 +602,11 @@ class GameEngine {
     this.bloodMoonTriggeredThisNight = false;
     this._feralBirdIdCounter = 0;
 
+    // Session 93: Possession system — when a bird kills a feral bird, 20% chance they get possessed
+    // Possessed birds: +50% poop radius, immune to cop arrest, can be exorcised by 5 poop hits
+    this.possessionHits = new Map(); // Map<targetBirdId, { count, windowEnd, attackers: Set }>
+    this._bloodMoonDomeSynergyAnnounced = false; // prevent repeat announcement per dome event
+
     // === HANAMI LANTERN — spring night spectacle (cherry blossom season) ===
     // Once per night during April, a glowing paper lantern rises from the Sacred Pond.
     // First bird within 60px in 90 seconds claims it — earns 200c + 120 XP + 🏮 badge.
@@ -1027,6 +1035,8 @@ class GameEngine {
       // === WITNESS PROTECTION ===
       witnessProtectionUntil: 0,       // timestamp when WP expires
       witnessProtectionCooldown: 0,    // timestamp when WP can be purchased again
+      // === POSSESSION (Session 93) ===
+      possessedUntil: 0,               // possessed by a feral spirit — +50% radius, immune to arrest
       // === SKILL TREE MASTERY ===
       skillTreeMaster: saved ? (saved.skill_tree_master || false) : false,
       // === VENDING MACHINE POOP POWER-UPS ===
@@ -1663,6 +1673,9 @@ class GameEngine {
 
     // === Blood Moon — dark counterpart to the Aurora ===
     this._updateBloodMoon(dt, now);
+
+    // === Possession System (Session 93) ===
+    this._tickPossession(now);
 
     // === Cherry Blossoms Spring Festival ===
     if (this.cherryBlossoms) this._updateCherryBlossoms(now);
@@ -2955,12 +2968,13 @@ class GameEngine {
         bird.vy -= 1.8 * outward * Math.sin(angle);
         bird.vx *= 0.5;
         bird.vy *= 0.5;
-        // Electric shock: -5 food, 1.5s per-bird cooldown to avoid rapid spam
+        // Electric shock: -5 food (-10 during Blood Moon), 1.5s per-bird cooldown to avoid rapid spam
         const shockLast = this.thunderDome.shockCooldowns.get(bird.id) || 0;
         if (now - shockLast > 1500) {
           this.thunderDome.shockCooldowns.set(bird.id, now);
-          bird.food = Math.max(0, (bird.food || 0) - 5);
-          this.events.push({ type: 'thunder_dome_shock', birdId: bird.id, x: bird.x, y: bird.y });
+          const shockDamage = this.bloodMoon ? 10 : 5; // Blood Moon doubles the shock
+          bird.food = Math.max(0, (bird.food || 0) - shockDamage);
+          this.events.push({ type: 'thunder_dome_shock', birdId: bird.id, x: bird.x, y: bird.y, damage: shockDamage });
         }
       }
     }
@@ -3654,14 +3668,24 @@ class GameEngine {
       }
 
       // Thunder Dome: +50% XP for ALL poop hits while inside the dome
+      // Blood Moon × Thunder Dome: the dome becomes an abattoir — ×2.0 XP instead of ×1.5
       if (this.thunderDome && !bird.inSewer && xpGain > 0) {
         const tdx = bird.x - this.thunderDome.x;
         const tdy = bird.y - this.thunderDome.y;
         if (Math.sqrt(tdx * tdx + tdy * tdy) <= this.thunderDome.radius) {
-          xpGain = Math.floor(xpGain * 1.5);
+          const domeMult = this.bloodMoon ? 2.0 : 1.5;
+          xpGain = Math.floor(xpGain * domeMult);
           const current = (this.thunderDome.poopTracker.get(bird.id) || 0) + 1;
           this.thunderDome.poopTracker.set(bird.id, current);
           this._trackDailyProgress(bird, 'thunder_dome_poop', 1);
+          // Announce Blood Moon + Dome synergy once per dome event
+          if (this.bloodMoon && !this._bloodMoonDomeSynergyAnnounced) {
+            this._bloodMoonDomeSynergyAnnounced = true;
+            this.events.push({
+              type: 'blood_moon_dome_synergy',
+              message: '🌑⚡ BLOOD MOON + THUNDER DOME! 2× XP and 2× wall shock inside the dome! The cage runs RED!',
+            });
+          }
         }
       }
 
@@ -3909,6 +3933,22 @@ class GameEngine {
             this._trackDailyProgress(bird, 'snow_bird_complete', 1);
             bird._blizzardHitsThisCocoa = 0; // reset so they can't double-count
             bird._blizzardCocoaDrank = 0;
+          }
+        }
+      }
+
+      // === EXORCISM HIT — poop on a possessed bird to exorcise it (5 hits within 12s) ===
+      // Any non-possessed bird can exorcise a possessed one — big reward!
+      if (!isMegaPoop) {
+        for (const [targetId, targetBird] of this.birds) {
+          if (targetId === bird.id) continue;
+          if (!(targetBird.possessedUntil > now)) continue;
+          if (targetBird.inSewer) continue;
+          const edx = poop.x - targetBird.x;
+          const edy = poop.y - targetBird.y;
+          if (Math.sqrt(edx * edx + edy * edy) < 26) {
+            this._handleExorcismHit(bird, targetBird, now);
+            break;
           }
         }
       }
@@ -4404,6 +4444,10 @@ class GameEngine {
     const shooter = this.birds.get(poop.birdId);
     if (shooter && shooter.skillTreeUnlocked && shooter.skillTreeUnlocked.includes('splash_zone') && !isMegaPoop) {
       hitRadius = Math.round(hitRadius * 1.20);
+    }
+    // Session 93: Possession — possessed birds fire with 50% wider poop radius (feral spirit energy)
+    if (shooter && shooter.possessedUntil > now) {
+      hitRadius = Math.round(hitRadius * 1.5);
     }
     // Blizzard: snowball poop! All poop gets wider splash (×2.2 for normal, ×1.5 for mega)
     if (this.weather && this.weather.type === 'blizzard') {
@@ -6068,6 +6112,9 @@ class GameEngine {
           cursedCoinIntensity: (this.cursedCoin && this.cursedCoin.state === 'held' && this.cursedCoin.holderId === b.id) ? this.cursedCoin.intensity : 0,
           witnessProtectionActive: b.witnessProtectionUntil > now,
           streetDuelId: b.streetDuelId || null,
+          // Session 93: Possession — visible to all nearby birds
+          isPossessed: b.possessedUntil > now,
+          exorcismProgress: (() => { const e = this.possessionHits.get(b.id); return e && e.windowEnd > now ? e.count : 0; })(),
         });
       }
     }
@@ -6674,6 +6721,9 @@ class GameEngine {
         bloodMoonOracleCursed: bird.bloodMoonOracleCursed || false,
         bloodMoonStarCursed: bird.bloodMoonStarCursed || 0,
         bloodMoonLensCursed: bird.bloodMoonLensCursed || 0,
+        // Session 93: Possession
+        possessedUntil: bird.possessedUntil || 0,
+        exorcismProgress: (() => { const e = this.possessionHits.get(bird.id); return e && e.windowEnd > Date.now() ? e.count : 0; })(),
         nearNightMarket: (() => {
           if (!this.nightMarket) return false;
           const dx = bird.x - this.nightMarket.x;
@@ -8558,9 +8608,12 @@ class GameEngine {
       const auroraWarBonus = !!this.aurora;
       // Gang War × Wanted Decree: Kingpin's chaos decree supercharges war kills for 30s
       const decreeWarBonus = this.gangWarDecreeBoostUntil > now;
-      // Stacking: base 150, aurora 2×, decree 1.5×, dome 1.5×, combinations compound
+      // Gang War × Blood Moon: crimson sky amplifies the violence — 1.5× kill XP
+      const bloodMoonWarBonus = !!this.bloodMoon;
+      // Stacking: base 150, aurora 2×, decree 1.5×, dome 1.5×, blood moon 1.5×, combinations compound
       let killXp = 150;
       if (auroraWarBonus) killXp = Math.floor(killXp * 2);
+      if (bloodMoonWarBonus) killXp = Math.floor(killXp * 1.5);
       if (decreeWarBonus) killXp = Math.floor(killXp * 1.5);
       // Thunder Dome × Gang War: +50% kill XP when inside the dome (the cage is a killing field)
       if (domeBonus) killXp = Math.floor(killXp * 1.5);
@@ -8577,7 +8630,7 @@ class GameEngine {
         type: 'gang_war_kill',
         attackerId: attacker.id, attackerName: attacker.name, attackerGangTag: attacker.gangTag, attackerGangColor: attacker.gangColor,
         targetId: target.id, targetName: target.name, targetGangTag: target.gangTag,
-        loot, auroraBonus: auroraWarBonus, decreeBonus: decreeWarBonus, domeBonus, xp: killXp,
+        loot, auroraBonus: auroraWarBonus, bloodMoonBonus: bloodMoonWarBonus, decreeBonus: decreeWarBonus, domeBonus, xp: killXp,
       });
     }
   }
@@ -10479,7 +10532,8 @@ class GameEngine {
 
       // Arrest: cop catches wanted bird (within 18px, bird not already stunned)
       // Mystery Crate: Riot Shield blocks arrest entirely
-      if (dist < 18 && wanted.stunnedUntil <= now && !(wanted.mcRiotShieldUntil > now)) {
+      // Session 93: Possessed birds are immune to arrest — the feral spirit repels the law!
+      if (dist < 18 && wanted.stunnedUntil <= now && !(wanted.mcRiotShieldUntil > now) && !(wanted.possessedUntil > now)) {
         // Skill Tree: Ghost Walk — 18% chance to fully evade a cop arrest
         if (wanted.skillTreeUnlocked && wanted.skillTreeUnlocked.includes('ghost_walk') && Math.random() < 0.18) {
           this.events.push({ type: 'ghost_walk_evade', birdId: wanted.id, birdName: wanted.name, x: cop.x, y: cop.y });
@@ -13176,17 +13230,20 @@ class GameEngine {
     }
 
     // Passive income: Kingpin earns 20 coins every 30 seconds as "city tribute"
+    // Blood Moon: tribute DOUBLES (40c) — the crown is cursed and overflowing with blood gold
     if (this.kingpin) {
       const kBird = this.birds.get(this.kingpin.birdId);
       if (kBird && now - this.kingpin.lastPassiveReward >= 30000) {
-        kBird.coins += 20;
+        const tributeAmount = this.bloodMoon ? 40 : 20;
+        kBird.coins += tributeAmount;
         this.kingpin.coins = kBird.coins;
         this.kingpin.lastPassiveReward = now;
         this.events.push({
           type: 'kingpin_tribute',
           birdId: kBird.id,
           birdName: kBird.name,
-          amount: 20,
+          amount: tributeAmount,
+          bloodMoon: !!this.bloodMoon,
         });
       }
     }
@@ -15667,14 +15724,17 @@ class GameEngine {
       coin.x = holder.x;
       coin.y = holder.y;
 
-      // Food drain: -3 food every 20 seconds
+      // Food drain: -3 food every 20 seconds (doubled during Blood Moon — the curse deepens!)
       if (now - coin.lastDrain >= FOOD_DRAIN_INTERVAL) {
         coin.lastDrain = now;
-        holder.food = Math.max(0, holder.food - 3);
+        const drainAmount = this.bloodMoon ? 6 : 3; // Blood Moon doubles the hunger curse
+        holder.food = Math.max(0, holder.food - drainAmount);
         this.events.push({
           type: 'cursed_coin_drain',
           birdId: holder.id,
           birdName: holder.name,
+          bloodMoon: !!this.bloodMoon,
+          amount: drainAmount,
         });
       }
 
@@ -15756,6 +15816,9 @@ class GameEngine {
 
     // Aurora bonus: during Aurora Borealis, coin scatter is DOUBLED — the sacred sky blesses the explosion
     const auroraDoubled = !!this.aurora;
+    // Blood Moon bonus: during Blood Moon, scatter is ×1.5 extra — the crimson sky amplifies the corruption
+    // Stacks with aurora: aurora + blood moon = 3× scatter total
+    const bloodMoonAmplified = !!this.bloodMoon;
 
     // Scatter lost coins to all nearby birds proportionally
     const nearbyBirds = [];
@@ -15769,13 +15832,21 @@ class GameEngine {
     }
 
     const rewards = [];
-    const effectiveLostCoins = auroraDoubled ? lostCoins * 2 : lostCoins;
+    let scatterMult = 1;
+    if (auroraDoubled) scatterMult *= 2;
+    if (bloodMoonAmplified) scatterMult *= 1.5;
+    const effectiveLostCoins = Math.floor(lostCoins * scatterMult);
+    const xpPerRecipient = auroraDoubled ? 80 : bloodMoonAmplified ? 65 : 50;
     if (nearbyBirds.length > 0 && effectiveLostCoins > 0) {
       const share = Math.floor(effectiveLostCoins / nearbyBirds.length);
       for (const b of nearbyBirds) {
         const earned = Math.max(1, share + Math.floor(Math.random() * 5));
         b.coins += earned;
-        b.xp += auroraDoubled ? 80 : 50;
+        b.xp += xpPerRecipient;
+        // Blood Moon: each scatter recipient has a 15% chance to become possessed!
+        if (bloodMoonAmplified && b.possessedUntil <= now && Math.random() < 0.15) {
+          this._possessBird(b, now);
+        }
         rewards.push({ birdId: b.id, birdName: b.name, coins: earned });
       }
     }
@@ -15787,6 +15858,8 @@ class GameEngine {
       holderGangTag: holder.gangTag || null,
       lostCoins,
       auroraDoubled,
+      bloodMoonAmplified,
+      scatterMult,
       rewards,
       x: holder.x,
       y: holder.y,
@@ -16739,6 +16812,12 @@ class GameEngine {
         announcement: `🌑 ${tag}${shooter.name} SLEW a Feral Bird! (+${xpReward + 60} XP +${coinReward + 20}c)`,
       });
 
+      // Session 93: POSSESSION — 20% chance the killer is possessed by the feral spirit!
+      // Possessed birds: +50% poop radius, immune to cop arrest, can be exorcised
+      if (shooter.possessedUntil <= now && Math.random() < 0.20) {
+        this._possessBird(shooter, now);
+      }
+
       // If ALL feral birds are killed, give city-wide bonus
       if (this.bloodMoon.feralBirds.size === 0) {
         const CLEAR_XP = 120, CLEAR_COINS = 60;
@@ -16772,6 +16851,96 @@ class GameEngine {
     this.bloodMoon = null;
     this.events.push({ type: 'blood_moon_end', message: '🌑 The Blood Moon fades. Dawn cleanses the city of crimson light.' });
     console.log('[GameEngine] 🌑 Blood Moon ended');
+  }
+
+  // ============================================================
+  // POSSESSION SYSTEM (Session 93)
+  // A feral spirit seizes a bird that kills a feral enemy.
+  // Effects: +50% poop radius, immune to cop arrest for 90 seconds.
+  // Can be exorcised by 5 poop hits from OTHER birds (within 12s).
+  // Exorcist earns +200 XP +75c; possessed bird loses 15% coins.
+  // ============================================================
+
+  _possessBird(bird, now) {
+    bird.possessedUntil = now + 90000; // 90 seconds of possession
+    bird.comboCount = 0;
+    bird.comboExpiresAt = 0; // wipe combo — the possession interrupts the grind momentarily
+    this._trackDailyProgress(bird, 'became_possessed', 1);
+    const tag = bird.gangTag ? `[${bird.gangTag}] ` : '';
+    this.events.push({
+      type: 'bird_possessed',
+      birdId: bird.id,
+      birdName: bird.name,
+      gangTag: bird.gangTag || null,
+      endsAt: bird.possessedUntil,
+      announcement: `🌑👁️ ${tag}${bird.name} is POSSESSED by a feral spirit! +50% poop radius — but others can exorcise them!`,
+    });
+    console.log(`[GameEngine] 🌑 ${bird.name} is now POSSESSED (90s)`);
+  }
+
+  _handleExorcismHit(attacker, target, now) {
+    // Track exorcism progress per target — 5 hits within 12s window from ANY attacker
+    let entry = this.possessionHits.get(target.id);
+    const WINDOW = 12000; // 12 second window
+
+    if (!entry || now > entry.windowEnd) {
+      entry = { count: 0, windowEnd: now + WINDOW, attackers: new Set() };
+      this.possessionHits.set(target.id, entry);
+    }
+
+    entry.count++;
+    entry.attackers.add(attacker.id);
+    attacker.xp += 25; // small XP per exorcism hit
+
+    this.events.push({
+      type: 'exorcism_hit',
+      attackerId: attacker.id, attackerName: attacker.name,
+      targetId: target.id, targetName: target.name,
+      count: entry.count, hitsNeeded: 5,
+    });
+
+    if (entry.count >= 5) {
+      // EXORCISM SUCCESS!
+      this.possessionHits.delete(target.id);
+      target.possessedUntil = 0;
+
+      // Exorcist reward — give to the final hitter
+      const reward = { xp: 200, coins: 75 };
+      attacker.xp += reward.xp;
+      attacker.coins += reward.coins;
+      this._trackDailyProgress(attacker, 'exorcised_bird', 1);
+
+      // Target penalty
+      const lostCoins = Math.min(Math.floor(target.coins * 0.15), 150);
+      target.coins = Math.max(0, target.coins - lostCoins);
+
+      const tag = target.gangTag ? `[${target.gangTag}] ` : '';
+      const atag = attacker.gangTag ? `[${attacker.gangTag}] ` : '';
+      this.events.push({
+        type: 'bird_exorcised',
+        attackerId: attacker.id, attackerName: attacker.name, attackerGangTag: attacker.gangTag || null,
+        targetId: target.id, targetName: target.name, targetGangTag: target.gangTag || null,
+        xp: reward.xp, coins: reward.coins, lostCoins,
+        announcement: `🌑✨ ${atag}${attacker.name} EXORCISED ${tag}${target.name}! +${reward.xp} XP +${reward.coins}c! (${target.name} loses ${lostCoins}c)`,
+      });
+      console.log(`[GameEngine] 🌑 ${attacker.name} exorcised ${target.name}`);
+    }
+  }
+
+  _tickPossession(now) {
+    // Clean up expired possessions
+    for (const bird of this.birds.values()) {
+      if (bird.possessedUntil > 0 && bird.possessedUntil <= now) {
+        bird.possessedUntil = 0;
+        this.possessionHits.delete(bird.id);
+        this.events.push({
+          type: 'possession_expired',
+          birdId: bird.id,
+          birdName: bird.name,
+          message: `🌑 ${bird.name}'s possession faded.`,
+        });
+      }
+    }
   }
 
   _checkBloodMoonSurvivors() {
@@ -17730,6 +17899,7 @@ class GameEngine {
 
       this.events.push({ type: 'thunder_dome_end', district: this.thunderDome.district });
       this.thunderDome = null;
+      this._bloodMoonDomeSynergyAnnounced = false; // reset for next dome event
       this.thunderDomeTimer = now + this._randomRange(18 * 60000, 25 * 60000);
     }
   }

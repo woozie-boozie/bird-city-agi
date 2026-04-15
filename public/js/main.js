@@ -966,8 +966,10 @@
     }
     if (ev.type === 'kingpin_tribute') {
       if (ev.birdId === myId) {
+        const tribText = ev.bloodMoon ? `+${ev.amount}c TRIBUTE 🌑 (DOUBLED!)` : `+${ev.amount}c TRIBUTE`;
+        const tribColor = ev.bloodMoon ? '#ff8844' : '#ffd700';
         effects.push({ type: 'xp', x: camera.x, y: camera.y - 30, time: now, duration: 1800,
-          text: `+${ev.amount}c TRIBUTE`, color: '#ffd700' });
+          text: tribText, color: tribColor });
       }
     }
     if (ev.type === 'kingpin_topple_shockwave') {
@@ -1366,7 +1368,8 @@
       SoundEngine.coinPickup && SoundEngine.coinPickup();
       const auroraExtra = ev.auroraBonus ? ' ✨ 2× AURORA XP!' : '';
       const domeExtra = ev.domeBonus ? ' ⚡ DOME KILL!' : '';
-      showAnnouncement(`💀 [${ev.attackerGangTag}] ${ev.attackerName} SMOKED [${ev.targetGangTag}] ${ev.targetName}! (+${ev.loot}c)${auroraExtra}${domeExtra}`, ev.attackerGangColor || '#ff3333', 4000);
+      const bloodMoonExtra = ev.bloodMoonBonus ? ' 🌑 1.5× BLOOD MOON XP!' : '';
+      showAnnouncement(`💀 [${ev.attackerGangTag}] ${ev.attackerName} SMOKED [${ev.targetGangTag}] ${ev.targetName}! (+${ev.loot}c)${auroraExtra}${domeExtra}${bloodMoonExtra}`, ev.attackerGangColor || '#ff3333', 4000);
       const aurFeedMsg = ev.auroraBonus ? ' ✨ AURORA BONUS XP!' : '';
       const domeFeedMsg = ev.domeBonus ? ' ⚡ DOME KILL +50% XP!' : '';
       addEventMessage(`💀 [${ev.attackerGangTag}] ${ev.attackerName} ELIMINATED [${ev.targetGangTag}] ${ev.targetName} (+${ev.loot}c loot)${aurFeedMsg}${domeFeedMsg}`, '#ff4444');
@@ -1754,7 +1757,9 @@
     }
     if (ev.type === 'cursed_coin_drain') {
       if (ev.birdId === myId) {
-        effects.push({ type: 'text', x: camera.screenW / 2, y: camera.screenH / 2 - 60, time: now, duration: 1200, text: '💀 -3 food', color: '#ff6600', size: 11 });
+        const drainText = ev.bloodMoon ? `💀🌑 -${ev.amount} food (BLOOD MOON CURSE!)` : `💀 -${ev.amount} food`;
+        const drainColor = ev.bloodMoon ? '#ff2222' : '#ff6600';
+        effects.push({ type: 'text', x: camera.screenW / 2, y: camera.screenH / 2 - 60, time: now, duration: 1200, text: drainText, color: drainColor, size: 11 });
       }
     }
     if (ev.type === 'cursed_coin_dropped') {
@@ -1922,6 +1927,53 @@
         showAnnouncement(ev.message, '#cc0000', 5000);
         addEventMessage(`🌑 ${ev.message}`, '#cc0000');
       }
+    }
+
+    // === SESSION 93: POSSESSION EVENTS ===
+    if (ev.type === 'bird_possessed') {
+      if (ev.birdId === myId) {
+        effects.push({ type: 'screen_shake', intensity: 12, duration: 800, time: now });
+        showAnnouncement(
+          `🌑👁️ YOU ARE POSSESSED!\n+50% poop radius · Immune to arrest\nBut others can exorcise you!`,
+          '#cc2200', 7000
+        );
+        addEventMessage(`🌑👁️ ${ev.announcement}`, '#ff3300');
+      } else {
+        const tag = ev.gangTag ? `[${ev.gangTag}] ` : '';
+        addEventMessage(`🌑👁️ ${tag}${ev.birdName} is POSSESSED! Poop them 5× to exorcise for 200 XP +75c!`, '#ff4444');
+      }
+    }
+    if (ev.type === 'exorcism_hit') {
+      if (ev.targetId === myId) {
+        effects.push({ type: 'screen_shake', intensity: 5, duration: 300, time: now });
+        addEventMessage(`🌑 EXORCISM HIT! ${ev.attackerName} hit you ${ev.count}/5 — FLEE!`, '#ff6666');
+      }
+      if (ev.attackerId === myId) {
+        effects.push({ type: 'text',
+          x: gameState.self ? gameState.self.x : 0, y: gameState.self ? gameState.self.y - 30 : 0,
+          time: now, duration: 1500, text: `👁️ ${ev.count}/5`, color: '#ff9900', size: 14 });
+      }
+    }
+    if (ev.type === 'bird_exorcised') {
+      effects.push({ type: 'screen_shake', intensity: 10, duration: 700, time: now });
+      if (ev.attackerId === myId) {
+        showAnnouncement(`🌑✨ EXORCISM COMPLETE!\n+${ev.xp} XP +${ev.coins}c — ${ev.targetName} is free!`, '#ffaa44', 5000);
+      } else if (ev.targetId === myId) {
+        showAnnouncement(`🌑✨ YOU WERE EXORCISED!\n-${ev.lostCoins}c taken by ${ev.attackerName}`, '#ff8844', 5000);
+      }
+      const atag = ev.attackerGangTag ? `[${ev.attackerGangTag}] ` : '';
+      const ttag = ev.targetGangTag ? `[${ev.targetGangTag}] ` : '';
+      addEventMessage(`🌑✨ ${atag}${ev.attackerName} EXORCISED ${ttag}${ev.targetName}! +${ev.xp}XP +${ev.coins}c`, '#ffaa44');
+    }
+    if (ev.type === 'possession_expired') {
+      if (ev.birdId === myId) {
+        addEventMessage(`🌑 The possession lifted. You are free.`, '#cc6666');
+      }
+    }
+    if (ev.type === 'blood_moon_dome_synergy') {
+      effects.push({ type: 'screen_shake', intensity: 8, duration: 600, time: now });
+      showAnnouncement(`🌑⚡ BLOOD MOON + THUNDER DOME!\n2× XP · 2× wall shock damage!`, '#cc2200', 5000);
+      addEventMessage(`🌑⚡ ${ev.message}`, '#ff3333');
     }
 
     // === SHOOTING STAR (rare aurora event) ===
@@ -8658,6 +8710,46 @@
             ctx.restore();
           }
 
+          // Session 93: POSSESSION — crimson aura glow + glowing red eyes indicator
+          if (b.isPossessed) {
+            const possPulse = 0.5 + 0.35 * Math.sin(now * 0.011 + (b.id ? b.id.charCodeAt(0) * 0.3 : 0));
+            ctx.save();
+            ctx.globalAlpha = possPulse;
+            const possGrd = ctx.createRadialGradient(sx, sy, 4, sx, sy, 34);
+            possGrd.addColorStop(0, 'rgba(220,0,0,0.7)');
+            possGrd.addColorStop(0.5, 'rgba(160,0,30,0.4)');
+            possGrd.addColorStop(1, 'rgba(80,0,0,0)');
+            ctx.fillStyle = possGrd;
+            ctx.beginPath();
+            ctx.arc(sx, sy, 34, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+            // Glowing red eyes overlay (drawn after sprite, on top)
+            ctx.save();
+            ctx.globalAlpha = 0.85 + 0.15 * Math.sin(now * 0.02);
+            ctx.shadowColor = '#ff0000';
+            ctx.shadowBlur = 8;
+            ctx.fillStyle = '#ff2222';
+            ctx.beginPath();
+            ctx.arc(sx - 4, sy - 2, 3, 0, Math.PI * 2);
+            ctx.arc(sx + 4, sy - 2, 3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+            // 👁️ label and exorcism progress
+            ctx.save();
+            ctx.font = 'bold 11px Arial';
+            ctx.textAlign = 'center';
+            const exP = b.exorcismProgress || 0;
+            if (exP > 0) {
+              ctx.fillStyle = '#ff9900';
+              ctx.fillText(`👁️ EXORCISE ${exP}/5`, sx, sy - 38);
+            } else {
+              ctx.fillStyle = '#ff3333';
+              ctx.fillText('👁️ POSSESSED', sx, sy - 38);
+            }
+            ctx.restore();
+          }
+
           // Stardust Cloak — shimmering aurora aura (visible to all nearby players)
           if (b.stardustCloakUntil && b.stardustCloakUntil > now) {
             const cloakPulse = 0.3 + 0.3 * Math.abs(Math.sin(now * 0.0015 + (b.id ? b.id.charCodeAt(0) * 0.1 : 0)));
@@ -12266,6 +12358,14 @@
         const secs = Math.ceil((s.bloodMoonExposedUntil - now) / 1000);
         html += `<div class="bm-buff-pill" style="background:rgba(80,0,0,0.9);border-color:#ff0000;color:#ff4444;animation:pulseRed 0.4s infinite alternate;">🌑💀 EXPOSED — Glowing RED — visible to all for ${secs}s!</div>`;
       }
+    }
+
+    // Session 93: Possession buff pill — crimson danger, arrest immune, +50% poop radius
+    if (s.possessedUntil && s.possessedUntil > now) {
+      const secs = Math.ceil((s.possessedUntil - now) / 1000);
+      const exP = s.exorcismProgress || 0;
+      const exorcismWarn = exP > 0 ? ` ⚠️ EXORCISM ${exP}/5!` : '';
+      html += `<div class="bm-buff-pill" style="background:rgba(100,0,0,0.92);border-color:#ff2222;color:#ff8888;animation:pulseRed 0.6s infinite alternate;font-weight:bold;">🌑👁️ POSSESSED — +50% radius · Arrest immune · ${secs}s${exorcismWarn}</div>`;
     }
 
     // Crime Wave — city-wide danger indicator
