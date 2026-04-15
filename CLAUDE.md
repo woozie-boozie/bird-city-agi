@@ -3185,6 +3185,46 @@ Deepened the Blood Moon system with five interlocking cross-system interactions 
 
 **Creative intent**: Blood Moon was already terrifying. Now every existing dangerous system gets amplified when the moon runs crimson. Gang wars become the most lucrative combat in the game. The Kingpin earns faster but the feral birds are more aggressive. The Cursed Coin becomes a genuine death sentence if you're still holding it near the explosion. The possession mechanic turns killing feral birds from straightforward combat into a bet: you get powerful AND painted as a target simultaneously. A Most Wanted bird, possessed, inside the Thunder Dome, under the Blood Moon — that's every dangerous system converging in the most nightmarish, XP-rich 90 seconds in Bird City. Pure CARNAGE + SOCIAL + DISCOVERY energy — the Blood Moon now echoes through the entire city.
 
+**Session 94 — 2026-04-15: The Rat King + Arena Legend Badge + Dome Formation Synergy**
+Three interlocking features that deepen the underground sewer system and the Thunder Dome's competitive arc.
+
+**The Rat King (underground sewer boss):**
+- Spawns in the sewer every 8-14 minutes (timer requires ≥1 underground bird to trigger)
+- Wanders the sewer hunting the nearest underground bird at 70px/s — regal but relentless
+- **Coin stealing**: flies within 48px of a bird → steals 12% of their coins (+0-10 random, max 80c) + 1.2s stun + resets combo. 3.5s per-bird steal cooldown
+- **4 HP boss fight**: 4 poop hits to defeat (mega poop = 2 hits). Each hit stuns the Rat King for 1.8s — there's a brief window to keep hitting
+- Per-hit rewards: +30 XP +8c (mega: +60 XP +15c) — fighting back is immediately profitable
+- **Proportional defeat rewards**: all contributors split 300 XP + 150 coins proportional to damage dealt (minimum 40% floor so light contributors still get paid)
+- Participation bonus for non-hitting underground birds: +50 XP +20c — rewards presence
+- **90-second escape timer**: if not defeated, Rat King robs ALL underground birds 18% coins (max 120c each) and vanishes. Respawns faster after escaping (8-12 min) vs defeating (10-15 min)
+- 2 new daily challenges: **Sewer Brawler** (hit the Rat King 3 times, 200 XP/100c) + **Rat Slayer** (deal the killing blow, 300 XP/150c)
+
+**Custom Rat King sprite (sprites.js):**
+- 2× scale: purple menace aura, red velvet robe with white trim, dark grey-brown rat body + head, pink inner ears, glowing red eyes (orange when stunned), pink snout + 6 whiskers
+- Gold crown with 3 gem points, gold sceptre with glowing orb, curved tail
+- HP bar (60px, color shifts green→orange→red), "👑 RAT KING X/Y" label above
+- Stunned state: 3 orbiting star particles rotating at `now×0.004`, dizzy visual
+
+**Sewer overlay upgrades (renderer.js):**
+- `drawSewerOverlay()` accepts `ratKing` param — draws Rat King at 2× canvas scale inside the sewer darkness
+- SEWER HUD shifts to purple theme when Rat King is present: "👑 RAT KING IS HERE! POOP HIM!" in magenta
+- Minimap: pulsing purple crown 👑 dot at Rat King's position (underground birds only)
+- Active buffs HUD: purple pill showing HP status and escape countdown
+
+**⚡ ARENA LEGEND Badge (persistent — earned after 3 Thunder Dome wins):**
+- `domeWins` counter persistent in Firestore (`dome_wins` field)
+- After 3rd Dome Champion win: `arenaLegend = true` set server-side, persisted permanently
+- Badge renders in nametag stack between dome champ badge and alpha feather — dark blue background, electric blue border, cyan glow "⚡ ARENA LEGEND"
+- City-wide announcement + screen shake: "⚡ [MOB] PlayerName has earned the ARENA LEGEND title — 3 Thunder Dome wins!"
+- Unlike `domeChampBadge` (session-only), Arena Legend persists forever
+
+**Thunder Dome × Formation Flying synergy:**
+- When a bird fires a wedge formation poop (`isWedgePoop`) while inside an active Thunder Dome: hitRadius × 1.15 (+15%)
+- One-time `dome_formation_synergy` announcement per dome event fires for the triggering bird: "⚡⚔️ WEDGE + THUNDER DOME — +15% poop radius inside the dome!"
+- Stacks with all other hit radius multipliers (Splash Zone skill, blizzard snowballs, etc.) — wedge formation in a dome is now the widest area-of-effect in the game
+
+**Creative intent**: The sewer was a great escape mechanic but lacked permanent content — it was a safe space rather than a dangerous world. The Rat King fixes this completely: going underground is now a calculated risk. You evade the cops above, but below there's a 4-HP crown-wearing crime lord who hunts you for coins. The 90-second escape timer creates urgency: underground players must choose between hiding safely (and getting robbed at the end) or cooperating to bring the Rat King down. The Arena Legend badge gives Thunder Dome's competitive arc a permanent prestige track — winning once is a session trophy, but winning THREE TIMES earns you a badge that every player sees on your nametag forever. The formation synergy closes the loop on Wedge Formation's power fantasy: inside the dome, tight formation play is mechanically the most powerful poop configuration in the game. Pure CARNAGE + DISCOVERY + PROGRESSION energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)

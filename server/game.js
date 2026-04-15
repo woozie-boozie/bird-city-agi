@@ -128,6 +128,9 @@ const DAILY_CHALLENGE_POOL = [
   // Session 93: Possession challenges
   { id: 'possessed',    title: 'Possessed!',  desc: 'Become possessed by a feral spirit during a Blood Moon',       target: 1, trackType: 'became_possessed',  reward: { xp: 200, coins: 100 } },
   { id: 'exorcist',     title: 'Exorcist',    desc: 'Exorcise a possessed bird by hitting them 5 times',            target: 1, trackType: 'exorcised_bird',   reward: { xp: 180, coins: 90  } },
+  // Session 94: Rat King sewer boss challenges
+  { id: 'sewer_brawler', title: 'Sewer Brawler', desc: 'Hit the Rat King 3 times in the underground sewer',           target: 3,  trackType: 'rat_king_hit',   reward: { xp: 200, coins: 100 } },
+  { id: 'rat_slayer',    title: 'Rat Slayer',    desc: 'Deal the killing blow to the Rat King underground',            target: 1,  trackType: 'rat_king_kill',  reward: { xp: 300, coins: 150 } },
 ];
 
 class GameEngine {
@@ -284,6 +287,13 @@ class GameEngine {
       { name: 'The Docks',     x: 1300, y: 2400 },
     ];
     this.gangRitualCooldowns = new Map(); // gangId -> lastRitualTimestamp (2-min cooldown per gang)
+
+    // === THE RAT KING — underground sewer boss ===
+    // Spawns after birds have been in the sewer a while. The crowned sovereign of the sewers.
+    this.ratKing = null; // null | { x, y, hp, maxHp, state, contributors: Map, spawnedAt, endsAt }
+    this._ratKingTimer = Date.now() + this._randomRange(8 * 60000, 14 * 60000); // first spawn 8-14 min in
+    this._ratKingEscapeAnnounced = false;
+    this._domeWedgeSynergyAnnounced = false; // reset each thunder dome spawn
 
     // === GOLDEN EGG SCRAMBLE ===
     this.eggScramble = null;          // null or { state, startedAt, endsAt, eggs: Map(id->egg), delivered }
@@ -1046,6 +1056,8 @@ class GameEngine {
       fightingChampBadge: false,   // session-only: won the bracket tournament this session
       hanamiLanternBadge: false,   // session-only: caught the Hanami Lantern at the Sacred Pond
       domeChampBadge: false,        // session-only: top pooper inside a Thunder Dome
+      domeWins: saved ? (saved.dome_wins || 0) : 0,              // lifetime dome champion wins (persistent)
+      arenaLegend: saved ? (saved.arena_legend || false) : false, // permanent badge: 3+ dome champion wins
       tournamentWins: saved ? (saved.tournament_wins || 0) : 0,  // lifetime championship wins (persistent)
       // === BIRD CITY IDOL HALL OF FAME ===
       idolWins: saved ? (saved.idol_wins || 0) : 0,   // lifetime idol wins (persistent)
@@ -1683,6 +1695,7 @@ class GameEngine {
     // === Underground Sewer ===
     this._updateSewerRats(dt, now);
     this._updateSewerLoot(now);
+    this._updateRatKing(dt, now);
 
     // === Golden Egg Scramble ===
     this._updateEggScramble(dt, now);
@@ -3478,6 +3491,11 @@ class GameEngine {
         this._hitFeralBird(hit.feralId, bird, now);
         xpGain = 0; // xp awarded inside _hitFeralBird
         coinGain = 0;
+      } else if (hit.target === 'rat_king' && this.ratKing) {
+        // Poop hit the Rat King underground! Only underground birds can hit him.
+        this._hitRatKing(bird, isMegaPoop, now);
+        xpGain = 0; // awarded inside _hitRatKing
+        coinGain = 0;
       } else if (hit.target === 'seagull' && hit.seagull && this.seagullInvasion) {
         // Poop hit a seagull! Two hits to knock one out.
         const sg = hit.seagull;
@@ -4458,6 +4476,19 @@ class GameEngine {
         hitRadius = Math.round(hitRadius * 1.18); // ~50px for normal poop in a blizzard duel
       }
     }
+    // Thunder Dome × Formation Flying (Session 94): Wedge formation inside the dome gets +15% radius.
+    // The electromagnetic field amplifies the focused wedge-attack energy — pure synergy.
+    if (isWedgePoop && this.thunderDome && shooter) {
+      const tdx = shooter.x - this.thunderDome.x;
+      const tdy = shooter.y - this.thunderDome.y;
+      if (Math.sqrt(tdx * tdx + tdy * tdy) <= this.thunderDome.radius) {
+        hitRadius = Math.round(hitRadius * 1.15);
+        if (!this._domeWedgeSynergyAnnounced) {
+          this._domeWedgeSynergyAnnounced = true;
+          this.events.push({ type: 'dome_formation_synergy', birdId: shooter.id, name: shooter.name });
+        }
+      }
+    }
     const allHits = [];
 
     // Check janitor
@@ -4776,6 +4807,16 @@ class GameEngine {
       const ngdy = poop.y - ng.y;
       if (Math.sqrt(ngdx * ngdx + ngdy * ngdy) < hitRadius + 10) {
         return { target: 'national_guard', ngId };
+      }
+    }
+
+    // Check Rat King — underground sewer boss (only shooters who are also underground can hit him)
+    if (this.ratKing && this.ratKing.state !== 'stunned' && shooter && shooter.inSewer) {
+      const rdx = poop.x - this.ratKing.x;
+      const rdy = poop.y - this.ratKing.y;
+      if (Math.sqrt(rdx * rdx + rdy * rdy) < hitRadius + 22) {
+        if (!isMegaPoop) return { target: 'rat_king' };
+        allHits.push({ target: 'rat_king' });
       }
     }
 
@@ -6101,6 +6142,7 @@ class GameEngine {
           constellationBadge: b.constellationBadge || false,
           hanamiLanternBadge: b.hanamiLanternBadge || false,
           domeChampBadge: b.domeChampBadge || false,
+          arenaLegend: b.arenaLegend || false,
           courtTitle: (() => { const cm = this.royalCourt.find(m => m.birdId === b.id); return cm ? cm.title : null; })(),
           stardustCloakUntil: b.stardustCloakUntil || 0,
           cometTrailUntil: b.cometTrailUntil || 0,
@@ -6961,6 +7003,9 @@ class GameEngine {
       sewerLoot: (bird.inSewer || (bird.lunarLensUntil || 0) > now)
         ? Array.from(this.sewerLoot.values()).filter(l => l.available).map(l => ({ id: l.id, x: l.x, y: l.y, value: l.value }))
         : [],
+      ratKing: bird.inSewer && this.ratKing
+        ? { x: this.ratKing.x, y: this.ratKing.y, hp: this.ratKing.hp, maxHp: this.ratKing.maxHp, state: this.ratKing.state, endsAt: this.ratKing.endsAt }
+        : null,
       graffiti: Array.from(this.graffiti.entries())
         .filter(([, tag]) => tag.expiresAt > now)
         .map(([buildingIdx, tag]) => ({
@@ -7279,6 +7324,7 @@ class GameEngine {
       fightingChampBadge: bird.fightingChampBadge || false,
       hanamiLanternBadge: bird.hanamiLanternBadge || false,
       domeChampBadge: bird.domeChampBadge || false,
+      arenaLegend: bird.arenaLegend || false,
       nearIdolStage: (() => {
         const dx = bird.x - this.IDOL_STAGE_POS.x;
         const dy = bird.y - this.IDOL_STAGE_POS.y;
@@ -7686,6 +7732,8 @@ class GameEngine {
       skill_tree: JSON.stringify(bird.skillTreeUnlocked || []),
       skill_tree_master: bird.skillTreeMaster || false,
       tournament_wins: bird.tournamentWins || 0,
+      dome_wins: bird.domeWins || 0,
+      arena_legend: bird.arenaLegend || false,
       idol_wins: bird.idolWins || 0,
       cosmic_fish: bird.cosmicFish || 0,
       constellation_badge: bird.constellationBadge || false,
@@ -12775,6 +12823,209 @@ class GameEngine {
         loot.value = 30 + Math.floor(Math.random() * 60); // fresh value on respawn
       }
     }
+  }
+
+  // ============================================================
+  // THE RAT KING — Crowned Sewer Boss (Session 94)
+  // ============================================================
+  // Spawns in the underground when birds have been down there long enough.
+  // Requires 4 poop hits (mega poop = 2 hits) to bring down.
+  // 90-second escape timer if not defeated — robs nearby underground birds.
+  // Defeating him rewards ALL underground birds with XP + coin share.
+
+  _updateRatKing(dt, now) {
+    // Spawn: only when at least 1 bird is underground, on a timer
+    const undergroundBirds = Array.from(this.birds.values()).filter(b => b.inSewer);
+    if (!this.ratKing && now >= this._ratKingTimer && undergroundBirds.length > 0) {
+      this._spawnRatKing(now);
+      this._ratKingTimer = now + this._randomRange(9 * 60000, 15 * 60000); // next spawn 9-15 min later
+    }
+
+    if (!this.ratKing) return;
+
+    const rk = this.ratKing;
+
+    // Expire: 90-second escape if not defeated
+    if (now >= rk.endsAt) {
+      if (rk.state !== 'dying') {
+        this._ratKingEscape(now);
+      }
+      return;
+    }
+
+    // Stun recovery
+    if (rk.state === 'stunned' && now >= rk.stunUntil) {
+      rk.state = 'hunting';
+    }
+
+    if (rk.state === 'dying') return;
+    if (rk.state === 'stunned') {
+      // Wander in random direction while stunned (no targeting)
+      rk.x += Math.cos(rk.wanderAngle || 0) * 25 * dt;
+      rk.y += Math.sin(rk.wanderAngle || 0) * 25 * dt;
+      rk.x = Math.max(50, Math.min(world.WORLD_WIDTH - 50, rk.x));
+      rk.y = Math.max(50, Math.min(world.WORLD_HEIGHT - 50, rk.y));
+      return;
+    }
+
+    // AI: hunt the nearest underground bird
+    let target = null, nearestDist = Infinity;
+    for (const b of undergroundBirds) {
+      const dx = b.x - rk.x, dy = b.y - rk.y;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      if (d < nearestDist) { nearestDist = d; target = b; }
+    }
+
+    if (target) {
+      const dx = target.x - rk.x, dy = target.y - rk.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const speed = 70; // px/s — regal but deliberate
+      if (dist > 1) {
+        rk.x += (dx / dist) * speed * dt;
+        rk.y += (dy / dist) * speed * dt;
+      }
+      rk.rotation = Math.atan2(dy, dx);
+
+      // Steal coins on contact (3.5s cooldown per bird)
+      if (dist < 48) {
+        const lastSteal = rk.stealCooldowns.get(target.id) || 0;
+        if (now - lastSteal > 3500 && target.stunnedUntil <= now) {
+          rk.stealCooldowns.set(target.id, now);
+          const stolen = Math.min(Math.floor(target.coins * 0.12) + Math.floor(Math.random() * 10), 80);
+          target.coins = Math.max(0, target.coins - stolen);
+          rk.stolenTotal = (rk.stolenTotal || 0) + stolen;
+          target.comboCount = 0;
+          target.stunnedUntil = now + 1200;
+          this.events.push({ type: 'rat_king_steal', birdId: target.id, stolen, x: rk.x, y: rk.y });
+        }
+      }
+    } else {
+      // No underground birds — wander slowly
+      if (!rk.wanderTarget || now >= rk.nextWanderAt) {
+        rk.wanderTarget = { x: this._randomRange(200, 2800), y: this._randomRange(200, 2800) };
+        rk.nextWanderAt = now + this._randomRange(3000, 6000);
+      }
+      const dx = rk.wanderTarget.x - rk.x, dy = rk.wanderTarget.y - rk.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > 20) {
+        rk.x += (dx / dist) * 40 * dt;
+        rk.y += (dy / dist) * 40 * dt;
+      }
+    }
+
+    rk.x = Math.max(50, Math.min(world.WORLD_WIDTH - 50, rk.x));
+    rk.y = Math.max(50, Math.min(world.WORLD_HEIGHT - 50, rk.y));
+  }
+
+  _spawnRatKing(now) {
+    // Spawn at center of the sewer (roughly middle of world)
+    const spawnX = 1200 + (Math.random() - 0.5) * 400;
+    const spawnY = 1500 + (Math.random() - 0.5) * 400;
+    this.ratKing = {
+      x: spawnX, y: spawnY,
+      hp: 4,       // 4 poop hits (mega = 2) to kill
+      maxHp: 4,
+      state: 'hunting',  // 'hunting' | 'stunned' | 'dying'
+      spawnedAt: now,
+      endsAt: now + 90000, // 90 seconds to defeat before he escapes
+      contributors: new Map(), // birdId -> { name, dmg }
+      stealCooldowns: new Map(),
+      stunUntil: 0,
+      wanderAngle: Math.random() * Math.PI * 2,
+      stolenTotal: 0,
+    };
+    this._ratKingEscapeAnnounced = false;
+    this.events.push({
+      type: 'rat_king_spawned',
+      x: spawnX, y: spawnY,
+    });
+  }
+
+  _hitRatKing(bird, isMegaPoop, now) {
+    if (!this.ratKing) return;
+    const rk = this.ratKing;
+    const dmg = isMegaPoop ? 2 : 1;
+    rk.hp = Math.max(0, rk.hp - dmg);
+
+    // Track contributor (for proportional rewards on death)
+    const prev = rk.contributors.get(bird.id) || { name: bird.name, gangTag: bird.gangTag || null, dmg: 0 };
+    rk.contributors.set(bird.id, { ...prev, dmg: prev.dmg + dmg });
+
+    // Rewards per hit
+    const hitXp = isMegaPoop ? 60 : 30;
+    const hitCoins = isMegaPoop ? 15 : 8;
+    bird.xp += hitXp;
+    bird.coins += hitCoins;
+    this._trackDailyProgress(bird, 'rat_king_hit', 1);
+
+    this.events.push({ type: 'rat_king_hit', birdId: bird.id, x: rk.x, y: rk.y, hp: rk.hp, maxHp: rk.maxHp, dmg });
+
+    if (rk.hp <= 0) {
+      this._defeatRatKing(bird.id, now);
+    } else {
+      // Brief stun after being hit (4 hit window = 4× stun but they're short)
+      rk.state = 'stunned';
+      rk.stunUntil = now + 1800;
+      rk.wanderAngle = Math.random() * Math.PI * 2;
+    }
+  }
+
+  _defeatRatKing(killerId, now) {
+    if (!this.ratKing) return;
+    const rk = this.ratKing;
+    rk.state = 'dying';
+
+    // Proportional rewards for all contributors
+    const totalDmg = Array.from(rk.contributors.values()).reduce((s, c) => s + c.dmg, 0) || 1;
+    const BASE_XP = 300, BASE_COINS = 150;
+    for (const [birdId, contrib] of rk.contributors) {
+      const b = this.birds.get(birdId);
+      if (!b) continue;
+      const share = contrib.dmg / totalDmg;
+      const xp = Math.floor(BASE_XP * (0.4 + 0.6 * share));
+      const coins = Math.floor(BASE_COINS * (0.4 + 0.6 * share));
+      b.xp += xp; b.coins += coins;
+      if (birdId === killerId) {
+        this._trackDailyProgress(b, 'rat_king_kill', 1);
+      }
+      this.events.push({ type: 'rat_king_reward', birdId, name: b.name, gangTag: b.gangTag || null, xp, coins });
+    }
+
+    // Also reward any OTHER underground birds who didn't hit (small participation bonus)
+    for (const b of this.birds.values()) {
+      if (!b.inSewer || rk.contributors.has(b.id)) continue;
+      b.xp += 50; b.coins += 20;
+      this.events.push({ type: 'rat_king_reward', birdId: b.id, name: b.name, gangTag: b.gangTag || null, xp: 50, coins: 20 });
+    }
+
+    this.events.push({
+      type: 'rat_king_defeated',
+      killerName: killerId ? (this.birds.get(killerId) || {}).name : 'Unknown',
+      gangTag: killerId ? ((this.birds.get(killerId) || {}).gangTag || null) : null,
+      totalDmg,
+    });
+
+    // Respawn timer: 10-15 minutes
+    this.ratKing = null;
+    this._ratKingTimer = now + this._randomRange(10 * 60000, 15 * 60000);
+  }
+
+  _ratKingEscape(now) {
+    if (!this.ratKing) return;
+    const rk = this.ratKing;
+
+    // Rob all underground birds of 18% of coins (his tribute)
+    const victims = [];
+    for (const b of this.birds.values()) {
+      if (!b.inSewer) continue;
+      const stolen = Math.min(Math.floor(b.coins * 0.18), 120);
+      b.coins = Math.max(0, b.coins - stolen);
+      if (stolen > 0) victims.push({ name: b.name, stolen });
+    }
+
+    this.events.push({ type: 'rat_king_escaped', victims, stolenTotal: rk.stolenTotal });
+    this.ratKing = null;
+    this._ratKingTimer = now + this._randomRange(8 * 60000, 12 * 60000); // faster respawn after escape
   }
 
   _handleRaceBet(bird, action, now) {
@@ -17883,6 +18134,22 @@ class GameEngine {
           const champBird = this.birds.get(topHitterId);
           if (champBird) {
             champBird.domeChampBadge = true;
+            // Track lifetime dome wins + award ⚡ ARENA LEGEND badge at 3 wins
+            champBird.domeWins = (champBird.domeWins || 0) + 1;
+            this._trackDailyProgress(champBird, 'thunder_dome_poop', 0); // ensure daily exists
+            if (champBird.domeWins >= 3 && !champBird.arenaLegend) {
+              champBird.arenaLegend = true;
+              this._saveBird(champBird);
+              this.events.push({
+                type: 'arena_legend_earned',
+                birdId: champBird.id,
+                name: champBird.name,
+                gangTag: champBird.gangTag || null,
+                domeWins: champBird.domeWins,
+              });
+            } else {
+              this._saveBird(champBird); // save updated domeWins
+            }
           }
           this.events.push({
             type: 'dome_champion',
@@ -17900,6 +18167,7 @@ class GameEngine {
       this.events.push({ type: 'thunder_dome_end', district: this.thunderDome.district });
       this.thunderDome = null;
       this._bloodMoonDomeSynergyAnnounced = false; // reset for next dome event
+      this._domeWedgeSynergyAnnounced = false;      // reset formation synergy flag
       this.thunderDomeTimer = now + this._randomRange(18 * 60000, 25 * 60000);
     }
   }

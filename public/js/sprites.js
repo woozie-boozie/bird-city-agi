@@ -106,7 +106,7 @@ window.Sprites = {
   },
 
   // === NAME TAG ===
-  drawNameTag(ctx, x, y, name, level, type, isPlayer, mafiaTitle, gangTag, gangColor, tattoosEquipped, prestige, eagleFeather, idolBadge, royaleChampBadge, skillTreeMaster, fightingChampBadge, constellationBadge, courtTitle, hanamiLanternBadge, domeChampBadge, alphaFeather) {
+  drawNameTag(ctx, x, y, name, level, type, isPlayer, mafiaTitle, gangTag, gangColor, tattoosEquipped, prestige, eagleFeather, idolBadge, royaleChampBadge, skillTreeMaster, fightingChampBadge, constellationBadge, courtTitle, hanamiLanternBadge, domeChampBadge, alphaFeather, arenaLegend) {
     const text = `${name} [Lv.${level}]`;
     ctx.font = 'bold 11px Courier New';
     ctx.textAlign = 'center';
@@ -243,6 +243,25 @@ window.Sprites = {
       ctx.shadowBlur = 9;
       ctx.fillStyle = '#88ccff';
       ctx.fillText(dStr, x, y - 41 - offsetY);
+      ctx.shadowBlur = 0;
+      ctx.font = 'bold 11px Courier New';
+      offsetY += 14;
+    }
+
+    // ⚡ Arena Legend Badge — permanent: earned by winning 3+ Thunder Dome Gladiator titles
+    if (arenaLegend) {
+      ctx.font = '10px serif';
+      const alStr = '⚡ ARENA LEGEND';
+      const alw = ctx.measureText(alStr).width + 10;
+      ctx.fillStyle = 'rgba(0,10,40,0.94)';
+      ctx.fillRect(x - alw / 2, y - 52 - offsetY, alw, 14);
+      ctx.strokeStyle = '#00aaff';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(x - alw / 2, y - 52 - offsetY, alw, 14);
+      ctx.shadowColor = '#00ccff';
+      ctx.shadowBlur = 11;
+      ctx.fillStyle = '#55ddff';
+      ctx.fillText(alStr, x, y - 41 - offsetY);
       ctx.shadowBlur = 0;
       ctx.font = 'bold 11px Courier New';
       offsetY += 14;
@@ -6211,5 +6230,181 @@ window.Sprites = {
       ctx.shadowBlur = 0;
       ctx.restore();
     }
+  },
+
+  // THE RAT KING — crowned sovereign of the underground sewer (Session 94)
+  // A large imperious rat in a tiny golden crown, red velvet robe, wielding a sceptre.
+  // Drawn at 2× scale. HP bar appears whenever he exists.
+  drawRatKing(ctx, x, y, hp, maxHp, state, now) {
+    ctx.save();
+    ctx.translate(x, y);
+
+    const pulse = 0.5 + 0.5 * Math.sin(now * 0.004);
+
+    // Purple menace aura
+    const aurad = ctx.createRadialGradient(0, 0, 8, 0, 0, 44);
+    aurad.addColorStop(0, `rgba(120,0,200,${0.35 + 0.15 * pulse})`);
+    aurad.addColorStop(1, 'rgba(60,0,100,0)');
+    ctx.fillStyle = aurad;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 44, 40, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Body — fat dark-grey rat in a red robe
+    // Robe (red velvet trapezoid behind body)
+    ctx.fillStyle = '#880000';
+    ctx.beginPath();
+    ctx.moveTo(-16, 0);
+    ctx.lineTo(-20, 22);
+    ctx.lineTo(20, 22);
+    ctx.lineTo(16, 0);
+    ctx.closePath();
+    ctx.fill();
+    // White robe trim
+    ctx.strokeStyle = '#ffdddd';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Main rat body (dark grey-brown)
+    ctx.fillStyle = state === 'stunned' ? '#666' : '#4a4040';
+    ctx.beginPath();
+    ctx.ellipse(0, 2, 16, 18, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#222';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Head
+    ctx.fillStyle = state === 'stunned' ? '#777' : '#5a4f4f';
+    ctx.beginPath();
+    ctx.ellipse(0, -16, 13, 12, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Ears
+    ctx.fillStyle = '#7a3a3a';
+    ctx.beginPath(); ctx.ellipse(-10, -24, 5, 7, -0.3, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(10, -24, 5, 7, 0.3, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#cc8888';
+    ctx.beginPath(); ctx.ellipse(-10, -24, 3, 5, -0.3, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(10, -24, 3, 5, 0.3, 0, Math.PI * 2); ctx.fill();
+
+    // Eyes — glowing red (orange when stunned)
+    const eyeColor = state === 'stunned' ? '#ffaa00' : '#ff2200';
+    ctx.fillStyle = eyeColor;
+    ctx.shadowColor = eyeColor;
+    ctx.shadowBlur = state === 'stunned' ? 4 : 9;
+    ctx.beginPath(); ctx.arc(-5, -16, 3.5, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(5, -16, 3.5, 0, Math.PI * 2); ctx.fill();
+    // Eye pupils
+    ctx.fillStyle = '#000';
+    ctx.shadowBlur = 0;
+    ctx.beginPath(); ctx.arc(-5, -16, 1.5, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(5, -16, 1.5, 0, Math.PI * 2); ctx.fill();
+    // Eye glints
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(-4, -17, 0.8, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(6, -17, 0.8, 0, Math.PI * 2); ctx.fill();
+
+    // Snout + whiskers
+    ctx.fillStyle = '#e08080';
+    ctx.beginPath(); ctx.ellipse(0, -10, 5, 3.5, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(200,200,200,0.7)';
+    ctx.lineWidth = 0.8;
+    for (let s = -1; s <= 1; s += 2) {
+      for (let w = 0; w < 3; w++) {
+        ctx.beginPath();
+        ctx.moveTo(s * 5, -10 + (w - 1) * 2);
+        ctx.lineTo(s * 18, -12 + (w - 1) * 3);
+        ctx.stroke();
+      }
+    }
+
+    // 👑 Crown (gold, with 3 points)
+    ctx.fillStyle = '#ffd700';
+    ctx.shadowColor = '#ffaa00';
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.moveTo(-9, -27);
+    ctx.lineTo(-9, -34);
+    ctx.lineTo(-4, -30);
+    ctx.lineTo(0, -38);
+    ctx.lineTo(4, -30);
+    ctx.lineTo(9, -34);
+    ctx.lineTo(9, -27);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#cc8800';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    // Crown gems
+    const gemColors = ['#ff4444', '#44ff44', '#4444ff'];
+    [-5, 0, 5].forEach((gx, i) => {
+      ctx.fillStyle = gemColors[i];
+      ctx.beginPath(); ctx.arc(gx, -28, 1.5, 0, Math.PI * 2); ctx.fill();
+    });
+
+    // Sceptre (held in right hand — tiny gold rod with orb)
+    ctx.strokeStyle = '#ccaa00';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(13, -2); ctx.lineTo(22, -14); ctx.stroke();
+    ctx.fillStyle = '#ff8800';
+    ctx.shadowColor = '#ff6600';
+    ctx.shadowBlur = 6;
+    ctx.beginPath(); ctx.arc(23, -15, 4, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Tail (long curved)
+    ctx.strokeStyle = '#5a3333';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(10, 18);
+    ctx.quadraticCurveTo(28, 28, 24, 38);
+    ctx.stroke();
+
+    // HP bar (always visible while alive)
+    if (state !== 'dying') {
+      const barW = 60;
+      const barX = -barW / 2;
+      const barY = 30;
+      // Background
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.fillRect(barX - 1, barY - 1, barW + 2, 9);
+      // HP fill (green→orange→red)
+      const hpFrac = Math.max(0, hp / maxHp);
+      const hpColor = hpFrac > 0.5 ? '#44ff44' : hpFrac > 0.25 ? '#ffaa00' : '#ff4444';
+      ctx.fillStyle = hpColor;
+      ctx.fillRect(barX, barY, Math.floor(barW * hpFrac), 7);
+      // Border
+      ctx.strokeStyle = '#888';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(barX - 1, barY - 1, barW + 2, 9);
+      // Label
+      ctx.font = 'bold 8px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#fff';
+      ctx.shadowColor = '#000'; ctx.shadowBlur = 4;
+      ctx.fillText(`👑 RAT KING ${hp}/${maxHp}`, 0, barY - 3);
+      ctx.shadowBlur = 0;
+    }
+
+    // Stunned: dizzy stars
+    if (state === 'stunned') {
+      for (let i = 0; i < 3; i++) {
+        const angle = (now * 0.004) + (i * Math.PI * 2 / 3);
+        const sx = Math.cos(angle) * 18;
+        const sy = Math.sin(angle) * 10 - 38;
+        ctx.font = '12px serif';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#ffff44';
+        ctx.fillText('⭐', sx, sy);
+      }
+    }
+
+    ctx.restore();
   },
 };

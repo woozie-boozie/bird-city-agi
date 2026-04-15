@@ -2228,7 +2228,7 @@ window.Renderer = {
   },
 
   // Draw the full sewer environment overlay (when player is underground)
-  drawSewerOverlay(ctx, camera, selfBird, sewerRats, sewerLoot, now) {
+  drawSewerOverlay(ctx, camera, selfBird, sewerRats, sewerLoot, now, ratKing) {
     const sw = camera.screenW, sh = camera.screenH;
     const px = sw / 2, py = sh / 2;
     const sightR = 320;
@@ -2311,12 +2311,23 @@ window.Renderer = {
       }
     }
 
+    // === Rat King (underground boss) ===
+    if (ratKing) {
+      const rksx = ratKing.x - camera.x + sw / 2;
+      const rksy = ratKing.y - camera.y + sh / 2;
+      // Draw at 2× scale
+      ctx.save();
+      ctx.scale(2, 2);
+      Sprites.drawRatKing(ctx, rksx / 2, rksy / 2, ratKing.hp, ratKing.maxHp, ratKing.state, now);
+      ctx.restore();
+    }
+
     // === SEWER HUD — top banner ===
     ctx.save();
-    ctx.fillStyle = 'rgba(0, 60, 20, 0.85)';
-    ctx.strokeStyle = '#44ff88';
+    ctx.fillStyle = ratKing ? 'rgba(60, 0, 80, 0.88)' : 'rgba(0, 60, 20, 0.85)';
+    ctx.strokeStyle = ratKing ? '#cc44ff' : '#44ff88';
     ctx.lineWidth = 1.5;
-    const hudW = 260, hudH = 28;
+    const hudW = 300, hudH = 28;
     const hudX = (sw - hudW) / 2;
     ctx.beginPath();
     ctx.roundRect(hudX, 8, hudW, hudH, 6);
@@ -2324,9 +2335,12 @@ window.Renderer = {
     ctx.stroke();
     ctx.font = 'bold 13px Courier New';
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#44ff88';
+    ctx.fillStyle = ratKing ? '#dd88ff' : '#44ff88';
     const ratCount = sewerRats ? sewerRats.length : 0;
-    ctx.fillText('🐀 UNDERGROUND  ·  ' + ratCount + ' rat' + (ratCount !== 1 ? 's' : '') + ' nearby', sw / 2, 27);
+    const hudText = ratKing
+      ? '👑 RAT KING IS HERE! POOP HIM!  🐀 ' + ratCount
+      : '🐀 UNDERGROUND  ·  ' + ratCount + ' rat' + (ratCount !== 1 ? 's' : '') + ' nearby';
+    ctx.fillText(hudText, sw / 2, 27);
     ctx.restore();
   },
 

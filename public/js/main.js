@@ -1976,6 +1976,60 @@
       addEventMessage(`🌑⚡ ${ev.message}`, '#ff3333');
     }
 
+    // === SESSION 94: RAT KING + ARENA LEGEND + DOME FORMATION SYNERGY ===
+    if (ev.type === 'rat_king_spawned') {
+      effects.push({ type: 'screen_shake', intensity: 10, duration: 700, time: now });
+      showAnnouncement('👑 THE RAT KING EMERGES!\nThe sewer boss is underground — 4 hits to defeat!', '#cc44ff', 6000);
+      addEventMessage('👑 THE RAT KING has emerged in the sewers! Descend and fight him for massive rewards!', '#cc44ff');
+    }
+    if (ev.type === 'rat_king_hit') {
+      if (ev.birdId === myId) {
+        effects.push({ type: 'text',
+          x: gameState.ratKing ? gameState.ratKing.x : (gameState.self ? gameState.self.x : 0),
+          y: gameState.ratKing ? gameState.ratKing.y - 20 : (gameState.self ? gameState.self.y - 30 : 0),
+          time: now, duration: 1500, text: `👑 HIT! ${ev.hp}/${ev.maxHp}`, color: '#cc44ff', size: 14 });
+      }
+      if (ev.hp === 1) {
+        addEventMessage(`👑 RAT KING AT 1 HP — ONE MORE HIT!`, '#ff88ff');
+      }
+    }
+    if (ev.type === 'rat_king_steal') {
+      if (ev.birdId === myId) {
+        effects.push({ type: 'screen_shake', intensity: 6, duration: 400, time: now });
+        showAnnouncement(`👑 RAT KING ROBBED YOU!\n-${ev.stolen}c stolen from your wallet!`, '#cc44ff', 4000);
+        effects.push({ type: 'text',
+          x: gameState.self ? gameState.self.x : 0, y: gameState.self ? gameState.self.y - 30 : 0,
+          time: now, duration: 2000, text: `-${ev.stolen}c 👑`, color: '#ff66ff', size: 16 });
+      }
+      addEventMessage(`👑 Rat King robbed someone for ${ev.stolen}c!`, '#cc44ff');
+    }
+    if (ev.type === 'rat_king_defeated') {
+      effects.push({ type: 'screen_shake', intensity: 14, duration: 900, time: now });
+      showAnnouncement('👑 RAT KING DEFEATED!\nThe sewer is safe — rewards distributed!', '#ffaaff', 7000);
+      addEventMessage(`👑 THE RAT KING HAS FALLEN! Underground heroes share the loot!`, '#ffaaff');
+    }
+    if (ev.type === 'rat_king_reward') {
+      if (ev.birdId === myId) {
+        showAnnouncement(`👑 RAT KING LOOT!\n+${ev.xp} XP  +${ev.coins}c`, '#ffaaff', 5000);
+      }
+    }
+    if (ev.type === 'rat_king_escaped') {
+      effects.push({ type: 'screen_shake', intensity: 8, duration: 500, time: now });
+      showAnnouncement('👑 RAT KING ESCAPED!\nHe robbed the underground birds on the way out!', '#cc44ff', 5000);
+      addEventMessage('👑 The Rat King retreated into the depths — and took coins with him!', '#cc44ff');
+    }
+    if (ev.type === 'arena_legend_earned') {
+      effects.push({ type: 'screen_shake', intensity: 12, duration: 800, time: now });
+      const tag = ev.gangTag ? `[${ev.gangTag}] ` : '';
+      showAnnouncement(`⚡ ARENA LEGEND!\n${tag}${ev.name} has won the Thunder Dome ${ev.domeWins} times!\nPermanent ⚡ ARENA LEGEND badge earned!`, '#00ccff', 8000);
+      addEventMessage(`⚡ ${tag}${ev.name} has earned the ARENA LEGEND title — ${ev.domeWins} Thunder Dome wins!`, '#00aaff');
+    }
+    if (ev.type === 'dome_formation_synergy') {
+      if (ev.birdId === myId) {
+        showAnnouncement(`⚡⚔️ WEDGE + THUNDER DOME!\n+15% poop hit radius while in Wedge Formation inside the dome!`, '#ffaa00', 4000);
+      }
+    }
+
     // === SHOOTING STAR (rare aurora event) ===
     if (ev.type === 'shooting_star_spawn') {
       window._shootingStarData = { x: ev.x, y: ev.y, spawnedAt: ev.spawnedAt, expiresAt: ev.expiresAt, streakAngle: ev.streakAngle };
@@ -8786,7 +8840,7 @@
 
           Sprites.drawBird(ctx, sx, sy, b.rotation, b.type, b.wingPhase, isPlayer, b.birdColor || null);
           ctx.globalAlpha = 1; // Always reset after bird draw
-          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0, b.eagleFeather || false, b.idolBadge || false, b.royaleChampBadge || false, b.skillTreeMaster || false, b.fightingChampBadge || false, b.constellationBadge || false, b.courtTitle || null, b.hanamiLanternBadge || false, b.domeChampBadge || false, b.alphaFeather || false);
+          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0, b.eagleFeather || false, b.idolBadge || false, b.royaleChampBadge || false, b.skillTreeMaster || false, b.fightingChampBadge || false, b.constellationBadge || false, b.courtTitle || null, b.hanamiLanternBadge || false, b.domeChampBadge || false, b.alphaFeather || false, b.arenaLegend || false);
 
           // Bird Flu: sneezing emoji indicator above infected birds
           if (b.isFlu) {
@@ -9102,7 +9156,7 @@
 
     // Sewer overlay (screen-space, drawn after zoom restore so it covers whole screen)
     if (gameState.self && gameState.self.inSewer) {
-      Renderer.drawSewerOverlay(ctx, camera, gameState.self, gameState.sewerRats || [], gameState.sewerLoot || [], now);
+      Renderer.drawSewerOverlay(ctx, camera, gameState.self, gameState.sewerRats || [], gameState.sewerLoot || [], now, gameState.ratKing || null);
     }
 
     // Day/Night overlay (screen-space, after zoom restore)
@@ -10354,6 +10408,28 @@
         minimapCtx.stroke();
         minimapCtx.globalAlpha = 1;
       }
+    }
+
+    // Rat King minimap indicator — pulsing purple crown for underground birds
+    if (gameState.self && gameState.self.inSewer && gameState.ratKing) {
+      const rkMx = (gameState.ratKing.x / worldData.WORLD_WIDTH) * minimapCanvas.width;
+      const rkMy = (gameState.ratKing.y / worldData.WORLD_HEIGHT) * minimapCanvas.height;
+      const rkPulse = 0.6 + 0.4 * Math.sin(now_mm * 0.005);
+      minimapCtx.globalAlpha = rkPulse;
+      minimapCtx.fillStyle = '#cc44ff';
+      minimapCtx.shadowColor = '#aa00ff';
+      minimapCtx.shadowBlur = 6;
+      minimapCtx.beginPath();
+      minimapCtx.arc(rkMx, rkMy, 5, 0, Math.PI * 2);
+      minimapCtx.fill();
+      minimapCtx.shadowBlur = 0;
+      // Crown label
+      minimapCtx.globalAlpha = rkPulse * 0.9;
+      minimapCtx.font = '8px serif';
+      minimapCtx.fillStyle = '#ffccff';
+      minimapCtx.textAlign = 'center';
+      minimapCtx.fillText('👑', rkMx, rkMy - 6);
+      minimapCtx.globalAlpha = 1;
     }
 
     // Golden egg scramble on minimap
@@ -12447,6 +12523,17 @@
         const borderColor = spotlit ? '#66aaff' : '#2244cc';
         const spotText = spotlit ? ' · 🔦 SPOTLIT — visible to ALL!' : '';
         html += `<div class="bm-buff-pill" style="background:${bgColor};border-color:${borderColor};color:#88ccff;font-weight:bold;animation:pulseRed 0.8s infinite alternate;">🚁 POLICE HELICOPTER ON YOUR TAIL! Poop it: ${hits}/6 · Sewer won't help!${spotText}</div>`;
+      }
+    }
+
+    // Rat King — underground boss alert pill
+    if (s.inSewer && gameState.ratKing) {
+      const rk = gameState.ratKing;
+      if (rk.state === 'stunned') {
+        html += '<div class="bm-buff-pill" style="background:rgba(60,0,80,0.85);border-color:#cc44ff;color:#ffaaff;">👑 RAT KING STUNNED! Hit him again!</div>';
+      } else {
+        const secsLeft = Math.max(0, Math.ceil((rk.endsAt - now) / 1000));
+        html += `<div class="bm-buff-pill" style="background:rgba(80,0,100,0.9);border-color:#cc44ff;color:#ff88ff;font-weight:bold;animation:pulseRed 0.9s infinite alternate;">👑 RAT KING IS HERE! ${rk.hp}/${rk.maxHp} HP · Poop him! ${secsLeft}s to escape</div>`;
       }
     }
 
