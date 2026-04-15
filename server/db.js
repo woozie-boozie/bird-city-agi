@@ -88,6 +88,8 @@ const db = {
       duke_tenures:   data.duke_tenures   || 0,
       baron_tenures:  data.baron_tenures  || 0,
       count_tenures:  data.count_tenures  || 0,
+      constellations:   data.constellations   || '[]',
+      lifetime_dailies: data.lifetime_dailies || 0,
       last_seen: Math.floor(Date.now() / 1000),
     };
     await birdsCol.doc(id).set(docData, { merge: true });

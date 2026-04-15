@@ -139,6 +139,25 @@ const DAILY_CHALLENGE_POOL = [
   { id: 'last_king',     title: 'The Last King', desc: 'Survive as the Golden Bird for 60+ seconds',                  target: 1,  trackType: 'golden_survived', reward: { xp: 300, coins: 150 } },
 ];
 
+// ============================================================
+// CONSTELLATION BADGES — 12 zodiac signs earned through rare,
+// epic in-game moments. Persistent per bird in Firestore.
+// ============================================================
+const CONSTELLATION_DEFS = [
+  { id: 'aries',       sign: '♈', name: 'Aries',       title: 'The Ram',          desc: 'Land a 20× poop combo streak' },
+  { id: 'taurus',      sign: '♉', name: 'Taurus',      title: 'The Bull',         desc: 'Survive as the Golden Bird for 90 full seconds' },
+  { id: 'gemini',      sign: '♊', name: 'Gemini',      title: 'The Twins',        desc: 'Win 2 Bird Royales in the same session' },
+  { id: 'cancer',      sign: '♋', name: 'Cancer',      title: 'The Crab',         desc: 'Catch a Shooting Star AND a Meteor in the same aurora' },
+  { id: 'leo',         sign: '♌', name: 'Leo',         title: 'The Lion',         desc: 'Dethrone the Kingpin while on a 5+ combo streak' },
+  { id: 'virgo',       sign: '♍', name: 'Virgo',       title: 'The Maiden',       desc: 'Complete 15 lifetime daily challenges' },
+  { id: 'libra',       sign: '♎', name: 'Libra',       title: 'The Scales',       desc: 'Win a Street Duel AND a Tournament in the same session' },
+  { id: 'scorpio',     sign: '♏', name: 'Scorpio',     title: 'The Scorpion',     desc: 'Survive a full Blood Moon without losing coins to feral birds' },
+  { id: 'sagittarius', sign: '♐', name: 'Sagittarius', title: 'The Archer',       desc: 'Kill a predator while at Wanted Level 3+' },
+  { id: 'capricorn',   sign: '♑', name: 'Capricorn',   title: 'The Sea-Goat',     desc: 'Be Kingpin AND own the Radio Tower simultaneously' },
+  { id: 'aquarius',    sign: '♒', name: 'Aquarius',    title: 'The Water-Bearer', desc: 'Catch 5 Cosmic Fish in a single aurora night' },
+  { id: 'pisces',      sign: '♓', name: 'Pisces',      title: 'The Fish',         desc: 'Maintain a 7-day daily challenge streak' },
+];
+
 class GameEngine {
   constructor() {
     this.birds = new Map();       // id -> bird state
@@ -1097,6 +1116,17 @@ class GameEngine {
       dukeTenures:   saved ? (saved.duke_tenures   || 0) : 0,
       baronTenures:  saved ? (saved.baron_tenures  || 0) : 0,
       countTenures:  saved ? (saved.count_tenures  || 0) : 0,
+      // === CONSTELLATION BADGES (persistent — zodiac signs earned through epic moments) ===
+      constellations:  saved ? JSON.parse(saved.constellations || '[]') : [],
+      lifetimeDailies: saved ? (saved.lifetime_dailies || 0) : 0,
+      // === CONSTELLATION SESSION TRACKING (reset each session, not persisted) ===
+      sessionRoyaleWins: 0,
+      sessionDuelWin:    false,
+      sessionTournWin:   false,
+      auroraFishThisAurora: 0,
+      auroraStarCaught:  false,
+      auroraMetCaught:   false,
+      capricornAwarded:  false,
     };
 
     // Determine bird type from XP
@@ -3326,6 +3356,10 @@ class GameEngine {
           this.events.push({ type: 'predator_defeated', predType: predKey, birdId: bird.id, birdName: bird.name, x: predator.x, y: predator.y });
           // Gazette: record predator kill
           this.gazetteStats.predatorKills.push({ name: bird.name, gangTag: bird.gangTag || null, predType: predKey });
+          // ♐ SAGITTARIUS: kill a predator while at Wanted Level 3+
+          if (this._getWantedLevel(this.heatScores.get(bird.id) || 0) >= 3) {
+            this._awardConstellation(bird, 'sagittarius');
+          }
           // Clear all warnings and hit counts for this predator
           for (const warnings of this.predatorWarnings.values()) warnings[predKey] = null;
           for (const counts of this.predatorHitCounts.values()) counts[predKey] = 0;
@@ -3872,6 +3906,8 @@ class GameEngine {
         // City-wide shoutout at milestones
         if (combo === 5 || combo === 10 || combo === 15 || combo === 20) {
           this.events.push({ type: 'combo_milestone', birdId: bird.id, birdName: bird.name, combo, auroraActive: !!this.aurora });
+          // ♈ ARIES: land a 20× combo streak
+          if (combo === 20) this._awardConstellation(bird, 'aries');
         }
         // Gazette tracking: record top combo this cycle
         if (combo > this.gazetteStats.topCombo.count) {
@@ -4521,6 +4557,9 @@ class GameEngine {
           bird.food += foodBonus;
           if (isCosmic) {
             bird.cosmicFish = (bird.cosmicFish || 0) + 1;
+            // ♒ AQUARIUS: catch 5 cosmic fish in a single aurora night
+            bird.auroraFishThisAurora = (bird.auroraFishThisAurora || 0) + 1;
+            if (bird.auroraFishThisAurora >= 5) this._awardConstellation(bird, 'aquarius');
             this._saveBird(bird); // persist the cosmic fish token immediately
           }
           this._trackDailyProgress(bird, 'coins_earned', coinBonus);
@@ -6172,6 +6211,12 @@ class GameEngine {
       if (newPhase === 'day' && this.aurora) {
         this.aurora = null;
         this.events.push({ type: 'aurora_end', message: '✨ The Aurora Borealis fades as dawn approaches...' });
+        // Reset per-aurora constellation tracking for all birds
+        for (const b of this.birds.values()) {
+          b.auroraFishThisAurora = 0;
+          b.auroraStarCaught = false;
+          b.auroraMetCaught  = false;
+        }
       }
       if (newPhase === 'day' && this.bloodMoon) {
         // Any birds who survived the whole blood moon without losing coins earn survival badge
@@ -6250,6 +6295,7 @@ class GameEngine {
           fightingChampBadge: b.fightingChampBadge || false,
           skillTreeMaster: b.skillTreeMaster || false,
           constellationBadge: b.constellationBadge || false,
+          constellations: b.constellations || [],
           hanamiLanternBadge: b.hanamiLanternBadge || false,
           domeChampBadge: b.domeChampBadge || false,
           arenaLegend: b.arenaLegend || false,
@@ -6874,6 +6920,8 @@ class GameEngine {
         // Night Market (aurora bazaar) — currency + active buffs
         cosmicFish: bird.cosmicFish || 0,
         constellationBadge: bird.constellationBadge || false,
+        constellations: bird.constellations || [],
+        constellationDefs: CONSTELLATION_DEFS,
         stardustCloakUntil: bird.stardustCloakUntil || 0,
         cometTrailUntil: bird.cometTrailUntil || 0,
         oracleEyeUntil: bird.oracleEyeUntil || 0,
@@ -7878,8 +7926,36 @@ class GameEngine {
       duke_tenures:   bird.dukeTenures   || 0,
       baron_tenures:  bird.baronTenures  || 0,
       count_tenures:  bird.countTenures  || 0,
+      constellations: JSON.stringify(bird.constellations || []),
+      lifetime_dailies: bird.lifetimeDailies || 0,
     }).catch(e => {
       console.error('[GameEngine] Failed to save bird:', e.message);
+    });
+  }
+
+  /**
+   * Award a constellation badge to a bird. No-op if already earned.
+   * Persists immediately and emits city-wide announcement event.
+   */
+  _awardConstellation(bird, id) {
+    if (!bird) return;
+    if ((bird.constellations || []).includes(id)) return; // already earned
+    const def = CONSTELLATION_DEFS.find(c => c.id === id);
+    if (!def) return;
+    bird.constellations = [...(bird.constellations || []), id];
+    this._saveBird(bird); // persist immediately — rare permanent achievement
+    const tag = bird.gangTag ? `[${bird.gangTag}] ` : '';
+    this.events.push({
+      type: 'constellation_earned',
+      birdId: bird.id,
+      birdName: bird.name,
+      gangTag: bird.gangTag || null,
+      constellationId: id,
+      sign: def.sign,
+      name: def.name,
+      title: def.title,
+      totalCount: bird.constellations.length,
+      announcement: `${def.sign} ${tag}${bird.name} earned the ${def.name} Constellation! (${def.title})`,
     });
   }
 
@@ -7997,6 +8073,10 @@ class GameEngine {
       totalCount: this.dailyChallenges.length,
     });
 
+    // ♍ VIRGO: complete 15 lifetime daily challenges
+    bird.lifetimeDailies = (bird.lifetimeDailies || 0) + 1;
+    if (bird.lifetimeDailies >= 15) this._awardConstellation(bird, 'virgo');
+
     if (bird.dailyCompleted.length >= this.dailyChallenges.length) {
       const bonusXp    = 200;
       const bonusCoins = 100;
@@ -8005,6 +8085,8 @@ class GameEngine {
       // Increment streak
       bird.dailyStreak    = (bird.dailyStreak || 0) + 1;
       bird.dailyStreakDate = this.dailyChallengesDate;
+      // ♓ PISCES: maintain a 7-day daily challenge streak
+      if (bird.dailyStreak >= 7) this._awardConstellation(bird, 'pisces');
       this.events.push({
         type: 'daily_all_complete',
         birdId: bird.id,
@@ -13654,6 +13736,15 @@ class GameEngine {
       this.events.push({ type: 'kingpin_dethroned', deposed: oldName, deposedByName: null, loot: 0, reason: 'broke' });
     }
 
+    // ♑ CAPRICORN: be Kingpin AND own the Radio Tower simultaneously
+    if (this.kingpin && this.radioTower && this.radioTower.ownerId === this.kingpin.birdId) {
+      const kBird = this.birds.get(this.kingpin.birdId);
+      if (kBird && !kBird.capricornAwarded) {
+        kBird.capricornAwarded = true; // session flag to prevent re-award each 5s tick
+        this._awardConstellation(kBird, 'capricorn');
+      }
+    }
+
     // Passive income: Kingpin earns 20 coins every 30 seconds as "city tribute"
     // Blood Moon: tribute DOUBLES (40c) — the crown is cursed and overflowing with blood gold
     if (this.kingpin) {
@@ -13857,6 +13948,8 @@ class GameEngine {
     attacker.coins += lootAmount;
     attacker.xp += 450;
     attacker.mafiaRep = (attacker.mafiaRep || 0) + 2; // KINGPIN SLAYER earns mafia rep
+    // ♌ LEO: dethrone the Kingpin while on a 5+ combo streak
+    if ((attacker.comboCount || 0) >= 5) this._awardConstellation(attacker, 'leo');
 
     // === DETHRONEMENT POOL PAYOUT ===
     // If the pool has funds, the dethroner gets the entire pool as a bonus!
@@ -17446,6 +17539,8 @@ class GameEngine {
       if (!this.bloodMoon.playersStealtFrom.has(b.id)) {
         // This bird survived without losing coins — award survival daily challenge
         this._trackDailyProgress(b, 'blood_moon_survived', 1);
+        // ♏ SCORPIO: survive a full Blood Moon without losing coins to feral birds
+        this._awardConstellation(b, 'scorpio');
       }
     }
   }
@@ -17774,6 +17869,9 @@ class GameEngine {
     }
 
     this._trackDailyProgress(bird, 'star_caught', 1);
+    // ♋ CANCER half: caught the Shooting Star — if also caught a Meteor this aurora, award badge
+    bird.auroraStarCaught = true;
+    if (bird.auroraMetCaught) this._awardConstellation(bird, 'cancer');
 
     // P5 LEGEND bonus: catching a shooting star blazes a golden comet trail for 30 seconds
     if (bird.prestige >= 5) {
@@ -17915,6 +18013,9 @@ class GameEngine {
       case 'broken_crate': bird.coins += 75; this._trackDailyProgress(bird, 'coins_earned', 75); break;
     }
     this._trackDailyProgress(bird, 'star_caught', 1);
+    // ♋ CANCER half: caught a Meteor — if also caught the Shooting Star this aurora, award badge
+    bird.auroraMetCaught = true;
+    if (bird.auroraStarCaught) this._awardConstellation(bird, 'cancer');
 
     // P5 LEGEND bonus: catching a meteor blazes a golden comet trail for 30 seconds
     if (bird.prestige >= 5) {
@@ -18967,6 +19068,9 @@ class GameEngine {
           // 🏆 Champion Badge — session-only trophy visible on nametag
           winnerBird.royaleChampBadge = true;
           this._trackDailyProgress(winnerBird, 'royale_win', 1);
+          // ♊ GEMINI: win 2 Bird Royales in the same session
+          winnerBird.sessionRoyaleWins = (winnerBird.sessionRoyaleWins || 0) + 1;
+          if (winnerBird.sessionRoyaleWins >= 2) this._awardConstellation(winnerBird, 'gemini');
 
           // 🗺️ Gang Territory Royale Bonus — 5-min 1.5× capture power for winning gang
           if (winnerBird.gangId) {
@@ -19361,6 +19465,11 @@ class GameEngine {
       winner.xp += 150;
       winner.streetDuelId = null;
       this._trackDailyProgress(winner, 'duel_win', 1);
+      // ♎ LIBRA half: won a Street Duel — if also won a Tournament this session, award badge
+      if (!duel.isTournamentDuel) {
+        winner.sessionDuelWin = true;
+        if (winner.sessionTournWin) this._awardConstellation(winner, 'libra');
+      }
     }
     if (loser) {
       loser.streetDuelId = null;
@@ -19702,6 +19811,9 @@ class GameEngine {
           champBird.tournamentWins = (champBird.tournamentWins || 0) + 1;
           this._trackDailyProgress(champBird, 'tournament_win', 1);
           this._trackDailyProgress(champBird, 'duel_win', 1);
+          // ♎ LIBRA half: won a Tournament — if also won a Street Duel this session, award badge
+          champBird.sessionTournWin = true;
+          if (champBird.sessionDuelWin) this._awardConstellation(champBird, 'libra');
           this._saveBird(champBird);
         }
 
@@ -20799,6 +20911,8 @@ class GameEngine {
         gbBird.coins += 700;
         gbBird.goldenBirdBadge = true;
         this._trackDailyProgress(gbBird, 'golden_survived', 1);
+        // ♉ TAURUS: survive as the Golden Bird for the full 90 seconds
+        this._awardConstellation(gbBird, 'taurus');
         this._checkLevelUp(gbBird);
       }
       // Coin explosion — scatter 200c to nearby birds

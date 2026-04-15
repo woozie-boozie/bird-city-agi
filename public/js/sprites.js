@@ -106,7 +106,7 @@ window.Sprites = {
   },
 
   // === NAME TAG ===
-  drawNameTag(ctx, x, y, name, level, type, isPlayer, mafiaTitle, gangTag, gangColor, tattoosEquipped, prestige, eagleFeather, idolBadge, royaleChampBadge, skillTreeMaster, fightingChampBadge, constellationBadge, courtTitle, hanamiLanternBadge, domeChampBadge, alphaFeather, arenaLegend, goldenBirdBadge) {
+  drawNameTag(ctx, x, y, name, level, type, isPlayer, mafiaTitle, gangTag, gangColor, tattoosEquipped, prestige, eagleFeather, idolBadge, royaleChampBadge, skillTreeMaster, fightingChampBadge, constellationBadge, courtTitle, hanamiLanternBadge, domeChampBadge, alphaFeather, arenaLegend, goldenBirdBadge, constellations) {
     const text = `${name} [Lv.${level}]`;
     ctx.font = 'bold 11px Courier New';
     ctx.textAlign = 'center';
@@ -337,6 +337,27 @@ window.Sprites = {
       ctx.shadowBlur = 8;
       ctx.fillStyle = '#aaffee';
       ctx.fillText(cbStr, x, y - 41 - offsetY);
+      ctx.shadowBlur = 0;
+      ctx.font = 'bold 11px Courier New';
+      offsetY += 14;
+    }
+
+    // ✨ Zodiac Constellation Signs — earned through epic moments, up to 4 shown in a compact row
+    if (constellations && constellations.length > 0) {
+      const SIGN_MAP = { aries:'♈', taurus:'♉', gemini:'♊', cancer:'♋', leo:'♌', virgo:'♍',
+                        libra:'♎', scorpio:'♏', sagittarius:'♐', capricorn:'♑', aquarius:'♒', pisces:'♓' };
+      const signs = constellations.slice(0, 4).map(id => SIGN_MAP[id] || '✦').join(' ');
+      ctx.font = '11px serif';
+      const sw = ctx.measureText(signs).width + 12;
+      ctx.fillStyle = 'rgba(5,5,25,0.93)';
+      ctx.fillRect(x - sw / 2, y - 52 - offsetY, sw, 14);
+      ctx.strokeStyle = '#8866ff';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(x - sw / 2, y - 52 - offsetY, sw, 14);
+      ctx.shadowColor = '#aa88ff';
+      ctx.shadowBlur = 8;
+      ctx.fillStyle = '#ccaaff';
+      ctx.fillText(signs, x, y - 41 - offsetY);
       ctx.shadowBlur = 0;
       ctx.font = 'bold 11px Courier New';
       offsetY += 14;

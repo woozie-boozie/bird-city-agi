@@ -3308,6 +3308,52 @@ Every 50-70 minutes, one random bird is blessed with DIVINE POWER for 90 seconds
 
 **Creative intent**: Every other "chosen one" mechanic in Bird City is a threat (Kingpin, Most Wanted, Cursed Coin). The Golden Rampage is the opposite — it's a gift. One random bird becomes temporarily godlike, and the entire city has to decide: do you attack the golden bird for proportional loot rewards, or do you enjoy the 90-second spectacle? The golden bird's incentive is to stay alive and rampage as hard as possible — 4× XP on every mega poop while moving at 2.5× speed is the biggest burst window in the game. The hunter's incentive is to coordinate 20 hits before 90 seconds expire. A high-combo golden bird with a Lucky Charm + Signal Boost hitting 4× XP on mega AOE poops during a crime wave is the highest single-event XP moment in Bird City. The 👑 badge for surviving creates a permanent identity mark: that bird outlasted the city's best effort. Pure CARNAGE + SPECTACLE + SOCIAL energy.
 
+**Session 97 — 2026-04-15: Constellation Badges — Zodiac Signs Earned Through Epic Moments**
+Bird City now has a permanent meta-achievement layer: 12 zodiac constellation badges earned through genuinely rare, skill-testing moments. They live on your nametag as purple glowing zodiac signs visible to all nearby players — a permanent record of your most epic deeds.
+
+**12 Constellations (all persistent in Firestore):**
+- ♈ **Aries** (The Ram): Land a 20× poop combo streak
+- ♉ **Taurus** (The Bull): Survive as the Golden Bird for the full 90 seconds
+- ♊ **Gemini** (The Twins): Win 2 Bird Royales in the same session
+- ♋ **Cancer** (The Crab): Catch a Shooting Star AND a Meteor in the same aurora night
+- ♌ **Leo** (The Lion): Dethrone the Kingpin while on a 5+ combo streak
+- ♍ **Virgo** (The Maiden): Complete 15 lifetime daily challenges
+- ♎ **Libra** (The Scales): Win a Street Duel AND a Tournament in the same session
+- ♏ **Scorpio** (The Scorpion): Survive a full Blood Moon without losing coins to feral birds
+- ♐ **Sagittarius** (The Archer): Kill a predator while at Wanted Level 3+
+- ♑ **Capricorn** (The Sea-Goat): Be Kingpin AND own the Radio Tower simultaneously
+- ♒ **Aquarius** (The Water-Bearer): Catch 5 Cosmic Fish in a single aurora night
+- ♓ **Pisces** (The Fish): Maintain a 7-day daily challenge streak
+
+**Server mechanics (`server/game.js`):**
+- `CONSTELLATION_DEFS` constant — 12 zodiac definitions with id, sign, name, title, description
+- `_awardConstellation(bird, id)` helper method — idempotent (skips if already earned), persists to Firestore immediately on award, pushes `constellation_earned` event to all clients
+- `constellations` array (JSON) and `lifetimeDailies` integer added as new persistent fields per bird
+- Session-only tracking fields: `sessionRoyaleWins`, `sessionDuelWin`, `sessionTournWin`, `auroraFishThisAurora`, `auroraStarCaught`, `auroraMetCaught`, `capricornAwarded`
+- Aurora reset block: all aurora tracking fields cleared for all birds at dawn transition
+- `CAPRICORN` awarded in `_updateKingpin` with `capricornAwarded` session flag to prevent re-awarding every 5-second tick
+- `VIRGO` and `PISCES` hook into `_completeDailyChallenge` — increments `lifetimeDailies` on each challenge complete; Pisces checks daily streak
+
+**Persistence (`server/db.js`):**
+- `constellations` (JSON array string, default `'[]'`) and `lifetime_dailies` (int, default 0) added to `upsertBird()`
+
+**Visual system (`public/js/sprites.js`):**
+- `drawNameTag` updated with `constellations` array param (last position — fully backward compatible)
+- Earned constellations rendered as a compact purple pill above the nametag stack: up to 4 zodiac signs displayed as `♈ ♌ ♒` in `#ccaaff` text on dark-purple background with `#8866ff` border and purple glow shadow
+- Only earned signs show; excess beyond 4 are silently omitted (most players won't earn all 12)
+
+**Constellation Panel ([L] key, `#constellationPanel`):**
+- Press [L] from anywhere to open/close the panel
+- Dark purple gradient overlay (matching the Blood Moon / Night Market aesthetic)
+- 2-column grid showing all 12 constellations: earned entries glow purple with full color; locked entries are dim grey with 🔒 and the achievement description
+- Live count "X / 12 earned" at the top
+- Auto-refreshes when a new constellation is earned mid-session
+
+**Socket events:**
+- `constellation_earned`: personal screen shake + big purple 7-second announcement with sign + name + total count; city-wide event feed entry for all players — epic moments deserve city recognition
+
+**Creative intent**: Bird City had many progression systems (prestige, skill tree, mafia rep, noble tenures) but none that encoded specific MEMORABLE MOMENTS. The constellation system is a permanent autobiography of your Bird City career. ♈ Aries tells every player "I once landed a 20× combo." ♑ Capricorn says "I was so powerful I held the crown AND controlled the airwaves simultaneously." ♋ Cancer is the rarest — requiring two separate rare aurora sub-events in the SAME night. The zodiac aesthetic (purple glow, serif signs on the nametag) is visually distinct from every other badge, creating an unmistakable prestige signal. A bird with 8+ constellations is a legend by definition — they've participated in and EXCELLED at events across every pillar of Bird City. Pure PROGRESSION + DISCOVERY energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)

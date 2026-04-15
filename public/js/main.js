@@ -4534,6 +4534,11 @@
       toggleSkillTree();
     }
 
+    // [L] — Constellation Panel
+    if (e.key.toLowerCase() === 'l') {
+      toggleConstellationPanel();
+    }
+
     // [Z] — Royale Spectator Cheer Panel
     if (e.key.toLowerCase() === 'z') {
       toggleRoyaleCheerPanel();
@@ -8988,7 +8993,7 @@
 
           Sprites.drawBird(ctx, sx, sy, b.rotation, b.type, b.wingPhase, isPlayer, b.birdColor || null);
           ctx.globalAlpha = 1; // Always reset after bird draw
-          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0, b.eagleFeather || false, b.idolBadge || false, b.royaleChampBadge || false, b.skillTreeMaster || false, b.fightingChampBadge || false, b.constellationBadge || false, b.courtTitle || null, b.hanamiLanternBadge || false, b.domeChampBadge || false, b.alphaFeather || false, b.arenaLegend || false, b.goldenBirdBadge || false);
+          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0, b.eagleFeather || false, b.idolBadge || false, b.royaleChampBadge || false, b.skillTreeMaster || false, b.fightingChampBadge || false, b.constellationBadge || false, b.courtTitle || null, b.hanamiLanternBadge || false, b.domeChampBadge || false, b.alphaFeather || false, b.arenaLegend || false, b.goldenBirdBadge || false, b.constellations || []);
 
           // Bird Flu: sneezing emoji indicator above infected birds
           if (b.isFlu) {
@@ -14397,6 +14402,108 @@
     if (el) el.style.display = 'none';
   }
 
+  // ============================================================
+  // CONSTELLATION PANEL — [L] to open/close
+  // ============================================================
+  let constellationPanelVisible = false;
+
+  function toggleConstellationPanel() {
+    if (constellationPanelVisible) hideConstellationPanel();
+    else showConstellationPanel();
+  }
+
+  function hideConstellationPanel() {
+    constellationPanelVisible = false;
+    const el = document.getElementById('constellationPanel');
+    if (el) el.style.display = 'none';
+  }
+
+  function showConstellationPanel() {
+    if (!joined) return;
+    constellationPanelVisible = true;
+    const el = document.getElementById('constellationPanel');
+    if (el) {
+      el.style.display = 'block';
+      renderConstellationPanel();
+    }
+    for (const k in keys) keys[k] = false;
+    syncInput();
+  }
+
+  function renderConstellationPanel() {
+    const el = document.getElementById('constellationPanel');
+    if (!el || !gameState || !gameState.self) return;
+    const s = gameState.self;
+    const earned = s.constellations || [];
+    const defs = s.constellationDefs || [];
+
+    const count = earned.length;
+    const total = defs.length || 12;
+
+    let html = `
+      <div style="text-align:center;margin-bottom:12px;">
+        <div style="font-size:20px;font-weight:bold;color:#ccaaff;text-shadow:0 0 12px #8866ff;">
+          ✨ CONSTELLATION BADGES
+        </div>
+        <div style="font-size:12px;color:#997fcc;margin-top:4px;">
+          Permanent zodiac signs earned through epic moments
+        </div>
+        <div style="font-size:13px;color:#bb99ff;margin-top:6px;font-weight:bold;">
+          ${count} / ${total} earned
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;max-height:380px;overflow-y:auto;">
+    `;
+
+    for (const def of defs) {
+      const isEarned = earned.includes(def.id);
+      if (isEarned) {
+        html += `
+          <div style="
+            background:rgba(100,60,180,0.35);
+            border:1px solid #9966ff;
+            border-radius:8px;
+            padding:8px 10px;
+            box-shadow:0 0 10px rgba(140,80,255,0.35);
+          ">
+            <div style="font-size:18px;text-shadow:0 0 10px #bb88ff;">${def.sign}</div>
+            <div style="font-size:12px;font-weight:bold;color:#ddbbff;">${def.name}</div>
+            <div style="font-size:10px;color:#aa88dd;font-style:italic;">${def.title}</div>
+            <div style="font-size:9px;color:#9977bb;margin-top:3px;">${def.desc}</div>
+          </div>
+        `;
+      } else {
+        html += `
+          <div style="
+            background:rgba(20,10,40,0.5);
+            border:1px solid #443366;
+            border-radius:8px;
+            padding:8px 10px;
+            opacity:0.65;
+          ">
+            <div style="font-size:18px;color:#444;">🔒</div>
+            <div style="font-size:12px;font-weight:bold;color:#665588;">${def.name}</div>
+            <div style="font-size:10px;color:#554477;font-style:italic;">${def.title}</div>
+            <div style="font-size:9px;color:#4d3d66;margin-top:3px;">${def.desc}</div>
+          </div>
+        `;
+      }
+    }
+
+    html += `</div>
+      <div style="text-align:center;margin-top:10px;">
+        <button onclick="window._hideConstellationPanel()" style="
+          background:rgba(80,40,140,0.8);border:1px solid #8866ff;
+          color:#ccaaff;padding:6px 20px;border-radius:6px;cursor:pointer;font-size:12px;
+        ">CLOSE [L]</button>
+      </div>
+    `;
+
+    el.innerHTML = html;
+  }
+
+  window._hideConstellationPanel = hideConstellationPanel;
+
   function renderSkillTree() {
     const el = document.getElementById('skillTreeOverlay');
     if (!el || !gameState || !gameState.self) return;
@@ -14795,6 +14902,19 @@
     }
     const tag = data.gangTag ? `[${data.gangTag}] ` : '';
     addEventFeedMessage(`✨ ${tag}${data.birdName} MASTERED the Skill Tree! All 12 skills unlocked!`);
+  });
+
+  socket.on('constellation_earned', (data) => {
+    if (data.birdId === socket.id) {
+      triggerScreenShake(12, 1000);
+      showAnnouncement(
+        `${data.sign} CONSTELLATION EARNED: ${data.name} (${data.title})!\nYou now have ${data.totalCount} constellation${data.totalCount !== 1 ? 's' : ''}.`,
+        '#ccaaff', 7000
+      );
+      if (constellationPanelVisible) renderConstellationPanel();
+    }
+    const tag = data.gangTag ? `[${data.gangTag}] ` : '';
+    addEventFeedMessage(`${data.sign} ${tag}${data.birdName} earned the ${data.name} Constellation! (${data.title})`);
   });
 
   socket.on('skill_tree_fail', (data) => {
