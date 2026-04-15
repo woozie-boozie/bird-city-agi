@@ -3225,6 +3225,54 @@ Three interlocking features that deepen the underground sewer system and the Thu
 
 **Creative intent**: The sewer was a great escape mechanic but lacked permanent content — it was a safe space rather than a dangerous world. The Rat King fixes this completely: going underground is now a calculated risk. You evade the cops above, but below there's a 4-HP crown-wearing crime lord who hunts you for coins. The 90-second escape timer creates urgency: underground players must choose between hiding safely (and getting robbed at the end) or cooperating to bring the Rat King down. The Arena Legend badge gives Thunder Dome's competitive arc a permanent prestige track — winning once is a session trophy, but winning THREE TIMES earns you a badge that every player sees on your nametag forever. The formation synergy closes the loop on Wedge Formation's power fantasy: inside the dome, tight formation play is mechanically the most powerful poop configuration in the game. Pure CARNAGE + DISCOVERY + PROGRESSION energy.
 
+**Session 95 — 2026-04-15: City Vault Truck + Four Cross-System Synergies**
+The most rewarding cooperative moving-target event in Bird City. An armored vault truck drives the city's roads on a 30-35 minute timer — find it, poop it 100 times, and split a 1500c jackpot proportional to your contribution.
+
+**City Vault Truck mechanics (`server/game.js`):**
+- Spawns on a random road every 30-35 minutes when players are online — picks a road waypoint and drives 50px/s continuously
+- 100 HP shared pool: normal poop = 1 HP (8 XP, 3c immediate), mega poop = 3 HP (24 XP, 9c) — every hit is tracked per-contributor
+- **Three cop escalation stages**: 2 cop pigeons at ≤75 HP, 2 more at ≤50 HP, SWAT crow at ≤25 HP — the city protects its vault
+- **3-minute window**: if not cracked in time, the truck escapes to a map edge and despawns; 30-35 min until it returns
+- **Cracked**: all contributors get proportional jackpot share (100-500 XP + proportional slice of 1500c); top contributor gets full Gazette headline credit
+- **Milestone broadcasts** at 75/50/25/10 HP — city-wide urgency escalation
+- `vault_cracker` daily challenge: land 10 hits on the vault truck (180 XP, 90c)
+- Gazette headline: "💼 CITY VAULT TRUCK CRACKED OPEN — 1500c JACKPOT DIVIDED AMONG CITY BIRDS!"
+
+**Visual system:**
+- Custom `drawVaultTruck()` sprite in `sprites.js`: dark armored body (64×32px) with gold trim stripe, plating seam lines, spinning combination dial on the vault door, narrow armored windshield slits, heavy-duty wheels with hub caps, "VAULT" text in gold, HP bar above when damaged
+- Gold pulsing glow aura — shifts to red at ≤25% HP
+- **HUD bar**: stacks below crime wave / seagull / migration bars — shows live HP, time remaining, personal hit count
+- **Gold screen tint** while active — greed is in the air
+- **Off-screen direction arrow**: gold briefcase 💼 emoji arrow points toward the truck when off-screen
+- **Minimap**: pulsing gold dot + 💼 emoji tracks the truck's position in real time
+- **Active buffs pill**: "💼 VAULT TRUCK — XHP · Xs · MY HITS: N · POOP IT!" in gold, urgency-pulses at low HP
+
+**Four Cross-System Synergies:**
+
+**1. Siege Escalation (Gang Siege × Crow Cartel):**
+- If a Gang Siege's HP pool is still >80% after 2 full minutes: Don Corvino sends Cartel backup
+- 3 Crow Cartel thugs (tagged `isSiegeBackup: true`) spawn near the besieged nest as attacker reinforcements
+- `siege_cartel_backup` event fires: "🐦‍⬛ THE CARTEL SENT BACKUP! [ATTACKER] gets Cartel reinforcements in the siege!"
+- Rewards the persistence of long sieges instead of punishing defenders who hold firm
+
+**2. Mural × Siege (overtaking a rival's mural chips the siege pool):**
+- When a gang overtakes a rival's mural DURING an active siege between those two gangs: −15 HP from the siege pool
+- `siege_mural_hit` event announces: "🎨⚔️ MURAL OVERTAKEN — −15 HP off the siege! [X HP left]"
+- Victory check runs immediately — a big mural push can single-handedly finish a siege
+- Makes mural control a genuine second front in gang wars
+
+**3. Thunder Dome × Siege (double siege damage inside the dome):**
+- If a bird hits the rival gang's nest while standing inside an active Thunder Dome: siege damage doubled (15→30, mega 30→60)
+- One-time `siege_dome_synergy` announcement: "⚡⚔️ THUNDER DOME POWER! Siege hits inside the dome deal 2× damage!"
+- Creates a spectacular scenario: wait for the dome to fall on your rival's nest and dive in for the kill
+
+**4. Migration × Race (slipstream + boost gate stack):**
+- When a bird riding Great Migration slipstream (`migrationBoostUntil > now`) hits a race boost gate: both bonuses stack
+- `migration_race_synergy` event fires: "🦅⚡ SLIPSTREAM + BOOST GATE! [Name] stacks migration AND race boost — ludicrous speed!"
+- The rarest accidental combo: two roaming events happen to intersect on the racing circuit
+
+**Creative intent**: The Vault Truck hits every system pillar at once. CARNAGE: a moving 100-HP target that spawns more cops the closer you get. SOCIAL: every hit is tracked — you can free-ride with 1 hit and get a fraction, or go all-in and earn the lion's share. PROGRESSION: the jackpot scales with contribution, so coordinated gangs can exploit their formation bonuses (Wedge splash, V slipstream, Territory Tax) to squeeze maximum XP. SPECTACLE: a 1500c jackpot announcement with the contributor list is the biggest wealth moment in the game. The four synergies add depth without new content — siege escalation rewards tenacity, mural×siege makes graffiti wars real tactics, dome×siege creates explosive opportunistic plays, migration×race is the most "wait, that works?!" discovery in the game. Pure CARNAGE + SOCIAL + SPECTACLE energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)

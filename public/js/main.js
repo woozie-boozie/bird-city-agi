@@ -4041,6 +4041,91 @@
       addEventMessage(`⚡🦅 ${ev.birdName} discovers the synergy — Alpha takes 2× damage inside the Thunder Dome!`, '#66aaff');
     }
 
+    // === CITY VAULT TRUCK EVENTS ===
+    if (ev.type === 'vault_truck_spawn') {
+      effects.push({ type: 'screen_shake', intensity: 10, duration: 700, time: now });
+      window._vaultTruckDir = { x: ev.x, y: ev.y }; // for direction arrow
+      showAnnouncement(`💼 CITY VAULT TRUCK SPOTTED!\n100 poop hits to CRACK IT OPEN — 1500c jackpot!\n3 minutes before it escapes — START POOPING!`, '#ffd700', 8000);
+      addEventMessage(`💼 CITY VAULT TRUCK rolling through town! Poop it 100 times for a 1500c jackpot!`, '#ffd700');
+    }
+    if (ev.type === 'vault_truck_hit') {
+      // Personal floating text on each hit
+      if (ev.birdId === myId) {
+        const hpPct = Math.round(ev.hp / ev.maxHp * 100);
+        effects.push({ type: 'text', x: ev.x, y: ev.y - 30, time: now, duration: 900,
+          text: `−${ev.dmg} HP (${hpPct}%)`, color: '#ffd700', size: 12 });
+      }
+    }
+    if (ev.type === 'vault_truck_milestone') {
+      effects.push({ type: 'screen_shake', intensity: ev.pct === 10 ? 10 : 6, duration: 400, time: now });
+      const color = ev.pct <= 10 ? '#ff4400' : ev.pct <= 25 ? '#ff8800' : '#ffd700';
+      showAnnouncement(`💼 ${ev.message}`, color, 4000);
+      addEventMessage(`💼 ${ev.message}`, color);
+    }
+    if (ev.type === 'vault_truck_cops') {
+      effects.push({ type: 'screen_shake', intensity: 8, duration: 500, time: now });
+      showAnnouncement(`🚨 ${ev.message}`, '#ff4444', 4000);
+      addEventMessage(`🚨 ${ev.message}`, '#ff4444');
+    }
+    if (ev.type === 'vault_truck_cracked') {
+      effects.push({ type: 'screen_shake', intensity: 20, duration: 1200, time: now });
+      window._vaultTruckDir = null;
+      // Coin shower particles
+      for (let i = 0; i < 24; i++) {
+        const angle = (i / 24) * Math.PI * 2;
+        effects.push({ type: 'text', x: ev.x + Math.cos(angle) * (30 + Math.random() * 60),
+          y: ev.y + Math.sin(angle) * (30 + Math.random() * 60), time: now + Math.random() * 500,
+          duration: 1800, text: '💼', color: '#ffd700', size: 18 + Math.random() * 10 });
+      }
+      // Personal reward announcement
+      if (ev.rewards) {
+        const myReward = ev.rewards.find(r => r.birdId === myId);
+        if (myReward) {
+          showAnnouncement(
+            `💼💥 VAULT TRUCK CRACKED!\n+${myReward.coins}c +${myReward.xp}XP\n(${myReward.hits} poop hits = ${Math.round(myReward.hits / Math.max(1, ev.rewards.reduce((s,r)=>s+r.hits,0)) * 100)}% share)`,
+            '#ffd700', 7000
+          );
+          effects.push({ type: 'text', x: gameState.self ? gameState.self.x : 0,
+            y: gameState.self ? gameState.self.y - 60 : 0, time: now, duration: 3000,
+            text: `+${myReward.coins}c +${myReward.xp}XP`, color: '#ffd700', size: 20 });
+        } else {
+          showAnnouncement(`💼💥 VAULT TRUCK CRACKED!\n${ev.contributorCount} birds shared the jackpot!`, '#ffd700', 5000);
+        }
+      }
+      addEventMessage(`💼💥 VAULT TRUCK CRACKED! ${ev.contributorCount} birds split 1500c!`, '#ffd700');
+      // Reward callouts for all contributors
+      if (ev.rewards) {
+        for (const r of ev.rewards.slice(0, 3)) {
+          addEventMessage(`  💼 ${r.name}: +${r.coins}c +${r.xp}XP (${r.hits} hits)`, '#ffdd44');
+        }
+      }
+    }
+    if (ev.type === 'vault_truck_escaped') {
+      window._vaultTruckDir = null;
+      addEventMessage(`💼 The Vault Truck escaped! The city failed to crack it in time.`, '#888888');
+    }
+    // Cross-system synergy messages
+    if (ev.type === 'migration_race_synergy') {
+      if (ev.birdId === myId) {
+        showAnnouncement(`🦅⚡ SLIPSTREAM + BOOST GATE!\nMigration slipstream stacks with race boost — LUDICROUS SPEED!`, '#f6ad55', 3500);
+      }
+      addEventMessage(`🦅⚡ ${ev.birdName} stacks migration slipstream AND race boost gate — supercharge!`, '#f6ad55');
+    }
+    if (ev.type === 'siege_cartel_backup') {
+      effects.push({ type: 'screen_shake', intensity: 10, duration: 700, time: now });
+      showAnnouncement(`⚔️🐦‍⬛ CROW CARTEL BACKUP!\nDon Corvino sends 3 thugs to [${ev.attackingGangTag}]'s siege!\nThe nest won't hold!`, '#aa44ff', 6000);
+      addEventMessage(`⚔️🐦‍⬛ DON CORVINO sends Cartel backup to the [${ev.attackingGangTag}] vs [${ev.defendingGangTag}] siege!`, '#aa44ff');
+    }
+    if (ev.type === 'siege_mural_hit') {
+      effects.push({ type: 'screen_shake', intensity: 6, duration: 400, time: now });
+      addEventMessage(`🎨⚔️ [${ev.attackingGangTag}] seized [${ev.defendingGangTag}]'s mural! Siege pool −${ev.dmg} HP (${ev.hpPool}/${ev.hpMaxPool} left)`, '#ff8844');
+    }
+    if (ev.type === 'siege_dome_synergy') {
+      effects.push({ type: 'screen_shake', intensity: 8, duration: 500, time: now });
+      showAnnouncement(`⚡⚔️ THUNDER DOME × SIEGE!\nAttacks inside the dome deal 2× siege damage!`, '#66aaff', 5000);
+      addEventMessage(`⚡⚔️ [${ev.attackingGangTag}] inside the Thunder Dome — 2× siege damage!`, '#66aaff');
+    }
+
     // === MURAL VANDAL EVENTS ===
     if (ev.type === 'vandal_appeared') {
       effects.push({ type: 'screen_shake', intensity: 7, duration: 500, time: now });
@@ -8270,6 +8355,16 @@
       }
     }
 
+    // Vault Truck (armored moving target)
+    if (gameState.vaultTruck && !gameState.vaultTruck.cracked && !gameState.vaultTruck.escaped) {
+      const vt = gameState.vaultTruck;
+      const sx = vt.x - camera.x + camera.screenW / 2;
+      const sy = vt.y - camera.y + camera.screenH / 2;
+      if (sx > -margin - 50 && sx < camera.screenW + margin + 50 && sy > -margin - 50 && sy < camera.screenH + margin + 50) {
+        Sprites.drawVaultTruck(ctx, sx, sy, vt.angle || 0, vt.hp, vt.maxHp, vt.myHits || 0, now);
+      }
+    }
+
     // Raccoon Thieves (night-only)
     if (gameState.raccoons) {
       for (const raccoon of gameState.raccoons) {
@@ -9370,6 +9465,97 @@
           ctx.fillText('🦅', 0, 0);
           ctx.restore();
         }
+      }
+    }
+
+    // === CITY VAULT TRUCK HUD BAR ===
+    if (gameState.vaultTruck && !gameState.vaultTruck.cracked && !gameState.vaultTruck.escaped) {
+      const vt = gameState.vaultTruck;
+      const vtTimeLeft = Math.max(0, vt.endsAt - now);
+      const vtHpPct = vt.hp / vt.maxHp;
+      const vtMyHits = vt.myHits || 0;
+
+      // Gold tint overlay — the whole city glows with greed
+      const vtPulse = 0.5 + 0.5 * Math.abs(Math.sin(now * 0.004));
+      ctx.save();
+      ctx.globalAlpha = 0.04 + 0.02 * vtPulse;
+      ctx.fillStyle = '#ffd700';
+      ctx.fillRect(0, 0, camera.screenW, camera.screenH);
+      ctx.globalAlpha = 1;
+      ctx.restore();
+
+      // HUD bar: stacks below migration/seagull/crime wave bars
+      const hasCrimeWaveVT = gameState.self && gameState.self.crimeWave;
+      const hasSeagullVT = gameState.seagullInvasion;
+      const hasMigrationVT = gameState.migration;
+      let vtBarY = 132;
+      if (hasCrimeWaveVT) vtBarY += 43;
+      if (hasSeagullVT) vtBarY += 43;
+      if (hasMigrationVT) vtBarY += 43;
+
+      const vtBarW = 220, vtBarH = 12;
+      const vtBarX = camera.screenW / 2 - vtBarW / 2;
+
+      ctx.save();
+      ctx.globalAlpha = 0.93;
+      ctx.fillStyle = 'rgba(0,0,0,0.72)';
+      ctx.beginPath();
+      ctx.roundRect(vtBarX - 60, vtBarY - 18, vtBarW + 120, vtBarH + 32, 10);
+      ctx.fill();
+
+      const vtLabelPulse = 0.75 + 0.25 * Math.sin(now * 0.007);
+      ctx.globalAlpha = vtLabelPulse;
+      const vtHpColor = vtHpPct > 0.5 ? '#ffd700' : vtHpPct > 0.25 ? '#ff8800' : '#ff4400';
+      ctx.fillStyle = vtHpColor;
+      ctx.font = 'bold 11px Arial';
+      ctx.textAlign = 'center';
+      const vtHitsStr = vtMyHits > 0 ? ` · MY HITS: ${vtMyHits}` : '';
+      ctx.fillText(`💼 VAULT TRUCK — ${vt.hp}/${vt.maxHp}HP · ${Math.ceil(vtTimeLeft / 1000)}s${vtHitsStr}`, camera.screenW / 2, vtBarY - 4);
+
+      ctx.globalAlpha = 0.85;
+      ctx.fillStyle = 'rgba(60,50,0,0.5)';
+      ctx.beginPath();
+      ctx.roundRect(vtBarX, vtBarY + 2, vtBarW, vtBarH, 4);
+      ctx.fill();
+
+      ctx.fillStyle = vtHpColor;
+      ctx.beginPath();
+      ctx.roundRect(vtBarX, vtBarY + 2, vtBarW * vtHpPct, vtBarH, 4);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.restore();
+
+      // Off-screen direction arrow when vault truck is not visible
+      const vtSX = vt.x - camera.x + camera.screenW / 2;
+      const vtSY = vt.y - camera.y + camera.screenH / 2;
+      const padVT = 60;
+      if (vtSX < padVT || vtSX > camera.screenW - padVT || vtSY < padVT || vtSY > camera.screenH - padVT) {
+        const vtArrAngle = Math.atan2(vtSY - camera.screenH / 2, vtSX - camera.screenW / 2);
+        const vtArrRadius = Math.min(camera.screenW, camera.screenH) * 0.42;
+        const vtArrX = camera.screenW / 2 + Math.cos(vtArrAngle) * vtArrRadius;
+        const vtArrY = camera.screenH / 2 + Math.sin(vtArrAngle) * vtArrRadius;
+        const vtArrPulse = 0.6 + 0.4 * Math.sin(now * 0.006);
+        ctx.save();
+        ctx.translate(vtArrX, vtArrY);
+        ctx.rotate(vtArrAngle);
+        ctx.globalAlpha = 0.8 + 0.2 * vtArrPulse;
+        ctx.fillStyle = '#ffd700';
+        ctx.strokeStyle = '#7a6000';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(22, 0);
+        ctx.lineTo(-10, 10);
+        ctx.lineTo(-5, 0);
+        ctx.lineTo(-10, -10);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+        ctx.font = '13px serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('💼', 0, 0);
+        ctx.restore();
       }
     }
 
@@ -10667,6 +10853,30 @@
         minimapCtx.fillText('🦅', amx, amy - 6);
         minimapCtx.restore();
       }
+    }
+
+    // Vault Truck gold pulsing dot on minimap
+    if (gameState.vaultTruck && !gameState.vaultTruck.cracked && !gameState.vaultTruck.escaped && worldData) {
+      const mw = minimapCtx.canvas.width;
+      const mh = minimapCtx.canvas.height;
+      const msx = mw / worldData.width;
+      const msy = mh / worldData.height;
+      const vtPulse = 0.5 + 0.5 * Math.sin(now * 0.008);
+      const vtmx = gameState.vaultTruck.x * msx;
+      const vtmy = gameState.vaultTruck.y * msy;
+      minimapCtx.save();
+      minimapCtx.shadowColor = '#ffd700';
+      minimapCtx.shadowBlur = 8 + 4 * vtPulse;
+      minimapCtx.fillStyle = `rgba(255,215,0,${0.8 + 0.2 * vtPulse})`;
+      minimapCtx.beginPath();
+      minimapCtx.arc(vtmx, vtmy, 4 + vtPulse, 0, Math.PI * 2);
+      minimapCtx.fill();
+      minimapCtx.shadowBlur = 0;
+      minimapCtx.font = '8px sans-serif';
+      minimapCtx.textAlign = 'center';
+      minimapCtx.textBaseline = 'alphabetic';
+      minimapCtx.fillText('💼', vtmx, vtmy - 6);
+      minimapCtx.restore();
     }
 
     // Bird Royale safe zone ring on minimap
@@ -12640,6 +12850,19 @@
         ? `🎨💀 VANDAL DEFACING ${mv.targetZoneName}! ${pct}% — POOP HIM! ${mv.hitCount}/${mv.hitsRequired}`
         : `🎨💀 VANDAL CROW heading for ${mv.targetZoneName} mural — Intercept & POOP (${secs}s)`;
       html += `<div class="bm-buff-pill" style="background:rgba(80,20,120,0.9);border-color:#cc44ff;color:#ee88ff;font-weight:bold;${urgentStyle}">${label}</div>`;
+    }
+
+    // === CITY VAULT TRUCK contribution pill ===
+    if (gameState.vaultTruck && !gameState.vaultTruck.cracked && !gameState.vaultTruck.escaped) {
+      const vt = gameState.vaultTruck;
+      const myHits = vt.myHits || 0;
+      const hpPct = Math.round(vt.hp / vt.maxHp * 100);
+      const secs = Math.ceil(Math.max(0, vt.endsAt - now) / 1000);
+      const mins = Math.floor(secs / 60);
+      const rem = secs % 60;
+      const timeStr = mins > 0 ? `${mins}m ${rem}s` : `${secs}s`;
+      const urgency = hpPct <= 10 ? 'animation:pulseRed 0.4s infinite alternate;' : hpPct <= 25 ? 'animation:kingpinGlow 0.6s ease-in-out infinite alternate;' : '';
+      html += `<div class="bm-buff-pill" style="background:rgba(80,65,0,0.92);border-color:#ffd700;color:#ffe566;font-weight:bold;${urgency}">💼 VAULT TRUCK — ${vt.hp}HP · ${timeStr} · MY HITS: ${myHits} · POOP IT!</div>`;
     }
 
     // === DUEL REMATCH pill ===

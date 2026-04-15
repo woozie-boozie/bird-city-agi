@@ -6407,4 +6407,139 @@ window.Sprites = {
 
     ctx.restore();
   },
+
+  // ===========================
+  //  VAULT TRUCK
+  // ===========================
+  drawVaultTruck(ctx, x, y, angle, hp, maxHp, myHits, now) {
+    const hpPct = hp / maxHp;
+    const damageFlash = hpPct <= 0.25 && Math.floor(now / 300) % 2 === 0;
+    const pulse = 0.5 + 0.5 * Math.sin(now * 0.006);
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+
+    // Glow aura — gold when healthy, red when critical
+    if (hpPct > 0.25) {
+      ctx.shadowColor = `rgba(255,215,0,${0.4 + 0.3 * pulse})`;
+    } else {
+      ctx.shadowColor = `rgba(255,60,0,${0.6 + 0.4 * pulse})`;
+    }
+    ctx.shadowBlur = 18;
+
+    // Ground shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath();
+    ctx.ellipse(3, 7, 38, 16, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Main armored body — dark grey with gold trim
+    const bodyColor = damageFlash ? '#cc2200' : '#2a2a2a';
+    ctx.fillStyle = bodyColor;
+    ctx.fillRect(-32, -16, 64, 32);
+
+    // Armored plating lines
+    ctx.strokeStyle = damageFlash ? '#ff4400' : '#444';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(-32, -16, 64, 32);
+    // Vertical plating seams
+    for (let sx = -16; sx < 32; sx += 16) {
+      ctx.beginPath();
+      ctx.moveTo(sx, -16);
+      ctx.lineTo(sx, 16);
+      ctx.stroke();
+    }
+
+    // Gold trim stripe along sides
+    ctx.fillStyle = damageFlash ? '#ff8800' : '#c8a500';
+    ctx.fillRect(-32, -3, 64, 3);
+    ctx.fillRect(-32, 1, 64, 2);
+
+    // Cab section (front)
+    ctx.fillStyle = damageFlash ? '#881100' : '#1a1a1a';
+    ctx.fillRect(22, -14, 14, 28);
+
+    // Windshield slit — narrow armored
+    ctx.fillStyle = 'rgba(80,160,255,0.4)';
+    ctx.fillRect(24, -8, 9, 6);
+    ctx.fillRect(24, 3, 9, 5);
+
+    // Heavy duty wheels (4 total)
+    ctx.fillStyle = '#111';
+    const wheelPositions = [[-22, -18], [-22, 14], [14, -18], [14, 14]];
+    for (const [wx, wy] of wheelPositions) {
+      ctx.fillRect(wx, wy, 10, 4);
+      // Hub cap
+      ctx.fillStyle = '#555';
+      ctx.beginPath();
+      ctx.arc(wx + 5, wy + 2, 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#111';
+    }
+
+    // Vault door — back face
+    ctx.fillStyle = '#333';
+    ctx.fillRect(-36, -12, 6, 24);
+    // Door handle
+    ctx.fillStyle = '#c8a500';
+    ctx.fillRect(-33, -2, 2, 4);
+
+    // Combination lock dial
+    ctx.beginPath();
+    ctx.arc(-33, 0, 5, 0, Math.PI * 2);
+    ctx.fillStyle = '#888';
+    ctx.fill();
+    ctx.strokeStyle = '#c8a500';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    // Dial notch
+    ctx.save();
+    ctx.translate(-33, 0);
+    ctx.rotate(now * 0.002);
+    ctx.strokeStyle = '#ffd700';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(0, -4);
+    ctx.stroke();
+    ctx.restore();
+
+    // "VAULT" text on body
+    ctx.fillStyle = '#c8a500';
+    ctx.font = 'bold 8px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('VAULT', -8, 0);
+
+    // HP bar above truck (only when damaged)
+    if (hp < maxHp) {
+      const barW = 60;
+      const barH = 5;
+      const bx = -barW / 2;
+      const by = -28;
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(bx - 1, by - 1, barW + 2, barH + 2);
+      const hpColor = hpPct > 0.5 ? '#22cc44' : hpPct > 0.25 ? '#ffaa00' : '#ff3300';
+      ctx.fillStyle = hpColor;
+      ctx.fillRect(bx, by, barW * hpPct, barH);
+      ctx.fillStyle = '#fff';
+      ctx.font = '7px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`${hp}/${maxHp} HP`, 0, by - 6);
+    }
+
+    // My hits indicator
+    if (myHits > 0) {
+      ctx.fillStyle = '#ffd700';
+      ctx.font = 'bold 8px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillText(`💼 MY HITS: ${myHits}`, 0, -38);
+    }
+
+    ctx.restore();
+  },
 };

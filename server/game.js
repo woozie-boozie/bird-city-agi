@@ -113,6 +113,9 @@ const DAILY_CHALLENGE_POOL = [
   { id: 'noble_triple',           title: 'Court Favourite',    desc: "Complete challenges from Duke, Baron, and Count in one session", target: 3, trackType: 'noble_challenge_won', reward: { xp: 350, coins: 175 } },
   { id: 'siege_warrior',         title: 'Siege Warrior',      desc: 'Participate in a Gang Siege (attack or defend)',                target: 1, trackType: 'siege_participated',  reward: { xp: 220, coins: 110 } },
   { id: 'nest_destroyer',        title: 'Nest Raider',         desc: 'Successfully destroy a rival gang\'s nest in a Siege',         target: 1, trackType: 'siege_victory',       reward: { xp: 300, coins: 150 } },
+  // City Vault Truck challenges
+  { id: 'vault_cracker',   title: 'Vault Cracker',   desc: 'Land 10 hits on the City Vault Truck (any bird poop counts)',  target: 10, trackType: 'vault_truck_hit', reward: { xp: 180, coins: 90  } },
+  { id: 'vault_heist',     title: 'Master Thief',    desc: 'Contribute to cracking the City Vault Truck open',             target: 1,  trackType: 'vault_cracked',  reward: { xp: 250, coins: 125 } },
   // Gang Mural challenges
   { id: 'mural_painter',  title: 'Muralist',       desc: 'Help paint a gang mural at any zone (hold G with your gang)', target: 1, trackType: 'mural_painted',  reward: { xp: 220, coins: 110 } },
   { id: 'mural_overtaker', title: 'Tag War',       desc: 'Overtake a rival gang\'s mural with your own',                target: 1, trackType: 'mural_overtake', reward: { xp: 280, coins: 140 } },
@@ -232,6 +235,15 @@ class GameEngine {
     // === FOOD TRUCK ===
     this.foodTruck = null;
     this.foodTruckSpawnTimer = Date.now() + this._randomRange(180000, 300000); // 3-5 min
+
+    // === CITY VAULT TRUCK ===
+    // An armored security truck drives around the city every 30-35 minutes.
+    // It has a 100-HP SHARED pool — any bird can poop it down cooperatively.
+    // When cracked: 1500c proportional jackpot + big XP for all contributors.
+    // Escalating cop alerts as HP drops (50 HP → 2 cops, 25 HP → SWAT).
+    this.vaultTruck = null;
+    this._vaultTruckTimer = Date.now() + this._randomRange(30 * 60000, 35 * 60000);
+    this._vaultTruckCopsStage = 0; // 0=none, 1=first (at 75 HP), 2=second (at 50 HP), 3=swat (at 25 HP)
 
     // === NPC REVENGE ===
     this.areaChaos = [0, 0, 0, 0];   // 4 quadrants: TL, TR, BL, BR
@@ -1626,6 +1638,9 @@ class GameEngine {
 
     // === Food Truck ===
     this._updateFoodTruck(dt, now);
+
+    // === City Vault Truck ===
+    this._updateVaultTruck(dt, now);
 
     // === NPC Revenge ===
     this._updateRevengeNPCs(dt, now);
@@ -3406,6 +3421,35 @@ class GameEngine {
             x: vandal.x, y: vandal.y,
           });
         }
+      } else if (hit.target === 'vault_truck' && this.vaultTruck) {
+        // Poop hit the City Vault Truck — chip away the shared HP pool!
+        const vt = this.vaultTruck;
+        const dmg = isMegaPoop ? 3 : 1;
+        vt.hp = Math.max(0, vt.hp - dmg);
+        // Track contributor
+        const contrib = vt.contributors.get(bird.id) || { name: bird.name, gangTag: bird.gangTag || null, hits: 0 };
+        contrib.hits += dmg;
+        vt.contributors.set(bird.id, contrib);
+        // Small immediate reward
+        xpGain = isMegaPoop ? 24 : 8;
+        bird.coins += isMegaPoop ? 9 : 3;
+        this._trackDailyProgress(bird, 'vault_truck_hit', 1);
+        this.events.push({ type: 'vault_truck_hit', birdId: bird.id, birdName: bird.name, hp: vt.hp, maxHp: vt.maxHp, dmg, x: vt.x, y: vt.y });
+        // Cop alert stages as HP drops
+        if (!vt.copsStage1 && vt.hp <= 75) {
+          vt.copsStage1 = true;
+          this._dispatchVaultCops(vt, 1, now);
+        } else if (!vt.copsStage2 && vt.hp <= 50) {
+          vt.copsStage2 = true;
+          this._dispatchVaultCops(vt, 2, now);
+        } else if (!vt.copsStage3 && vt.hp <= 25) {
+          vt.copsStage3 = true;
+          this._dispatchVaultCops(vt, 3, now);
+        }
+        // Cracked!
+        if (vt.hp <= 0) {
+          this._crackVaultTruck(vt, now);
+        }
       } else if (hit.target === 'crow_cartel' && hit.crow && this.crowCartel) {
         // Poop hit a Crow Cartel member — deal damage!
         const crow = hit.crow;
@@ -4716,6 +4760,16 @@ class GameEngine {
       if (Math.sqrt(dcdx * dcdx + dcdy * dcdy) < hitRadius + 12) {
         if (!isMegaPoop) return { target: 'donut_cop' };
         allHits.push({ target: 'donut_cop' });
+      }
+    }
+
+    // Check City Vault Truck (cooperative crackdown — any bird can chip away the shared HP pool)
+    if (this.vaultTruck && !this.vaultTruck.cracked && !this.vaultTruck.escaped) {
+      const vtdx = poop.x - this.vaultTruck.x;
+      const vtdy = poop.y - this.vaultTruck.y;
+      if (Math.sqrt(vtdx * vtdx + vtdy * vtdy) < hitRadius + 30) {
+        if (!isMegaPoop) return { target: 'vault_truck' };
+        allHits.push({ target: 'vault_truck' });
       }
     }
 
@@ -6554,6 +6608,16 @@ class GameEngine {
       // Minimap: all national guard positions
       allNationalGuard: Array.from(this.nationalGuard.values()).map(ng => ({ id: ng.id, x: ng.x, y: ng.y, state: ng.state, targetId: ng.targetId })),
       foodTruck: foodTruckState,
+      vaultTruck: this.vaultTruck ? {
+        x: this.vaultTruck.x,
+        y: this.vaultTruck.y,
+        angle: this.vaultTruck.angle,
+        hp: this.vaultTruck.hp,
+        maxHp: this.vaultTruck.maxHp,
+        cracked: this.vaultTruck.cracked || false,
+        escaped: this.vaultTruck.escaped || false,
+        myHits: (this.vaultTruck.contributors.get(bird.id) || { hits: 0 }).hits,
+      } : null,
       raccoons: nearbyRaccoons,
       drunkPigeons: nearbyDrunkPigeons,
       cops: nearbyCops,
@@ -12000,6 +12064,32 @@ class GameEngine {
       }
     }
 
+    // MURAL × SIEGE SYNERGY: overtaking a rival mural during an active siege against that gang deals -15 HP to siege pool
+    if (isOvertake && oldMural) {
+      for (const [, siege] of this.sieges) {
+        if (siege.attackingGangId === painting.gangId && siege.defendingGangId === oldMural.gangId) {
+          const siegeHpDmg = 15;
+          siege.hpPool = Math.max(0, siege.hpPool - siegeHpDmg);
+          this.events.push({
+            type: 'siege_mural_hit',
+            siegeId: siege.id,
+            attackingGangTag: siege.attackingGangTag,
+            defendingGangTag: siege.defendingGangTag,
+            dmg: siegeHpDmg,
+            hpPool: siege.hpPool,
+            hpMaxPool: siege.hpMaxPool,
+            zoneName: zone.name,
+            message: `🎨⚔️ [${painting.gangTag}] seized [${oldMural.gangTag}]'s mural at ${zone.name}! Siege pool -${siegeHpDmg} HP — art is war!`,
+          });
+          // Check if siege is cracked by this mural hit
+          if (siege.hpPool <= 0) {
+            this._endSiege(siege, 'victory', now);
+          }
+          break;
+        }
+      }
+    }
+
     // Gazette tracking
     if (this.gazetteStats) {
       this.gazetteStats.muralsCompleted.push({
@@ -12526,6 +12616,16 @@ class GameEngine {
               birdName: b.name,
               gateId: gate.id,
             });
+            // MIGRATION × RACE SYNERGY: hitting a boost gate while riding migration slipstream = supercharge!
+            if (b.migrationBoostUntil > now) {
+              this.events.push({
+                type: 'migration_race_synergy',
+                birdId: b.id,
+                birdName: b.name,
+                gangTag: b.gangTag || null,
+                message: `🦅⚡ SLIPSTREAM + BOOST GATE! ${b.name} stacks migration slipstream AND race boost — ludicrous speed!`,
+              });
+            }
           }
         }
       }
@@ -14253,7 +14353,24 @@ class GameEngine {
 
     if (siege) {
       // === SIEGE POOP HIT — damages the siege HP pool ===
-      const siegeDamage = isMegaPoop ? 30 : 15;
+      let siegeDamage = isMegaPoop ? 30 : 15;
+      // THUNDER DOME × SIEGE SYNERGY: attacker inside active Thunder Dome deals 2× siege damage
+      if (this.thunderDome && attacker) {
+        const tdx = attacker.x - this.thunderDome.x;
+        const tdy = attacker.y - this.thunderDome.y;
+        if (Math.sqrt(tdx * tdx + tdy * tdy) <= this.thunderDome.radius) {
+          siegeDamage *= 2;
+          if (!siege._domeSynergyAnnounced) {
+            siege._domeSynergyAnnounced = true;
+            this.events.push({
+              type: 'siege_dome_synergy',
+              siegeId: siege.id,
+              attackingGangTag: siege.attackingGangTag,
+              message: `⚡⚔️ THUNDER DOME × SIEGE! [${siege.attackingGangTag}] inside the dome deals 2× siege damage — the cage is a catapult!`,
+            });
+          }
+        }
+      }
       siege.hpPool = Math.max(0, siege.hpPool - siegeDamage);
 
       // Track attacker contribution
@@ -14492,11 +14609,55 @@ class GameEngine {
           attackingGangTag: siege.attackingGangTag, defendingGangTag: siege.defendingGangTag });
       }
 
+      // SIEGE ESCALATION: if siege HP still >80% after 2 minutes, the Don sends Crow Cartel backup
+      const elapsed = now - siege.startAt;
+      if (!siege._cartelBackupSent && elapsed >= 120000 && siege.hpPool / siege.hpMaxPool > 0.80) {
+        siege._cartelBackupSent = true;
+        this._sendSiegeCartelBackup(siege, now);
+      }
+
       if (now >= siege.endsAt) {
         // Time's up — siege repelled
         this._endSiege(siege, 'repelled', now);
       }
     }
+  }
+
+  _sendSiegeCartelBackup(siege, now) {
+    // Spawn 3 Crow Cartel thugs near the besieged nest to help the attackers
+    const backupCrows = new Map();
+    for (let i = 0; i < 3; i++) {
+      const angle = (i / 3) * Math.PI * 2;
+      const dist = 220 + Math.random() * 80;
+      const cx = Math.max(50, Math.min(world.WORLD_WIDTH - 50, siege.nestX + Math.cos(angle) * dist));
+      const cy = Math.max(50, Math.min(world.WORLD_HEIGHT - 50, siege.nestY + Math.sin(angle) * dist));
+      const crowId = `siege_backup_${uid()}`;
+      backupCrows.set(crowId, {
+        id: crowId, type: 'thug',
+        x: cx, y: cy,
+        hp: 25, maxHp: 25,
+        state: 'moving', speed: 80,
+        stunUntil: 0,
+        _wanderAngle: angle + Math.PI, // face the nest
+        _wanderTimer: 0,
+        _fleeTargetX: siege.nestX < 1500 ? -60 : 3060,
+        _fleeTargetY: siege.nestY < 1500 ? -60 : 3060,
+        isSiegeBackup: true,
+        siegeId: siege.id,
+      });
+    }
+    // Attach backup crows to sieges map for tracking + poop hit detection
+    siege.backupCrows = backupCrows;
+
+    this.events.push({
+      type: 'siege_cartel_backup',
+      siegeId: siege.id,
+      attackingGangTag: siege.attackingGangTag,
+      defendingGangTag: siege.defendingGangTag,
+      nestX: siege.nestX, nestY: siege.nestY,
+      message: `⚔️🐦‍⬛ DON CORVINO SENDS BACKUP! 3 Crow Cartel thugs join [${siege.attackingGangTag}]'s siege — the nest won't stand!`,
+    });
+    console.log(`[Siege] Cartel backup dispatched for siege ${siege.id}`);
   }
 
   _endSiege(siege, result, now) {
@@ -14901,6 +15062,8 @@ class GameEngine {
       thunderDomePoopers: [], // [{ name, gangTag, hits }] — top hitters inside the dome
       siegesDeclared:  0,   // sieges declared this cycle
       siegeVictory:    null,// { attackTag, defendTag } if a siege was won this cycle
+      vaultCracked:    false, // vault truck cracked this cycle
+      vaultTopCracker: null,  // name of top contributor
     };
   }
 
@@ -14939,7 +15102,15 @@ class GameEngine {
       });
     }
 
-    if (stats.bankHeistCount > 0) {
+    if (stats.vaultCracked) {
+      headlines.push({
+        icon: '💼',
+        headline: `CITY VAULT TRUCK CRACKED OPEN — 1500c JACKPOT DIVIDED AMONG CITY BIRDS!`,
+        subline: stats.vaultTopCracker
+          ? `Top contributor: ${stats.vaultTopCracker}. Police describe the scene as "coordinated poop terrorism."`
+          : 'Armored truck reduced to rubble by avian assault. Security firms cancelling their Bird City contracts.',
+      });
+    } else if (stats.bankHeistCount > 0) {
       headlines.push({
         icon: '🏦',
         headline: `CITY BANK ROBBED${stats.bankHeistCount > 1 ? ` ${stats.bankHeistCount} TIMES` : ''}!`,
@@ -20268,6 +20439,202 @@ class GameEngine {
     // Subtle city-wide event feed (no spoilers — just says intel was gathered)
     const tag = bird.gangTag ? `[${bird.gangTag}] ` : '';
     this.events.push({ type: 'feed', message: `🥉 ${tag}${bird.name} (Count) gathered weather intelligence from city contacts.` });
+  }
+
+  // ============================================================
+  // CITY VAULT TRUCK — Cooperative 100-HP Armored Jackpot
+  // ============================================================
+
+  _updateVaultTruck(dt, now) {
+    // Spawn if timer is up
+    if (!this.vaultTruck && now >= this._vaultTruckTimer && this.birds.size > 0) {
+      this._spawnVaultTruck(now);
+    }
+    if (!this.vaultTruck) return;
+    const vt = this.vaultTruck;
+
+    // Cracked: drive away fast, then despawn after 8s
+    if (vt.cracked) {
+      if (now - vt.crackedAt > 8000) {
+        this.vaultTruck = null;
+        this._vaultTruckTimer = now + this._randomRange(30 * 60000, 35 * 60000);
+      }
+      return;
+    }
+
+    // Escaped: despawn
+    if (vt.escaped) {
+      const dx = vt.escapeX - vt.x;
+      const dy = vt.escapeY - vt.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 20 || now - vt.escapedAt > 12000) {
+        this.vaultTruck = null;
+        this._vaultTruckTimer = now + this._randomRange(30 * 60000, 35 * 60000);
+        return;
+      }
+      vt.x += (dx / dist) * 120 * dt;
+      vt.y += (dy / dist) * 120 * dt;
+      vt.angle = Math.atan2(dy, dx);
+      return;
+    }
+
+    // Time limit — truck escapes before cracked
+    if (now > vt.endsAt) {
+      vt.escaped = true;
+      vt.escapedAt = now;
+      const edges = [
+        { x: -100, y: vt.y },
+        { x: world.WORLD_WIDTH + 100, y: vt.y },
+        { x: vt.x, y: -100 },
+        { x: vt.x, y: world.WORLD_HEIGHT + 100 },
+      ];
+      const edge = edges[Math.floor(Math.random() * edges.length)];
+      vt.escapeX = edge.x;
+      vt.escapeY = edge.y;
+      this.events.push({ type: 'vault_truck_escaped', message: '💼 The Vault Truck escaped unchallenged! The city failed to crack it.' });
+      return;
+    }
+
+    // Normal driving along road waypoints
+    const dx = vt.targetX - vt.x;
+    const dy = vt.targetY - vt.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < 12) {
+      this._setVaultTruckWaypoint(vt);
+    } else {
+      vt.x += (dx / dist) * vt.speed * dt;
+      vt.y += (dy / dist) * vt.speed * dt;
+      vt.angle = Math.atan2(dy, dx);
+    }
+    vt.x = Math.max(20, Math.min(world.WORLD_WIDTH - 20, vt.x));
+    vt.y = Math.max(20, Math.min(world.WORLD_HEIGHT - 20, vt.y));
+
+    // Milestone broadcasts at 75%, 50%, 25%
+    const hpPct = vt.hp / vt.maxHp;
+    if (!vt.m75 && hpPct <= 0.75) {
+      vt.m75 = true;
+      this.events.push({ type: 'vault_truck_milestone', hp: vt.hp, maxHp: vt.maxHp, pct: 75, message: `💼 VAULT TRUCK at 75 HP! Keep it up — jackpot incoming!` });
+    } else if (!vt.m50 && hpPct <= 0.50) {
+      vt.m50 = true;
+      this.events.push({ type: 'vault_truck_milestone', hp: vt.hp, maxHp: vt.maxHp, pct: 50, message: `💼 VAULT TRUCK at 50 HP! Halfway there — COPS are coming!` });
+    } else if (!vt.m25 && hpPct <= 0.25) {
+      vt.m25 = true;
+      this.events.push({ type: 'vault_truck_milestone', hp: vt.hp, maxHp: vt.maxHp, pct: 25, message: `💼 VAULT TRUCK almost CRACKED — 25 HP left! SWAT deployed!` });
+    } else if (!vt.m10 && hpPct <= 0.10) {
+      vt.m10 = true;
+      this.events.push({ type: 'vault_truck_milestone', hp: vt.hp, maxHp: vt.maxHp, pct: 10, message: `💼💥 VAULT TRUCK at ${vt.hp} HP — ONE MORE PUSH!` });
+    }
+  }
+
+  _spawnVaultTruck(now) {
+    const roads = world.ROADS;
+    const road = roads[Math.floor(Math.random() * roads.length)];
+    const x = road.x + Math.random() * road.w;
+    const y = road.y + Math.random() * road.h;
+
+    this.vaultTruck = {
+      x, y, angle: 0,
+      speed: 50,
+      targetX: x, targetY: y,
+      hp: 100, maxHp: 100,
+      contributors: new Map(), // birdId -> { name, gangTag, hits }
+      cracked: false, crackedAt: null,
+      escaped: false, escapedAt: null, escapeX: 0, escapeY: 0,
+      endsAt: now + 3 * 60000, // 3-minute window
+      // Cop alert stage flags
+      copsStage1: false, copsStage2: false, copsStage3: false,
+      // Milestone flags
+      m75: false, m50: false, m25: false, m10: false,
+    };
+    this._setVaultTruckWaypoint(this.vaultTruck);
+
+    this.events.push({
+      type: 'vault_truck_spawn',
+      x, y,
+      message: `💼 CITY VAULT TRUCK SPOTTED! 100 poop hits to CRACK IT OPEN — city-wide jackpot! 3 minutes before it escapes!`,
+    });
+    if (this.gazetteStats) this.gazetteStats.vaultTruckSpawned = (this.gazetteStats.vaultTruckSpawned || 0) + 1;
+    console.log('[GameEngine] City Vault Truck spawned!');
+  }
+
+  _setVaultTruckWaypoint(vt) {
+    const roads = world.ROADS;
+    const road = roads[Math.floor(Math.random() * roads.length)];
+    vt.targetX = road.x + Math.random() * road.w;
+    vt.targetY = road.y + Math.random() * road.h;
+  }
+
+  _dispatchVaultCops(vt, stage, now) {
+    // Stage 1: 2 cop pigeons; Stage 2: 2 more cops; Stage 3: SWAT crow
+    const counts = { 1: 2, 2: 2, 3: 0 };
+    const swat = stage === 3;
+    const numCops = counts[stage] || 0;
+    for (let i = 0; i < numCops; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 350 + Math.random() * 200;
+      const cx = Math.max(50, Math.min(world.WORLD_WIDTH - 50, vt.x + Math.cos(angle) * dist));
+      const cy = Math.max(50, Math.min(world.WORLD_HEIGHT - 50, vt.y + Math.sin(angle) * dist));
+      this.copBirds.set('vault_cop_' + uid(), {
+        id: 'vault_cop_' + uid(), type: 'cop_pigeon',
+        x: cx, y: cy, rotation: 0,
+        targetBirdId: null,
+        heistTarget: { x: vt.x, y: vt.y },
+        speed: 130, state: 'chasing',
+        stunUntil: 0, offDutyUntil: 0, sirensPhase: Math.random() * Math.PI * 2,
+      });
+    }
+    if (swat) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 400 + Math.random() * 150;
+      const cx = Math.max(50, Math.min(world.WORLD_WIDTH - 50, vt.x + Math.cos(angle) * dist));
+      const cy = Math.max(50, Math.min(world.WORLD_HEIGHT - 50, vt.y + Math.sin(angle) * dist));
+      this.copBirds.set('vault_swat_' + uid(), {
+        id: 'vault_swat_' + uid(), type: 'swat_crow',
+        x: cx, y: cy, rotation: 0,
+        targetBirdId: null,
+        heistTarget: { x: vt.x, y: vt.y },
+        speed: 145, state: 'chasing',
+        stunUntil: 0, offDutyUntil: 0, sirensPhase: Math.random() * Math.PI * 2,
+      });
+    }
+    const labels = { 1: '🚨 COPS DISPATCHED to the Vault Truck!', 2: '🚨 MORE COPS INBOUND — hold the line!', 3: '🚨 SWAT CROW DEPLOYED! Final push — crack it NOW!' };
+    this.events.push({ type: 'vault_truck_cops', stage, message: labels[stage] });
+  }
+
+  _crackVaultTruck(vt, now) {
+    vt.cracked = true;
+    vt.crackedAt = now;
+    // Calculate proportional jackpot
+    const totalHits = [...vt.contributors.values()].reduce((s, c) => s + c.hits, 0) || 1;
+    const jackpot = 1500;
+    const rewards = [];
+    for (const [birdId, contrib] of vt.contributors) {
+      const b = this.birds.get(birdId);
+      const share = contrib.hits / totalHits;
+      const coins = Math.floor(share * jackpot);
+      const xp = Math.floor(100 + share * 400); // 100-500 XP range
+      if (b) {
+        b.coins += coins;
+        b.xp += xp;
+        this._trackDailyProgress(b, 'vault_cracked', 1);
+        this._trackDailyProgress(b, 'coins_earned', coins);
+      }
+      rewards.push({ birdId, name: contrib.name, gangTag: contrib.gangTag, coins, xp, hits: contrib.hits });
+    }
+    this.events.push({
+      type: 'vault_truck_cracked',
+      x: vt.x, y: vt.y,
+      jackpot,
+      rewards,
+      contributorCount: vt.contributors.size,
+      message: `💼💥 VAULT TRUCK CRACKED! ${vt.contributors.size} birds share the 1500c JACKPOT!`,
+    });
+    if (this.gazetteStats) {
+      this.gazetteStats.vaultCracked = true;
+      this.gazetteStats.vaultTopCracker = rewards[0] ? rewards[0].name : null;
+    }
+    this._addChaos(60);
+    console.log('[GameEngine] City Vault Truck CRACKED! Jackpot distributed.');
   }
 
 }
