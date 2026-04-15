@@ -4166,6 +4166,59 @@
       addEventMessage(`⚔️🎨 [${ev.attackGangTag}] seized [${ev.defGangTag}]'s mural at ${ev.zoneName} during the war! (+${ev.warXpBonus}XP per painter)`, '#ff8844');
     }
 
+    // === GOLDEN RAMPAGE (Session 96) ===
+    if (ev.type === 'golden_rampage_start') {
+      effects.push({ type: 'screen_shake', intensity: 18, duration: 1000, time: now });
+      const isYou = ev.birdId === myId;
+      if (isYou) {
+        showAnnouncement(
+          `🌟 YOU HAVE ASCENDED!\nYOU ARE THE GOLDEN BIRD!\n2.5× SPEED · ALL MEGA POOP · 4× XP for 90s!\nOthers will hunt you for big rewards!`,
+          '#ffd700', 8000
+        );
+      } else {
+        showAnnouncement(
+          `🌟 GOLDEN RAMPAGE!\n${ev.gangTag ? '[' + ev.gangTag + '] ' : ''}${ev.birdName} has ASCENDED!\nHunt them for massive rewards!\n(${ev.hp} HP — poop them to share the loot)`,
+          '#ffd700', 7000
+        );
+      }
+      addEventMessage(`🌟 GOLDEN RAMPAGE! ${ev.gangTag ? '[' + ev.gangTag + '] ' : ''}${ev.birdName} has become the Golden Bird! Hunt them for rewards!`, '#ffd700');
+    }
+    if (ev.type === 'golden_bird_hit_progress') {
+      effects.push({ type: 'text', x: ev.x, y: ev.y - 20, time: now, duration: 1000,
+        text: `💥 −${ev.dmg}HP  ${ev.hp}/${ev.maxHp}`, color: '#ffd700', size: 13 });
+      if (ev.shooterId === myId) {
+        addEventMessage(`💥 HIT THE GOLDEN BIRD! ${ev.hp}/${ev.maxHp} HP — keep going for the loot!`, '#ffd700');
+      }
+    }
+    if (ev.type === 'golden_rampage_survived') {
+      effects.push({ type: 'screen_shake', intensity: 14, duration: 900, time: now });
+      if (ev.birdId === myId) {
+        showAnnouncement(
+          `🏆 GOLDEN BIRD SURVIVED!\nYou outlasted the hunters!\n+1200 XP +700c!\nYou earn the 👑 GOLDEN BIRD badge!`,
+          '#ffd700', 9000
+        );
+      } else {
+        showAnnouncement(
+          `🌟 ${ev.gangTag ? '[' + ev.gangTag + '] ' : ''}${ev.birdName} SURVIVED the Golden Rampage!\n+1200 XP +700c · GOLDEN BIRD badge earned!`,
+          '#ffd700', 7000
+        );
+      }
+      addEventMessage(`🌟 ${ev.gangTag ? '[' + ev.gangTag + '] ' : ''}${ev.birdName} SURVIVED 90s as the Golden Bird! +1200XP +700c · 👑 badge earned!`, '#ffd700');
+    }
+    if (ev.type === 'golden_rampage_freed') {
+      effects.push({ type: 'screen_shake', intensity: 16, duration: 1000, time: now });
+      showAnnouncement(
+        `⚔️ GOLDEN BIRD BROUGHT DOWN!\n${ev.killerCount} bird${ev.killerCount !== 1 ? 's' : ''} split the loot!\nTop hunter: ${ev.topHunterName || '???'} (+${ev.topHunterXp || 0}XP +${ev.topHunterCoins || 0}c)`,
+        '#ff9900', 7000
+      );
+      addEventMessage(`⚔️ GOLDEN BIRD ${ev.gangTag ? '[' + ev.gangTag + '] ' : ''}${ev.birdName} was brought down! Hunters share the loot!`, '#ff9900');
+    }
+    if (ev.type === 'golden_bird_reward') {
+      if (ev.birdId === myId) {
+        showAnnouncement(`💰 GOLDEN BIRD LOOT!\n+${ev.xp} XP · +${ev.coins}c\nYour ${ev.sharePercent}% damage share paid off!`, '#ffd700', 5000);
+      }
+    }
+
 // === BIRD CITY GAZETTE ===
     if (ev.type === 'gazette_edition') {
       showGazette(ev);
@@ -8935,7 +8988,7 @@
 
           Sprites.drawBird(ctx, sx, sy, b.rotation, b.type, b.wingPhase, isPlayer, b.birdColor || null);
           ctx.globalAlpha = 1; // Always reset after bird draw
-          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0, b.eagleFeather || false, b.idolBadge || false, b.royaleChampBadge || false, b.skillTreeMaster || false, b.fightingChampBadge || false, b.constellationBadge || false, b.courtTitle || null, b.hanamiLanternBadge || false, b.domeChampBadge || false, b.alphaFeather || false, b.arenaLegend || false);
+          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0, b.eagleFeather || false, b.idolBadge || false, b.royaleChampBadge || false, b.skillTreeMaster || false, b.fightingChampBadge || false, b.constellationBadge || false, b.courtTitle || null, b.hanamiLanternBadge || false, b.domeChampBadge || false, b.alphaFeather || false, b.arenaLegend || false, b.goldenBirdBadge || false);
 
           // Bird Flu: sneezing emoji indicator above infected birds
           if (b.isFlu) {
@@ -9164,6 +9217,13 @@
               ctx.arc(sx, sy, 22, 0, Math.PI * 2);
               ctx.stroke();
             }
+          }
+
+          // === GOLDEN RAMPAGE (Session 96) — golden aura overlay drawn ON TOP of the bird ===
+          if (b.isGoldenBird && gameState.goldenRampage) {
+            const gr = gameState.goldenRampage;
+            const timeLeft = gr.endsAt - now;
+            Sprites.drawGoldenBirdEffects(ctx, sx, sy, b.rotation, gr.hp, gr.maxHp, timeLeft, now);
           }
         }
       }
@@ -10445,6 +10505,44 @@
       }
     }
 
+    // === GOLDEN RAMPAGE — off-screen direction arrow pointing toward the Golden Bird ===
+    if (gameState.goldenRampage && gameState.goldenRampage.goldenBirdX !== undefined) {
+      const gbsx = gameState.goldenRampage.goldenBirdX - camera.x + camera.screenW / 2;
+      const gbsy = gameState.goldenRampage.goldenBirdY - camera.y + camera.screenH / 2;
+      const gbOnScreen = gbsx > 50 && gbsx < camera.screenW - 50 && gbsy > 50 && gbsy < camera.screenH - 50;
+      if (!gbOnScreen) {
+        const gbAngle = Math.atan2(gbsy - camera.screenH / 2, gbsx - camera.screenW / 2);
+        const gbArrowDist = Math.min(camera.screenW, camera.screenH) / 2 - 60;
+        const gbAx = camera.screenW / 2 + Math.cos(gbAngle) * gbArrowDist;
+        const gbAy = camera.screenH / 2 + Math.sin(gbAngle) * gbArrowDist;
+        const gbPulse = 0.7 + 0.3 * Math.sin(now * 0.007);
+        ctx.save();
+        ctx.translate(gbAx, gbAy);
+        ctx.rotate(gbAngle);
+        ctx.globalAlpha = 0.9 * gbPulse;
+        ctx.fillStyle = '#ffd700';
+        ctx.shadowColor = '#ffd700';
+        ctx.shadowBlur = 10;
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(22, 0);
+        ctx.lineTo(-10, -10);
+        ctx.lineTo(-5, 0);
+        ctx.lineTo(-10, 10);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 10px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('👑', 4, 0);
+        ctx.restore();
+      }
+    }
+
     // Ice Rink — direction arrow when off-screen (during blizzard)
     if (gameState.iceRink && selfBird && weatherState && weatherState.type === 'blizzard') {
       const irsx = gameState.iceRink.x - camera.x + camera.screenW / 2;
@@ -10876,6 +10974,30 @@
       minimapCtx.textAlign = 'center';
       minimapCtx.textBaseline = 'alphabetic';
       minimapCtx.fillText('💼', vtmx, vtmy - 6);
+      minimapCtx.restore();
+    }
+
+    // === GOLDEN RAMPAGE — pulsing gold crown dot on minimap at the Golden Bird's position ===
+    if (gameState.goldenRampage && gameState.goldenRampage.goldenBirdX !== undefined && worldData) {
+      const mw = minimapCtx.canvas.width;
+      const mh = minimapCtx.canvas.height;
+      const msx = mw / worldData.width;
+      const msy = mh / worldData.height;
+      const gbPulse = 0.5 + 0.5 * Math.sin(now * 0.009);
+      const gbmx = gameState.goldenRampage.goldenBirdX * msx;
+      const gbmy = gameState.goldenRampage.goldenBirdY * msy;
+      minimapCtx.save();
+      minimapCtx.shadowColor = '#ffd700';
+      minimapCtx.shadowBlur = 10 + 6 * gbPulse;
+      minimapCtx.fillStyle = `rgba(255,215,0,${0.85 + 0.15 * gbPulse})`;
+      minimapCtx.beginPath();
+      minimapCtx.arc(gbmx, gbmy, 5 + gbPulse * 1.5, 0, Math.PI * 2);
+      minimapCtx.fill();
+      minimapCtx.shadowBlur = 0;
+      minimapCtx.font = '9px sans-serif';
+      minimapCtx.textAlign = 'center';
+      minimapCtx.textBaseline = 'alphabetic';
+      minimapCtx.fillText('👑', gbmx, gbmy - 5);
       minimapCtx.restore();
     }
 
@@ -12875,6 +12997,23 @@
         } else {
           html += `<div class="bm-buff-pill" style="background:rgba(80,30,0,0.9);border-color:#ff6633;color:#ffaa66;font-weight:bold;animation:kingpinGlow 0.6s ease-in-out infinite alternate;cursor:pointer;" onclick="socket.emit('action',{type:'accept_rematch'})">🔄 REMATCH vs ${rm.opponentName}? Press [Y] · ${secsLeft}s</div>`;
         }
+      }
+    }
+
+    // === GOLDEN RAMPAGE (Session 96) pills ===
+    if (gameState.goldenRampage) {
+      const gr = gameState.goldenRampage;
+      const secsLeft = Math.max(0, Math.ceil((gr.endsAt - now) / 1000));
+      if (s.isGoldenBird) {
+        // You ARE the Golden Bird — show power + timer + warning
+        const urgentStyle = secsLeft < 15 ? 'animation:pulseRed 0.3s infinite alternate;' : 'animation:kingpinGlow 0.4s ease-in-out infinite alternate;';
+        const urgentColor = secsLeft < 15 ? '#ff8800' : '#ffd700';
+        html += `<div class="bm-buff-pill" style="background:rgba(100,70,0,0.95);border-color:${urgentColor};color:${urgentColor};${urgentStyle}font-weight:bold;">🌟 GOLDEN BIRD — 2.5× SPD · ALL MEGA POOP · 4× XP · ${secsLeft}s — HUNTERS ARE COMING!</div>`;
+        html += `<div class="bm-buff-pill" style="background:rgba(100,60,0,0.85);border-color:#ffaa22;color:#ffcc66;">👑 HP: ${gr.hp}/${gr.maxHp} · Survive to earn 1200 XP + 700c + badge!</div>`;
+      } else if (gr.birdName) {
+        // Someone else is the Golden Bird — show hunt prompt + distance info
+        const myHits = gr.myHits || 0;
+        html += `<div class="bm-buff-pill" style="background:rgba(60,40,0,0.9);border-color:#cc9900;color:#ffdd44;font-weight:bold;">🌟 GOLDEN RAMPAGE — ${gr.gangTag ? '[' + gr.gangTag + '] ' : ''}${gr.birdName} · ${secsLeft}s · HP: ${gr.hp}/${gr.maxHp} · MY HITS: ${myHits} · POOP THEM!</div>`;
       }
     }
 

@@ -106,12 +106,31 @@ window.Sprites = {
   },
 
   // === NAME TAG ===
-  drawNameTag(ctx, x, y, name, level, type, isPlayer, mafiaTitle, gangTag, gangColor, tattoosEquipped, prestige, eagleFeather, idolBadge, royaleChampBadge, skillTreeMaster, fightingChampBadge, constellationBadge, courtTitle, hanamiLanternBadge, domeChampBadge, alphaFeather, arenaLegend) {
+  drawNameTag(ctx, x, y, name, level, type, isPlayer, mafiaTitle, gangTag, gangColor, tattoosEquipped, prestige, eagleFeather, idolBadge, royaleChampBadge, skillTreeMaster, fightingChampBadge, constellationBadge, courtTitle, hanamiLanternBadge, domeChampBadge, alphaFeather, arenaLegend, goldenBirdBadge) {
     const text = `${name} [Lv.${level}]`;
     ctx.font = 'bold 11px Courier New';
     ctx.textAlign = 'center';
 
     let offsetY = 0; // stack badges upward
+
+    // 👑 Golden Bird Badge — earned this session by surviving the Golden Rampage (topmost badge)
+    if (goldenBirdBadge) {
+      ctx.font = '10px serif';
+      const gbStr = '👑 GOLDEN BIRD';
+      const gbw = ctx.measureText(gbStr).width + 10;
+      ctx.fillStyle = 'rgba(80,50,0,0.95)';
+      ctx.fillRect(x - gbw / 2, y - 52 - offsetY, gbw, 14);
+      ctx.strokeStyle = '#ffd700';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(x - gbw / 2, y - 52 - offsetY, gbw, 14);
+      ctx.shadowColor = '#ffd700';
+      ctx.shadowBlur = 10;
+      ctx.fillStyle = '#ffee44';
+      ctx.fillText(gbStr, x, y - 41 - offsetY);
+      ctx.shadowBlur = 0;
+      ctx.font = 'bold 11px Courier New';
+      offsetY += 15;
+    }
 
     // ✨ Skill Tree Master badge — the topmost badge of all (above prestige)
     if (skillTreeMaster) {
@@ -6538,6 +6557,117 @@ window.Sprites = {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'alphabetic';
       ctx.fillText(`💼 MY HITS: ${myHits}`, 0, -38);
+    }
+
+    ctx.restore();
+  },
+
+  // === GOLDEN RAMPAGE EFFECTS (Session 96) ===
+  // Drawn OVER the player's normal bird sprite. Called from renderer when bird.isGoldenBird.
+  // x,y are world coords (already camera-transformed by caller), now = Date.now().
+  drawGoldenBirdEffects(ctx, x, y, rotation, hp, maxHp, timeLeft, now) {
+    ctx.save();
+    ctx.translate(x, y);
+
+    const pulse = 0.5 + 0.5 * Math.sin(now * 0.004);
+    const fastPulse = 0.5 + 0.5 * Math.sin(now * 0.009);
+
+    // --- Outer aura: large golden radial glow ---
+    const aura = ctx.createRadialGradient(0, 0, 6, 0, 0, 52);
+    aura.addColorStop(0, `rgba(255,215,0,${0.45 + 0.2 * pulse})`);
+    aura.addColorStop(0.5, `rgba(255,160,0,${0.2 + 0.1 * pulse})`);
+    aura.addColorStop(1, 'rgba(255,100,0,0)');
+    ctx.fillStyle = aura;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 52, 48, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // --- Orbiting star particles (4 stars, each at different orbital radii and speeds) ---
+    const starCount = 4;
+    for (let i = 0; i < starCount; i++) {
+      const angle = (now * (0.0018 + i * 0.0006)) + (i * Math.PI * 2 / starCount);
+      const orbitR = 24 + i * 5;
+      const sx = Math.cos(angle) * orbitR;
+      const sy = Math.sin(angle) * orbitR * 0.55; // flatten orbit to ellipse
+      const starSize = 3.5 - i * 0.4;
+      const starAlpha = 0.7 + 0.3 * Math.sin(now * 0.005 + i * 1.3);
+      ctx.save();
+      ctx.translate(sx, sy);
+      // 4-point star burst
+      ctx.globalAlpha = starAlpha;
+      ctx.fillStyle = '#ffe066';
+      ctx.shadowColor = '#ffd700';
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      for (let p = 0; p < 8; p++) {
+        const a = (p / 8) * Math.PI * 2;
+        const r = p % 2 === 0 ? starSize : starSize * 0.38;
+        if (p === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+        else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+
+    // --- Pulsing ring outline around the bird ---
+    ctx.strokeStyle = `rgba(255,215,0,${0.55 + 0.3 * fastPulse})`;
+    ctx.lineWidth = 2.5;
+    ctx.shadowColor = '#ffd700';
+    ctx.shadowBlur = 12;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 20 + fastPulse * 4, 13 + fastPulse * 3, rotation, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // --- Crown emoji bouncing above the bird ---
+    const crownBob = Math.sin(now * 0.005) * 2.5;
+    ctx.font = '15px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.globalAlpha = 0.9 + 0.1 * pulse;
+    ctx.fillText('👑', 0, -26 + crownBob);
+    ctx.globalAlpha = 1;
+
+    // --- HP bar (gold, above crown) ---
+    if (hp !== undefined && maxHp) {
+      const hpPct = Math.max(0, hp / maxHp);
+      const barW = 48;
+      const barH = 5;
+      const bx = -barW / 2;
+      const by = -42;
+      ctx.fillStyle = 'rgba(0,0,0,0.65)';
+      ctx.fillRect(bx - 1, by - 1, barW + 2, barH + 2);
+      // HP bar colour: gold when healthy, orange-red as it drains
+      const hpColor = hpPct > 0.6 ? '#ffd700' : hpPct > 0.3 ? '#ff9900' : '#ff4400';
+      ctx.fillStyle = hpColor;
+      ctx.shadowColor = hpColor;
+      ctx.shadowBlur = 5;
+      ctx.fillRect(bx, by, barW * hpPct, barH);
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#fff';
+      ctx.font = '7px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`${hp}/${maxHp}`, 0, by - 6);
+    }
+
+    // --- Time remaining label (only shown when < 20 seconds left to ramp urgency) ---
+    if (timeLeft !== undefined && timeLeft < 20000) {
+      const secLeft = Math.ceil(timeLeft / 1000);
+      const urgency = 0.6 + 0.4 * fastPulse;
+      ctx.font = `bold 8px monospace`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      ctx.globalAlpha = urgency;
+      ctx.fillStyle = secLeft <= 5 ? '#ff4400' : '#ffdd00';
+      ctx.shadowColor = '#000';
+      ctx.shadowBlur = 4;
+      ctx.fillText(`⏱ ${secLeft}s`, 0, -52);
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = 1;
     }
 
     ctx.restore();

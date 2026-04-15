@@ -134,6 +134,9 @@ const DAILY_CHALLENGE_POOL = [
   // Session 94: Rat King sewer boss challenges
   { id: 'sewer_brawler', title: 'Sewer Brawler', desc: 'Hit the Rat King 3 times in the underground sewer',           target: 3,  trackType: 'rat_king_hit',   reward: { xp: 200, coins: 100 } },
   { id: 'rat_slayer',    title: 'Rat Slayer',    desc: 'Deal the killing blow to the Rat King underground',            target: 1,  trackType: 'rat_king_kill',  reward: { xp: 300, coins: 150 } },
+  // Session 96: Golden Rampage challenges
+  { id: 'kingslayer',    title: 'Kingslayer',    desc: 'Hit the Golden Bird 5 times during the Golden Rampage',        target: 5,  trackType: 'golden_bird_hit', reward: { xp: 250, coins: 125 } },
+  { id: 'last_king',     title: 'The Last King', desc: 'Survive as the Golden Bird for 60+ seconds',                  target: 1,  trackType: 'golden_survived', reward: { xp: 300, coins: 150 } },
 ];
 
 class GameEngine {
@@ -306,6 +309,12 @@ class GameEngine {
     this._ratKingTimer = Date.now() + this._randomRange(8 * 60000, 14 * 60000); // first spawn 8-14 min in
     this._ratKingEscapeAnnounced = false;
     this._domeWedgeSynergyAnnounced = false; // reset each thunder dome spawn
+
+    // === GOLDEN RAMPAGE — a random bird ascends to divine berserker power for 90 seconds ===
+    // The whole city must land 20 poop hits to "free" them before time runs out.
+    // If the Golden Bird survives, they win massive rewards + a session badge.
+    this.goldenRampage = null; // null | { birdId, birdName, gangTag, spawnedAt, endsAt, hp, maxHp, contributors: Map }
+    this._goldenRampageTimer = Date.now() + this._randomRange(50 * 60000, 70 * 60000);
 
     // === GOLDEN EGG SCRAMBLE ===
     this.eggScramble = null;          // null or { state, startedAt, endsAt, eggs: Map(id->egg), delivered }
@@ -1754,6 +1763,9 @@ class GameEngine {
     // === The Great Migration ===
     this._updateMigration(dt, now);
 
+    // === Golden Rampage ===
+    this._updateGoldenRampage(now);
+
     // === Thunder Dome ===
     this._tickThunderDome(now);
 
@@ -2749,6 +2761,11 @@ class GameEngine {
       maxSpeed *= 3.5;
     }
 
+    // Golden Rampage: the chosen berserker moves at 2.5× speed — unstoppable
+    if (this.goldenRampage && this.goldenRampage.birdId === bird.id) {
+      maxSpeed *= 2.5;
+    }
+
     // Great Migration boost: fly within 70px of a migration flock bird → +30% speed in migration direction
     if (bird.migrationBoostUntil > now) {
       maxSpeed *= 1.30;
@@ -3033,7 +3050,8 @@ class GameEngine {
       // Check if mega poop (power-up OR black market mega poop OR nuke poop crate item OR poop party event)
       const isNukePoop = bird.mcNukePoop;
       const isPoopParty = !!(this.chaosEvent && this.chaosEvent.type === 'poop_party');
-      const isMegaPoop = bird.megaPoopReady || bird.bmMegaPoops > 0 || isNukePoop || isPoopParty;
+      const isGoldenBerserker = !!(this.goldenRampage && this.goldenRampage.birdId === bird.id);
+      const isMegaPoop = bird.megaPoopReady || bird.bmMegaPoops > 0 || isNukePoop || isPoopParty || isGoldenBerserker;
       if (bird.megaPoopReady) {
         bird.megaPoopReady = false;
         bird.powerUp = null; // Consumed
@@ -3449,6 +3467,26 @@ class GameEngine {
         // Cracked!
         if (vt.hp <= 0) {
           this._crackVaultTruck(vt, now);
+        }
+      } else if (hit.target === 'golden_bird' && this.goldenRampage && this.goldenRampage.hp > 0) {
+        // Poop hit the Golden Bird! The city hunts their chosen champion.
+        const gr = this.goldenRampage;
+        const dmg = isMegaPoop ? 2 : 1;
+        gr.hp = Math.max(0, gr.hp - dmg);
+        // Track contributor
+        const grContrib = gr.contributors.get(bird.id) || { name: bird.name, gangTag: bird.gangTag || null, hits: 0 };
+        grContrib.hits += dmg;
+        gr.contributors.set(bird.id, grContrib);
+        // Immediate reward for hunters
+        xpGain = isMegaPoop ? 60 : 30;
+        bird.coins += isMegaPoop ? 20 : 10;
+        this._trackDailyProgress(bird, 'golden_bird_hit', dmg);
+        // Notify everyone of progress
+        const gbBird = this.birds.get(gr.birdId);
+        this.events.push({ type: 'golden_bird_hit', hitterId: bird.id, hitterName: bird.name, hitterGangTag: bird.gangTag || null, targetName: gr.birdName, hp: gr.hp, maxHp: gr.maxHp, dmg, x: gbBird ? gbBird.x : 0, y: gbBird ? gbBird.y : 0 });
+        // Freed!
+        if (gr.hp <= 0) {
+          this._endGoldenRampage('freed', now);
         }
       } else if (hit.target === 'crow_cartel' && hit.crow && this.crowCartel) {
         // Poop hit a Crow Cartel member — deal damage!
@@ -3867,6 +3905,11 @@ class GameEngine {
       // Blood Moon star_power curse: halve XP if cursed
       if ((bird.bloodMoonStarCursed || 0) > now) {
         xpGain = Math.floor(xpGain * 0.5);
+      }
+      // Golden Rampage: chosen berserker earns 4× XP on every poop hit — divine fury
+      if (isGoldenBerserker) {
+        xpGain = Math.floor(xpGain * 4);
+        if (coinGain > 0) coinGain = Math.floor(coinGain * 2.5);
       }
       // Idol: track performance hits for contestants during open phase
       if (this.birdIdol && this.birdIdol.state === 'open' && this.birdIdol.contestants.has(poop.birdId) && hit.target !== 'miss') {
@@ -4792,6 +4835,19 @@ class GameEngine {
       if (Math.sqrt(adx * adx + ady * ady) < hitRadius + 20) {
         if (!isMegaPoop) return { target: 'migration_alpha' };
         allHits.push({ target: 'migration_alpha' });
+      }
+    }
+
+    // Check Golden Bird — the city's chosen berserker. The shooter CANNOT be the golden bird themselves.
+    if (this.goldenRampage && this.goldenRampage.hp > 0 && poop.birdId !== this.goldenRampage.birdId) {
+      const gbBird = this.birds.get(this.goldenRampage.birdId);
+      if (gbBird) {
+        const gbdx = poop.x - gbBird.x;
+        const gbdy = poop.y - gbBird.y;
+        if (Math.sqrt(gbdx * gbdx + gbdy * gbdy) < hitRadius + 18) {
+          if (!isMegaPoop) return { target: 'golden_bird' };
+          allHits.push({ target: 'golden_bird' });
+        }
       }
     }
 
@@ -6211,6 +6267,8 @@ class GameEngine {
           // Session 93: Possession — visible to all nearby birds
           isPossessed: b.possessedUntil > now,
           exorcismProgress: (() => { const e = this.possessionHits.get(b.id); return e && e.windowEnd > now ? e.count : 0; })(),
+          // Session 96: Golden Rampage — golden bird visible to all
+          isGoldenBird: !!(this.goldenRampage && this.goldenRampage.birdId === b.id),
         });
       }
     }
@@ -6830,6 +6888,9 @@ class GameEngine {
         // Session 93: Possession
         possessedUntil: bird.possessedUntil || 0,
         exorcismProgress: (() => { const e = this.possessionHits.get(bird.id); return e && e.windowEnd > Date.now() ? e.count : 0; })(),
+        // Session 96: Golden Rampage
+        isGoldenBird: !!(this.goldenRampage && this.goldenRampage.birdId === bird.id),
+        goldenBirdBadge: bird.goldenBirdBadge || false,
         nearNightMarket: (() => {
           if (!this.nightMarket) return false;
           const dx = bird.x - this.nightMarket.x;
@@ -7545,6 +7606,19 @@ class GameEngine {
           hp: this.migration.alpha.hp,
           maxHp: this.migration.alpha.maxHp,
         } : null,
+      } : null,
+      // Golden Rampage
+      goldenRampage: this.goldenRampage ? {
+        birdId: this.goldenRampage.birdId,
+        birdName: this.goldenRampage.birdName,
+        gangTag: this.goldenRampage.gangTag,
+        endsAt: this.goldenRampage.endsAt,
+        hp: this.goldenRampage.hp,
+        maxHp: this.goldenRampage.maxHp,
+        myHits: this.goldenRampage.contributors.get(bird.id)?.hits || 0,
+        isGoldenBird: this.goldenRampage.birdId === bird.id,
+        goldenBirdX: (() => { const b = this.birds.get(this.goldenRampage.birdId); return b ? b.x : 0; })(),
+        goldenBirdY: (() => { const b = this.birds.get(this.goldenRampage.birdId); return b ? b.y : 0; })(),
       } : null,
       // Bird Royale
       birdRoyale: this.birdRoyale ? {
@@ -10645,7 +10719,7 @@ class GameEngine {
       // Arrest: cop catches wanted bird (within 18px, bird not already stunned)
       // Mystery Crate: Riot Shield blocks arrest entirely
       // Session 93: Possessed birds are immune to arrest — the feral spirit repels the law!
-      if (dist < 18 && wanted.stunnedUntil <= now && !(wanted.mcRiotShieldUntil > now) && !(wanted.possessedUntil > now)) {
+      if (dist < 18 && wanted.stunnedUntil <= now && !(wanted.mcRiotShieldUntil > now) && !(wanted.possessedUntil > now) && !(this.goldenRampage && this.goldenRampage.birdId === wanted.id)) {
         // Skill Tree: Ghost Walk — 18% chance to fully evade a cop arrest
         if (wanted.skillTreeUnlocked && wanted.skillTreeUnlocked.includes('ghost_walk') && Math.random() < 0.18) {
           this.events.push({ type: 'ghost_walk_evade', birdId: wanted.id, birdName: wanted.name, x: cop.x, y: cop.y });
@@ -20635,6 +20709,164 @@ class GameEngine {
     }
     this._addChaos(60);
     console.log('[GameEngine] City Vault Truck CRACKED! Jackpot distributed.');
+  }
+
+  // ============================================================
+  // GOLDEN RAMPAGE — The Chosen Berserker
+  // ============================================================
+  _updateGoldenRampage(now) {
+    // Spawn: once the timer fires and we have at least 2 online birds (can't rampage alone)
+    if (!this.goldenRampage && now >= this._goldenRampageTimer && this.birds.size >= 2) {
+      this._startGoldenRampage(now);
+      return;
+    }
+    if (!this.goldenRampage) return;
+
+    const gr = this.goldenRampage;
+
+    // Check if the golden bird is still online
+    const gbBird = this.birds.get(gr.birdId);
+    if (!gbBird) {
+      // Golden bird disconnected — end the rampage
+      this.goldenRampage = null;
+      this._goldenRampageTimer = now + this._randomRange(50 * 60000, 70 * 60000);
+      this.events.push({ type: 'golden_rampage_ended_dc', message: '⚡ The Golden Bird disconnected... the rampage fizzles out.' });
+      return;
+    }
+
+    // Prevent food starvation — golden bird can't die of hunger during the rampage
+    if (gbBird.food < 5) gbBird.food = 5;
+
+    // Track survival daily challenge (60 seconds threshold)
+    if (!gr._survivalTracked && (now - gr.spawnedAt) >= 60000) {
+      gr._survivalTracked = true;
+      this._trackDailyProgress(gbBird, 'golden_survived', 1);
+    }
+
+    // Survived the full 90 seconds!
+    if (now >= gr.endsAt) {
+      this._endGoldenRampage('survived', now);
+    }
+  }
+
+  _startGoldenRampage(now) {
+    // Pick a random active bird — biased toward birds with some XP earned this session
+    const candidates = [];
+    for (const b of this.birds.values()) {
+      if (b.xp > 0) candidates.push(b);
+    }
+    // Fallback to any bird if all are brand new
+    const pool = candidates.length > 0 ? candidates : [...this.birds.values()];
+    const chosen = pool[Math.floor(Math.random() * pool.length)];
+
+    this.goldenRampage = {
+      birdId: chosen.id,
+      birdName: chosen.name,
+      gangTag: chosen.gangTag || null,
+      spawnedAt: now,
+      endsAt: now + 90000,  // 90 seconds
+      hp: 20,
+      maxHp: 20,
+      contributors: new Map(),
+      _survivalTracked: false,
+    };
+
+    const gangPrefix = chosen.gangTag ? `[${chosen.gangTag}] ` : '';
+    this.events.push({
+      type: 'golden_rampage_start',
+      birdId: chosen.id,
+      birdName: chosen.name,
+      gangTag: chosen.gangTag || null,
+      endsAt: this.goldenRampage.endsAt,
+      message: `⚡ THE GOLDEN RAMPAGE! ${gangPrefix}${chosen.name} has been blessed with DIVINE POWER for 90 seconds! 2.5× SPEED · MEGA POOP · 4× XP — Land 20 hits to free them!`,
+    });
+    this._addChaos(40);
+    console.log(`[GameEngine] Golden Rampage started — ${chosen.name}`);
+  }
+
+  _endGoldenRampage(reason, now) {
+    const gr = this.goldenRampage;
+    if (!gr) return;
+    this.goldenRampage = null;
+    this._goldenRampageTimer = now + this._randomRange(50 * 60000, 70 * 60000);
+
+    const gbBird = this.birds.get(gr.birdId);
+
+    if (reason === 'survived') {
+      // Golden Bird survived! Massive payout + session badge
+      if (gbBird) {
+        gbBird.xp += 1200;
+        gbBird.coins += 700;
+        gbBird.goldenBirdBadge = true;
+        this._trackDailyProgress(gbBird, 'golden_survived', 1);
+        this._checkLevelUp(gbBird);
+      }
+      // Coin explosion — scatter 200c to nearby birds
+      if (gbBird) {
+        const nearbyBirds = [];
+        for (const b of this.birds.values()) {
+          if (b.id === gr.birdId) continue;
+          const dx = b.x - gbBird.x;
+          const dy = b.y - gbBird.y;
+          if (Math.sqrt(dx * dx + dy * dy) < 400) nearbyBirds.push(b);
+        }
+        if (nearbyBirds.length > 0) {
+          const sharePerBird = Math.floor(200 / nearbyBirds.length);
+          for (const b of nearbyBirds) {
+            b.coins += sharePerBird;
+          }
+        }
+      }
+      const gangPrefix = gr.gangTag ? `[${gr.gangTag}] ` : '';
+      this.events.push({
+        type: 'golden_rampage_survived',
+        birdId: gr.birdId,
+        birdName: gr.birdName,
+        x: gbBird ? gbBird.x : 1500,
+        y: gbBird ? gbBird.y : 1500,
+        message: `⚡🏆 ${gangPrefix}${gr.birdName} SURVIVED THE GOLDEN RAMPAGE! +1200 XP +700c — Coins scatter to the crowd!`,
+      });
+      if (this.gazetteStats) {
+        if (!this.gazetteStats.goldenRampages) this.gazetteStats.goldenRampages = [];
+        this.gazetteStats.goldenRampages.push({ name: gr.birdName, gangTag: gr.gangTag, result: 'survived' });
+      }
+    } else if (reason === 'freed') {
+      // Crowd freed the golden bird! Proportional rewards for contributors.
+      const totalHits = [...gr.contributors.values()].reduce((s, c) => s + c.hits, 0) || 1;
+      const rewards = [];
+      for (const [birdId, contrib] of gr.contributors) {
+        const b = this.birds.get(birdId);
+        if (!b) continue;
+        const share = contrib.hits / totalHits;
+        const xpReward = Math.floor(share * 500) + 50; // min 50 XP
+        const coinReward = Math.floor(share * 250) + 20; // min 20c
+        b.xp += xpReward;
+        b.coins += coinReward;
+        this._checkLevelUp(b);
+        rewards.push({ name: b.name, gangTag: b.gangTag || null, xp: xpReward, coins: coinReward });
+      }
+      // Consolation XP for the freed bird
+      if (gbBird) {
+        gbBird.xp += 300;
+        gbBird.coins += 50;
+        this._checkLevelUp(gbBird);
+      }
+      const gangPrefix = gr.gangTag ? `[${gr.gangTag}] ` : '';
+      this.events.push({
+        type: 'golden_rampage_freed',
+        birdId: gr.birdId,
+        birdName: gr.birdName,
+        x: gbBird ? gbBird.x : 1500,
+        y: gbBird ? gbBird.y : 1500,
+        rewards,
+        message: `⚡ The city FREED ${gangPrefix}${gr.birdName}! ${rewards.length} birds share the reward. Top hunter: ${rewards[0] ? rewards[0].name : '???'}`,
+      });
+      if (this.gazetteStats) {
+        if (!this.gazetteStats.goldenRampages) this.gazetteStats.goldenRampages = [];
+        this.gazetteStats.goldenRampages.push({ name: gr.birdName, gangTag: gr.gangTag, result: 'freed', hunters: rewards.length });
+      }
+    }
+    this._addChaos(30);
   }
 
 }

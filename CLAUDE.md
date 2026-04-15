@@ -3273,6 +3273,41 @@ The most rewarding cooperative moving-target event in Bird City. An armored vaul
 
 **Creative intent**: The Vault Truck hits every system pillar at once. CARNAGE: a moving 100-HP target that spawns more cops the closer you get. SOCIAL: every hit is tracked — you can free-ride with 1 hit and get a fraction, or go all-in and earn the lion's share. PROGRESSION: the jackpot scales with contribution, so coordinated gangs can exploit their formation bonuses (Wedge splash, V slipstream, Territory Tax) to squeeze maximum XP. SPECTACLE: a 1500c jackpot announcement with the contributor list is the biggest wealth moment in the game. The four synergies add depth without new content — siege escalation rewards tenacity, mural×siege makes graffiti wars real tactics, dome×siege creates explosive opportunistic plays, migration×race is the most "wait, that works?!" discovery in the game. Pure CARNAGE + SOCIAL + SPECTACLE energy.
 
+**Session 96 — 2026-04-15: Golden Rampage — The Chosen Berserker**
+Every 50-70 minutes, one random bird is blessed with DIVINE POWER for 90 seconds — 2.5× speed, unlimited mega poop, and 4× XP on every hit. The city must hunt them down or the chosen bird walks away with 1200 XP + 700 coins and a permanent 👑 GOLDEN BIRD badge.
+
+**The Rampage Flow (`server/game.js`):**
+- Timer fires every 50-70 minutes when ≥2 birds are online (can't rampage alone). Picks a random bird biased toward those with some XP this session (active players, not AFK newcomers)
+- Chosen bird gets: 2.5× max speed (applied after all other speed chains), ALL poops treated as mega poop (`isGoldenBerserker` flag injected alongside `isPoopParty`), 4× XP on all hits + 2.5× coins on all poop hits
+- **20 HP pool**: the city as a whole must land 20 poop hits (mega = 2 hits) to "free" the chosen bird from the power. Contributors tracked per-bird in `gr.contributors` Map
+- **Hunters cannot be the golden bird** — the golden bird is immune to their own poop hitting the HP pool (checked in `_checkPoopHit`)
+- **Survival = legend**: if the golden bird is NOT brought down in 90 seconds, they earn +1200 XP +700 coins + `goldenBirdBadge = true` (session-persistent badge, shown to all nearby birds). Coin scatter: 200c splits to nearby birds as consolation
+- **Freed = hunter rewards**: if crowd lands 20 hits, all contributors split 500 XP + 250 coins proportional to their damage share (min 50 XP + 20c floor). Freed bird earns 300 XP + 50c consolation
+- **Immunity**: golden bird is immune from cop arrests, Bounty Hunter catches, and predator attacks during the 90s — pure CARNAGE freedom
+- **Disconnect protection**: if the golden bird disconnects, the rampage ends quietly (no penalty)
+
+**Daily challenges (2 new in pool):**
+- 👑 **Golden Survivor**: Be chosen as the Golden Bird and survive all 90 seconds without being freed (300 XP, 150c)
+- 🏹 **Golden Hunter**: Land 5 hits on the Golden Bird (200 XP, 100c)
+
+**Visual system (`public/js/sprites.js`, `public/js/main.js`):**
+- `drawGoldenBirdEffects(ctx, x, y, rotation, hp, maxHp, timeLeft, now)`: drawn ON TOP of the bird sprite for the chosen bird — large golden radial aura glow, 4 orbiting golden star particles at independent angles and speeds, pulsing ellipse outline, bouncing 👑 crown emoji 26px above, HP bar (gold→orange-red) with HP/maxHP counter, urgent countdown when <20 seconds remain (turns red at ≤5s)
+- `drawNameTag` updated: `goldenBirdBadge` as final param — dark gold background badge, `#ffd700` border + glow, "👑 GOLDEN BIRD" label at top of badge stack above all other badges
+- **Minimap**: large pulsing gold dot + 👑 emoji at golden bird's real-time position — trackable from anywhere
+- **Off-screen direction arrow**: gold 👑 arrow pointing toward the golden bird when off-screen
+- **HUD pills** (in `updateActiveBuffsHud()`): golden bird sees "🌟 GOLDEN BIRD — 2.5× SPD · ALL MEGA POOP · 4× XP · Xs" pulsing urgently, plus HP bar pill. Hunters see "🌟 GOLDEN RAMPAGE — [Name] · Xs · MY HITS: N · POOP THEM!" in gold
+
+**Events & announcements:**
+- `golden_rampage_start`: screen shake + big golden announcement + city-wide event feed. Personalized: "YOU ARE THE GOLDEN BIRD — RAMPAGE!" vs "HUNT [Name]!"
+- `golden_bird_hit`: floating "💥 −1HP / −2HP" damage text at golden bird position; event feed at milestone hits
+- `golden_rampage_survived`: massive screen shake + "🏆 [Name] SURVIVED THE GOLDEN RAMPAGE!" + reward callouts + 200c scatter to nearby birds
+- `golden_rampage_freed`: screen shake + "⚡ The city FREED [Name]!" + proportional reward list for all contributors
+- `golden_bird_reward`: personal reward popup for each contributor
+
+**Gazette integration:** "⚡ GOLDEN RAMPAGE: [Name] SURVIVES THE CITY" OR "THE CITY FREES [Name] IN GOLDEN RAMPAGE" headline depending on outcome.
+
+**Creative intent**: Every other "chosen one" mechanic in Bird City is a threat (Kingpin, Most Wanted, Cursed Coin). The Golden Rampage is the opposite — it's a gift. One random bird becomes temporarily godlike, and the entire city has to decide: do you attack the golden bird for proportional loot rewards, or do you enjoy the 90-second spectacle? The golden bird's incentive is to stay alive and rampage as hard as possible — 4× XP on every mega poop while moving at 2.5× speed is the biggest burst window in the game. The hunter's incentive is to coordinate 20 hits before 90 seconds expire. A high-combo golden bird with a Lucky Charm + Signal Boost hitting 4× XP on mega AOE poops during a crime wave is the highest single-event XP moment in Bird City. The 👑 badge for surviving creates a permanent identity mark: that bird outlasted the city's best effort. Pure CARNAGE + SPECTACLE + SOCIAL energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
