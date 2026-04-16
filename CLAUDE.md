@@ -3461,6 +3461,48 @@ THE 100TH SESSION LANDMARK EVENT. A legendary golden throne descends from the he
 
 **Creative intent**: Session 100 deserved a landmark feature that touched every pillar simultaneously. The Golden Throne is DISCOVERY (it descends unexpectedly), SOCIAL (everyone sees the guards go down, everyone watches the claim race), CARNAGE (two armored guards you must fight, rivals trying to interrupt your 8-second hold), PROGRESSION (Kingpin crown + Gold Rush decree = city-wide consequences), and SPECTACLE (the ornate throne object glowing in the middle of the city, coin shower on claim, the whole city's coins doubling for a minute). Unlike every other Kingpin mechanic (wealth-based), the throne is COMBAT-based — even a poor bird with good aim and good timing can seize the crown. The moment both guards go down and three birds simultaneously sprint into the 80px claim zone, racing to hold position for 8 seconds while also trying to block each other — that's pure emergent Bird City chaos. The throne's physical presence in the world (glowing, orbited by sparkles, flanked by armored guards) makes it a LANDMARK that players will look for on the minimap the moment it appears. Pure CARNAGE + SOCIAL + SPECTACLE + PROGRESSION energy — Bird City's 100th session and its most cinematic single event.
 
+**Session 101 — 2026-04-16: The Pigeon Coupe — Driveable Luxury Sports Car**
+Bird City just got its most GTA moment yet. A sleek crimson-and-gold sports car spawns on city roads every 20-30 minutes. Any bird can hop in ([E] within 100px), floor it at 220px/s, and generate heat while cops give chase. But the real drama: other birds can carjack it mid-drive. After 3 carjacks OR 90 seconds, the coupe EXPLODES in a coin shower split among nearby birds.
+
+**The Coupe Flow (`server/game.js`):**
+- Spawns every 20-30 minutes at a random road position from `world.ROADS`
+- 90-second lifetime (`expiresAt = now + 90000`)
+- Press [E] within 100px to get in — driver gets 220px/s max speed, poop is blocked (both talons on the wheel), heat builds +3 every 8 seconds while driving
+- `drivingCoupeId` field on bird routes speed boost through the existing speed chain
+- **Carjack mechanic**: rival flies within 70px of an occupied coupe + presses [E] → previous driver ejected (1.5s stun), new driver takes over. `coupe.carjacks` counter increments. +80 XP +30c for the carjacker.
+- At **3 carjacks**: explosion triggered via `setTimeout(..., 500)` — gives the carjack event time to broadcast first
+- **Explosion**: ejects current driver, calculates `BASE_COINS = 300 + carjacks * 50`, splits among all birds within 300px proportional to their proximity. Fires `coupe_exploded` + per-bird `coupe_explosion_reward` events.
+- **Timer expiry**: same explosion logic if coupe survives the full 90 seconds without being destroyed
+- **Cop escalation**: heat builds passively while driving — natural wanted system consequence
+
+**Visual system (`public/js/sprites.js`):**
+- Custom `drawPigeonCoupe()`: sleek low-slung sports car body in deep red, gold racing stripe, tinted windshield with glare, 4 wheels with rims, exhaust puff when occupied, headlights + tail-lights
+- **Expiry countdown arc**: full circular arc ring (green→yellow→red) draining around the coupe showing remaining lifetime
+- **Carjack counter badge**: `🚨 X/3` pill above the car showing carjack count
+- **Driver name bubble**: colored bubble with driver's name (gang color) when occupied
+- **"GET IN!" prompt**: pulsing orange text when unoccupied and nearby
+- Ground shadow ellipse for depth
+
+**HUD (`public/js/main.js`):**
+- Active buffs HUD pill when driving: `🚗 DRIVING THE PIGEON COUPE — 220px/s · Carjacks: X/3 · Ys · [E] to exit` (orange pulse, clickable to exit)
+- Near empty coupe pill: `🚗 PIGEON COUPE here — [E] to GET IN!`
+- Carjack opportunity pill: `🚨 CARJACK THE COUPE — [E] to steal it from [driverName]!` (red pulse)
+- **Off-screen direction arrow**: orange 🚗 arrow pointing toward coupe when off-screen; turns red when occupied (target has a driver to carjack)
+- **Minimap dot**: pulsing orange (empty) or red (occupied) 🚗 dot at coupe's real-time world position
+
+**Events & announcements:**
+- `coupe_spawned`: screen announcement + event feed directing all birds to the location
+- `coupe_entered`: personal "YOU'RE IN THE PIGEON COUPE!" + global callout
+- `coupe_carjacked`: screen shake + personal messages for both driver and carjacker, city-wide event feed
+- `coupe_exploded`: intense screen shake (intensity 18), 20 coin shower particles, city-wide "COIN EXPLOSION!" announcement
+- `coupe_explosion_reward`: personal floating "+Xc COUPE LOOT!" for each nearby bird
+
+**Two new daily challenges (added to pool):**
+- 🚗 **Joy Rider**: Drive the Pigeon Coupe for at least 10 seconds (160 XP, 80c)
+- 🚨 **Grand Theft Auto**: Carjack the Pigeon Coupe from another bird (220 XP, 110c)
+
+**Creative intent**: Bird City had moving targets (vault truck, food truck) and vehicles you interact with, but nothing you could actually DRIVE. The Pigeon Coupe is pure power fantasy — the moment you hop in and feel the 220px/s acceleration, you understand why it's worth fighting for. The carjack mechanic turns every driving moment into a chase: you're moving fast but also painting a target on your back. Three carjacks before the explosion means the car is always a hot potato — nobody can sit in it forever. The coin explosion that scatters among nearby birds creates a ring of looters circling the car, waiting for the perfect moment to strike. Pure CARNAGE + SOCIAL + SPECTACLE energy — the city just got a getaway car.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)

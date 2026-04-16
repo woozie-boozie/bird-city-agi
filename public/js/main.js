@@ -4104,6 +4104,50 @@
       window._vaultTruckDir = null;
       addEventMessage(`💼 The Vault Truck escaped! The city failed to crack it in time.`, '#888888');
     }
+
+    // === PIGEON COUPE EVENTS (Session 101) ===
+    if (ev.type === 'coupe_spawned') {
+      window._coupeDirTarget = { x: ev.x, y: ev.y };
+      showAnnouncement(`🚗 PIGEON COUPE APPEARED!\nFly to it and press [E] to GET IN and ride in style!\nCarjack it 3× to trigger a COIN EXPLOSION!`, '#ff6600', 7000);
+      addEventMessage(`🚗 The Pigeon Coupe just appeared somewhere in the city!`, '#ff6600');
+    }
+    if (ev.type === 'coupe_entered') {
+      if (ev.birdId === myId) {
+        showAnnouncement(`🚗 YOU'RE IN THE PIGEON COUPE!\n220px/s speed — press [E] to exit.\nCarjacks remaining: ${ev.maxCarjacks - (gameState.pigeonCoupe ? gameState.pigeonCoupe.carjacks : 0)}`, '#ff6600', 4000);
+      } else {
+        addEventMessage(`🚗 ${ev.gangTag ? `[${ev.gangTag}] ` : ''}${ev.birdName} got in the Pigeon Coupe!`, '#ff6600');
+      }
+    }
+    if (ev.type === 'coupe_carjacked') {
+      effects.push({ type: 'screen_shake', intensity: 8, duration: 500, time: now });
+      if (ev.birdId === myId) {
+        showAnnouncement(`🚨 YOU CARJACKED THE PIGEON COUPE!\n+80 XP +30c — ride hard! (${ev.carjacks}/3 carjacks)`, '#ff4400', 4000);
+      } else if (ev.prevDriverName === (gameState.self && gameState.self.name)) {
+        showAnnouncement(`🚨 YOU GOT CARJACKED by ${ev.birdName}! They stole the Coupe!`, '#ff2200', 4000);
+      }
+      addEventMessage(`🚨 ${ev.message}`, '#ff4400');
+    }
+    if (ev.type === 'coupe_exploded') {
+      window._coupeDirTarget = null;
+      effects.push({ type: 'screen_shake', intensity: 18, duration: 1000, time: now });
+      // Coin shower particles
+      for (let i = 0; i < 20; i++) {
+        const angle = (i / 20) * Math.PI * 2;
+        effects.push({ type: 'text', x: ev.x + Math.cos(angle) * (30 + Math.random() * 80),
+          y: ev.y + Math.sin(angle) * (30 + Math.random() * 80), time: now + Math.random() * 600,
+          duration: 1800, text: '💰', color: '#ffd700', size: 18 + Math.random() * 12 });
+      }
+      showAnnouncement(`💥🚗 PIGEON COUPE EXPLODED!\nCoins scattered to ${ev.nearbyCount} nearby birds!`, '#ff6600', 5000);
+      addEventMessage(`💥 ${ev.message}`, '#ff6600');
+    }
+    if (ev.type === 'coupe_explosion_reward') {
+      if (ev.birdId === myId) {
+        effects.push({ type: 'text', x: gameState.self ? gameState.self.x : 0,
+          y: gameState.self ? gameState.self.y - 50 : 0, time: now, duration: 2000,
+          text: `💰 +${ev.coins}c COUPE LOOT!`, color: '#ffd700', size: 16 });
+      }
+    }
+
     // Cross-system synergy messages
     if (ev.type === 'migration_race_synergy') {
       if (ev.birdId === myId) {
@@ -4768,6 +4812,19 @@
           (gameState.arena.state === 'idle' || gameState.arena.state === 'waiting') &&
           !gameState.arena.isFighter) {
         socket.emit('action', { type: 'arena_enter' });
+      }
+      // Pigeon Coupe — enter, exit, or carjack
+      if (gameState && gameState.self && gameState.pigeonCoupe) {
+        if (gameState.self.drivingCoupeId) {
+          // Exit the coupe
+          socket.emit('action', { type: 'coupe_exit' });
+        } else if (gameState.self.canCarjack) {
+          // Carjack the occupied coupe
+          socket.emit('action', { type: 'coupe_carjack' });
+        } else if (gameState.self.nearPigeonCoupe && !gameState.pigeonCoupe.driverId) {
+          // Enter the empty coupe
+          socket.emit('action', { type: 'coupe_enter' });
+        }
       }
       // Sewer entry / exit — press E near a manhole
       if (gameState && gameState.self && lastNearManholeId) {
@@ -8593,6 +8650,16 @@
       }
     }
 
+    // Pigeon Coupe (driveable luxury sports car)
+    if (gameState.pigeonCoupe) {
+      const pc = gameState.pigeonCoupe;
+      const pcsx = pc.x - camera.x + camera.screenW / 2;
+      const pcsy = pc.y - camera.y + camera.screenH / 2;
+      if (pcsx > -margin - 60 && pcsx < camera.screenW + margin + 60 && pcsy > -margin - 60 && pcsy < camera.screenH + margin + 60) {
+        Sprites.drawPigeonCoupe(ctx, pcsx, pcsy, pc.angle || 0, pc.driverId, pc.driverName, pc.driverColor, pc.carjacks, pc.maxCarjacks, pc.expiresAt, now);
+      }
+    }
+
     // Raccoon Thieves (night-only)
     if (gameState.raccoons) {
       for (const raccoon of gameState.raccoons) {
@@ -11051,6 +11118,44 @@
       }
     }
 
+    // === PIGEON COUPE — off-screen direction arrow + minimap dot ===
+    if (gameState.pigeonCoupe) {
+      const pc = gameState.pigeonCoupe;
+      const pcsx = pc.x - camera.x + camera.screenW / 2;
+      const pcsy = pc.y - camera.y + camera.screenH / 2;
+      const pcOnScreen = pcsx > 50 && pcsx < camera.screenW - 50 && pcsy > 50 && pcsy < camera.screenH - 50;
+      if (!pcOnScreen) {
+        const pcAngle = Math.atan2(pcsy - camera.screenH / 2, pcsx - camera.screenW / 2);
+        const pcArrDist = Math.min(camera.screenW, camera.screenH) / 2 - 60;
+        const pcAx = camera.screenW / 2 + Math.cos(pcAngle) * pcArrDist;
+        const pcAy = camera.screenH / 2 + Math.sin(pcAngle) * pcArrDist;
+        const pcPulse = 0.7 + 0.3 * Math.sin(now * 0.006);
+        ctx.save();
+        ctx.translate(pcAx, pcAy);
+        ctx.rotate(pcAngle);
+        ctx.globalAlpha = 0.9 * pcPulse;
+        ctx.fillStyle = pc.driverId ? '#ff4400' : '#ff9900';
+        ctx.shadowColor = pc.driverId ? '#ff2200' : '#ff6600';
+        ctx.shadowBlur = 10;
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(22, 0);
+        ctx.lineTo(-10, -10);
+        ctx.lineTo(-5, 0);
+        ctx.lineTo(-10, 10);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.font = 'bold 11px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('\uD83D\uDE97', 4, 0);
+        ctx.restore();
+      }
+    }
+
     // Announcements (screen-space)
     drawAnnouncements(ctx, now);
 
@@ -11489,6 +11594,29 @@
       minimapCtx.textAlign = 'center';
       minimapCtx.textBaseline = 'alphabetic';
       minimapCtx.fillText('💼', vtmx, vtmy - 6);
+      minimapCtx.restore();
+    }
+
+    // === PIGEON COUPE — orange/red pulsing 🚗 dot on minimap ===
+    if (gameState.pigeonCoupe && worldData) {
+      const mw = minimapCtx.canvas.width;
+      const mh = minimapCtx.canvas.height;
+      const pcPulse = 0.5 + 0.5 * Math.sin(now * 0.009);
+      const pcmx = gameState.pigeonCoupe.x * mw / worldData.width;
+      const pcmy = gameState.pigeonCoupe.y * mh / worldData.height;
+      minimapCtx.save();
+      const pcColor = gameState.pigeonCoupe.driverId ? '#ff4400' : '#ff9900';
+      minimapCtx.shadowColor = pcColor;
+      minimapCtx.shadowBlur = 8 + 4 * pcPulse;
+      minimapCtx.fillStyle = `rgba(255,${gameState.pigeonCoupe.driverId ? 60 : 140},0,${0.8 + 0.2 * pcPulse})`;
+      minimapCtx.beginPath();
+      minimapCtx.arc(pcmx, pcmy, 4 + pcPulse, 0, Math.PI * 2);
+      minimapCtx.fill();
+      minimapCtx.shadowBlur = 0;
+      minimapCtx.font = '8px sans-serif';
+      minimapCtx.textAlign = 'center';
+      minimapCtx.textBaseline = 'alphabetic';
+      minimapCtx.fillText('\uD83D\uDE97', pcmx, pcmy - 6);
       minimapCtx.restore();
     }
 
@@ -13575,6 +13703,17 @@
     }
     if (s && s.throneChampBadge) {
       html += `<div class="bm-buff-pill" style="background:rgba(50,35,0,0.9);border-color:#ffd700;color:#ffe566;">👑 THRONE CHAMPION — You seized the Golden Throne this session!</div>`;
+    }
+
+    // Pigeon Coupe: driving pill
+    if (s && s.drivingCoupeId && gameState.pigeonCoupe) {
+      const pc = gameState.pigeonCoupe;
+      const secsLeft = Math.max(0, Math.ceil((pc.expiresAt - now) / 1000));
+      html += `<div class="bm-buff-pill" style="background:rgba(80,30,0,0.92);border-color:#ff6600;color:#ffaa44;animation:kingpinGlow 0.7s ease-in-out infinite alternate;font-weight:bold;cursor:pointer;" onclick="sendAction({type:'coupe_exit'})">🚗 DRIVING THE PIGEON COUPE — 220px/s · Carjacks: ${pc.carjacks}/3 · ${secsLeft}s · [E] to exit</div>`;
+    } else if (s && s.nearPigeonCoupe && gameState.pigeonCoupe && !gameState.pigeonCoupe.driverId) {
+      html += `<div class="bm-buff-pill" style="background:rgba(60,25,0,0.88);border-color:#ff7722;color:#ffcc88;cursor:pointer;" onclick="sendAction({type:'coupe_enter'})">🚗 PIGEON COUPE here — [E] to GET IN!</div>`;
+    } else if (s && s.canCarjack && gameState.pigeonCoupe && gameState.pigeonCoupe.driverId) {
+      html += `<div class="bm-buff-pill" style="background:rgba(80,0,0,0.92);border-color:#ff2200;color:#ff8866;animation:pulseRed 0.6s infinite alternate;font-weight:bold;cursor:pointer;" onclick="sendAction({type:'coupe_carjack'})">🚨 CARJACK THE COUPE — [E] to steal it from ${gameState.pigeonCoupe.driverName}!</div>`;
     }
 
     el.innerHTML = html;

@@ -7143,4 +7143,200 @@ window.Sprites = {
 
     ctx.restore();
   },
+
+  // ===========================
+  //  PIGEON COUPE — Session 101
+  // ===========================
+  /**
+   * drawPigeonCoupe(ctx, x, y, angle, driverId, driverName, driverColor, carjacks, maxCarjacks, expiresAt, now)
+   * Draws a sleek sports car with driver indicator, carjack badge, and expiry countdown ring.
+   */
+  drawPigeonCoupe(ctx, x, y, angle, driverId, driverName, driverColor, carjacks, maxCarjacks, expiresAt, now) {
+    const pulse = 0.5 + 0.5 * Math.sin(now * 0.005);
+    const occupied = !!driverId;
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+
+    // Ground shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.22)';
+    ctx.beginPath();
+    ctx.ellipse(0, 8, 30, 10, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Outer glow aura — orange when unoccupied, driver-colored when occupied
+    const glowColor = occupied ? (driverColor || '#ff9900') : '#ff9900';
+    ctx.shadowColor = glowColor;
+    ctx.shadowBlur = 14 + 6 * pulse;
+
+    // ── Main body (low-slung sports car silhouette) ──
+    // Lower chassis
+    ctx.fillStyle = occupied ? '#cc2200' : '#dd3300';
+    ctx.beginPath();
+    ctx.roundRect(-28, -6, 56, 16, 4);
+    ctx.fill();
+
+    // Upper cabin (tapered)
+    ctx.fillStyle = occupied ? '#aa1800' : '#bb2200';
+    ctx.beginPath();
+    ctx.moveTo(-14, -6);
+    ctx.lineTo(14, -6);
+    ctx.lineTo(18, -14);
+    ctx.lineTo(-10, -14);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.shadowBlur = 0;
+
+    // Gold racing stripe along the side
+    ctx.fillStyle = '#ffc300';
+    ctx.fillRect(-28, -1, 56, 3);
+
+    // Windshield glass (tinted blue)
+    ctx.fillStyle = 'rgba(100,180,255,0.55)';
+    ctx.beginPath();
+    ctx.moveTo(-9, -13);
+    ctx.lineTo(16, -13);
+    ctx.lineTo(13, -7);
+    ctx.lineTo(-7, -7);
+    ctx.closePath();
+    ctx.fill();
+    // Glass glare
+    ctx.fillStyle = 'rgba(255,255,255,0.25)';
+    ctx.beginPath();
+    ctx.moveTo(-7, -12);
+    ctx.lineTo(5, -12);
+    ctx.lineTo(3, -8);
+    ctx.lineTo(-6, -8);
+    ctx.closePath();
+    ctx.fill();
+
+    // Front & rear bumpers
+    ctx.fillStyle = '#888';
+    ctx.fillRect(24, -3, 5, 10);  // front
+    ctx.fillRect(-29, -3, 5, 10); // rear
+
+    // Headlights
+    ctx.fillStyle = '#ffffaa';
+    ctx.shadowColor = '#ffff88';
+    ctx.shadowBlur = 6;
+    ctx.fillRect(26, -3, 3, 4);
+    ctx.shadowBlur = 0;
+
+    // Tail-lights
+    ctx.fillStyle = '#ff2200';
+    ctx.fillRect(-27, -3, 3, 4);
+
+    // Wheels (4 wheels — two axles)
+    ctx.fillStyle = '#1a1a1a';
+    const wheels = [[-16, 8], [12, 8], [-16, -8], [12, -8]];
+    for (const [wx, wy] of wheels) {
+      ctx.beginPath();
+      ctx.ellipse(wx, wy, 6, 4, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Rim
+      ctx.strokeStyle = '#888';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.ellipse(wx, wy, 3, 2, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // Exhaust pipe puff when occupied
+    if (occupied) {
+      const exhaust = 0.5 + 0.5 * Math.sin(now * 0.015);
+      ctx.fillStyle = `rgba(200,200,200,${0.2 + 0.15 * exhaust})`;
+      ctx.beginPath();
+      ctx.ellipse(-32, 6, 5 + 3 * exhaust, 3, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+
+    // ── Expiry countdown arc (drawn in screen space, no rotation) ──
+    if (expiresAt && now) {
+      const timeLeft = expiresAt - now;
+      const totalDur = 90000;
+      const frac = Math.max(0, Math.min(1, timeLeft / totalDur));
+      const arcR = 32;
+      ctx.save();
+      ctx.translate(x, y);
+      // Background ring
+      ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(0, 0, arcR, 0, Math.PI * 2);
+      ctx.stroke();
+      // Filled arc — green→yellow→red
+      const arcColor = frac > 0.5 ? '#44dd44' : frac > 0.25 ? '#ffcc00' : '#ff3300';
+      ctx.strokeStyle = arcColor;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(0, 0, arcR, -Math.PI / 2, -Math.PI / 2 + frac * Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // ── Carjack counter badge ──
+    if (maxCarjacks > 0) {
+      ctx.save();
+      ctx.translate(x, y - 38);
+      const badgeW = 36, badgeH = 14;
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.beginPath();
+      ctx.roundRect(-badgeW / 2, -badgeH / 2, badgeW, badgeH, 4);
+      ctx.fill();
+      ctx.strokeStyle = carjacks >= maxCarjacks - 1 ? '#ff4400' : '#ffcc00';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 8px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`🚨 ${carjacks}/${maxCarjacks}`, 0, 0);
+      ctx.restore();
+    }
+
+    // ── Driver name bubble ──
+    if (occupied && driverName) {
+      ctx.save();
+      ctx.translate(x, y - 52);
+      const nameW = Math.max(50, driverName.length * 7 + 16);
+      const nameH = 15;
+      const bgColor = driverColor || '#ff6600';
+      ctx.fillStyle = bgColor + 'cc';
+      ctx.beginPath();
+      ctx.roundRect(-nameW / 2, -nameH / 2, nameW, nameH, 5);
+      ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 8px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.shadowColor = '#000';
+      ctx.shadowBlur = 2;
+      ctx.fillText(driverName, 0, 0);
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    }
+
+    // ── "GET IN!" prompt when unoccupied ──
+    if (!occupied) {
+      ctx.save();
+      ctx.translate(x, y - 50);
+      const glow = 0.7 + 0.3 * pulse;
+      ctx.fillStyle = `rgba(255,153,0,${glow})`;
+      ctx.font = 'bold 9px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.shadowColor = '#000';
+      ctx.shadowBlur = 3;
+      ctx.fillText('🚗 [E] GET IN!', 0, 0);
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    }
+  },
 };

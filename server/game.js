@@ -143,6 +143,9 @@ const DAILY_CHALLENGE_POOL = [
   // Session 99: Suspicious Package challenges
   { id: 'bomb_defuser',   title: 'Bomb Defuser',    desc: 'Land 3 hits on a Suspicious Package to help defuse it',       target: 3,  trackType: 'package_hit',     reward: { xp: 160, coins: 80  } },
   { id: 'blast_survivor', title: 'Blast Zone',      desc: 'Survive being caught in a Suspicious Package explosion',       target: 1,  trackType: 'blast_survived',  reward: { xp: 120, coins: 60  } },
+  // Session 101: Pigeon Coupe challenges
+  { id: 'coupe_driver',  title: 'Joy Rider',       desc: 'Drive the Pigeon Coupe for at least 10 seconds',                target: 1,  trackType: 'coupe_driven',     reward: { xp: 160, coins: 80  } },
+  { id: 'coupe_carjack', title: 'Grand Theft Auto', desc: 'Carjack the Pigeon Coupe from another bird',                   target: 1,  trackType: 'coupe_carjacked',  reward: { xp: 220, coins: 110 } },
 ];
 
 // ============================================================
@@ -346,6 +349,12 @@ class GameEngine {
     // stay within 80px for 8 seconds to CLAIM THE THRONE — instant Kingpin + Gold Rush decree.
     this.goldenThrone = null; // null | { x, y, spawnedAt, expiresAt, guards: [], claimants: Map }
     this._goldenThroneTimer = Date.now() + this._randomRange(35 * 60000, 50 * 60000);
+
+    // === THE PIGEON COUPE — driveable luxury sports car spawns on city roads ===
+    // Any bird can enter (E within 100px). While driving: 220px/s, cops give chase, poop is blocked.
+    // Other birds carjack (E within 60px of occupied coupe). After 3 carjacks OR 90s → coin explosion.
+    this.pigeonCoupe = null; // null | { x, y, angle, speed, driverId, driverName, driverColor, carjacks, spawnedAt, expiresAt, driveStartAt }
+    this._pigeonCoupeTimer = Date.now() + this._randomRange(20 * 60000, 30 * 60000);
 
     // === GOLDEN EGG SCRAMBLE ===
     this.eggScramble = null;          // null or { state, startedAt, endsAt, eggs: Map(id->egg), delivered }
@@ -1157,6 +1166,9 @@ class GameEngine {
       auroraStarCaught:  false,
       auroraMetCaught:   false,
       capricornAwarded:  false,
+      // === PIGEON COUPE (session-only) ===
+      drivingCoupeId: null,         // spawnedAt ID of the coupe being driven (null if not driving)
+      _coupeJoyRiderTracked: false, // whether the 10-second joy-ride daily challenge has been counted
     };
 
     // Determine bird type from XP
@@ -1632,6 +1644,17 @@ class GameEngine {
     if (action.type === 'mural_paint') {
       this._handleMuralPaint(bird, action, now);
     }
+
+    // === Pigeon Coupe (enter / exit / carjack) ===
+    if (action.type === 'coupe_enter') {
+      this._handleCoupeEnter(bird, now);
+    }
+    if (action.type === 'coupe_exit') {
+      this._handleCoupeExit(bird, now);
+    }
+    if (action.type === 'coupe_carjack') {
+      this._handleCoupeCarjack(bird, now);
+    }
     }
   }
 
@@ -1831,6 +1854,9 @@ class GameEngine {
 
     // === Golden Throne ===
     this._updateGoldenThrone(dt, now);
+
+    // === Pigeon Coupe ===
+    this._updatePigeonCoupe(dt, now);
 
     // === Thunder Dome ===
     this._tickThunderDome(now);
@@ -2835,6 +2861,16 @@ class GameEngine {
       maxSpeed *= 2.5;
     }
 
+    // Pigeon Coupe: the driver rides in style at a flat 220px/s minimum (sports car speed!)
+    if (bird.drivingCoupeId && this.pigeonCoupe && this.pigeonCoupe.driverId === bird.id) {
+      maxSpeed = Math.max(maxSpeed, 220);
+      // Track driving time for daily challenge
+      if (!bird._coupeJoyRiderTracked && now - this.pigeonCoupe.driveStartAt >= 10000) {
+        bird._coupeJoyRiderTracked = true;
+        this._trackDailyProgress(bird, 'coupe_driven', 1);
+      }
+    }
+
     // Great Migration boost: fly within 70px of a migration flock bird → +30% speed in migration direction
     if (bird.migrationBoostUntil > now) {
       maxSpeed *= 1.30;
@@ -3102,7 +3138,8 @@ class GameEngine {
     bird.wingPhase += dt * (5 + speed * 0.03);
 
     // === POOP ===
-    if (!bird.carryingEggId && bird.piperEnchantedUntil <= now && bird.input.space && now - bird.lastPoop > poopCooldown) {
+    // Block poop while driving the Pigeon Coupe (both hands on the wheel!)
+    if (!bird.carryingEggId && !bird.drivingCoupeId && bird.piperEnchantedUntil <= now && bird.input.space && now - bird.lastPoop > poopCooldown) {
       bird.lastPoop = now;
       const poopId = 'p_' + uid();
       const poop = {
@@ -6888,6 +6925,18 @@ class GameEngine {
         escaped: this.vaultTruck.escaped || false,
         myHits: (this.vaultTruck.contributors.get(bird.id) || { hits: 0 }).hits,
       } : null,
+      pigeonCoupe: this.pigeonCoupe ? {
+        x: this.pigeonCoupe.x,
+        y: this.pigeonCoupe.y,
+        angle: this.pigeonCoupe.angle,
+        driverId: this.pigeonCoupe.driverId,
+        driverName: this.pigeonCoupe.driverName,
+        driverColor: this.pigeonCoupe.driverColor,
+        carjacks: this.pigeonCoupe.carjacks,
+        maxCarjacks: 3,
+        expiresAt: this.pigeonCoupe.expiresAt,
+        spawnedAt: this.pigeonCoupe.spawnedAt,
+      } : null,
       raccoons: nearbyRaccoons,
       drunkPigeons: nearbyDrunkPigeons,
       cops: nearbyCops,
@@ -7126,6 +7175,21 @@ class GameEngine {
         // Golden Egg Scramble
         carryingEggId: bird.carryingEggId,
         eggTackleImmunityUntil: bird.eggTackleImmunityUntil,
+        // Pigeon Coupe
+        drivingCoupeId: bird.drivingCoupeId || null,
+        nearPigeonCoupe: (() => {
+          if (!this.pigeonCoupe || bird.inSewer) return false;
+          const cdx = this.pigeonCoupe.x - bird.x;
+          const cdy = this.pigeonCoupe.y - bird.y;
+          return Math.sqrt(cdx*cdx + cdy*cdy) < 100;
+        })(),
+        canCarjack: (() => {
+          if (!this.pigeonCoupe || !this.pigeonCoupe.driverId || bird.inSewer) return false;
+          if (this.pigeonCoupe.driverId === bird.id) return false;
+          const cdx = this.pigeonCoupe.x - bird.x;
+          const cdy = this.pigeonCoupe.y - bird.y;
+          return Math.sqrt(cdx*cdx + cdy*cdy) < 70;
+        })(),
         // Street Duel
         streetDuelId: bird.streetDuelId || null,
         incomingChallenge: (() => {
@@ -21867,6 +21931,319 @@ class GameEngine {
     console.log(`[GameEngine] GOLDEN THRONE claimed by ${bird.name}`);
     this.goldenThrone = null;
     this._goldenThroneTimer = now + this._randomRange(35 * 60000, 50 * 60000);
+  }
+
+  // ============================================================
+  // THE PIGEON COUPE — Session 101
+  // A driveable luxury sports car that spawns on city roads.
+  // Enter by pressing E near it (empty), or E to carjack it (occupied).
+  // After 3 carjacks OR 90 seconds, it explodes in a coin shower.
+  // ============================================================
+
+  _spawnPigeonCoupe(now) {
+    const roads = world.ROADS;
+    const road = roads[Math.floor(Math.random() * roads.length)];
+    const x = road.x + Math.random() * road.w;
+    const y = road.y + Math.random() * road.h;
+    // Random initial angle (points along road direction)
+    const angle = road.w > road.h ? 0 : Math.PI / 2;
+
+    this.pigeonCoupe = {
+      x, y, angle,
+      vx: 0, vy: 0,
+      driverId: null,
+      driverName: null,
+      driverColor: null,
+      carjacks: 0,
+      spawnedAt: now,
+      expiresAt: now + 90000, // 90 second lifetime
+      driveStartAt: 0,
+      // For the car to drift slowly when unoccupied
+      driftAngle: Math.random() * Math.PI * 2,
+    };
+
+    this.events.push({
+      type: 'coupe_spawned',
+      x, y,
+      message: `🚗 THE PIGEON COUPE just appeared on city roads! Press [E] to GET IN and ride in style!`,
+    });
+    if (this.gazetteStats) this.gazetteStats.coupeSpawned = (this.gazetteStats.coupeSpawned || 0) + 1;
+    console.log('[GameEngine] Pigeon Coupe spawned!');
+  }
+
+  _updatePigeonCoupe(dt, now) {
+    // Spawn check
+    if (!this.pigeonCoupe && now >= this._pigeonCoupeTimer && this.birds.size > 0) {
+      this._spawnPigeonCoupe(now);
+    }
+    if (!this.pigeonCoupe) return;
+    const coupe = this.pigeonCoupe;
+
+    // Expire check
+    if (now >= coupe.expiresAt) {
+      // Auto-explode when time is up
+      this._explodePigeonCoupe(now, 'timeout');
+      return;
+    }
+
+    // If occupied: coupe tracks the driver's position
+    if (coupe.driverId) {
+      const driver = this.birds.get(coupe.driverId);
+      if (!driver || driver.inSewer) {
+        // Driver disconnected or went underground — eject them
+        if (driver) {
+          driver.drivingCoupeId = null;
+          driver._coupeJoyRiderTracked = false;
+        }
+        coupe.driverId = null;
+        coupe.driverName = null;
+        coupe.driverColor = null;
+        return;
+      }
+      // Coupe sticks to driver position
+      coupe.x = driver.x;
+      coupe.y = driver.y;
+      // Compute angle from driver velocity
+      if (Math.abs(driver.vx) > 5 || Math.abs(driver.vy) > 5) {
+        coupe.angle = Math.atan2(driver.vy, driver.vx);
+      }
+
+      // Add heat to driver every 8 seconds for joyride
+      if (!coupe._lastHeatAt || now - coupe._lastHeatAt > 8000) {
+        coupe._lastHeatAt = now;
+        this._addHeat(driver.id, 12); // driving stolen car = heat
+        // Cops see the speeding vehicle — dispatch a cop if driver has any heat
+        const heat = this.heatScores.get(driver.id) || 0;
+        if (heat >= 10) {
+          this._spawnCopBird(driver.id, now, 'cop_pigeon');
+        }
+      }
+
+      // Check for carjack candidates: any bird within 70px (other than driver)
+      for (const [otherId, other] of this.birds) {
+        if (otherId === coupe.driverId) continue;
+        if (other.inSewer) continue;
+        const cdx = coupe.x - other.x;
+        const cdy = coupe.y - other.y;
+        if (Math.sqrt(cdx*cdx + cdy*cdy) < 70) {
+          // Mark them as able to carjack — they must press E
+          // (handled via coupe_carjack action)
+          // Give a visual proximity hint every tick
+          this.events.push({
+            type: 'coupe_carjack_possible',
+            birdId: otherId,
+            x: coupe.x, y: coupe.y,
+          });
+          break; // only one hint per tick
+        }
+      }
+
+    } else {
+      // Unoccupied: coupe drifts slowly in place (stays parked, slight sway)
+      // Drift angle slowly turns
+      coupe.driftAngle = (coupe.driftAngle + dt * 0.15) % (Math.PI * 2);
+    }
+  }
+
+  _handleCoupeEnter(bird, now) {
+    const coupe = this.pigeonCoupe;
+    if (!coupe) {
+      this.events.push({ type: 'coupe_fail', birdId: bird.id, reason: 'no_coupe' });
+      return;
+    }
+    if (bird.inSewer) {
+      this.events.push({ type: 'coupe_fail', birdId: bird.id, reason: 'in_sewer' });
+      return;
+    }
+    if (coupe.driverId) {
+      // Already occupied — treat as carjack attempt
+      this._handleCoupeCarjack(bird, now);
+      return;
+    }
+    // Check proximity (100px to enter empty coupe)
+    const cdx = coupe.x - bird.x;
+    const cdy = coupe.y - bird.y;
+    if (Math.sqrt(cdx*cdx + cdy*cdy) > 100) {
+      this.events.push({ type: 'coupe_fail', birdId: bird.id, reason: 'too_far' });
+      return;
+    }
+
+    // Enter the coupe!
+    coupe.driverId = bird.id;
+    coupe.driverName = bird.name;
+    coupe.driverColor = bird.color || '#ffffff';
+    coupe.driveStartAt = now;
+    bird.drivingCoupeId = coupe.spawnedAt; // use spawnedAt as a session ID
+
+    this.events.push({
+      type: 'coupe_entered',
+      birdId: bird.id,
+      birdName: bird.name,
+      gangTag: bird.gangTag || null,
+      x: coupe.x, y: coupe.y,
+      message: `🚗 ${bird.gangTag ? `[${bird.gangTag}] ` : ''}${bird.name} got in the PIGEON COUPE! Press [E] to exit. ${3 - coupe.carjacks} carjacks remain before it EXPLODES!`,
+    });
+    console.log(`[GameEngine] ${bird.name} entered the Pigeon Coupe`);
+  }
+
+  _handleCoupeExit(bird, now) {
+    const coupe = this.pigeonCoupe;
+    if (!coupe || coupe.driverId !== bird.id) return;
+
+    bird.drivingCoupeId = null;
+    bird._coupeJoyRiderTracked = false;
+    coupe.driverId = null;
+    coupe.driverName = null;
+    coupe.driverColor = null;
+
+    this.events.push({
+      type: 'coupe_exited',
+      birdId: bird.id,
+      birdName: bird.name,
+      x: coupe.x, y: coupe.y,
+    });
+  }
+
+  _handleCoupeCarjack(bird, now) {
+    const coupe = this.pigeonCoupe;
+    if (!coupe) {
+      this.events.push({ type: 'coupe_fail', birdId: bird.id, reason: 'no_coupe' });
+      return;
+    }
+    if (!coupe.driverId) {
+      // Empty coupe — just enter it
+      this._handleCoupeEnter(bird, now);
+      return;
+    }
+    if (coupe.driverId === bird.id) {
+      // Can't carjack your own car
+      this._handleCoupeExit(bird, now);
+      return;
+    }
+    // Proximity check (70px to carjack)
+    const cdx = coupe.x - bird.x;
+    const cdy = coupe.y - bird.y;
+    if (Math.sqrt(cdx*cdx + cdy*cdy) > 70) {
+      this.events.push({ type: 'coupe_fail', birdId: bird.id, reason: 'too_far' });
+      return;
+    }
+
+    const previousDriver = this.birds.get(coupe.driverId);
+    const previousDriverName = coupe.driverName;
+
+    // Eject the previous driver
+    if (previousDriver) {
+      previousDriver.drivingCoupeId = null;
+      previousDriver._coupeJoyRiderTracked = false;
+      // Punish the ejected driver: brief stun + heat
+      previousDriver.stunUntil = now + 1500;
+      this._addHeat(previousDriver.id, 5);
+    }
+
+    // New driver takes over
+    coupe.driverId = bird.id;
+    coupe.driverName = bird.name;
+    coupe.driverColor = bird.color || '#ffffff';
+    coupe.driveStartAt = now;
+    coupe.carjacks++;
+    bird.drivingCoupeId = coupe.spawnedAt;
+    bird._coupeJoyRiderTracked = false;
+
+    // Big heat for carjacking
+    this._addHeat(bird.id, 20);
+
+    // Daily challenge tracking
+    this._trackDailyProgress(bird, 'coupe_carjacked', 1);
+
+    // XP + coins for the heist
+    bird.xp += 80;
+    bird.coins += 30;
+
+    this.events.push({
+      type: 'coupe_carjacked',
+      birdId: bird.id,
+      birdName: bird.name,
+      gangTag: bird.gangTag || null,
+      prevDriverName: previousDriverName,
+      carjacks: coupe.carjacks,
+      maxCarjacks: 3,
+      x: coupe.x, y: coupe.y,
+      message: `🚨 ${bird.gangTag ? `[${bird.gangTag}] ` : ''}${bird.name} CARJACKED THE PIGEON COUPE from ${previousDriverName}! (${coupe.carjacks}/3 carjacks — explodes at 3!)`,
+    });
+
+    // If reached 3 carjacks → EXPLODE
+    if (coupe.carjacks >= 3) {
+      setTimeout(() => this._explodePigeonCoupe(Date.now(), 'carjacks'), 500);
+    }
+
+    console.log(`[GameEngine] ${bird.name} carjacked the Pigeon Coupe (${coupe.carjacks}/3 carjacks)`);
+  }
+
+  _explodePigeonCoupe(now, reason) {
+    const coupe = this.pigeonCoupe;
+    if (!coupe) return;
+
+    const cx = coupe.x;
+    const cy = coupe.y;
+
+    // Eject driver cleanly
+    if (coupe.driverId) {
+      const driver = this.birds.get(coupe.driverId);
+      if (driver) {
+        driver.drivingCoupeId = null;
+        driver._coupeJoyRiderTracked = false;
+        // Explosion stuns driver briefly
+        driver.stunUntil = now + 1000;
+      }
+    }
+
+    // Coin shower — scatter 300-600 coins to nearby birds proportionally
+    const EXPLOSION_RADIUS = 300;
+    const BASE_COINS = 300 + coupe.carjacks * 50; // more carjacks = bigger explosion
+    let nearbyBirds = [];
+    for (const b of this.birds.values()) {
+      if (b.inSewer) continue;
+      const edx = b.x - cx;
+      const edy = b.y - cy;
+      const dist = Math.sqrt(edx*edx + edy*edy);
+      if (dist < EXPLOSION_RADIUS) {
+        nearbyBirds.push({ bird: b, dist });
+      }
+    }
+
+    if (nearbyBirds.length > 0) {
+      const sharePerBird = Math.floor(BASE_COINS / nearbyBirds.length);
+      for (const { bird } of nearbyBirds) {
+        const share = Math.max(sharePerBird, 20);
+        bird.coins += share;
+        bird.xp += 40;
+        this.events.push({
+          type: 'coupe_explosion_reward',
+          birdId: bird.id,
+          coins: share,
+          x: cx, y: cy,
+        });
+      }
+    }
+
+    const reasonMsg = reason === 'carjacks'
+      ? `3 CARJACKS — EXPLOSIVE OVERLOAD!`
+      : `90 SECONDS — EXPIRED!`;
+
+    this.events.push({
+      type: 'coupe_exploded',
+      x: cx, y: cy,
+      reason,
+      carjacks: coupe.carjacks,
+      nearbyCount: nearbyBirds.length,
+      message: `💥🚗 THE PIGEON COUPE EXPLODED! ${reasonMsg} Coins scattered to ${nearbyBirds.length} nearby birds!`,
+    });
+
+    if (this.gazetteStats) this.gazetteStats.coupeExploded = (this.gazetteStats.coupeExploded || 0) + 1;
+
+    this.pigeonCoupe = null;
+    this._pigeonCoupeTimer = now + this._randomRange(20 * 60000, 30 * 60000);
+    console.log(`[GameEngine] Pigeon Coupe exploded (${reason})!`);
   }
 
 }
