@@ -4261,6 +4261,67 @@
       }
     }
 
+// === SUSPICIOUS PACKAGE EVENTS ===
+    if (ev.type === 'package_spawned') {
+      effects.push({ type: 'screen_shake', intensity: 10, duration: 700, time: now });
+      showAnnouncement(
+        `\uD83D\uDCA3 SUSPICIOUS PACKAGE SPOTTED!\nPOOP IT 10 TIMES to defuse it!\nIf it EXPLODES — everyone nearby gets FLUNG!\n(Chain reactions: casino scatter · nest damage · vault crack)`,
+        '#ff4400', 8000
+      );
+      addEventMessage(ev.message || '\uD83D\uDCA3 SUSPICIOUS PACKAGE spotted! Poop it 10\u00D7 to defuse!', '#ff6600');
+    }
+    if (ev.type === 'package_hit') {
+      if (ev.birdId === myId) {
+        effects.push({ type: 'text', x: ev.x, y: ev.y - 22, time: now, duration: 900,
+          text: `\uD83D\uDCA3 ${ev.defuseHits}/${ev.maxDefuseHits}`, color: '#00ccff', size: 13 });
+      }
+    }
+    if (ev.type === 'package_cops_dispatched') {
+      addEventMessage('\uD83D\uDEA8 Cops dispatched to the suspicious package! Working up heat for defusers!', '#ffaa44');
+    }
+    if (ev.type === 'package_urgent') {
+      const secsLeft = Math.ceil((ev.timeLeft || 0) / 1000);
+      effects.push({ type: 'screen_shake', intensity: 8, duration: 600, time: now });
+      showAnnouncement(`\u26A0\uFE0F\uD83D\uDCA3 PACKAGE ABOUT TO EXPLODE!\n${secsLeft}s LEFT — FLY TO IT AND POOP!`, '#ff2200', 5000);
+      addEventMessage(`\u26A0\uFE0F PACKAGE URGENT! ${secsLeft}s left to defuse!`, '#ff3300');
+    }
+    if (ev.type === 'package_defused') {
+      effects.push({ type: 'screen_shake', intensity: 14, duration: 800, time: now });
+      const heroCount = ev.rewards ? ev.rewards.length : 0;
+      const topName = ev.topName || '???';
+      const topReward = ev.rewards && ev.rewards.length > 0 ? ev.rewards[0] : null;
+      showAnnouncement(
+        `\u2705 PACKAGE DEFUSED!\n${heroCount} brave bird${heroCount !== 1 ? 's' : ''} neutralised the threat!\nTop defuser: ${topName}${topReward ? ` (+${topReward.xp}XP +${topReward.coins}c)` : ''}`,
+        '#44ff88', 7000
+      );
+      addEventMessage(ev.message || `\u2705 SUSPICIOUS PACKAGE DEFUSED! City saved! ${heroCount} defusers rewarded.`, '#44ff88');
+    }
+    if (ev.type === 'package_exploded') {
+      effects.push({ type: 'screen_shake', intensity: 22, duration: 1200, time: now });
+      const flungCount = ev.blasted ? ev.blasted.length : 0;
+      let chainStr = '';
+      if (ev.casinoChain) chainStr += ' \uD83C\uDFB0Casino scatter!';
+      if (ev.nestChains && ev.nestChains.length > 0) {
+        const tag = ev.nestChains[0].gangTag;
+        chainStr += ` \uD83C\uDFE0${tag ? '[' + tag + '] ' : ''}Nest hit!`;
+      }
+      if (ev.vaultChain) chainStr += ' \uD83D\uDCBCVault cracked!';
+      showAnnouncement(
+        `\uD83D\uDCA5 PACKAGE EXPLODED!\n${flungCount > 0 ? flungCount + ' bird' + (flungCount !== 1 ? 's' : '') + ' FLUNG across the city!' : 'Nobody was nearby.'}${chainStr ? '\n' + chainStr : ''}`,
+        '#ff2200', 9000
+      );
+      addEventMessage(ev.message || `\uD83D\uDCA5 BOOM! Suspicious Package exploded! ${flungCount} birds flung.${chainStr}`, '#ff3300');
+      // Full-screen flash
+      effects.push({ type: 'flash', color: 'rgba(255,220,100,0.35)', duration: 400, time: now });
+      // Personal blast announcement if this bird was in the blast radius
+      if (ev.blasted) {
+        const me = ev.blasted.find(b => b.birdId === myId);
+        if (me) {
+          showAnnouncement(`\uD83D\uDCA5 YOU WERE CAUGHT IN THE BLAST!\nFlung ${me.dist}px away · \u22121${me.coinLoss}c`, '#ff4400', 4000);
+        }
+      }
+    }
+
 // === BIRD CITY GAZETTE ===
     if (ev.type === 'gazette_edition') {
       showGazette(ev);
@@ -8593,6 +8654,18 @@
       }
     }
 
+    // === SUSPICIOUS PACKAGE ===
+    if (gameState.suspiciousPackage) {
+      const pkg = gameState.suspiciousPackage;
+      const pkgsx = pkg.x - camera.x + camera.screenW / 2;
+      const pkgsy = pkg.y - camera.y + camera.screenH / 2;
+      if (pkgsx > -margin - 60 && pkgsx < camera.screenW + margin + 60 &&
+          pkgsy > -margin - 60 && pkgsy < camera.screenH + margin + 60) {
+        Sprites.drawSuspiciousPackage(ctx, pkgsx, pkgsy,
+          pkg.defuseHits, pkg.maxDefuseHits, pkg.timeLeft, pkg.maxTime || 90000, now);
+      }
+    }
+
     // The Pigeon Mafia Don — permanent NPC at his corner
     {
       const DON_WORLD_X = 1300, DON_WORLD_Y = 2380;
@@ -9740,6 +9813,84 @@
       ctx.restore();
     }
 
+    // === SUSPICIOUS PACKAGE HUD BAR ===
+    if (gameState.suspiciousPackage) {
+      const pkg = gameState.suspiciousPackage;
+      const pkgTimeLeft = Math.max(0, pkg.timeLeft);
+      const pkgMaxTime = pkg.maxTime || 90000;
+      const pkgFrac = pkgTimeLeft / pkgMaxTime;
+      const pkgDefuseFrac = pkg.defuseHits / pkg.maxDefuseHits;
+      const pkgMyHits = pkg.myHits || 0;
+      const pkgSecsLeft = Math.ceil(pkgTimeLeft / 1000);
+
+      const pkgUrgency = pkgFrac < 0.25; // under 25% of time left
+      const pkgPulse = 0.6 + 0.4 * Math.abs(Math.sin(now * (pkgUrgency ? 0.018 : 0.006)));
+
+      // Red tint screen overlay when urgent
+      if (pkgUrgency) {
+        ctx.save();
+        ctx.globalAlpha = 0.04 * pkgPulse;
+        ctx.fillStyle = '#ff2200';
+        ctx.fillRect(0, 0, camera.screenW, camera.screenH);
+        ctx.globalAlpha = 1;
+        ctx.restore();
+      }
+
+      // Stack below crime wave, seagull, migration, vault, stampede
+      const hasCrimeWavePKG = gameState.self && gameState.self.crimeWave;
+      const hasSeagullPKG = gameState.seagullInvasion;
+      const hasMigrationPKG = gameState.migration;
+      const hasVaultPKG = gameState.vaultTruck && !gameState.vaultTruck.cracked && !gameState.vaultTruck.escaped;
+      const hasStampedePKG = gameState.stampede;
+      let pkgBarY = 132;
+      if (hasCrimeWavePKG) pkgBarY += 43;
+      if (hasSeagullPKG) pkgBarY += 43;
+      if (hasMigrationPKG) pkgBarY += 43;
+      if (hasVaultPKG) pkgBarY += 43;
+      if (hasStampedePKG) pkgBarY += 43;
+
+      const pkgBarW = 220, pkgBarH = 12;
+      const pkgBarX = camera.screenW / 2 - pkgBarW / 2;
+
+      ctx.save();
+      ctx.globalAlpha = 0.93;
+      ctx.fillStyle = 'rgba(0,0,0,0.72)';
+      ctx.beginPath();
+      ctx.roundRect(pkgBarX - 60, pkgBarY - 18, pkgBarW + 120, pkgBarH + 32, 10);
+      ctx.fill();
+
+      const pkgLabelPulse = pkgUrgency ? (0.7 + 0.3 * Math.sin(now * 0.018)) : 0.85;
+      ctx.globalAlpha = pkgLabelPulse;
+      ctx.fillStyle = pkgUrgency ? '#ff3300' : '#ff8800';
+      ctx.font = 'bold 11px Arial';
+      ctx.textAlign = 'center';
+      const pkgHitsStr = pkgMyHits > 0 ? ` · MY HITS: ${pkgMyHits}` : '';
+      ctx.fillText(`\uD83D\uDCA3 PACKAGE — ${pkg.defuseHits}/${pkg.maxDefuseHits} DEFUSED · FUSE: ${pkgSecsLeft}s${pkgHitsStr}`, camera.screenW / 2, pkgBarY - 4);
+
+      // Red fuse countdown bar
+      ctx.globalAlpha = 0.85;
+      ctx.fillStyle = 'rgba(80,0,0,0.55)';
+      ctx.beginPath();
+      ctx.roundRect(pkgBarX, pkgBarY + 2, pkgBarW, pkgBarH, 4);
+      ctx.fill();
+
+      const pkgFuseColor = pkgFrac > 0.5 ? '#ff8800' : pkgFrac > 0.25 ? '#ff4400' : '#ff1100';
+      ctx.fillStyle = pkgFuseColor;
+      ctx.beginPath();
+      ctx.roundRect(pkgBarX, pkgBarY + 2, pkgBarW * pkgFrac, pkgBarH, 4);
+      ctx.fill();
+
+      // Cyan defuse progress overlay on top
+      ctx.globalAlpha = 0.6;
+      ctx.fillStyle = '#00ccff';
+      ctx.beginPath();
+      ctx.roundRect(pkgBarX, pkgBarY + 2, pkgBarW * pkgDefuseFrac, pkgBarH, 4);
+      ctx.fill();
+
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+
     // === CRIME WAVE OVERLAY ===
     if (gameState.self && gameState.self.crimeWave) {
       const cw = gameState.self.crimeWave;
@@ -10699,6 +10850,46 @@
       }
     }
 
+    // === SUSPICIOUS PACKAGE — off-screen direction arrow ===
+    if (gameState.suspiciousPackage) {
+      const pkg = gameState.suspiciousPackage;
+      const pkgsx = pkg.x - camera.x + camera.screenW / 2;
+      const pkgsy = pkg.y - camera.y + camera.screenH / 2;
+      const pkgOnScreen = pkgsx > 50 && pkgsx < camera.screenW - 50 && pkgsy > 50 && pkgsy < camera.screenH - 50;
+      if (!pkgOnScreen) {
+        const pkgAngle = Math.atan2(pkgsy - camera.screenH / 2, pkgsx - camera.screenW / 2);
+        const pkgArrowDist = Math.min(camera.screenW, camera.screenH) / 2 - 60;
+        const pkgAx = camera.screenW / 2 + Math.cos(pkgAngle) * pkgArrowDist;
+        const pkgAy = camera.screenH / 2 + Math.sin(pkgAngle) * pkgArrowDist;
+        const pkgUrgencyFrac = 1 - Math.max(0, pkg.timeLeft / (pkg.maxTime || 90000));
+        const pkgPulse = 0.7 + 0.3 * Math.sin(now * (0.006 + pkgUrgencyFrac * 0.016));
+        ctx.save();
+        ctx.translate(pkgAx, pkgAy);
+        ctx.rotate(pkgAngle);
+        ctx.globalAlpha = 0.9 * pkgPulse;
+        ctx.fillStyle = pkgUrgencyFrac > 0.7 ? '#ff2200' : '#ff6600';
+        ctx.shadowColor = '#ff3300';
+        ctx.shadowBlur = 10 + pkgUrgencyFrac * 8;
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(22, 0);
+        ctx.lineTo(-10, -10);
+        ctx.lineTo(-5, 0);
+        ctx.lineTo(-10, 10);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 10px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('\uD83D\uDCA3', 4, 0);
+        ctx.restore();
+      }
+    }
+
     // Announcements (screen-space)
     drawAnnouncements(ctx, now);
 
@@ -11038,6 +11229,29 @@
       minimapCtx.font = 'bold 7px monospace';
       minimapCtx.textAlign = 'right';
       minimapCtx.fillText(`🐦 ${gameState.stampede.aliveCount}/${gameState.stampede.totalCount}`, mw - 3, mh - 3);
+    }
+
+    // Suspicious Package on minimap — pulsing red 💣 bomb dot
+    if (gameState.suspiciousPackage && worldData) {
+      const pkg = gameState.suspiciousPackage;
+      const mw = minimapCtx.canvas.width;
+      const mh = minimapCtx.canvas.height;
+      const pmx = pkg.x * mw / worldData.width;
+      const pmy = pkg.y * mh / worldData.height;
+      const pkgUrgencyFrac = 1 - Math.max(0, pkg.timeLeft / (pkg.maxTime || 90000));
+      const pkgPulse = 0.55 + 0.45 * Math.sin(now_mm * (0.006 + pkgUrgencyFrac * 0.018));
+      minimapCtx.save();
+      minimapCtx.shadowColor = '#ff3300';
+      minimapCtx.shadowBlur = 8 + 5 * pkgPulse;
+      minimapCtx.fillStyle = `rgba(255, ${Math.floor(80 - 60 * pkgUrgencyFrac)}, 0, ${0.8 + 0.2 * pkgPulse})`;
+      minimapCtx.beginPath();
+      minimapCtx.arc(pmx, pmy, 4 + pkgPulse * 2, 0, Math.PI * 2);
+      minimapCtx.fill();
+      minimapCtx.shadowBlur = 0;
+      minimapCtx.font = '8px sans-serif';
+      minimapCtx.textAlign = 'center';
+      minimapCtx.fillText('\uD83D\uDCA3', pmx, pmy - 6);
+      minimapCtx.restore();
     }
 
     // Blood Moon feral birds on minimap — pulsing red skull dots
@@ -13146,6 +13360,21 @@
           html += `<div class="bm-buff-pill" style="background:rgba(80,30,0,0.9);border-color:#ff6633;color:#ffaa66;font-weight:bold;animation:kingpinGlow 0.6s ease-in-out infinite alternate;cursor:pointer;" onclick="socket.emit('action',{type:'accept_rematch'})">🔄 REMATCH vs ${rm.opponentName}? Press [Y] · ${secsLeft}s</div>`;
         }
       }
+    }
+
+    // === SUSPICIOUS PACKAGE pill ===
+    if (gameState.suspiciousPackage) {
+      const pkg = gameState.suspiciousPackage;
+      const pkgSecsLeft = Math.ceil(Math.max(0, pkg.timeLeft) / 1000);
+      const pkgUrgencyFrac = 1 - Math.max(0, pkg.timeLeft / (pkg.maxTime || 90000));
+      const myHits = pkg.myHits || 0;
+      const hitsLeft = pkg.maxDefuseHits - pkg.defuseHits;
+      const bgColor = pkgUrgencyFrac > 0.7 ? 'rgba(100,0,0,0.95)' : 'rgba(80,20,0,0.9)';
+      const borderColor = pkgUrgencyFrac > 0.7 ? '#ff2200' : '#ff6600';
+      const textColor = pkgUrgencyFrac > 0.7 ? '#ff5500' : '#ff9933';
+      const anim = pkgUrgencyFrac > 0.7 ? 'animation:pulseRed 0.35s infinite alternate;' : 'animation:kingpinGlow 0.7s ease-in-out infinite alternate;';
+      const hitsStr = myHits > 0 ? ` · MY HITS: ${myHits}` : '';
+      html += `<div class="bm-buff-pill" style="background:${bgColor};border-color:${borderColor};color:${textColor};font-weight:bold;${anim}">\uD83D\uDCA3 PACKAGE — ${hitsLeft} hits to defuse · ${pkgSecsLeft}s FUSE${hitsStr} · POOP IT!</div>`;
     }
 
     // === GOLDEN RAMPAGE (Session 96) pills ===

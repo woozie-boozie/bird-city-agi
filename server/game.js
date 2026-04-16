@@ -140,6 +140,9 @@ const DAILY_CHALLENGE_POOL = [
   // Session 98: Pigeon Stampede challenges
   { id: 'stampede_hunter', title: 'Stampede Hunter', desc: 'Hit 15 stampede birds during a Pigeon Stampede',              target: 15, trackType: 'stampede_hit',    reward: { xp: 190, coins: 95  } },
   { id: 'stampede_king',   title: 'Stampede King',   desc: 'Be the top scorer in a Pigeon Stampede',                      target: 1,  trackType: 'stampede_champ',  reward: { xp: 280, coins: 140 } },
+  // Session 99: Suspicious Package challenges
+  { id: 'bomb_defuser',   title: 'Bomb Defuser',    desc: 'Land 3 hits on a Suspicious Package to help defuse it',       target: 3,  trackType: 'package_hit',     reward: { xp: 160, coins: 80  } },
+  { id: 'blast_survivor', title: 'Blast Zone',      desc: 'Survive being caught in a Suspicious Package explosion',       target: 1,  trackType: 'blast_survived',  reward: { xp: 120, coins: 60  } },
 ];
 
 // ============================================================
@@ -740,6 +743,14 @@ class GameEngine {
     this.stampede = null; // null | { birds: Map, startedAt, endsAt, dirAngle, hits: Map, totalCount, championGiven }
     this._stampedeTimer = Date.now() + this._randomRange(18 * 60000, 25 * 60000);
     this._stampedeIdCounter = 0;
+
+    // === SUSPICIOUS PACKAGE ===
+    // Every 20-30 minutes, a suspicious package spawns at a random city location.
+    // It has a 90-second fuse. Birds poop on it (10 hits) to defuse it for big rewards.
+    // If it detonates: 250px explosion flings all nearby birds, loses coins, chain reactions.
+    // Chain reactions: casino jackpot scatter, gang nest damage, vault truck instant crack.
+    this.suspiciousPackage = null; // null | { x, y, timeLeft, defuseHits, maxDefuseHits, contributors: Map, spawnedAt, copDeployed }
+    this._suspiciousPackageTimer = Date.now() + this._randomRange(20 * 60000, 30 * 60000);
 
     // === CHERRY BLOSSOMS SPRING FESTIVAL ===
     // Active every April — the park fills with pink mochi treats.
@@ -1823,6 +1834,9 @@ class GameEngine {
 
     // === Pigeon Fighting Championship ===
     this._tickTournament(now);
+
+    // === Suspicious Package ===
+    this._tickSuspiciousPackage(dt, now);
   }
 
   // ============================================================
@@ -3720,6 +3734,21 @@ class GameEngine {
           // First hit — bird flails (visual event)
           this.events.push({ type: 'stampede_bird_hit', birdId: bird.id, x: sb.x, y: sb.y });
         }
+      } else if (hit.target === 'suspicious_package' && this.suspiciousPackage) {
+        // Poop hit the Suspicious Package — defuse it before it explodes!
+        const pkg = this.suspiciousPackage;
+        const dmg = isMegaPoop ? 3 : 1; // mega poop counts as 3 defuse hits
+        pkg.defuseHits = Math.min(pkg.maxDefuseHits, pkg.defuseHits + dmg);
+        const prev = pkg.contributors.get(bird.id) || 0;
+        pkg.contributors.set(bird.id, prev + dmg);
+        xpGain = isMegaPoop ? 20 : 8;
+        coinGain = isMegaPoop ? 8 : 3;
+        this._trackDailyProgress(bird, 'package_hit', 1);
+        this.events.push({ type: 'package_hit', birdId: bird.id, birdName: bird.name, gangTag: bird.gangTag || null, defuseHits: pkg.defuseHits, maxDefuseHits: pkg.maxDefuseHits, x: pkg.x, y: pkg.y });
+        // Fully defused!
+        if (pkg.defuseHits >= pkg.maxDefuseHits) {
+          this._defuseSuspiciousPackage(now);
+        }
       } else if (hit.target === 'migration_alpha' && this.migration && this.migration.alpha && this.migration.alpha.hp > 0) {
         // Intercepted the Migration Alpha Leader! Contribute to bringing it down.
         const alpha = this.migration.alpha;
@@ -4899,6 +4928,17 @@ class GameEngine {
           if (!isMegaPoop) return { target: 'stampede_bird', stampedeBird: sb };
           allHits.push({ target: 'stampede_bird', stampedeBird: sb });
         }
+      }
+    }
+
+    // Check Suspicious Package (poop it to defuse before the 90s fuse runs out!)
+    if (this.suspiciousPackage) {
+      const pkg = this.suspiciousPackage;
+      const pkgdx = poop.x - pkg.x;
+      const pkgdy = poop.y - pkg.y;
+      if (Math.sqrt(pkgdx * pkgdx + pkgdy * pkgdy) < hitRadius + 22) {
+        if (!isMegaPoop) return { target: 'suspicious_package' };
+        allHits.push({ target: 'suspicious_package' });
       }
     }
 
@@ -7725,6 +7765,16 @@ class GameEngine {
           hp: this.migration.alpha.hp,
           maxHp: this.migration.alpha.maxHp,
         } : null,
+      } : null,
+      // Suspicious Package
+      suspiciousPackage: this.suspiciousPackage ? {
+        x: this.suspiciousPackage.x,
+        y: this.suspiciousPackage.y,
+        timeLeft: this.suspiciousPackage.timeLeft,
+        maxTime: this.suspiciousPackage.maxTime,
+        defuseHits: this.suspiciousPackage.defuseHits,
+        maxDefuseHits: this.suspiciousPackage.maxDefuseHits,
+        myHits: this.suspiciousPackage.contributors.get(bird.id) || 0,
       } : null,
       // Golden Rampage
       // Pigeon Stampede
@@ -15644,6 +15694,21 @@ class GameEngine {
       }
     }
 
+    // Suspicious Package
+    if (stats.packageExploded > 0) {
+      headlines.push({
+        icon: '💥',
+        headline: `BOMB EXPLODES IN BIRD CITY — BIRDS SENT FLYING`,
+        subline: `Witnesses report chaos and feathers. Police ask "who ordered the suspicious package?" Nobody answers.`,
+      });
+    } else if (stats.packageDefused > 0) {
+      headlines.push({
+        icon: '💣',
+        headline: `BOMB SQUAD HEROES — SUSPICIOUS PACKAGE DEFUSED`,
+        subline: `City breathes sigh of relief. "We're calling it a team effort," says every bird who fired one poop.`,
+      });
+    }
+
     // Default headline if nothing notable happened
     if (headlines.length === 0) {
       headlines.push({
@@ -21247,6 +21312,234 @@ class GameEngine {
     this.stampede = null;
     this._stampedeTimer = now + this._randomRange(18 * 60000, 25 * 60000);
     console.log(`[GameEngine] PIGEON STAMPEDE ended (${reason})`);
+  }
+
+  // ============================================================
+  // SUSPICIOUS PACKAGE — ticking time bomb with defuse mechanic
+  // ============================================================
+  _tickSuspiciousPackage(dt, now) {
+    // Spawn timer
+    if (!this.suspiciousPackage && now >= this._suspiciousPackageTimer && this.birds.size > 0) {
+      this._spawnSuspiciousPackage(now);
+    }
+
+    if (!this.suspiciousPackage) return;
+    const pkg = this.suspiciousPackage;
+
+    // Count down the fuse
+    pkg.timeLeft -= dt;
+
+    // Deploy 2 cop pigeons 20 seconds after spawn (bomb squad response)
+    if (!pkg.copDeployed && now - pkg.spawnedAt > 20000) {
+      pkg.copDeployed = true;
+      // Spawn 2 cops approaching the package from different angles
+      for (let i = 0; i < 2; i++) {
+        const angle = (i * Math.PI) + Math.random() * 0.8;
+        const dist = 450 + Math.random() * 200;
+        const cx = Math.max(50, Math.min(2950, pkg.x + Math.cos(angle) * dist));
+        const cy = Math.max(50, Math.min(2950, pkg.y + Math.sin(angle) * dist));
+        this.copBirds.push({ x: cx, y: cy, vx: 0, vy: 0, speed: 110, target: null, state: 'patrol', arrestCooldown: 0, lastArrestAt: 0, isSwat: false, stunUntil: 0, fogWanderAngle: Math.random() * Math.PI * 2 });
+      }
+      this.events.push({ type: 'package_cops_dispatched' });
+    }
+
+    // Urgent warning at 20 seconds
+    if (pkg.timeLeft <= 20000 && !pkg.urgentWarned) {
+      pkg.urgentWarned = true;
+      this.events.push({ type: 'package_urgent', timeLeft: pkg.timeLeft, x: pkg.x, y: pkg.y });
+    }
+
+    // BOOM — fuse runs out
+    if (pkg.timeLeft <= 0) {
+      this._explodeSuspiciousPackage(now);
+    }
+  }
+
+  _spawnSuspiciousPackage(now) {
+    const WORLD_W = 3000, WORLD_H = 3000;
+    // 12 good spawn positions spread across the city — avoid predator territories
+    const positions = [
+      { x: 1200, y: 800 },  // Park north
+      { x: 500,  y: 550 },  // Residential square
+      { x: 2450, y: 750 },  // Mall approach
+      { x: 320,  y: 1600 }, // West road
+      { x: 1700, y: 1650 }, // Midtown
+      { x: 2650, y: 1500 }, // East corridor
+      { x: 800,  y: 2100 }, // South residential
+      { x: 1500, y: 2450 }, // Docks north
+      { x: 2250, y: 2350 }, // Southeast
+      { x: 1050, y: 1500 }, // Park south
+      { x: 1900, y: 400 },  // North corridor
+      { x: 700,  y: 1100 }, // West park edge
+    ];
+    const pos = positions[Math.floor(Math.random() * positions.length)];
+
+    this.suspiciousPackage = {
+      x: pos.x,
+      y: pos.y,
+      timeLeft: 90000,   // 90 second fuse
+      maxTime: 90000,
+      defuseHits: 0,
+      maxDefuseHits: 10,
+      contributors: new Map(), // birdId -> hit count
+      spawnedAt: now,
+      copDeployed: false,
+      urgentWarned: false,
+    };
+
+    if (this.gazetteStats) this.gazetteStats.packageSpawned = (this.gazetteStats.packageSpawned || 0) + 1;
+
+    this.events.push({
+      type: 'package_spawned',
+      x: pos.x, y: pos.y,
+      message: '💣 A SUSPICIOUS PACKAGE spotted in Bird City! POOP it 10 times to DEFUSE it!',
+    });
+    console.log(`[GameEngine] SUSPICIOUS PACKAGE spawned at (${pos.x}, ${pos.y})`);
+  }
+
+  _defuseSuspiciousPackage(now) {
+    const pkg = this.suspiciousPackage;
+    if (!pkg) return;
+
+    // Calculate proportional rewards for defusers
+    const totalHits = pkg.defuseHits;
+    const entries = Array.from(pkg.contributors.entries());
+    entries.sort((a, b) => b[1] - a[1]); // sort by hits descending (top contributor first)
+
+    const rewards = [];
+    for (const [birdId, hits] of entries) {
+      const bird = this.birds.get(birdId);
+      if (!bird) continue;
+      const share = hits / totalHits;
+      const xpReward = Math.floor(80 + 320 * share);  // 80-400 XP
+      const coinReward = Math.floor(30 + 220 * share); // 30-250c
+      bird.xp += xpReward;
+      bird.coins += coinReward;
+      this._checkLevelUp(bird);
+      rewards.push({ name: bird.name, gangTag: bird.gangTag || null, xp: xpReward, coins: coinReward });
+    }
+
+    // Civilian bonus: all online birds not involved still earn a small reward
+    for (const [birdId, bird] of this.birds) {
+      if (!pkg.contributors.has(birdId)) {
+        bird.xp += 30;
+        bird.coins += 10;
+      }
+    }
+
+    if (this.gazetteStats) this.gazetteStats.packageDefused = (this.gazetteStats.packageDefused || 0) + 1;
+
+    this.events.push({
+      type: 'package_defused',
+      x: pkg.x, y: pkg.y,
+      rewards,
+      topName: entries.length > 0 ? (this.birds.get(entries[0][0]) || { name: '???' }).name : '???',
+      message: `💣✅ PACKAGE DEFUSED! The city is safe! ${rewards.map(r => `${r.name} +${r.xp}XP +${r.coins}c`).join(', ')}`,
+    });
+
+    this.suspiciousPackage = null;
+    this._suspiciousPackageTimer = now + this._randomRange(20 * 60000, 30 * 60000);
+    console.log(`[GameEngine] SUSPICIOUS PACKAGE defused`);
+  }
+
+  _explodeSuspiciousPackage(now) {
+    const pkg = this.suspiciousPackage;
+    if (!pkg) return;
+
+    const BLAST_RADIUS = 250;
+    const WORLD_W = 3000, WORLD_H = 3000;
+
+    const blasted = [];
+    for (const [birdId, bird] of this.birds) {
+      if (bird.underground) continue; // sewer birds are safe!
+      const dx = bird.x - pkg.x;
+      const dy = bird.y - pkg.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < BLAST_RADIUS) {
+        // Fling the bird away from the explosion
+        const angle = Math.atan2(dy, dx);
+        const flingDist = 280 + Math.random() * 200;
+        bird.x = Math.max(50, Math.min(WORLD_W - 50, bird.x + Math.cos(angle) * flingDist));
+        bird.y = Math.max(50, Math.min(WORLD_H - 50, bird.y + Math.sin(angle) * flingDist));
+        bird.vx = Math.cos(angle) * 280;
+        bird.vy = Math.sin(angle) * 280;
+
+        // Lose coins (12%, max 120c)
+        const coinLoss = Math.min(120, Math.floor((bird.coins || 0) * 0.12));
+        bird.coins = Math.max(0, (bird.coins || 0) - coinLoss);
+
+        // Lose food
+        bird.food = Math.max(0, (bird.food || 0) - 18);
+
+        // Wipe combo streak
+        bird.comboCount = 0;
+        bird.comboStreakXpMult = 1;
+
+        // Stun briefly
+        bird.stunUntil = now + 1800;
+
+        this._trackDailyProgress(bird, 'blast_survived', 1);
+        blasted.push({ birdId, name: bird.name, gangTag: bird.gangTag || null, coinLoss, dist: Math.floor(dist) });
+      }
+    }
+
+    // Chain reaction: Casino jackpot scatter if explosion near casino (x:2100, y:1200)
+    const CASINO_X = 2100, CASINO_Y = 1200;
+    const casinoDist = Math.hypot(pkg.x - CASINO_X, pkg.y - CASINO_Y);
+    let casinoChain = false;
+    if (casinoDist < 220) {
+      casinoChain = true;
+      // Scatter random coins to all online birds (50-150c each)
+      for (const bird of this.birds.values()) {
+        const scatter = 50 + Math.floor(Math.random() * 100);
+        bird.coins += scatter;
+      }
+    }
+
+    // Chain reaction: Gang Nest damage if near any active nest
+    const nestChains = [];
+    if (this.gangNests) {
+      for (const [gangId, nest] of this.gangNests) {
+        if (nest && nest.hp > 0) {
+          const nd = Math.hypot(pkg.x - nest.x, pkg.y - nest.y);
+          if (nd < 220) {
+            nest.hp = Math.max(0, nest.hp - 35);
+            if (nest.hp <= 0) nest.destroyedAt = now;
+            nestChains.push({ gangId, gangTag: nest.gangTag || '???', hp: nest.hp });
+            this.events.push({ type: 'nest_hit', gangId, hp: nest.hp });
+          }
+        }
+      }
+    }
+
+    // Chain reaction: Vault Truck instant crack if near it
+    let vaultChain = false;
+    if (this.vaultTruck && this.vaultTruck.hp > 0 && !this.vaultTruck.cracked) {
+      const vd = Math.hypot(pkg.x - this.vaultTruck.x, pkg.y - this.vaultTruck.y);
+      if (vd < 220) {
+        vaultChain = true;
+        this.vaultTruck.hp = 0;
+        this._crackVaultTruck(this.vaultTruck, now);
+      }
+    }
+
+    if (this.gazetteStats) this.gazetteStats.packageExploded = (this.gazetteStats.packageExploded || 0) + 1;
+
+    this.events.push({
+      type: 'package_exploded',
+      x: pkg.x, y: pkg.y,
+      blasted,
+      casinoChain,
+      nestChains,
+      vaultChain,
+      message: blasted.length > 0
+        ? `💥 PACKAGE DETONATED! ${blasted.length} bird${blasted.length !== 1 ? 's' : ''} caught in the blast!${casinoChain ? ' 🎰 CASINO JACKPOT SCATTER!' : ''}${vaultChain ? ' 🔐 VAULT CRACKED BY BLAST!' : ''}`
+        : `💥 THE PACKAGE EXPLODED! No birds were caught in the blast.${casinoChain ? ' 🎰 CASINO JACKPOT SCATTER!' : ''}`,
+    });
+
+    this.suspiciousPackage = null;
+    this._suspiciousPackageTimer = now + this._randomRange(20 * 60000, 30 * 60000);
+    console.log(`[GameEngine] SUSPICIOUS PACKAGE exploded — ${blasted.length} birds blasted`);
   }
 
 }

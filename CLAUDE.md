@@ -3385,6 +3385,38 @@ Every 18-25 minutes, 35-45 panicked urban pigeons stampede across the city in a 
 
 **Creative intent**: Bird City has lots of precision/skill events (duels, races, arena) and lots of cooperative events (heists, sieges, migration). The stampede is pure CHAOTIC QUANTITY — 40+ panicked birds charging across the screen all at once, and you need to fire as fast as possible into the chaos. There's no strategy, no coordination required, no teams — just you, your poop, and a wall of terrified pigeons. The `drawStampedeBird()` sprite design captures the essence: wide eyes, open beak, erratic wings, motion blur — these birds are having the worst day of their lives. The repel bonus means solo birds can contribute without feeling pointless (every hit counts toward clearing), while the champion scoring gives skilled players a reason to compete. Pure CARNAGE energy.
 
+**Session 99 — 2026-04-16: Suspicious Package — Cooperative Bomb Defusal Event**
+Every 20-30 minutes, a mysterious brown-paper package with a sputtering fuse materialises somewhere in Bird City. The whole city has 90 seconds to cooperatively poop it 10 times to defuse it — or it EXPLODES, flinging nearby birds across the map with chain reactions.
+
+**The Package Flow (`server/game.js`):**
+- Spawns at one of 10 landmark positions spread across the city (park, mall, downtown, cafe, docks, radio tower, arena, etc.)
+- 90-second fuse (`maxTime = 90000ms`), counts down every tick. State snapshot sends `{ x, y, timeLeft, maxTime, defuseHits, maxDefuseHits, myHits }` per bird
+- Normal poop = 1 defuse hit; mega poop = 3 defuse hits — getting to 10 hits in 90 seconds requires city-wide cooperation (solo is doable in ~30s if you're there and firing fast)
+- **Cop escalation**: at 5 defuse hits (halfway), 2 cops are dispatched to the package location — defusers gain heat. High-wanted birds must choose: keep defusing and risk arrest, or flee and let it blow
+- **Urgent warning** fires at 20 seconds remaining if not defused
+- **Defuse rewards** (proportional to contribution): all contributors share 200-500 XP + 100-300 coins. Top contributor gets the lion's share
+- **Explosion**: 250px blast radius flings all nearby birds 280-480px, −12% coins (max 120c), −18 food, 1.8s stun, combo wipe
+- **Three chain reactions** if explosion is near a landmark: Casino jackpot scatter (all birds get 50-150c), Gang Nest takes 35 HP damage, Vault Truck instantly cracked
+- **Respawn timer**: 20-30 minutes after each explosion before the next package appears
+
+**Visual system (`public/js/sprites.js`, `public/js/main.js`):**
+- `drawSuspiciousPackage()` sprite: pulsing red urgency aura (scales with fuse progress), brown cardboard box with corner shading and red `???` cross-tape label, bezier fuse wire with animated sparks at tip (sparks accelerate as urgency rises), cyan defuse progress bar below box, "FUSE: Xs" countdown above
+- HUD countdown bar (stacks below crime wave/seagull/migration/vault/stampede bars): red fuse bar draining left-to-right, cyan defuse overlay showing progress, "MY HITS: N" live counter
+- Red screen tint pulses when urgency > 75% (last ~22 seconds)
+- Off-screen direction arrow: red/orange pulsing 💣 arrow pointing toward package when off-screen
+- Minimap: urgency-scaled pulsing red bomb dot with 💣 emoji label
+- Active buffs HUD pill: orange at low urgency → red pulsing at high urgency showing hits remaining + fuse seconds + personal hit count
+
+**Two new daily challenges (added to pool):**
+- 💣 **Bomb Squad**: Help defuse a Suspicious Package (poop it at least once) — 160 XP, 80c
+- 💥 **Blast Survivor**: Survive being caught in a package explosion — 200 XP, 100c
+
+**Gazette tracking:**
+- `packageDefused` and `packageExploded` counters tracked in `gazetteStats`
+- Headlines: "💣 BOMB SQUAD SAVES BIRD CITY — SUSPICIOUS PACKAGE DEFUSED!" and "💥 SUSPICIOUS PACKAGE DETONATES — N BIRDS FLUNG ACROSS THE CITY!"
+
+**Creative intent**: The suspicious package fills the COOPERATIVE URGENCY gap. Every other cooperative event has a long build-up (bank heist phases, siege timer, migration cross-city). The package is IMMEDIATE — it spawns, the fuse is already burning, and every bird online must decide RIGHT NOW whether to sprint there and contribute. The cop escalation at halfway creates beautiful drama: you've already landed 5 hits and triggered the law — do you abandon with half-job done, or commit and earn big? The chain reactions (casino scatter, nest damage, vault crack) mean even a failed defuse has dramatic consequences. The 90-second window is short enough that it fires off as a sudden mid-session crisis rather than a planned event. A bird in the middle of a gang war who hears "💣 SUSPICIOUS PACKAGE" and has to choose between their war target and the bomb is peak Bird City decision-making. Pure CARNAGE + SOCIAL + SPECTACLE energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)

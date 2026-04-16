@@ -6847,4 +6847,137 @@ window.Sprites = {
 
     ctx.restore();
   },
+
+  // === SUSPICIOUS PACKAGE ===
+  // Animated bomb / suspicious parcel with lit fuse, sparks, and defuse progress bar
+  drawSuspiciousPackage(ctx, sx, sy, defuseHits, maxDefuseHits, timeLeft, maxTime, now) {
+    ctx.save();
+    ctx.translate(sx, sy);
+
+    const t = now * 0.001;
+    const urgency = 1 - Math.max(0, timeLeft / maxTime); // 0 = calm, 1 = about to blow
+
+    // === Pulsing red aura glow ===
+    const auraAlpha = 0.2 + 0.2 * Math.sin(t * (4 + urgency * 6));
+    const auraRadius = 28 + 6 * urgency;
+    const grad = ctx.createRadialGradient(0, 0, 6, 0, 0, auraRadius);
+    grad.addColorStop(0, `rgba(255,50,0,${auraAlpha})`);
+    grad.addColorStop(1, 'rgba(255,0,0,0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(0, 0, auraRadius, 0, Math.PI * 2);
+    ctx.fill();
+
+    // === Box body (brown cardboard) ===
+    const boxW = 26, boxH = 22;
+    ctx.fillStyle = '#8B5E3C';
+    ctx.fillRect(-boxW / 2, -boxH / 2, boxW, boxH);
+
+    // Box edge shading
+    ctx.strokeStyle = '#5a3820';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(-boxW / 2, -boxH / 2, boxW, boxH);
+
+    // Cardboard corner shading
+    ctx.fillStyle = 'rgba(0,0,0,0.18)';
+    ctx.fillRect(-boxW / 2, -boxH / 2, 6, 6);
+    ctx.fillRect(boxW / 2 - 6, -boxH / 2, 6, 6);
+    ctx.fillRect(-boxW / 2, boxH / 2 - 6, 6, 6);
+    ctx.fillRect(boxW / 2 - 6, boxH / 2 - 6, 6, 6);
+
+    // Cross tape straps
+    ctx.strokeStyle = '#d4a96b';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, -boxH / 2); ctx.lineTo(0, boxH / 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-boxW / 2, 0); ctx.lineTo(boxW / 2, 0);
+    ctx.stroke();
+
+    // === ??? label ===
+    ctx.fillStyle = '#ff2200';
+    ctx.font = 'bold 10px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('???', 0, 0);
+
+    // === Fuse wire (top of box) ===
+    const fuseBaseX = 2, fuseBaseY = -boxH / 2;
+    ctx.strokeStyle = '#8a8060';
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(fuseBaseX, fuseBaseY);
+    ctx.bezierCurveTo(
+      fuseBaseX + 4, fuseBaseY - 6,
+      fuseBaseX + 0, fuseBaseY - 14,
+      fuseBaseX + 5, fuseBaseY - 18
+    );
+    ctx.stroke();
+
+    // === Spark at fuse tip (animates urgently) ===
+    const sparkX = fuseBaseX + 5;
+    const sparkY = fuseBaseY - 18;
+    const sparkRate = 8 + urgency * 16;
+    const sparkPhase = (now * sparkRate / 1000) % (Math.PI * 2);
+
+    ctx.fillStyle = urgency > 0.7 ? '#ff3300' : '#ffcc00';
+    ctx.shadowColor = urgency > 0.7 ? '#ff5500' : '#ffaa00';
+    ctx.shadowBlur = 8 + 5 * Math.sin(sparkPhase * 3);
+    ctx.beginPath();
+    ctx.arc(sparkX, sparkY, 2.5 + 1.5 * Math.abs(Math.sin(sparkPhase * 4)), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    for (let i = 0; i < 5; i++) {
+      const angle = (i / 5) * Math.PI * 2 + sparkPhase * 2 + i * 0.8;
+      const dist = 3 + 4 * Math.abs(Math.sin(sparkPhase + i));
+      const px = sparkX + Math.cos(angle) * dist;
+      const py = sparkY + Math.sin(angle) * dist;
+      ctx.globalAlpha = 0.5 + 0.5 * Math.abs(Math.sin(sparkPhase + i));
+      ctx.fillStyle = i % 2 === 0 ? '#ffdd00' : '#ff6600';
+      ctx.beginPath();
+      ctx.arc(px, py, 1 + 0.5 * Math.abs(Math.sin(sparkPhase * 3 + i)), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // === Defuse progress bar ===
+    const barW = 36, barH = 5;
+    const barX = -barW / 2;
+    const barY = boxH / 2 + 5;
+    const defuseFrac = defuseHits / maxDefuseHits;
+
+    ctx.fillStyle = 'rgba(0,0,0,0.65)';
+    ctx.beginPath();
+    ctx.roundRect(barX - 1, barY - 1, barW + 2, barH + 2, 2);
+    ctx.fill();
+
+    const defuseColor = defuseFrac > 0.7 ? '#44ff88' : defuseFrac > 0.4 ? '#44ddff' : '#00bbff';
+    ctx.fillStyle = defuseColor;
+    ctx.beginPath();
+    ctx.roundRect(barX, barY, barW * defuseFrac, barH, 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '6px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`DEFUSE ${defuseHits}/${maxDefuseHits}`, 0, barY + barH + 7);
+
+    // === Fuse countdown text above ===
+    const secsLeft = Math.ceil(timeLeft / 1000);
+    const urgentColor = secsLeft <= 15 ? '#ff3300' : secsLeft <= 30 ? '#ff8800' : '#ffff44';
+    ctx.fillStyle = urgentColor;
+    ctx.font = `bold ${secsLeft <= 15 ? 12 : 10}px monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = '#000';
+    ctx.shadowBlur = 3;
+    ctx.fillText(`\uD83D\uDCA3 ${secsLeft}s`, 0, -boxH / 2 - 27);
+    ctx.shadowBlur = 0;
+
+    ctx.restore();
+  },
 };
