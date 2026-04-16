@@ -146,6 +146,9 @@ const DAILY_CHALLENGE_POOL = [
   // Session 101: Pigeon Coupe challenges
   { id: 'coupe_driver',  title: 'Joy Rider',       desc: 'Drive the Pigeon Coupe for at least 10 seconds',                target: 1,  trackType: 'coupe_driven',     reward: { xp: 160, coins: 80  } },
   { id: 'coupe_carjack', title: 'Grand Theft Auto', desc: 'Carjack the Pigeon Coupe from another bird',                   target: 1,  trackType: 'coupe_carjacked',  reward: { xp: 220, coins: 110 } },
+  // Session 102: Birdnapper Van challenges
+  { id: 'van_escape',   title: 'Close Call',       desc: 'Escape the Birdnapper Van after being hunted for 8+ seconds',  target: 1,  trackType: 'van_escaped',      reward: { xp: 180, coins: 90  } },
+  { id: 'van_rescuer',  title: 'To The Rescue',    desc: 'Help rescue an abducted bird by pooping the Birdnapper Van',   target: 1,  trackType: 'van_rescue_hit',   reward: { xp: 220, coins: 110 } },
 ];
 
 // ============================================================
@@ -355,6 +358,14 @@ class GameEngine {
     // Other birds carjack (E within 60px of occupied coupe). After 3 carjacks OR 90s → coin explosion.
     this.pigeonCoupe = null; // null | { x, y, angle, speed, driverId, driverName, driverColor, carjacks, spawnedAt, expiresAt, driveStartAt }
     this._pigeonCoupeTimer = Date.now() + this._randomRange(20 * 60000, 30 * 60000);
+
+    // === THE BIRDNAPPER VAN — GTA kidnapping event, every 25-35 min ===
+    // A sketchy black van prowls city roads. Gets within 150px of a bird → enters HUNTING mode.
+    // After 4 continuous seconds within 80px → bird is GRABBED (captive).
+    // Van drives toward map edge, draining captive's coins. 8 poop hits from others = rescue.
+    // If van escapes: captive loses 20% coins, respawns at city center.
+    this.birdnapperVan = null;
+    this._birdnapperVanTimer = Date.now() + this._randomRange(25 * 60000, 35 * 60000);
 
     // === GOLDEN EGG SCRAMBLE ===
     this.eggScramble = null;          // null or { state, startedAt, endsAt, eggs: Map(id->egg), delivered }
@@ -1857,6 +1868,9 @@ class GameEngine {
 
     // === Pigeon Coupe ===
     this._updatePigeonCoupe(dt, now);
+
+    // === Birdnapper Van ===
+    this._updateBirdnapperVan(dt, now);
 
     // === Thunder Dome ===
     this._tickThunderDome(now);
@@ -3578,6 +3592,29 @@ class GameEngine {
         if (vt.hp <= 0) {
           this._crackVaultTruck(vt, now);
         }
+      } else if (hit.target === 'birdnapper_van' && this.birdnapperVan && this.birdnapperVan.captiveId) {
+        // Poop hit the Birdnapper Van! Rescue the captive!
+        const van = this.birdnapperVan;
+        if (van.state !== 'escaping') return null;
+        const dmg = isMegaPoop ? 3 : 1;
+        van.poopHits = Math.min(van.maxPoopHits, van.poopHits + dmg);
+        // Track contributor
+        const vc = van.contributors.get(bird.id) || { name: bird.name, gangTag: bird.gangTag || null, hits: 0 };
+        vc.hits += dmg;
+        van.contributors.set(bird.id, vc);
+        // Reward per hit
+        xpGain = isMegaPoop ? 60 : 25;
+        bird.coins += isMegaPoop ? 20 : 8;
+        this._trackDailyProgress(bird, 'van_rescue_hit', 1);
+        this.events.push({
+          type: 'van_hit',
+          birdId: bird.id, birdName: bird.name,
+          hits: van.poopHits, maxHits: van.maxPoopHits,
+          x: van.x, y: van.y,
+        });
+        if (van.poopHits >= van.maxPoopHits) {
+          this._rescueBirdnapperCaptive(van, bird.id, now);
+        }
       } else if (hit.target === 'throne_guard' && hit.guardId && this.goldenThrone) {
         // Poop hit a Golden Throne Guard! Stun them to clear the way to the throne.
         const guard = this.goldenThrone.guards.find(g => g.id === hit.guardId);
@@ -5037,6 +5074,16 @@ class GameEngine {
       if (Math.sqrt(vtdx * vtdx + vtdy * vtdy) < hitRadius + 30) {
         if (!isMegaPoop) return { target: 'vault_truck' };
         allHits.push({ target: 'vault_truck' });
+      }
+    }
+
+    // Check Birdnapper Van — poop hits rescue the captive (only when escaping with captive)
+    if (this.birdnapperVan && this.birdnapperVan.state === 'escaping' && this.birdnapperVan.captiveId) {
+      const bvdx = poop.x - this.birdnapperVan.x;
+      const bvdy = poop.y - this.birdnapperVan.y;
+      if (Math.sqrt(bvdx * bvdx + bvdy * bvdy) < hitRadius + 28) {
+        if (!isMegaPoop) return { target: 'birdnapper_van' };
+        allHits.push({ target: 'birdnapper_van' });
       }
     }
 
@@ -6936,6 +6983,22 @@ class GameEngine {
         maxCarjacks: 3,
         expiresAt: this.pigeonCoupe.expiresAt,
         spawnedAt: this.pigeonCoupe.spawnedAt,
+      } : null,
+      birdnapperVan: this.birdnapperVan ? {
+        x: this.birdnapperVan.x,
+        y: this.birdnapperVan.y,
+        angle: this.birdnapperVan.angle,
+        state: this.birdnapperVan.state,
+        huntTargetId: this.birdnapperVan.huntTargetId,
+        huntTargetName: this.birdnapperVan.huntTargetName,
+        huntProgressMs: this.birdnapperVan.huntProgressMs,
+        captiveId: this.birdnapperVan.captiveId,
+        captiveName: this.birdnapperVan.captiveName,
+        poopHits: this.birdnapperVan.poopHits,
+        maxPoopHits: this.birdnapperVan.maxPoopHits,
+        myHits: (this.birdnapperVan.contributors.get(bird.id) || { hits: 0 }).hits,
+        isCaptive: this.birdnapperVan.captiveId === bird.id,
+        isHuntTarget: this.birdnapperVan.huntTargetId === bird.id,
       } : null,
       raccoons: nearbyRaccoons,
       drunkPigeons: nearbyDrunkPigeons,
@@ -15503,6 +15566,9 @@ class GameEngine {
       vaultTopCracker: null,  // name of top contributor
       stampedeCount:   0,     // stampedes triggered this cycle
       stampedeChampiom: null, // { name, gangTag, hits }
+      birdnapperVanSpawned: 0,  // birdnapper van spawns this cycle
+      birdnapperRescued:    0,  // captives rescued
+      birdnapperEscaped:    0,  // captives not rescued (van escaped)
     };
   }
 
@@ -15844,6 +15910,21 @@ class GameEngine {
         icon: '💣',
         headline: `BOMB SQUAD HEROES — SUSPICIOUS PACKAGE DEFUSED`,
         subline: `City breathes sigh of relief. "We're calling it a team effort," says every bird who fired one poop.`,
+      });
+    }
+
+    // Birdnapper Van
+    if (stats.birdnapperEscaped > 0) {
+      headlines.push({
+        icon: '🚐',
+        headline: `BIRDNAPPER STRIKES — BIRDS ABDUCTED AND SPIRITED AWAY`,
+        subline: `A suspicious black van prowled the streets. Not all birds escaped. Police describe the driver as "very shady."`,
+      });
+    } else if (stats.birdnapperRescued > 0) {
+      headlines.push({
+        icon: '🐦',
+        headline: `DARING RESCUE — BIRDS SAVED FROM THE BIRDNAPPER VAN`,
+        subline: `Heroic birds bombarded the van with poop until captives were freed. The van fled. The poop remained.`,
       });
     }
 
@@ -22244,6 +22325,363 @@ class GameEngine {
     this.pigeonCoupe = null;
     this._pigeonCoupeTimer = now + this._randomRange(20 * 60000, 30 * 60000);
     console.log(`[GameEngine] Pigeon Coupe exploded (${reason})!`);
+  }
+
+  // ============================================================
+  // THE BIRDNAPPER VAN — Session 102
+  // ============================================================
+
+  _updateBirdnapperVan(dt, now) {
+    // Spawn check
+    if (!this.birdnapperVan && now >= this._birdnapperVanTimer && this.birds.size > 0) {
+      this._spawnBirdnapperVan(now);
+      return;
+    }
+    if (!this.birdnapperVan) return;
+
+    const van = this.birdnapperVan;
+
+    // Expiry: van despawns if nobody interacts with it for too long
+    if (now >= van.expiresAt) {
+      this.events.push({ type: 'van_despawned', message: `🚐 The Birdnapper Van drove off without a victim...` });
+      this.birdnapperVan = null;
+      this._birdnapperVanTimer = now + this._randomRange(25 * 60000, 35 * 60000);
+      return;
+    }
+
+    const W = 3000, H = 3000;
+
+    if (van.state === 'prowling') {
+      // Move toward current waypoint
+      const dx = van.targetX - van.x;
+      const dy = van.targetY - van.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > 5) {
+        van.angle = Math.atan2(dy, dx);
+        van.x += (dx / dist) * van.speed * dt;
+        van.y += (dy / dist) * van.speed * dt;
+      } else {
+        // Pick next road waypoint
+        const roads = world.ROADS;
+        const road = roads[Math.floor(Math.random() * roads.length)];
+        van.targetX = road.x + Math.random() * road.w;
+        van.targetY = road.y + Math.random() * road.h;
+      }
+
+      // Scan for nearby birds to hunt (ignore sewer birds)
+      let closestBird = null;
+      let closestDist = Infinity;
+      for (const b of this.birds.values()) {
+        if (b.inSewer) continue;
+        const bdx = van.x - b.x;
+        const bdy = van.y - b.y;
+        const d = Math.sqrt(bdx * bdx + bdy * bdy);
+        if (d < 150 && d < closestDist) {
+          closestDist = d;
+          closestBird = b;
+        }
+      }
+      if (closestBird) {
+        van.state = 'hunting';
+        van.huntTargetId = closestBird.id;
+        van.huntTargetName = closestBird.name;
+        van.huntProgressMs = 0;
+        van.expiresAt = now + 45000; // extend lifespan while hunting
+        this.events.push({
+          type: 'van_hunting',
+          targetId: closestBird.id,
+          targetName: closestBird.name,
+          x: van.x, y: van.y,
+          message: `🚐 BIRDNAPPER VAN is HUNTING ${closestBird.name}! FLEE!`,
+        });
+      }
+
+    } else if (van.state === 'hunting') {
+      const target = this.birds.get(van.huntTargetId);
+      // Target gone (disconnected or sewer)
+      if (!target || target.inSewer) {
+        van.state = 'prowling';
+        van.huntTargetId = null;
+        van.huntTargetName = null;
+        van.huntProgressMs = 0;
+        const roads = world.ROADS;
+        const road = roads[Math.floor(Math.random() * roads.length)];
+        van.targetX = road.x + Math.random() * road.w;
+        van.targetY = road.y + Math.random() * road.h;
+        return;
+      }
+      // Move toward target at faster speed
+      const dx = target.x - van.x;
+      const dy = target.y - van.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > 5) {
+        van.angle = Math.atan2(dy, dx);
+        van.x += (dx / dist) * van.huntSpeed * dt;
+        van.y += (dy / dist) * van.huntSpeed * dt;
+      }
+
+      // Track abduction progress
+      if (dist < 80) {
+        van.huntProgressMs += dt * 1000;
+        // Warning at 1.5s
+        if (!van._warnedAt && van.huntProgressMs > 1500) {
+          van._warnedAt = true;
+          this.events.push({
+            type: 'van_warning',
+            targetId: van.huntTargetId,
+            targetName: van.huntTargetName,
+            progress: van.huntProgressMs,
+            x: van.x, y: van.y,
+          });
+        }
+        // Captured at 4s
+        if (van.huntProgressMs >= 4000) {
+          this._abductBird(van, target, now);
+        }
+      } else {
+        // Target got away — reset progress
+        if (van.huntProgressMs > 0) {
+          van.huntProgressMs = 0;
+          van._warnedAt = false;
+        }
+        // If bird escapes for 15s of hunting (via maxHuntTime), give up
+        if (!van._huntStarted) van._huntStarted = now;
+        if (now - van._huntStarted > 15000) {
+          // Award "Close Call" daily to the escaped bird
+          this._trackDailyProgress(target, 'van_escaped', 1);
+          this.events.push({
+            type: 'van_hunt_failed',
+            targetId: van.huntTargetId,
+            targetName: van.huntTargetName,
+            message: `🚐 ${van.huntTargetName} escaped the Birdnapper Van!`,
+          });
+          van.state = 'prowling';
+          van.huntTargetId = null;
+          van.huntTargetName = null;
+          van.huntProgressMs = 0;
+          van._huntStarted = null;
+          van._warnedAt = false;
+        }
+      }
+
+    } else if (van.state === 'escaping') {
+      // Move toward escape edge
+      const dx = van.escapeX - van.x;
+      const dy = van.escapeY - van.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > 10) {
+        van.angle = Math.atan2(dy, dx);
+        van.x += (dx / dist) * van.huntSpeed * dt;
+        van.y += (dy / dist) * van.huntSpeed * dt;
+      } else {
+        // Reached edge — escape complete!
+        this._birdnapperEscape(van, now);
+        return;
+      }
+
+      // Lock captive to van position
+      const captive = this.birds.get(van.captiveId);
+      if (captive) {
+        captive.x = van.x;
+        captive.y = van.y;
+        captive.vx = 0;
+        captive.vy = 0;
+      } else {
+        // Captive disconnected — van loses its prize
+        van.captiveId = null;
+        van.captiveName = null;
+        van.state = 'prowling';
+        const roads = world.ROADS;
+        const road = roads[Math.floor(Math.random() * roads.length)];
+        van.targetX = road.x + Math.random() * road.w;
+        van.targetY = road.y + Math.random() * road.h;
+        return;
+      }
+
+      // Drain captive coins every 8 seconds
+      if (!van._lastDrainAt) van._lastDrainAt = now;
+      if (now - van._lastDrainAt >= 8000) {
+        van._lastDrainAt = now;
+        const drain = Math.min(Math.floor(captive.coins * 0.08), 60);
+        if (drain > 0 && captive.coins > 0) {
+          captive.coins = Math.max(0, captive.coins - drain);
+          van.stolenCoins += drain;
+          this.events.push({
+            type: 'van_drain',
+            captiveId: van.captiveId,
+            captiveName: van.captiveName,
+            drain,
+            stolenTotal: van.stolenCoins,
+            x: van.x, y: van.y,
+          });
+        }
+      }
+    }
+  }
+
+  _spawnBirdnapperVan(now) {
+    // Spawn at a random road position on the outskirts
+    const roads = world.ROADS;
+    const road = roads[Math.floor(Math.random() * roads.length)];
+    const x = road.x + Math.random() * road.w;
+    const y = road.y + Math.random() * road.h;
+
+    // Pick a target road waypoint
+    const road2 = roads[Math.floor(Math.random() * roads.length)];
+    const targetX = road2.x + Math.random() * road2.w;
+    const targetY = road2.y + Math.random() * road2.h;
+
+    this.birdnapperVan = {
+      x, y,
+      angle: 0,
+      speed: 80,       // prowling speed
+      huntSpeed: 115,  // hunting/escaping speed
+      targetX, targetY,
+      state: 'prowling',
+      huntTargetId: null,
+      huntTargetName: null,
+      huntProgressMs: 0,
+      _huntStarted: null,
+      _warnedAt: false,
+      captiveId: null,
+      captiveName: null,
+      captiveGangTag: null,
+      poopHits: 0,
+      maxPoopHits: 8,
+      contributors: new Map(),
+      stolenCoins: 0,
+      _lastDrainAt: 0,
+      escapeX: 0,
+      escapeY: 0,
+      spawnedAt: now,
+      expiresAt: now + 120000, // 2 min if nobody interacts
+    };
+
+    this.events.push({
+      type: 'van_spawned',
+      x, y,
+      message: `🚐 A SUSPICIOUS BLACK VAN is prowling the streets... Stay away or get GRABBED!`,
+    });
+    if (this.gazetteStats) this.gazetteStats.birdnapperVanSpawned = (this.gazetteStats.birdnapperVanSpawned || 0) + 1;
+    console.log('[GameEngine] Birdnapper Van spawned!');
+  }
+
+  _abductBird(van, bird, now) {
+    van.state = 'escaping';
+    van.captiveId = bird.id;
+    van.captiveName = bird.name;
+    van.captiveGangTag = bird.gangTag || null;
+    van.huntTargetId = null;
+    van.huntTargetName = null;
+    van.huntProgressMs = 0;
+    van._huntStarted = null;
+    van._warnedAt = false;
+    van._lastDrainAt = now;
+    van.stolenCoins = 0;
+    van.poopHits = 0;
+    van.expiresAt = now + 180000; // 3 minutes to reach the edge or be rescued
+
+    // Pick escape edge
+    const edges = [
+      { x: -80, y: van.y },
+      { x: 3080, y: van.y },
+      { x: van.x, y: -80 },
+      { x: van.x, y: 3080 },
+    ];
+    const edge = edges[Math.floor(Math.random() * edges.length)];
+    van.escapeX = edge.x;
+    van.escapeY = edge.y;
+
+    // Lock bird in place
+    bird.vx = 0;
+    bird.vy = 0;
+
+    this.events.push({
+      type: 'van_abducted',
+      captiveId: bird.id,
+      captiveName: bird.name,
+      gangTag: bird.gangTag || null,
+      x: van.x, y: van.y,
+      message: `🚐 ${bird.gangTag ? `[${bird.gangTag}] ` : ''}${bird.name} was ABDUCTED by the Birdnapper Van! Poop it 8 times to rescue them!`,
+    });
+    console.log(`[GameEngine] Birdnapper Van abducted ${bird.name}!`);
+  }
+
+  _rescueBirdnapperCaptive(van, rescuerId, now) {
+    const captive = this.birds.get(van.captiveId);
+    const rescuer = this.birds.get(rescuerId);
+    const captiveName = van.captiveName;
+
+    // Free the captive: return stolen coins and teleport to nearest safe spot
+    if (captive) {
+      captive.coins += Math.floor(van.stolenCoins * 0.5); // 50% of stolen coins returned
+      captive.xp += 80;
+    }
+
+    // Reward all contributors proportionally
+    const totalHits = Array.from(van.contributors.values()).reduce((s, c) => s + c.hits, 0);
+    for (const [cId, contrib] of van.contributors) {
+      const cBird = this.birds.get(cId);
+      if (!cBird) continue;
+      const share = totalHits > 0 ? contrib.hits / totalHits : 1;
+      const xpShare = Math.floor(150 + 250 * share);
+      const coinShare = Math.floor(80 + 120 * share);
+      cBird.xp += xpShare;
+      cBird.coins += coinShare;
+      this.events.push({
+        type: 'van_rescue_reward',
+        birdId: cId,
+        birdName: contrib.name,
+        xp: xpShare,
+        coins: coinShare,
+        x: van.x, y: van.y,
+      });
+    }
+
+    this.events.push({
+      type: 'van_rescued',
+      captiveId: van.captiveId,
+      captiveName,
+      rescuerId,
+      rescuerName: rescuer ? rescuer.name : 'Unknown',
+      x: van.x, y: van.y,
+      message: `🐦 ${captiveName} was RESCUED from the Birdnapper Van! The van flees into the night!`,
+    });
+
+    if (this.gazetteStats) this.gazetteStats.birdnapperRescued = (this.gazetteStats.birdnapperRescued || 0) + 1;
+
+    // Van flees after rescue (despawn)
+    this.birdnapperVan = null;
+    this._birdnapperVanTimer = now + this._randomRange(25 * 60000, 35 * 60000);
+    console.log(`[GameEngine] Birdnapper captive rescued!`);
+  }
+
+  _birdnapperEscape(van, now) {
+    const captive = this.birds.get(van.captiveId);
+    if (captive) {
+      // Steal 20% of captive's remaining coins
+      const stolen = Math.min(Math.floor(captive.coins * 0.20), 300);
+      captive.coins = Math.max(0, captive.coins - stolen);
+      // Teleport captive to city center
+      captive.x = 1500;
+      captive.y = 1500;
+      captive.vx = 0;
+      captive.vy = 0;
+      this.events.push({
+        type: 'van_escaped_with_captive',
+        captiveId: van.captiveId,
+        captiveName: van.captiveName,
+        stolen,
+        x: 1500, y: 1500,
+        message: `🚐💀 THE BIRDNAPPER VAN ESCAPED with ${van.captiveName}! They lost ${stolen} coins and respawned at city center.`,
+      });
+    }
+
+    if (this.gazetteStats) this.gazetteStats.birdnapperEscaped = (this.gazetteStats.birdnapperEscaped || 0) + 1;
+
+    this.birdnapperVan = null;
+    this._birdnapperVanTimer = now + this._randomRange(25 * 60000, 35 * 60000);
+    console.log('[GameEngine] Birdnapper Van escaped with captive!');
   }
 
 }

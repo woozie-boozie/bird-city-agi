@@ -7339,4 +7339,189 @@ window.Sprites = {
       ctx.restore();
     }
   },
+
+  /**
+   * drawBirdnapperVan(ctx, x, y, angle, state, captiveName, poopHits, maxPoopHits, now)
+   * A sinister black van with tinted windows hunting birds.
+   * state: 'prowling' | 'hunting' | 'escaping'
+   */
+  drawBirdnapperVan(ctx, x, y, angle, state, captiveName, poopHits, maxPoopHits, now) {
+    const pulse = 0.5 + 0.5 * Math.sin(now * 0.005);
+    const fastPulse = 0.5 + 0.5 * Math.sin(now * 0.015);
+    const isEscaping = state === 'escaping';
+    const isHunting = state === 'hunting';
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+
+    // Sinister purple/dark aura when hunting or escaping
+    if (isHunting) {
+      ctx.shadowColor = `rgba(200,0,200,${0.5 + 0.4 * pulse})`;
+      ctx.shadowBlur = 22;
+    } else if (isEscaping) {
+      ctx.shadowColor = `rgba(255,0,0,${0.6 + 0.4 * fastPulse})`;
+      ctx.shadowBlur = 26;
+    } else {
+      ctx.shadowColor = `rgba(80,0,120,${0.2 + 0.15 * pulse})`;
+      ctx.shadowBlur = 12;
+    }
+
+    // Ground shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath();
+    ctx.ellipse(3, 8, 40, 14, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Van body — very dark, almost black
+    const bodyColor = isEscaping ? '#1a0000' : '#0d0d0d';
+    ctx.fillStyle = bodyColor;
+    ctx.beginPath();
+    ctx.roundRect(-36, -17, 72, 34, 3);
+    ctx.fill();
+
+    // Body outline with subtle purple tint
+    ctx.strokeStyle = isEscaping ? '#550000' : '#2a003a';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Cab roof bump (taller front section)
+    ctx.fillStyle = isEscaping ? '#160000' : '#0a0a0a';
+    ctx.beginPath();
+    ctx.roundRect(14, -21, 20, 4, 2);
+    ctx.fill();
+
+    // Tinted windows — very dark with subtle purple glint
+    const winTint = isHunting ? 'rgba(100,0,150,0.7)' : isEscaping ? 'rgba(150,0,0,0.7)' : 'rgba(40,0,60,0.8)';
+    ctx.fillStyle = winTint;
+    // Windshield
+    ctx.fillRect(24, -13, 10, 10);
+    ctx.fillRect(24, 4, 10, 9);
+    // Side windows (narrow slits)
+    ctx.fillRect(-20, -13, 12, 8);
+    ctx.fillRect(-20, 6, 12, 7);
+    ctx.fillRect(-4, -13, 12, 8);
+    ctx.fillRect(-4, 6, 12, 7);
+
+    // Rear doors with a subtle sinister warning symbol
+    ctx.fillStyle = '#1a001a';
+    ctx.fillRect(-36, -13, 8, 26);
+    ctx.strokeStyle = '#330033';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(-32, -8);
+    ctx.lineTo(-32, 8);
+    ctx.stroke();
+
+    // Warning symbol on side when escaping (captive inside)
+    if (isEscaping) {
+      ctx.fillStyle = `rgba(255,50,50,${0.6 + 0.4 * fastPulse})`;
+      ctx.font = 'bold 10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.shadowColor = '#ff0000';
+      ctx.shadowBlur = 6;
+      ctx.fillText('⚠️', -8, 0);
+      ctx.shadowBlur = 0;
+    }
+
+    // Headlights (glowing red/white)
+    const hlColor = isEscaping ? '#ff2200' : '#ffeecc';
+    ctx.fillStyle = hlColor;
+    ctx.beginPath();
+    ctx.ellipse(36, -11, 3, 2.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(36, 11, 3, 2.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Headlight glow
+    ctx.fillStyle = isEscaping ? `rgba(255,40,0,${0.3 * fastPulse})` : `rgba(255,240,180,${0.2 * pulse})`;
+    ctx.beginPath();
+    ctx.ellipse(36, -11, 7, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(36, 11, 7, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Wheels
+    ctx.fillStyle = '#0a0a0a';
+    const wPos = [[-22, -19], [-22, 15], [14, -19], [14, 15]];
+    for (const [wx, wy] of wPos) {
+      ctx.fillRect(wx, wy, 10, 4);
+      ctx.fillStyle = '#333';
+      ctx.beginPath();
+      ctx.arc(wx + 5, wy + 2, 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#0a0a0a';
+    }
+
+    ctx.restore();
+
+    // ── Labels / HUD drawn in screen-space (no rotation) ──
+    ctx.save();
+    ctx.translate(x, y);
+
+    // HP bar when escaping (show rescue progress)
+    if (isEscaping && maxPoopHits > 0) {
+      const hpPct = Math.max(0, 1 - poopHits / maxPoopHits);
+      const barW = 60;
+      const barH = 6;
+      const bx = -barW / 2;
+      const by = -32;
+      // Background
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.fillRect(bx - 1, by - 1, barW + 2, barH + 2);
+      // Damage fill (red = captured, getting pooped = filling from right)
+      ctx.fillStyle = '#440000';
+      ctx.fillRect(bx, by, barW, barH);
+      // Rescue progress (cyan fills in)
+      ctx.fillStyle = `rgba(0,200,255,${0.8 + 0.2 * fastPulse})`;
+      ctx.fillRect(bx, by, barW * (poopHits / maxPoopHits), barH);
+      // Label
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 7px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.shadowColor = '#000';
+      ctx.shadowBlur = 3;
+      ctx.fillText(`🚐 POOP TO RESCUE! ${poopHits}/${maxPoopHits}`, 0, by - 2);
+      ctx.shadowBlur = 0;
+
+      // Captive name if known
+      if (captiveName) {
+        ctx.fillStyle = `rgba(255,180,0,${0.8 + 0.2 * pulse})`;
+        ctx.font = 'bold 8px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.shadowColor = '#000';
+        ctx.shadowBlur = 3;
+        ctx.fillText(`🐦 "${captiveName}" inside!`, 0, by - 11);
+        ctx.shadowBlur = 0;
+      }
+    }
+
+    // Hunting label (pulsing purple warning)
+    if (isHunting) {
+      ctx.fillStyle = `rgba(220,0,255,${0.7 + 0.3 * fastPulse})`;
+      ctx.font = 'bold 8px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.shadowColor = '#000';
+      ctx.shadowBlur = 4;
+      ctx.fillText('🚐 HUNTING...', 0, -26);
+      ctx.shadowBlur = 0;
+    }
+
+    // Prowling label (subtle, warning players)
+    if (state === 'prowling') {
+      ctx.fillStyle = `rgba(120,0,160,${0.4 + 0.2 * pulse})`;
+      ctx.font = '7px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText('🚐 SUSPICIOUS VAN', 0, -24);
+    }
+
+    ctx.restore();
+  },
 };

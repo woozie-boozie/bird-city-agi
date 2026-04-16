@@ -4148,6 +4148,96 @@
       }
     }
 
+    // === BIRDNAPPER VAN EVENTS ===
+    if (ev.type === 'van_spawned') {
+      window._birdnapperVanDir = { x: ev.x, y: ev.y };
+      showAnnouncement(`🚐 BIRDNAPPER VAN SPOTTED!\nA suspicious black van is prowling the city.\nStay alert — it HUNTS birds and abducts them!`, '#880099', 7000);
+      addEventMessage(`🚐 A suspicious black van is prowling Bird City...`, '#880099');
+    }
+    if (ev.type === 'van_hunting') {
+      if (ev.targetId === myId) {
+        effects.push({ type: 'screen_shake', intensity: 6, duration: 400, time: now });
+        showAnnouncement(`🚐 THE VAN IS HUNTING YOU!\nFLY AWAY before it catches you!\nOthers: poop the van to rescue any captive!`, '#cc00ff', 5000);
+      } else {
+        addEventMessage(`🚐 The Birdnapper Van is hunting ${ev.targetName}!`, '#cc00ff');
+      }
+    }
+    if (ev.type === 'van_warning') {
+      if (ev.targetId === myId) {
+        effects.push({ type: 'screen_shake', intensity: 8, duration: 500, time: now });
+        showAnnouncement(`🚐⚠️ VAN CLOSING IN — FLEE NOW!\nFly AWAY or it will grab you in seconds!`, '#ff00ff', 3000);
+      }
+    }
+    if (ev.type === 'van_abducted') {
+      effects.push({ type: 'screen_shake', intensity: 14, duration: 800, time: now });
+      if (ev.captiveId === myId) {
+        showAnnouncement(`🚐💀 YOU'VE BEEN ABDUCTED!\nThe van is escaping with you inside!\nSCREAM for help — others must poop the van ${ev.maxPoopHits}x to free you!`, '#ff0000', 8000);
+      } else {
+        showAnnouncement(`🚐💀 ${ev.captiveName} has been ABDUCTED!\nPOOP the van ${ev.maxPoopHits}× to rescue them!`, '#ff4400', 6000);
+        addEventMessage(`🚐 ${ev.captiveName} abducted by the Birdnapper Van! Poop it to rescue!`, '#ff4400');
+      }
+    }
+    if (ev.type === 'van_hit') {
+      effects.push({ type: 'text', x: ev.x, y: ev.y - 20, time: now, duration: 1500,
+        text: `💥 ${ev.hits}/${ev.maxHits}`, color: '#00ffff', size: 13 });
+    }
+    if (ev.type === 'van_drain') {
+      if (ev.captiveId === myId) {
+        effects.push({ type: 'text', x: gameState.self ? gameState.self.x : 0,
+          y: gameState.self ? gameState.self.y - 40 : 0, time: now, duration: 1800,
+          text: `🚐 −${ev.drainedCoins}c STOLEN!`, color: '#ff4444', size: 14 });
+      }
+    }
+    if (ev.type === 'van_rescued') {
+      window._birdnapperVanDir = null;
+      effects.push({ type: 'screen_shake', intensity: 12, duration: 700, time: now });
+      for (let i = 0; i < 12; i++) {
+        const ang = (i / 12) * Math.PI * 2;
+        effects.push({ type: 'text', x: ev.x + Math.cos(ang) * (20 + Math.random() * 50),
+          y: ev.y + Math.sin(ang) * (20 + Math.random() * 50), time: now + Math.random() * 400,
+          duration: 2000, text: '🐦', color: '#00ff88', size: 16 });
+      }
+      if (ev.captiveId === myId) {
+        showAnnouncement(`🐦✅ YOU'VE BEEN RESCUED!\nHeroic birds pooped the van to free you!\nWatch out — the city is dangerous!`, '#00ff88', 6000);
+      } else {
+        showAnnouncement(`🐦✅ ${ev.captiveName} HAS BEEN RESCUED!\nHeroic birds pooped the van free!`, '#00ff88', 4000);
+      }
+      addEventMessage(`🐦 ${ev.captiveName} rescued from the Birdnapper Van! ${ev.rescuerName} scored the final hit!`, '#00ff88');
+    }
+    if (ev.type === 'van_rescue_reward') {
+      if (ev.birdId === myId) {
+        effects.push({ type: 'text', x: gameState.self ? gameState.self.x : 0,
+          y: gameState.self ? gameState.self.y - 50 : 0, time: now, duration: 2200,
+          text: `🐦 +${ev.xp}XP +${ev.coins}c RESCUE!`, color: '#00ff88', size: 15 });
+      }
+    }
+    if (ev.type === 'van_escaped_with_captive') {
+      window._birdnapperVanDir = null;
+      effects.push({ type: 'screen_shake', intensity: 10, duration: 600, time: now });
+      if (ev.captiveId === myId) {
+        showAnnouncement(`🚐💀 THE VAN ESCAPED WITH YOU!\nYou've been dropped at the city center — look for the daily challenge progress!`, '#ff2200', 6000);
+      } else {
+        showAnnouncement(`🚐 The Birdnapper Van ESCAPED with ${ev.captiveName}!\n${ev.captiveName} loses ${ev.coinsLost}c and is dropped at city center!`, '#ff4400', 5000);
+      }
+      addEventMessage(`🚐 Van escaped! ${ev.captiveName} lost ${ev.coinsLost}c and was dropped at city center.`, '#ff4400');
+    }
+    if (ev.type === 'van_escaped_empty') {
+      window._birdnapperVanDir = null;
+      addEventMessage(`🚐 The Birdnapper Van slipped away without a catch...`, '#888888');
+    }
+    if (ev.type === 'van_hunt_failed') {
+      if (ev.targetId === myId) {
+        addEventMessage(`🚐 The van gave up hunting you — you outran it!`, '#aaaaaa');
+        if (gameState.self) {
+          effects.push({ type: 'text', x: gameState.self.x, y: gameState.self.y - 40, time: now,
+            duration: 2000, text: '🚐 ESCAPED!', color: '#00ff88', size: 14 });
+        }
+      }
+    }
+    if (ev.type === 'van_despawned') {
+      window._birdnapperVanDir = null;
+    }
+
     // Cross-system synergy messages
     if (ev.type === 'migration_race_synergy') {
       if (ev.birdId === myId) {
@@ -8660,6 +8750,16 @@
       }
     }
 
+    // Birdnapper Van (sinister moving threat)
+    if (gameState.birdnapperVan) {
+      const bv = gameState.birdnapperVan;
+      const bvsx = bv.x - camera.x + camera.screenW / 2;
+      const bvsy = bv.y - camera.y + camera.screenH / 2;
+      if (bvsx > -margin - 60 && bvsx < camera.screenW + margin + 60 && bvsy > -margin - 60 && bvsy < camera.screenH + margin + 60) {
+        Sprites.drawBirdnapperVan(ctx, bvsx, bvsy, bv.angle || 0, bv.state, bv.captiveName, bv.poopHits || 0, bv.maxPoopHits || 8, now);
+      }
+    }
+
     // Raccoon Thieves (night-only)
     if (gameState.raccoons) {
       for (const raccoon of gameState.raccoons) {
@@ -10030,6 +10130,72 @@
       ctx.restore();
     }
 
+    // === BIRDNAPPER VAN HUD BAR (when escaping with captive) ===
+    if (gameState.birdnapperVan && gameState.birdnapperVan.state === 'escaping' && gameState.birdnapperVan.captiveName) {
+      const bv = gameState.birdnapperVan;
+      const bvPct = (bv.poopHits || 0) / (bv.maxPoopHits || 8);
+      const bvFast = 0.5 + 0.5 * Math.abs(Math.sin(now * 0.015));
+
+      // Pulsing purple/red danger tint
+      ctx.save();
+      ctx.globalAlpha = 0.06 + 0.04 * bvFast;
+      ctx.fillStyle = bv.isCaptive ? '#ff0000' : '#880088';
+      ctx.fillRect(0, 0, camera.screenW, camera.screenH);
+      ctx.globalAlpha = 1;
+      ctx.restore();
+
+      // Stack below crime wave, seagull, migration, vault, stampede, package bars
+      const hasCrimeWaveBV = gameState.self && gameState.self.crimeWave;
+      const hasSeagullBV = gameState.seagullInvasion;
+      const hasMigrationBV = gameState.migration;
+      const hasVaultBV = gameState.vaultTruck && !gameState.vaultTruck.cracked && !gameState.vaultTruck.escaped;
+      const hasStampedeBV = gameState.stampede;
+      const hasPackageBV = gameState.suspiciousPackage;
+      let bvBarY = 132;
+      if (hasCrimeWaveBV) bvBarY += 43;
+      if (hasSeagullBV) bvBarY += 43;
+      if (hasMigrationBV) bvBarY += 43;
+      if (hasVaultBV) bvBarY += 43;
+      if (hasStampedeBV) bvBarY += 43;
+      if (hasPackageBV) bvBarY += 43;
+
+      const bvBarW = 220, bvBarH = 12;
+      const bvBarX = camera.screenW / 2 - bvBarW / 2;
+
+      ctx.save();
+      ctx.globalAlpha = 0.93;
+      ctx.fillStyle = 'rgba(0,0,0,0.78)';
+      ctx.beginPath();
+      ctx.roundRect(bvBarX - 60, bvBarY - 18, bvBarW + 120, bvBarH + 32, 10);
+      ctx.fill();
+
+      ctx.globalAlpha = 0.8 + 0.2 * bvFast;
+      ctx.fillStyle = bv.isCaptive ? '#ff3300' : '#cc00cc';
+      ctx.font = 'bold 11px Arial';
+      ctx.textAlign = 'center';
+      const bvMyHitsStr = bv.myHits > 0 ? ` · MY HITS: ${bv.myHits}` : '';
+      const bvLabel = bv.isCaptive
+        ? `🚐💀 YOU'RE CAPTIVE! Others poop the van! ${bv.poopHits}/${bv.maxPoopHits}${bvMyHitsStr}`
+        : `🚐 POOP THE VAN — RESCUE ${bv.captiveName}! ${bv.poopHits}/${bv.maxPoopHits}${bvMyHitsStr}`;
+      ctx.fillText(bvLabel, camera.screenW / 2, bvBarY - 4);
+
+      // Dark background of bar
+      ctx.globalAlpha = 0.85;
+      ctx.fillStyle = 'rgba(60,0,60,0.55)';
+      ctx.beginPath();
+      ctx.roundRect(bvBarX, bvBarY + 2, bvBarW, bvBarH, 4);
+      ctx.fill();
+
+      // Cyan rescue progress fill
+      ctx.fillStyle = '#00ccff';
+      ctx.beginPath();
+      ctx.roundRect(bvBarX, bvBarY + 2, bvBarW * bvPct, bvBarH, 4);
+      ctx.fill();
+
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+
     // === CRIME WAVE OVERLAY ===
     if (gameState.self && gameState.self.crimeWave) {
       const cw = gameState.self.crimeWave;
@@ -11156,6 +11322,48 @@
       }
     }
 
+    // === BIRDNAPPER VAN — off-screen direction arrow ===
+    if (gameState.birdnapperVan) {
+      const bv = gameState.birdnapperVan;
+      const bvsx = bv.x - camera.x + camera.screenW / 2;
+      const bvsy = bv.y - camera.y + camera.screenH / 2;
+      const bvOnScreen = bvsx > 50 && bvsx < camera.screenW - 50 && bvsy > 50 && bvsy < camera.screenH - 50;
+      // Show arrow if off-screen, OR if it's hunting/escaping us (always want to know where it is)
+      const bvUrgent = bv.isHuntTarget || bv.isCaptive;
+      if (!bvOnScreen || bvUrgent) {
+        const bvAngle = Math.atan2(bvsy - camera.screenH / 2, bvsx - camera.screenW / 2);
+        const bvArrDist = Math.min(camera.screenW, camera.screenH) / 2 - 60;
+        const bvAx = camera.screenW / 2 + Math.cos(bvAngle) * bvArrDist;
+        const bvAy = camera.screenH / 2 + Math.sin(bvAngle) * bvArrDist;
+        const bvFast = 0.5 + 0.5 * Math.sin(now * 0.015);
+        const bvPulse = bvUrgent ? bvFast : 0.5 + 0.3 * Math.sin(now * 0.005);
+        const bvColor = bv.state === 'escaping' ? '#ff2200' : bv.state === 'hunting' ? '#cc00ff' : '#660088';
+        ctx.save();
+        ctx.translate(bvAx, bvAy);
+        ctx.rotate(bvAngle);
+        ctx.globalAlpha = 0.9 * bvPulse;
+        ctx.fillStyle = bvColor;
+        ctx.shadowColor = bvColor;
+        ctx.shadowBlur = 12;
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(22, 0);
+        ctx.lineTo(-10, -10);
+        ctx.lineTo(-5, 0);
+        ctx.lineTo(-10, 10);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.font = 'bold 11px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('🚐', 4, 0);
+        ctx.restore();
+      }
+    }
+
     // Announcements (screen-space)
     drawAnnouncements(ctx, now);
 
@@ -11617,6 +11825,30 @@
       minimapCtx.textAlign = 'center';
       minimapCtx.textBaseline = 'alphabetic';
       minimapCtx.fillText('\uD83D\uDE97', pcmx, pcmy - 6);
+      minimapCtx.restore();
+    }
+
+    // === BIRDNAPPER VAN — pulsing dark/purple dot on minimap ===
+    if (gameState.birdnapperVan && worldData) {
+      const mw = minimapCtx.canvas.width;
+      const mh = minimapCtx.canvas.height;
+      const bvPulse = 0.5 + 0.5 * Math.sin(now * 0.012);
+      const bvmx = gameState.birdnapperVan.x * mw / worldData.width;
+      const bvmy = gameState.birdnapperVan.y * mh / worldData.height;
+      const bvState = gameState.birdnapperVan.state;
+      const bvColor = bvState === 'escaping' ? '#ff2200' : bvState === 'hunting' ? '#cc00ff' : '#880099';
+      minimapCtx.save();
+      minimapCtx.shadowColor = bvColor;
+      minimapCtx.shadowBlur = 8 + 5 * bvPulse;
+      minimapCtx.fillStyle = bvColor;
+      minimapCtx.beginPath();
+      minimapCtx.arc(bvmx, bvmy, 4 + 2 * bvPulse, 0, Math.PI * 2);
+      minimapCtx.fill();
+      minimapCtx.shadowBlur = 0;
+      minimapCtx.font = '8px sans-serif';
+      minimapCtx.textAlign = 'center';
+      minimapCtx.textBaseline = 'alphabetic';
+      minimapCtx.fillText('🚐', bvmx, bvmy - 5);
       minimapCtx.restore();
     }
 
@@ -13493,6 +13725,20 @@
       } else {
         const hits = gameState.bountyHunter.poopHits || 0;
         html += `<div class="bm-buff-pill" style="background:rgba(100,0,0,0.9);border-color:#cc2200;color:#ff6644;font-weight:bold;animation:pulseRed 0.8s infinite alternate;">🔫 BOUNTY HUNTER ON YOUR TAIL! Poop him: ${hits}/4 hits · Go underground to hide</div>`;
+      }
+    }
+
+    // Birdnapper Van — hunt target or captive
+    if (gameState.birdnapperVan) {
+      const bv = gameState.birdnapperVan;
+      if (bv.isCaptive) {
+        const hits = bv.poopHits || 0;
+        const max = bv.maxPoopHits || 8;
+        html += `<div class="bm-buff-pill" style="background:rgba(120,0,0,0.95);border-color:#ff2200;color:#ff9988;font-weight:bold;animation:pulseRed 0.5s infinite alternate;">🚐💀 ABDUCTED! Trapped inside the van · Others: poop it ${hits}/${max} to free you!</div>`;
+      } else if (bv.isHuntTarget) {
+        html += `<div class="bm-buff-pill" style="background:rgba(80,0,120,0.92);border-color:#cc00ff;color:#ee88ff;font-weight:bold;animation:pulseRed 0.7s infinite alternate;">🚐 VAN IS HUNTING YOU — FLEE! Go to the sewer or stay moving!</div>`;
+      } else if (bv.state === 'escaping' && bv.captiveName) {
+        html += `<div class="bm-buff-pill" style="background:rgba(80,0,80,0.85);border-color:#aa00aa;color:#dd88ff;animation:kingpinGlow 0.8s ease-in-out infinite alternate;">🚐 POOP THE VAN! ${bv.captiveName} is trapped! ${bv.poopHits}/${bv.maxPoopHits} hits</div>`;
       }
     }
 

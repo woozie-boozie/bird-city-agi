@@ -3503,6 +3503,42 @@ Bird City just got its most GTA moment yet. A sleek crimson-and-gold sports car 
 
 **Creative intent**: Bird City had moving targets (vault truck, food truck) and vehicles you interact with, but nothing you could actually DRIVE. The Pigeon Coupe is pure power fantasy — the moment you hop in and feel the 220px/s acceleration, you understand why it's worth fighting for. The carjack mechanic turns every driving moment into a chase: you're moving fast but also painting a target on your back. Three carjacks before the explosion means the car is always a hot potato — nobody can sit in it forever. The coin explosion that scatters among nearby birds creates a ring of looters circling the car, waiting for the perfect moment to strike. Pure CARNAGE + SOCIAL + SPECTACLE energy — the city just got a getaway car.
 
+**Session 102 — 2026-04-16: The Birdnapper Van — City's Most Sinister Threat**
+A mysterious black van prowls Bird City's roads every 25-35 minutes, hunting solo birds and abducting them for ransom. The most cinematic cooperative rescue event in the game.
+
+**The Birdnapper Van flow (`server/game.js`):**
+- Spawns at a random road position every 25-35 minutes (1 active at a time)
+- **3 states**: `prowling` (road waypoints at 80px/s, scans 150px for nearby birds), `hunting` (chases target at 115px/s, locks onto one bird), `escaping` (flees to map edge with captive at 115px/s)
+- **Warning system**: At 1.5s of being hunted — "⚠️ VAN CLOSING IN" warning fires. At 4s — abduction confirmed.
+- **Abduction**: Bird is locked inside the van. Movement blocked. Van turns and drives to nearest map edge.
+- **Rescue window**: While escaping, any other bird can poop the van up to 8 times to rescue the captive. Mega poop = 3 hits. Each hit: +25 XP +8c (mega: 60 XP/20c). All contributors tracked proportionally for rescue reward.
+- **Rescue rewards**: Captive gets back 50% of stolen coins. All contributors split 150-400 XP + 80-200 coins proportional to hits. Top rescuer gets the lion's share.
+- **Coin drain**: Van steals 8% of captive's coins every 8 seconds while escaping — urgency builds.
+- **Escape with captive**: If not rescued in time, captive loses 20% of remaining coins (max 300c), gets teleported to city center (1500, 1500), van despawns.
+- **Hunt failed**: If van hunts a target for 15s without catching them (player flies fast enough), it gives up and goes back to prowling. Target earns "Van Escaped" daily challenge progress.
+- Underground (sewer) — birds underground cannot be targeted. Sewer is a valid escape.
+
+**Two new daily challenges:**
+- 🚐 **Close Call**: Escape the Birdnapper Van after being hunted for 8+ seconds (180 XP, 90c)
+- 🐦 **To The Rescue**: Help rescue an abducted bird by pooping the van (220 XP, 110c)
+
+**Visual system (`public/js/sprites.js`):**
+- Custom `drawBirdnapperVan()`: very dark near-black body, tinted windows with color shifts per state (purple when hunting, red when escaping), directional headlights with color-matched glow, animated wheel hubs, ⚠️ warning symbol on side when escaping
+- Rescue HP bar shown above van when escaping: dark background, cyan progress fill, "POOP TO RESCUE!" label + captive name
+- Purple pulsing aura when hunting, red pulsing aura when escaping, subtle dark aura when prowling
+- Ground shadow for depth
+
+**HUD & events (`public/js/main.js`):**
+- Minimap: pulsing colored dot (purple=hunting, red=escaping, dark=prowling) + 🚐 emoji — trackable from anywhere
+- Off-screen direction arrow points toward the van at all times when being hunted/captive; also when off-screen regardless
+- **Active buffs HUD pills**: Captive: red pulsing "🚐💀 ABDUCTED!" pill. Hunt target: purple "🚐 VAN IS HUNTING YOU — FLEE!" pill. Others: purple "🚐 POOP THE VAN — RESCUE [name]!" pill
+- **HUD countdown bar**: appears when escaping with captive — shows rescue progress (cyan) vs total hits needed. Stacks below all other event bars.
+- Full event feed + screen shake for: spawned, hunting start, warning, abduction (big), each poop hit, each coin drain, rescue (massive), escape with captive
+
+**Gazette integration**: "🚐 BIRDNAPPER STRIKES — BIRDS ABDUCTED AND SPIRITED AWAY" or "🐦 DARING RESCUE — BIRDS SAVED FROM THE BIRDNAPPER VAN" depending on outcome.
+
+**Creative intent**: Bird City already had threats that chase you (cops, bounty hunter, helicopter). The Birdnapper Van is fundamentally different because it creates a VICTIM who needs other players to save them. The moment a bird gets abducted and the whole city sees "🚐💀 [Name] ABDUCTED! Poop the van to rescue!" — the social dynamic inverts completely. Cooperative rescue supersedes every ongoing activity. The rescuer mechanic is intuitive (poop the thing that's escaping), but requires actively hunting down a moving target. Getting rescued at the last second before the van hits the map edge is a genuine cinematic moment. A high-combo player who gets abducted mid-rampage loses their streak and their coins while their flock scrambles to intercept the van — pure SOCIAL drama. Pure SOCIAL + CARNAGE + DISCOVERY energy — the city now has a kidnapper.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
