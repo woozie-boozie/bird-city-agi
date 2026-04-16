@@ -4903,6 +4903,222 @@ window.Renderer = {
     }
   },
 
+  // ============================================================
+  // GOLDEN THRONE — legendary descending seat of power
+  // ============================================================
+  drawGoldenThrone(ctx, camera, throne, now) {
+    if (!throne) return;
+    const sx = throne.x - camera.x + camera.screenW / 2;
+    const sy = throne.y - camera.y + camera.screenH / 2;
+    if (sx < -120 || sx > camera.screenW + 120 || sy < -120 || sy > camera.screenH + 120) return;
+
+    const t = now / 1000;
+    const pulse = 0.5 + 0.5 * Math.sin(t * 2.8);
+    const fastPulse = 0.5 + 0.5 * Math.sin(t * 6);
+    const timeLeft = Math.max(0, throne.expiresAt - now);
+    const urgency = timeLeft < 30000 ? 1 - timeLeft / 30000 : 0;
+
+    ctx.save();
+    ctx.translate(sx, sy);
+
+    // === Outer divine glow ===
+    const outerGlow = ctx.createRadialGradient(0, 0, 10, 0, 0, 80);
+    outerGlow.addColorStop(0, `rgba(255,215,0,${(0.18 + 0.1 * pulse) + urgency * 0.12})`);
+    outerGlow.addColorStop(0.5, `rgba(255,165,0,${0.08 + 0.05 * pulse})`);
+    outerGlow.addColorStop(1, 'rgba(255,120,0,0)');
+    ctx.fillStyle = outerGlow;
+    ctx.beginPath();
+    ctx.arc(0, 0, 80, 0, Math.PI * 2);
+    ctx.fill();
+
+    // === Throne base steps ===
+    ctx.fillStyle = `rgba(180,140,20,0.9)`;
+    ctx.beginPath();
+    ctx.roundRect(-28, 20, 56, 10, 3);
+    ctx.fill();
+    ctx.fillStyle = `rgba(210,170,30,0.9)`;
+    ctx.beginPath();
+    ctx.roundRect(-22, 12, 44, 10, 3);
+    ctx.fill();
+
+    // === Throne seat ===
+    ctx.fillStyle = '#c8880a';
+    ctx.beginPath();
+    ctx.roundRect(-18, -2, 36, 16, 4);
+    ctx.fill();
+    // Gold seat highlight
+    ctx.fillStyle = '#ffd700';
+    ctx.beginPath();
+    ctx.roundRect(-16, -1, 32, 8, 3);
+    ctx.fill();
+    // Red velvet cushion
+    ctx.fillStyle = '#cc2200';
+    ctx.beginPath();
+    ctx.roundRect(-14, 0, 28, 11, 3);
+    ctx.fill();
+    ctx.fillStyle = '#ff4422';
+    ctx.beginPath();
+    ctx.roundRect(-12, 1, 24, 7, 2);
+    ctx.fill();
+    // Cushion buttons
+    ctx.fillStyle = '#ffd700';
+    for (let i = -1; i <= 1; i++) {
+      ctx.beginPath();
+      ctx.arc(i * 8, 5, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // === Throne back ===
+    ctx.fillStyle = '#c8880a';
+    ctx.beginPath();
+    ctx.roundRect(-18, -32, 36, 32, 4);
+    ctx.fill();
+    // Back highlight
+    ctx.fillStyle = '#e0a020';
+    ctx.beginPath();
+    ctx.roundRect(-14, -28, 28, 26, 3);
+    ctx.fill();
+    // Royal crest on back — inner golden circle
+    const glowVal = 0.7 + 0.3 * pulse;
+    ctx.fillStyle = `rgba(255,215,0,${glowVal})`;
+    ctx.beginPath();
+    ctx.arc(0, -16, 9, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#c8880a';
+    ctx.font = 'bold 11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('👑', 0, -16);
+
+    // === Armrests ===
+    ctx.fillStyle = '#c8880a';
+    ctx.beginPath();
+    ctx.roundRect(-26, -4, 10, 18, 3);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.roundRect(16, -4, 10, 18, 3);
+    ctx.fill();
+    // Armrest tops
+    ctx.fillStyle = '#ffd700';
+    ctx.beginPath();
+    ctx.arc(-21, -4, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(21, -4, 5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // === Crown finials at top corners ===
+    ctx.fillStyle = '#ffd700';
+    ctx.shadowColor = '#ffcc00';
+    ctx.shadowBlur = 8 + 5 * pulse;
+    for (const fx of [-14, 14]) {
+      ctx.beginPath();
+      ctx.moveTo(fx - 5, -32);
+      ctx.lineTo(fx, -44);
+      ctx.lineTo(fx + 5, -32);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.shadowBlur = 0;
+
+    // === Claim progress arc (shows when player is claiming) ===
+    if (throne.isClaiming && throne.claimProgress > 0) {
+      const r = 52;
+      const startAngle = -Math.PI / 2;
+      const endAngle = startAngle + throne.claimProgress * Math.PI * 2;
+      ctx.strokeStyle = `rgba(255,255,100,${0.8 + 0.2 * fastPulse})`;
+      ctx.lineWidth = 5;
+      ctx.shadowColor = '#ffff00';
+      ctx.shadowBlur = 10;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.arc(0, 0, r, startAngle, endAngle);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.lineCap = 'butt';
+      // "CLAIMING" text
+      ctx.fillStyle = `rgba(255,255,80,${0.9 + 0.1 * fastPulse})`;
+      ctx.font = 'bold 9px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.shadowColor = '#000';
+      ctx.shadowBlur = 3;
+      ctx.fillText(`CLAIMING ${Math.floor(throne.claimProgress * 100)}%`, 0, 48);
+      ctx.shadowBlur = 0;
+    } else {
+      // Orbit sparkles around throne
+      for (let i = 0; i < 6; i++) {
+        const ang = t * 1.4 + (i * Math.PI * 2) / 6;
+        const orb = 48 + 4 * Math.sin(t * 2 + i);
+        const ox = Math.cos(ang) * orb;
+        const oy = Math.sin(ang) * orb;
+        const sparkAlpha = 0.5 + 0.5 * Math.sin(t * 4 + i * 1.2);
+        ctx.fillStyle = `rgba(255,215,0,${sparkAlpha})`;
+        ctx.beginPath();
+        ctx.arc(ox, oy, 2 + Math.sin(t * 3 + i) * 1, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // === Labels ===
+    const labelY = -60;
+    ctx.font = 'bold 11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = '#000';
+    ctx.shadowBlur = 4;
+    ctx.fillStyle = `rgba(255,215,0,${0.9 + 0.1 * pulse})`;
+    ctx.fillText('👑 GOLDEN THRONE', 0, labelY);
+    ctx.shadowBlur = 0;
+
+    // Expiry countdown
+    if (timeLeft > 0) {
+      const secsLeft = Math.ceil(timeLeft / 1000);
+      const countColor = urgency > 0.5 ? '#ff4400' : urgency > 0 ? '#ffaa00' : '#ffff88';
+      ctx.font = `bold ${urgency > 0.5 ? 10 : 9}px monospace`;
+      ctx.fillStyle = countColor;
+      ctx.shadowColor = '#000';
+      ctx.shadowBlur = 3;
+      ctx.fillText(`${secsLeft}s remaining`, 0, labelY + 14);
+      ctx.shadowBlur = 0;
+    }
+
+    // Guards — draw using Sprites
+    ctx.restore();
+
+    if (throne.guards) {
+      for (const guard of throne.guards) {
+        const gsx = guard.x - camera.x + camera.screenW / 2;
+        const gsy = guard.y - camera.y + camera.screenH / 2;
+        if (gsx < -60 || gsx > camera.screenW + 60 || gsy < -60 || gsy > camera.screenH + 60) continue;
+        Sprites.drawThroneGuard(ctx, gsx, gsy, guard.orbitAngle + Math.PI / 2, guard.state, guard.hp, guard.maxHp, now);
+      }
+    }
+  },
+
+  drawGoldenThroneOnMinimap(minimapCtx, worldData, throne, now) {
+    if (!throne) return;
+    const scale = minimapCtx.canvas.width / worldData.width;
+    const px = throne.x * scale;
+    const py = throne.y * scale;
+    const t = now / 1000;
+    const pulse = 0.5 + 0.5 * Math.sin(t * 3.5);
+
+    minimapCtx.save();
+    minimapCtx.shadowColor = '#ffd700';
+    minimapCtx.shadowBlur = 8 + 5 * pulse;
+    minimapCtx.fillStyle = `rgba(255,215,0,${0.8 + 0.2 * pulse})`;
+    minimapCtx.beginPath();
+    minimapCtx.arc(px, py, 6 + 3 * pulse, 0, Math.PI * 2);
+    minimapCtx.fill();
+    minimapCtx.shadowBlur = 0;
+    minimapCtx.font = '9px sans-serif';
+    minimapCtx.textAlign = 'center';
+    minimapCtx.textBaseline = 'middle';
+    minimapCtx.fillText('👑', px, py);
+    minimapCtx.restore();
+  },
+
   drawThunderDomeOnMinimap(minimapCtx, worldData, dome, now) {
     if (!dome) return;
     const mw = minimapCtx.canvas.width;

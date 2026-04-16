@@ -106,7 +106,7 @@ window.Sprites = {
   },
 
   // === NAME TAG ===
-  drawNameTag(ctx, x, y, name, level, type, isPlayer, mafiaTitle, gangTag, gangColor, tattoosEquipped, prestige, eagleFeather, idolBadge, royaleChampBadge, skillTreeMaster, fightingChampBadge, constellationBadge, courtTitle, hanamiLanternBadge, domeChampBadge, alphaFeather, arenaLegend, goldenBirdBadge, constellations, stampedeBadge) {
+  drawNameTag(ctx, x, y, name, level, type, isPlayer, mafiaTitle, gangTag, gangColor, tattoosEquipped, prestige, eagleFeather, idolBadge, royaleChampBadge, skillTreeMaster, fightingChampBadge, constellationBadge, courtTitle, hanamiLanternBadge, domeChampBadge, alphaFeather, arenaLegend, goldenBirdBadge, constellations, stampedeBadge, throneChampBadge) {
     const text = `${name} [Lv.${level}]`;
     ctx.font = 'bold 11px Courier New';
     ctx.textAlign = 'center';
@@ -281,6 +281,25 @@ window.Sprites = {
       ctx.shadowBlur = 9;
       ctx.fillStyle = '#f0b868';
       ctx.fillText(sbStr, x, y - 41 - offsetY);
+      ctx.shadowBlur = 0;
+      ctx.font = 'bold 11px Courier New';
+      offsetY += 14;
+    }
+
+    // 👑 THRONE CHAMPION Badge — session badge, earned by claiming the Golden Throne
+    if (throneChampBadge) {
+      ctx.font = '10px serif';
+      const tcStr = '👑 THRONE CHAMPION';
+      const tcw = ctx.measureText(tcStr).width + 10;
+      ctx.fillStyle = 'rgba(40,25,0,0.95)';
+      ctx.fillRect(x - tcw / 2, y - 52 - offsetY, tcw, 14);
+      ctx.strokeStyle = '#ffd700';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(x - tcw / 2, y - 52 - offsetY, tcw, 14);
+      ctx.shadowColor = '#ffd700';
+      ctx.shadowBlur = 11;
+      ctx.fillStyle = '#ffe566';
+      ctx.fillText(tcStr, x, y - 41 - offsetY);
       ctx.shadowBlur = 0;
       ctx.font = 'bold 11px Courier New';
       offsetY += 14;
@@ -6977,6 +6996,150 @@ window.Sprites = {
     ctx.shadowBlur = 3;
     ctx.fillText(`\uD83D\uDCA3 ${secsLeft}s`, 0, -boxH / 2 - 27);
     ctx.shadowBlur = 0;
+
+    ctx.restore();
+  },
+
+  // ============================================================
+  // GOLDEN THRONE GUARD — gold-armored royal pigeon guardian
+  // ============================================================
+  drawThroneGuard(ctx, x, y, rotation, state, hp, maxHp, now) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rotation);
+
+    const t = now / 1000;
+    const stunned = state === 'stunned';
+
+    // Pulsing gold aura
+    if (!stunned) {
+      const auraPulse = 0.5 + 0.5 * Math.sin(t * 3.2);
+      const aura = ctx.createRadialGradient(0, 0, 4, 0, 0, 22);
+      aura.addColorStop(0, `rgba(255,200,0,${0.35 * auraPulse})`);
+      aura.addColorStop(1, 'rgba(255,160,0,0)');
+      ctx.fillStyle = aura;
+      ctx.beginPath();
+      ctx.arc(0, 0, 22, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Body — gold armor
+    const bodyColor = stunned ? '#888866' : '#c8a000';
+    const bodyHighlight = stunned ? '#aaa880' : '#ffd700';
+
+    ctx.fillStyle = bodyColor;
+    ctx.beginPath();
+    ctx.ellipse(0, 2, 9, 11, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Armor plate chest
+    ctx.fillStyle = bodyHighlight;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 6, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Armor shoulder pads
+    ctx.fillStyle = bodyColor;
+    ctx.beginPath();
+    ctx.ellipse(-8, -1, 5, 4, -0.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(8, -1, 5, 4, 0.4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Gold trim on shoulders
+    ctx.strokeStyle = bodyHighlight;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.ellipse(-8, -1, 5, 4, -0.4, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.ellipse(8, -1, 5, 4, 0.4, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Head
+    ctx.fillStyle = bodyColor;
+    ctx.beginPath();
+    ctx.arc(0, -9, 7, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Gold crown helmet
+    const crownColor = stunned ? '#888866' : '#ffcc00';
+    ctx.fillStyle = crownColor;
+    ctx.beginPath();
+    ctx.rect(-6, -17, 12, 7);
+    ctx.fill();
+    // Crown points
+    ctx.beginPath();
+    ctx.moveTo(-6, -17);
+    ctx.lineTo(-4, -21);
+    ctx.lineTo(-1, -17);
+    ctx.lineTo(0, -21);
+    ctx.lineTo(1, -17);
+    ctx.lineTo(4, -21);
+    ctx.lineTo(6, -17);
+    ctx.closePath();
+    ctx.fill();
+
+    // Eyes
+    if (stunned) {
+      // X eyes
+      ctx.strokeStyle = '#ff4444';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(-4, -11); ctx.lineTo(-2, -9);
+      ctx.moveTo(-2, -11); ctx.lineTo(-4, -9);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(2, -11); ctx.lineTo(4, -9);
+      ctx.moveTo(4, -11); ctx.lineTo(2, -9);
+      ctx.stroke();
+      // Orbiting stars when stunned
+      for (let i = 0; i < 3; i++) {
+        const starAngle = t * 3.5 + (i * Math.PI * 2) / 3;
+        const sx = Math.cos(starAngle) * 12;
+        const sy = Math.sin(starAngle) * 8 - 4;
+        ctx.fillStyle = '#ffff44';
+        ctx.font = '8px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('★', sx, sy);
+      }
+    } else {
+      ctx.fillStyle = '#ff3300';
+      ctx.shadowColor = '#ff6600';
+      ctx.shadowBlur = 3;
+      ctx.beginPath();
+      ctx.arc(-3, -10, 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(3, -10, 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
+    // HP bar (only when damaged)
+    if (hp < maxHp && hp > 0) {
+      const barW = 26, barH = 4;
+      const barX = -barW / 2, barY = 14;
+      const frac = hp / maxHp;
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
+      ctx.fillStyle = frac > 0.5 ? '#44dd44' : frac > 0.25 ? '#ffbb00' : '#ff3300';
+      ctx.fillRect(barX, barY, barW * frac, barH);
+    }
+
+    // "STUNNED" label
+    if (stunned) {
+      ctx.fillStyle = '#ffff44';
+      ctx.font = 'bold 6px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.shadowColor = '#000';
+      ctx.shadowBlur = 2;
+      ctx.fillText('STUNNED', 0, 22);
+      ctx.shadowBlur = 0;
+    }
 
     ctx.restore();
   },

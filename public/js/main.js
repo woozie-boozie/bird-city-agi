@@ -4261,6 +4261,73 @@
       }
     }
 
+    // === GOLDEN THRONE (Session 100) ===
+    if (ev.type === 'golden_throne_spawned') {
+      effects.push({ type: 'screen_shake', intensity: 16, duration: 900, time: now });
+      showAnnouncement(
+        `👑 THE GOLDEN THRONE HAS DESCENDED!\nFly there and CLAIM IT to become KINGPIN!\nBeware: 2 Royal Guards protect the throne!\nPoop them to stun, then stay near the throne for 8s!`,
+        '#ffd700', 9000
+      );
+      addEventMessage(`👑 THE GOLDEN THRONE has descended on ${ev.locationName || 'the city'}! First to claim it becomes KINGPIN!`, '#ffd700');
+    }
+    if (ev.type === 'throne_guard_hit') {
+      effects.push({ type: 'text', x: ev.x, y: ev.y - 20, time: now, duration: 900,
+        text: `⚔️ ${ev.hp}/${ev.maxHp} HP`, color: '#ffd700', size: 11 });
+    }
+    if (ev.type === 'throne_guard_stunned') {
+      effects.push({ type: 'screen_shake', intensity: 8, duration: 500, time: now });
+      effects.push({ type: 'text', x: ev.x, y: ev.y - 30, time: now, duration: 1200,
+        text: '★ GUARD STUNNED! ★', color: '#ffff44', size: 12 });
+      if (ev.allDown) {
+        addEventMessage(`⭐ ${ev.gangTag ? '[' + ev.gangTag + '] ' : ''}${ev.birdName} stunned both throne guards! The throne is UNPROTECTED — claim it now!`, '#ffd700');
+        if (ev.birdId === myId) {
+          showAnnouncement(`⭐ BOTH GUARDS DOWN!\nSTAY NEAR THE THRONE for 8 seconds to CLAIM IT!\nBe quick — guards will recover!`, '#ffd700', 6000);
+        }
+      }
+    }
+    if (ev.type === 'golden_throne_claiming') {
+      if (ev.birdId === myId) {
+        // Continuous claiming progress handled via state snapshot (claimProgress field)
+      } else {
+        addEventMessage(`👑 ${ev.gangTag ? '[' + ev.gangTag + '] ' : ''}${ev.birdName} is claiming the Golden Throne! STOP THEM!`, '#ffd700');
+      }
+    }
+    if (ev.type === 'golden_throne_blocked') {
+      if (ev.birdId === myId) {
+        showAnnouncement(`⚠️ A GUARD BLOCKS YOUR CLAIM!\nPoop the guards first!`, '#ff8800', 3000);
+      }
+    }
+    if (ev.type === 'golden_throne_claimed') {
+      effects.push({ type: 'screen_shake', intensity: 22, duration: 1200, time: now });
+      const isYou = ev.birdId === myId;
+      if (isYou) {
+        showAnnouncement(
+          `👑 YOU CLAIMED THE GOLDEN THRONE!\nYOU ARE KINGPIN!\n+400 XP · +200c · Gold Rush decree ACTIVATED!\nAll coin drops doubled for 60 seconds!`,
+          '#ffd700', 10000
+        );
+      } else {
+        showAnnouncement(
+          `👑 ${ev.gangTag ? '[' + ev.gangTag + '] ' : ''}${ev.birdName} SEIZED THE GOLDEN THRONE!\nThey are now KINGPIN!\nGold Rush: 2× coins city-wide for 60s!`,
+          '#ffd700', 8000
+        );
+      }
+      addEventMessage(`👑 ${ev.gangTag ? '[' + ev.gangTag + '] ' : ''}${ev.birdName} CLAIMED THE GOLDEN THRONE and became KINGPIN! Gold Rush — 2× coins for 60s!`, '#ffd700');
+      // Coin shower particles
+      const centerX = window.innerWidth / 2;
+      const centerY = window.innerHeight / 2;
+      for (let i = 0; i < 30; i++) {
+        effects.push({
+          type: 'coin_particle', x: centerX + (Math.random() - 0.5) * 300,
+          y: centerY + (Math.random() - 0.5) * 300,
+          vx: (Math.random() - 0.5) * 8, vy: -Math.random() * 10 - 2,
+          time: now, duration: 1200 + Math.random() * 600, color: '#ffd700'
+        });
+      }
+    }
+    if (ev.type === 'golden_throne_expired') {
+      addEventMessage(`👑 The Golden Throne faded away... No bird was brave enough to claim it.`, '#c8a000');
+    }
+
 // === SUSPICIOUS PACKAGE EVENTS ===
     if (ev.type === 'package_spawned') {
       effects.push({ type: 'screen_shake', intensity: 10, duration: 700, time: now });
@@ -8922,6 +8989,11 @@
       Renderer.drawThunderDome(ctx, camera, _domeToDraw, now);
     }
 
+    // Golden Throne — legendary seat of power, drawn before birds
+    if (gameState.self && gameState.self.goldenThrone) {
+      Renderer.drawGoldenThrone(ctx, camera, gameState.self.goldenThrone, now);
+    }
+
     // Birds
     if (gameState.birds) {
       for (const bird of gameState.birds) {
@@ -9120,7 +9192,7 @@
 
           Sprites.drawBird(ctx, sx, sy, b.rotation, b.type, b.wingPhase, isPlayer, b.birdColor || null);
           ctx.globalAlpha = 1; // Always reset after bird draw
-          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0, b.eagleFeather || false, b.idolBadge || false, b.royaleChampBadge || false, b.skillTreeMaster || false, b.fightingChampBadge || false, b.constellationBadge || false, b.courtTitle || null, b.hanamiLanternBadge || false, b.domeChampBadge || false, b.alphaFeather || false, b.arenaLegend || false, b.goldenBirdBadge || false, b.constellations || [], b.stampedeBadge || false);
+          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0, b.eagleFeather || false, b.idolBadge || false, b.royaleChampBadge || false, b.skillTreeMaster || false, b.fightingChampBadge || false, b.constellationBadge || false, b.courtTitle || null, b.hanamiLanternBadge || false, b.domeChampBadge || false, b.alphaFeather || false, b.arenaLegend || false, b.goldenBirdBadge || false, b.constellations || [], b.stampedeBadge || false, b.throneChampBadge || false);
 
           // Bird Flu: sneezing emoji indicator above infected birds
           if (b.isFlu) {
@@ -10777,6 +10849,95 @@
       }
     }
 
+    // === GOLDEN THRONE — HUD countdown + direction arrow when off-screen ===
+    if (gameState.self && gameState.self.goldenThrone) {
+      const throne = gameState.self.goldenThrone;
+      const tsx = throne.x - camera.x + camera.screenW / 2;
+      const tsy = throne.y - camera.y + camera.screenH / 2;
+      const throneTimeLeft = Math.max(0, throne.expiresAt - now);
+      const throneOnScreen = tsx > 40 && tsx < camera.screenW - 40 && tsy > 40 && tsy < camera.screenH - 40;
+      const throneFrac = throneTimeLeft / 180000; // 3 min max
+      const throneUrgency = throneTimeLeft < 30000 ? 1 - throneTimeLeft / 30000 : 0;
+      const thronePulse = 0.7 + 0.3 * Math.sin(now * 0.006);
+      const urgFast = 0.5 + 0.5 * Math.sin(now * 0.012);
+
+      // HUD countdown bar (stacks at top area)
+      const tBarW = 200, tBarH = 12;
+      const tBarX = camera.screenW / 2 - tBarW / 2;
+      const tBarY = 118; // Below mystery crate bar
+      ctx.save();
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.beginPath();
+      ctx.roundRect(tBarX - 50, tBarY - 18, tBarW + 100, tBarH + 30, 8);
+      ctx.fill();
+      const throneBarColor = throneUrgency > 0.5 ? '#ff4400' : throneUrgency > 0 ? '#ff9900' : '#ffd700';
+      ctx.fillStyle = throneBarColor;
+      ctx.font = `bold 11px Arial`;
+      ctx.textAlign = 'center';
+      ctx.shadowColor = '#000';
+      ctx.shadowBlur = 3;
+      ctx.fillText(`👑 GOLDEN THRONE — ${Math.ceil(throneTimeLeft / 1000)}s · Fly there to CLAIM IT!`, camera.screenW / 2, tBarY - 3);
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = 'rgba(255,215,0,0.18)';
+      ctx.beginPath();
+      ctx.roundRect(tBarX, tBarY + 2, tBarW, tBarH, 4);
+      ctx.fill();
+      ctx.fillStyle = throneBarColor;
+      ctx.beginPath();
+      ctx.roundRect(tBarX, tBarY + 2, tBarW * throneFrac, tBarH, 4);
+      ctx.fill();
+      // Claim progress sub-bar if actively claiming
+      if (throne.isClaiming && throne.claimProgress > 0) {
+        ctx.fillStyle = 'rgba(255,255,100,0.25)';
+        ctx.beginPath();
+        ctx.roundRect(tBarX, tBarY + 2, tBarW, tBarH, 4);
+        ctx.fill();
+        ctx.fillStyle = `rgba(255,255,80,${0.8 + 0.2 * urgFast})`;
+        ctx.beginPath();
+        ctx.roundRect(tBarX, tBarY + 2, tBarW * throne.claimProgress, tBarH, 4);
+        ctx.fill();
+        ctx.fillStyle = '#ffff44';
+        ctx.font = 'bold 10px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(`CLAIMING ${Math.floor(throne.claimProgress * 100)}%`, camera.screenW / 2, tBarY + tBarH + 14);
+      }
+      ctx.globalAlpha = 1;
+      ctx.restore();
+
+      // Direction arrow if throne is off-screen
+      if (!throneOnScreen) {
+        const angle = Math.atan2(tsy - camera.screenH / 2, tsx - camera.screenW / 2);
+        const arrowDist = Math.min(camera.screenW, camera.screenH) / 2 - 55;
+        const ax = camera.screenW / 2 + Math.cos(angle) * arrowDist;
+        const ay = camera.screenH / 2 + Math.sin(angle) * arrowDist;
+        ctx.save();
+        ctx.translate(ax, ay);
+        ctx.rotate(angle);
+        ctx.globalAlpha = 0.9 * thronePulse;
+        ctx.fillStyle = '#ffd700';
+        ctx.shadowColor = '#ffd700';
+        ctx.shadowBlur = 12;
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(22, 0);
+        ctx.lineTo(-12, -11);
+        ctx.lineTo(-6, 0);
+        ctx.lineTo(-12, 11);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#000';
+        ctx.font = 'bold 10px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('👑', 4, 0);
+        ctx.restore();
+      }
+    }
+
     // === GOLDEN RAMPAGE — off-screen direction arrow pointing toward the Golden Bird ===
     if (gameState.goldenRampage && gameState.goldenRampage.goldenBirdX !== undefined) {
       const gbsx = gameState.goldenRampage.goldenBirdX - camera.x + camera.screenW / 2;
@@ -11767,6 +11928,11 @@
     const _domeForMinimap = gameState.thunderDome || window._thunderDomeData;
     if (_domeForMinimap && worldData) {
       Renderer.drawThunderDomeOnMinimap(minimapCtx, { width: worldData.width, height: worldData.height }, _domeForMinimap, now);
+    }
+
+    // Golden Throne — pulsing gold crown dot on minimap
+    if (gameState.self && gameState.self.goldenThrone && worldData) {
+      Renderer.drawGoldenThroneOnMinimap(minimapCtx, { width: worldData.width, height: worldData.height }, gameState.self.goldenThrone, now);
     }
 
     // Night Market — pulsing teal dot near the pond when aurora is active
@@ -13392,6 +13558,23 @@
         const myHits = gr.myHits || 0;
         html += `<div class="bm-buff-pill" style="background:rgba(60,40,0,0.9);border-color:#cc9900;color:#ffdd44;font-weight:bold;">🌟 GOLDEN RAMPAGE — ${gr.gangTag ? '[' + gr.gangTag + '] ' : ''}${gr.birdName} · ${secsLeft}s · HP: ${gr.hp}/${gr.maxHp} · MY HITS: ${myHits} · POOP THEM!</div>`;
       }
+    }
+
+    // === Golden Throne — claim progress or champion badge pill ===
+    if (s && s.goldenThrone) {
+      const throne = s.goldenThrone;
+      const throneLeft = Math.max(0, throne.expiresAt - Date.now());
+      const throneSecsLeft = Math.ceil(throneLeft / 1000);
+      if (throne.isClaiming && throne.claimProgress > 0) {
+        const claimPct = Math.floor(throne.claimProgress * 100);
+        const claimStyle = claimPct >= 75 ? 'animation:kingpinGlow 0.3s ease-in-out infinite alternate;' : '';
+        html += `<div class="bm-buff-pill" style="background:rgba(50,35,0,0.95);border-color:#ffd700;color:#ffe566;font-weight:bold;${claimStyle}">👑 CLAIMING THRONE ${claimPct}% — Hold position! ${throneSecsLeft}s left!</div>`;
+      } else {
+        html += `<div class="bm-buff-pill" style="background:rgba(40,30,0,0.85);border-color:#c8a000;color:#ffd700;">👑 GOLDEN THRONE nearby — ${throneSecsLeft}s · Stun guards, then claim it!</div>`;
+      }
+    }
+    if (s && s.throneChampBadge) {
+      html += `<div class="bm-buff-pill" style="background:rgba(50,35,0,0.9);border-color:#ffd700;color:#ffe566;">👑 THRONE CHAMPION — You seized the Golden Throne this session!</div>`;
     }
 
     el.innerHTML = html;

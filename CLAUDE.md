@@ -3417,6 +3417,50 @@ Every 20-30 minutes, a mysterious brown-paper package with a sputtering fuse mat
 
 **Creative intent**: The suspicious package fills the COOPERATIVE URGENCY gap. Every other cooperative event has a long build-up (bank heist phases, siege timer, migration cross-city). The package is IMMEDIATE — it spawns, the fuse is already burning, and every bird online must decide RIGHT NOW whether to sprint there and contribute. The cop escalation at halfway creates beautiful drama: you've already landed 5 hits and triggered the law — do you abandon with half-job done, or commit and earn big? The chain reactions (casino scatter, nest damage, vault crack) mean even a failed defuse has dramatic consequences. The 90-second window is short enough that it fires off as a sudden mid-session crisis rather than a planned event. A bird in the middle of a gang war who hears "💣 SUSPICIOUS PACKAGE" and has to choose between their war target and the bomb is peak Bird City decision-making. Pure CARNAGE + SOCIAL + SPECTACLE energy.
 
+**Session 100 — 2026-04-16: The Golden Throne — Seize the Seat of Power**
+THE 100TH SESSION LANDMARK EVENT. A legendary golden throne descends from the heavens every 35-50 minutes, landing at one of 6 iconic city positions. Two Royal Guards orbit it, protecting the throne with their lives. Any bird who stuns both guards and holds position for 8 uninterrupted seconds claims the throne — and instantly becomes KINGPIN with a Gold Rush decree that doubles all city coins for 60 seconds.
+
+**The Golden Throne flow (`server/game.js`):**
+- Spawns every 35-50 minutes at one of 6 legendary positions: Downtown Plaza, The Park Center, Mall Atrium, Cafe Quarter Corner, Residential Crossroads, Sacred Pond Clearing
+- 3-minute claim window — after that it fades back to the heavens with a quiet event feed entry
+- **2 Royal Guards** orbit at 110px from the throne center, rotating at 0.8 rad/s — they pace back and forth around the seat
+- Guard AI (3-state machine): `patrol` (orbit), `chasing` (pursues birds within 230px at 135px/s), `stunned` (KO'd for 12s after being defeated)
+- Guards block claiming by moving into the 70px interrupt radius — if any guard is unblocked within 70px, any active claim is halted
+
+**Guard combat:**
+- Normal poop: 1 HP per hit (30 XP, 8c per hit). Mega poop: 2 HP per hit (60 XP, 20c)
+- Guards have 3 HP each — 3 normal poops (or 2 normal + 1 mega, etc.) to stun
+- Stunned for 12 seconds — guards recover HP on un-stun, so players must re-engage if they dawdle
+- When BOTH guards go down simultaneously: city-wide "BOTH GUARDS STUNNED!" callout + personal "CLAIM IT NOW!" announcement
+
+**Claim mechanic:**
+- Fly within 80px of the throne for 8 continuous seconds — proximity-only, no button needed
+- `this.goldenThrone.claimants` Map tracks `{ startedAt }` per bird — interrupted if guard enters 70px
+- Only the FIRST bird to reach 8 continuous seconds wins — simultaneous competitors compete in real-time
+
+**Claim reward:**
+- Instantly crowned Kingpin (even if someone else is Kingpin — throne trumps wealth)
+- If already Kingpin: +1 extra Royal Decree this tenure
+- Immediate Gold Rush decree activated: 60s of 2× coin drops city-wide
+- +400 XP, +200 coins, `throneChampBadge = true` (session badge)
+- All other online birds earn +50 XP, +20c participation reward
+- City-wide screen shake + announcement: "[GANG] BirdName SEIZED THE GOLDEN THRONE! They are KINGPIN!"
+
+**Visual system:**
+- `drawGoldenThrone()` in `renderer.js`: ornate golden throne with velvet cushion, crown finials, armrest orbs, pulsing gold radial aura, orbiting sparkles, royal crest (👑) on the back
+- Claim progress arc: yellow arc grows around the throne when any bird is actively claiming, shows % text
+- `drawThroneGuard()` in `sprites.js`: gold-armored cop pigeon with crown helmet, shoulder pads, armor plating, red glowing eyes; X-eyes + orbiting stars when stunned
+- HUD countdown bar: stacks below mystery crate bar, shows time remaining + "GOLDEN THRONE · Fly there to CLAIM IT!"
+- Claim progress subbar: golden bar fills while claiming, turns yellow-pulsing when nearly claimed
+- Off-screen direction arrow: gold 👑 arrow points toward the throne when off-screen
+- Minimap: large pulsing gold dot + 👑 emoji at throne position — trackable from anywhere
+- 👑 THRONE CHAMPION session badge: dark gold background, gold border glow, renders above stampede badge in nametag stack
+- Active buffs HUD pills: "CLAIMING THRONE X%", "THRONE CHAMPION" for winners
+
+**Gazette integration:** "👑 GOLDEN THRONE CLAIMED: [Name] SEIZES THE SEAT OF POWER!" headline.
+
+**Creative intent**: Session 100 deserved a landmark feature that touched every pillar simultaneously. The Golden Throne is DISCOVERY (it descends unexpectedly), SOCIAL (everyone sees the guards go down, everyone watches the claim race), CARNAGE (two armored guards you must fight, rivals trying to interrupt your 8-second hold), PROGRESSION (Kingpin crown + Gold Rush decree = city-wide consequences), and SPECTACLE (the ornate throne object glowing in the middle of the city, coin shower on claim, the whole city's coins doubling for a minute). Unlike every other Kingpin mechanic (wealth-based), the throne is COMBAT-based — even a poor bird with good aim and good timing can seize the crown. The moment both guards go down and three birds simultaneously sprint into the 80px claim zone, racing to hold position for 8 seconds while also trying to block each other — that's pure emergent Bird City chaos. The throne's physical presence in the world (glowing, orbited by sparkles, flanked by armored guards) makes it a LANDMARK that players will look for on the minimap the moment it appears. Pure CARNAGE + SOCIAL + SPECTACLE + PROGRESSION energy — Bird City's 100th session and its most cinematic single event.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)

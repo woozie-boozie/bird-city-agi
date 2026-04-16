@@ -341,6 +341,12 @@ class GameEngine {
     this.goldenRampage = null; // null | { birdId, birdName, gangTag, spawnedAt, endsAt, hp, maxHp, contributors: Map }
     this._goldenRampageTimer = Date.now() + this._randomRange(50 * 60000, 70 * 60000);
 
+    // === THE GOLDEN THRONE — descends from the sky every 35-50 min at a legendary city location ===
+    // Two golden armored guards protect it. Stun the guards (3 poop hits each), then
+    // stay within 80px for 8 seconds to CLAIM THE THRONE — instant Kingpin + Gold Rush decree.
+    this.goldenThrone = null; // null | { x, y, spawnedAt, expiresAt, guards: [], claimants: Map }
+    this._goldenThroneTimer = Date.now() + this._randomRange(35 * 60000, 50 * 60000);
+
     // === GOLDEN EGG SCRAMBLE ===
     this.eggScramble = null;          // null or { state, startedAt, endsAt, eggs: Map(id->egg), delivered }
     this.eggScrambleTimer = Date.now() + this._randomRange(720000, 1080000); // first scramble 12-18 min in
@@ -1822,6 +1828,9 @@ class GameEngine {
 
     // === Golden Rampage ===
     this._updateGoldenRampage(now);
+
+    // === Golden Throne ===
+    this._updateGoldenThrone(dt, now);
 
     // === Thunder Dome ===
     this._tickThunderDome(now);
@@ -3532,6 +3541,38 @@ class GameEngine {
         if (vt.hp <= 0) {
           this._crackVaultTruck(vt, now);
         }
+      } else if (hit.target === 'throne_guard' && hit.guardId && this.goldenThrone) {
+        // Poop hit a Golden Throne Guard! Stun them to clear the way to the throne.
+        const guard = this.goldenThrone.guards.find(g => g.id === hit.guardId);
+        if (guard && guard.state !== 'stunned') {
+          const dmg = isMegaPoop ? 2 : 1;
+          guard.hp = Math.max(0, guard.hp - dmg);
+          xpGain = isMegaPoop ? 60 : 30;
+          bird.coins += isMegaPoop ? 20 : 8;
+          this.events.push({
+            type: 'throne_guard_hit',
+            birdId: bird.id, birdName: bird.name,
+            guardId: guard.id,
+            hp: guard.hp, maxHp: guard.maxHp,
+            x: guard.x, y: guard.y,
+          });
+          if (guard.hp <= 0) {
+            guard.state = 'stunned';
+            guard.stunnedUntil = now + 12000; // 12s stun
+            guard.hp = 0;
+            xpGain += 80;
+            bird.coins += 30;
+            const allDown = this.goldenThrone.guards.every(g => g.state === 'stunned');
+            this.events.push({
+              type: 'throne_guard_stunned',
+              birdId: bird.id, birdName: bird.name,
+              gangTag: bird.gangTag || null,
+              guardId: guard.id,
+              allDown,
+              x: this.goldenThrone.x, y: this.goldenThrone.y,
+            });
+          }
+        }
       } else if (hit.target === 'golden_bird' && this.goldenRampage && this.goldenRampage.hp > 0) {
         // Poop hit the Golden Bird! The city hunts their chosen champion.
         const gr = this.goldenRampage;
@@ -4997,6 +5038,19 @@ class GameEngine {
       }
     }
 
+    // Check Golden Throne Guards — poop them to stun (3 hits each), clearing the path to claim
+    if (this.goldenThrone) {
+      for (const guard of this.goldenThrone.guards) {
+        if (guard.state === 'stunned') continue;
+        const gdx = poop.x - guard.x;
+        const gdy = poop.y - guard.y;
+        if (Math.sqrt(gdx * gdx + gdy * gdy) < hitRadius + 14) {
+          if (!isMegaPoop) return { target: 'throne_guard', guardId: guard.id };
+          allHits.push({ target: 'throne_guard', guardId: guard.id });
+        }
+      }
+    }
+
     if (isMegaPoop && allHits.length > 0) {
       return { target: allHits[0].target, npc: allHits[0].npc, allHits };
     }
@@ -6425,6 +6479,8 @@ class GameEngine {
           goldenBirdBadge: b.goldenBirdBadge || false,
           // Session 98: Stampede King badge
           stampedeBadge: b.stampedeBadge || false,
+          // Session 100: Golden Throne champion badge
+          throneChampBadge: b.throneChampBadge || false,
         });
       }
     }
@@ -7050,6 +7106,7 @@ class GameEngine {
         isGoldenBird: !!(this.goldenRampage && this.goldenRampage.birdId === bird.id),
         goldenBirdBadge: bird.goldenBirdBadge || false,
         stampedeBadge: bird.stampedeBadge || false,
+        throneChampBadge: bird.throneChampBadge || false,
         nearNightMarket: (() => {
           if (!this.nightMarket) return false;
           const dx = bird.x - this.nightMarket.x;
@@ -7799,6 +7856,23 @@ class GameEngine {
         isGoldenBird: this.goldenRampage.birdId === bird.id,
         goldenBirdX: (() => { const b = this.birds.get(this.goldenRampage.birdId); return b ? b.x : 0; })(),
         goldenBirdY: (() => { const b = this.birds.get(this.goldenRampage.birdId); return b ? b.y : 0; })(),
+      } : null,
+      // Golden Throne — descends every 35-50 min, claim it to rule Bird City
+      goldenThrone: this.goldenThrone ? {
+        x: this.goldenThrone.x,
+        y: this.goldenThrone.y,
+        expiresAt: this.goldenThrone.expiresAt,
+        guards: this.goldenThrone.guards.map(g => ({
+          id: g.id, x: g.x, y: g.y,
+          hp: g.hp, maxHp: g.maxHp,
+          state: g.state,
+          orbitAngle: g.orbitAngle,
+        })),
+        claimProgress: (() => {
+          const entry = this.goldenThrone.claimants.get(bird.id);
+          return entry ? Math.min(1, (now - entry.startedAt) / 8000) : 0;
+        })(),
+        isClaiming: this.goldenThrone.claimants.has(bird.id),
       } : null,
       // Bird Royale
       birdRoyale: this.birdRoyale ? {
@@ -21540,6 +21614,259 @@ class GameEngine {
     this.suspiciousPackage = null;
     this._suspiciousPackageTimer = now + this._randomRange(20 * 60000, 30 * 60000);
     console.log(`[GameEngine] SUSPICIOUS PACKAGE exploded — ${blasted.length} birds blasted`);
+  }
+
+  // ============================================================
+  // THE GOLDEN THRONE — Session 100 landmark feature
+  // A legendary golden throne descends every 35-50 minutes.
+  // Two royal guards protect it. Stun them, then stay 8 seconds to claim the throne.
+  // Claiming grants instant Kingpin status + Gold Rush + throneChampBadge.
+  // ============================================================
+  _spawnGoldenThrone(now) {
+    const positions = [
+      { x: 1500, y: 1500 }, // City Center grand square
+      { x: 1200, y: 720  }, // North park avenue
+      { x: 2100, y: 1200 }, // Downtown corridor
+      { x: 900,  y: 1700 }, // Cafe District plaza
+      { x: 1850, y: 2100 }, // South market area
+      { x: 700,  y: 650  }, // West park fringe
+    ];
+    const pos = positions[Math.floor(Math.random() * positions.length)];
+
+    const guards = [
+      {
+        id: 'tg_' + uid(), x: pos.x + 110, y: pos.y,
+        hp: 3, maxHp: 3, stunnedUntil: 0, state: 'patrol',
+        orbitAngle: 0, targetId: null,
+      },
+      {
+        id: 'tg_' + uid(), x: pos.x - 110, y: pos.y,
+        hp: 3, maxHp: 3, stunnedUntil: 0, state: 'patrol',
+        orbitAngle: Math.PI, targetId: null,
+      },
+    ];
+
+    this.goldenThrone = {
+      x: pos.x, y: pos.y,
+      spawnedAt: now,
+      expiresAt: now + 3 * 60000, // 3-minute window
+      guards,
+      claimants: new Map(), // birdId -> { startedAt }
+    };
+
+    this.events.push({
+      type: 'golden_throne_spawned',
+      x: pos.x, y: pos.y,
+      message: '👑 THE GOLDEN THRONE HAS DESCENDED ON BIRD CITY! Stun the guards and CLAIM IT — 3 minutes!',
+    });
+    console.log(`[GameEngine] GOLDEN THRONE spawned at (${pos.x}, ${pos.y})`);
+  }
+
+  _updateGoldenThrone(dt, now) {
+    // Spawn check
+    if (!this.goldenThrone) {
+      if (now >= this._goldenThroneTimer && this.birds.size > 0) {
+        this._spawnGoldenThrone(now);
+      }
+      return;
+    }
+
+    const throne = this.goldenThrone;
+    const CLAIM_RADIUS = 80;
+    const GUARD_ORBIT_RADIUS = 115;
+    const GUARD_HUNT_RADIUS = 230;
+    const GUARD_SPEED = 135;
+    const CLAIM_SECONDS = 8;
+
+    // Expire throne
+    if (now >= throne.expiresAt) {
+      this.events.push({
+        type: 'golden_throne_expired',
+        x: throne.x, y: throne.y,
+        message: '👑 The Golden Throne faded... It will return.',
+      });
+      this.goldenThrone = null;
+      this._goldenThroneTimer = now + this._randomRange(35 * 60000, 50 * 60000);
+      return;
+    }
+
+    // === Update each guard ===
+    for (const guard of throne.guards) {
+      // Un-stun when timer expires
+      if (guard.state === 'stunned') {
+        if (now >= guard.stunnedUntil) {
+          guard.state = 'patrol';
+          guard.hp = guard.maxHp; // recover HP when un-stunned
+          guard.targetId = null;
+        }
+        continue; // stunned guards don't move
+      }
+
+      if (guard.state === 'patrol') {
+        // Look for nearest bird within hunt radius
+        let closest = null, closestDist = GUARD_HUNT_RADIUS;
+        for (const b of this.birds.values()) {
+          if (b.underground) continue;
+          const dx = b.x - throne.x, dy = b.y - throne.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < closestDist) { closest = b; closestDist = dist; }
+        }
+        if (closest) {
+          guard.state = 'chasing';
+          guard.targetId = closest.id;
+        } else {
+          // Orbit the throne clockwise
+          guard.orbitAngle += 0.007 * dt;
+          guard.x = throne.x + Math.cos(guard.orbitAngle) * GUARD_ORBIT_RADIUS;
+          guard.y = throne.y + Math.sin(guard.orbitAngle) * GUARD_ORBIT_RADIUS;
+        }
+      }
+
+      if (guard.state === 'chasing') {
+        const target = this.birds.get(guard.targetId);
+        if (!target) { guard.state = 'patrol'; guard.targetId = null; continue; }
+
+        // If target too far from throne, give up and return to patrol
+        const tdx = target.x - throne.x, tdy = target.y - throne.y;
+        const targetDistFromThrone = Math.sqrt(tdx * tdx + tdy * tdy);
+        if (targetDistFromThrone > 380) {
+          guard.state = 'patrol'; guard.targetId = null; continue;
+        }
+
+        // Move toward target
+        const dx = target.x - guard.x, dy = target.y - guard.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > 5) {
+          const step = GUARD_SPEED * (dt / 1000);
+          guard.x += (dx / dist) * step;
+          guard.y += (dy / dist) * step;
+          guard.orbitAngle = Math.atan2(guard.y - throne.y, guard.x - throne.x);
+        }
+
+        // Block claiming: if guard within 55px of claimer, reset their claim progress
+        if (dist < 55) {
+          const entry = throne.claimants.get(guard.targetId);
+          if (entry) {
+            throne.claimants.delete(guard.targetId);
+            this.events.push({
+              type: 'golden_throne_blocked',
+              birdId: guard.targetId,
+              x: throne.x, y: throne.y,
+            });
+          }
+        }
+      }
+    }
+
+    // === Check claimants ===
+    for (const b of this.birds.values()) {
+      if (b.underground) continue;
+      const dx = b.x - throne.x, dy = b.y - throne.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      if (dist <= CLAIM_RADIUS) {
+        // Start/continue claim if no non-stunned guard is close to this bird
+        const guardBlocking = throne.guards.some(g => {
+          if (g.state === 'stunned') return false;
+          const gdx = g.x - b.x, gdy = g.y - b.y;
+          return Math.sqrt(gdx * gdx + gdy * gdy) < 70;
+        });
+
+        if (!guardBlocking) {
+          if (!throne.claimants.has(b.id)) {
+            throne.claimants.set(b.id, { startedAt: now });
+            this.events.push({
+              type: 'golden_throne_claiming',
+              birdId: b.id, birdName: b.name,
+              gangTag: b.gangTag || null,
+              x: throne.x, y: throne.y,
+            });
+          }
+          const elapsed = (now - throne.claimants.get(b.id).startedAt) / 1000;
+          if (elapsed >= CLAIM_SECONDS) {
+            this._claimGoldenThrone(b, now);
+            return; // throne is gone
+          }
+        }
+      } else {
+        // Left the range — reset their claim progress
+        throne.claimants.delete(b.id);
+      }
+    }
+  }
+
+  _claimGoldenThrone(bird, now) {
+    const throne = this.goldenThrone;
+    if (!throne) return;
+
+    const isAlreadyKingpin = this.kingpin && this.kingpin.birdId === bird.id;
+
+    // Crown the claimer as Kingpin if they aren't already
+    if (!isAlreadyKingpin) {
+      const prevKingpin = this.kingpin ? this.kingpin.birdName : null;
+      this.kingpin = {
+        birdId: bird.id,
+        birdName: bird.name,
+        gangTag: bird.gangTag || null,
+        crownedAt: now,
+        coins: bird.coins,
+        hitCount: new Map(),
+        lastPassiveReward: now,
+        decreesAvailable: (bird.prestige >= 5) ? 2 : 1,
+        throneForced: true, // Forced by throne claim
+      };
+      this.events.push({
+        type: 'kingpin_crowned',
+        birdId: bird.id, birdName: bird.name,
+        gangTag: bird.gangTag || null,
+        coins: bird.coins,
+        fromThrone: true,
+        prevKingpin,
+      });
+    } else {
+      // Already Kingpin — bonus decree!
+      this.kingpin.decreesAvailable = Math.min((this.kingpin.decreesAvailable || 0) + 1, 3);
+    }
+
+    // Immediately fire a Gold Rush decree (60 seconds of 2× coins for everyone)
+    this.kingpinDecree = {
+      type: 'gold_rush',
+      endsAt: now + 60000,
+      kingpinId: bird.id,
+      kingpinName: bird.name,
+    };
+
+    // Reward the claimer
+    bird.xp += 400;
+    bird.coins += 200;
+    this._checkLevelUp(bird);
+    bird.throneChampBadge = true; // session-only badge
+
+    // Participation XP for all other online birds
+    for (const b of this.birds.values()) {
+      if (b.id !== bird.id) {
+        b.xp += 50;
+        b.coins += 20;
+      }
+    }
+
+    if (this.gazetteStats) {
+      this.gazetteStats.throneClaimedBy = bird.name;
+      this.gazetteStats.throneClaimedGang = bird.gangTag || null;
+    }
+
+    this.events.push({
+      type: 'golden_throne_claimed',
+      birdId: bird.id, birdName: bird.name,
+      gangTag: bird.gangTag || null,
+      isAlreadyKingpin,
+      x: throne.x, y: throne.y,
+      message: `👑 ${bird.gangTag ? `[${bird.gangTag}] ` : ''}${bird.name} CLAIMS THE GOLDEN THRONE! GOLD RUSH ACTIVATED — 2× coins for 60s! +200c +400 XP`,
+    });
+
+    console.log(`[GameEngine] GOLDEN THRONE claimed by ${bird.name}`);
+    this.goldenThrone = null;
+    this._goldenThroneTimer = now + this._randomRange(35 * 60000, 50 * 60000);
   }
 
 }
