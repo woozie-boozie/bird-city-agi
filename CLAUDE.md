@@ -3354,6 +3354,37 @@ Bird City now has a permanent meta-achievement layer: 12 zodiac constellation ba
 
 **Creative intent**: Bird City had many progression systems (prestige, skill tree, mafia rep, noble tenures) but none that encoded specific MEMORABLE MOMENTS. The constellation system is a permanent autobiography of your Bird City career. ♈ Aries tells every player "I once landed a 20× combo." ♑ Capricorn says "I was so powerful I held the crown AND controlled the airwaves simultaneously." ♋ Cancer is the rarest — requiring two separate rare aurora sub-events in the SAME night. The zodiac aesthetic (purple glow, serif signs on the nametag) is visually distinct from every other badge, creating an unmistakable prestige signal. A bird with 8+ constellations is a legend by definition — they've participated in and EXCELLED at events across every pillar of Bird City. Pure PROGRESSION + DISCOVERY energy.
 
+**Session 98 — 2026-04-16: Pigeon Stampede — 40-Bird Mass Chaos Event**
+Every 18-25 minutes, 35-45 panicked urban pigeons stampede across the city in a frenetic herd — charging from one map edge to the opposite. Shoot as many as possible in the ~75-second window. The top scorer earns 🐦 STAMPEDE KING badge + 300 XP + 200 coins.
+
+**The Stampede Flow (`server/game.js`):**
+- Timer fires every 18-25 minutes when any player is online
+- Spawns 35-45 birds spread across a random entry edge (north/south/east/west), each with slightly varied direction (±15°) and speed (115-145px/s)
+- Birds charge across the map in a loose frenetic wave — NOT a neat V-formation, but chaotic scattering herd
+- 70-80 second total window; birds die when poop hits them (2 HP each, mega poop = instant), OR when they exit the opposite map edge
+- **Scoring**: each poop hit tracked per-bird. Top hitter at the end = STAMPEDE KING
+- **Repel bonus**: if players manage to poop ALL birds dead before they exit: +75 XP +30c for every online bird city-wide
+- Hit rewards: +4 XP +2c per hit, +20 XP +10c on kill — quick-fire rewards that add up fast
+- Gazettee headline: "🐦 PIGEON STAMPEDE — [Name] TOPS THE FLOCK" when a champion emerges
+- 2 new daily challenges: **Stampede Hunter** (hit 15 stampede birds, 190 XP/95c) and **Stampede King** (be the top scorer, 280 XP/140c)
+
+**Visual system:**
+- Custom `drawStampedeBird()` sprite in `sprites.js`: chubby urban pigeon silhouette, erratic wing-flap animation (faster than normal, each bird independently phased), wide terrified yellow eyes with white highlights, tiny sweat drop by the eye, open beak in panic, iridescent neck patch — a genuinely panicked bird
+- Motion blur / speed lines trail behind each bird (4 lines fading backward along velocity vector, intensity proportional to speed)
+- 🐦 STAMPEDE KING session nametag badge: warm orange-brown on dark background, matches the stampede color palette
+- HUD countdown bar (stacks below crime wave / seagull / migration / vault truck bars): shows alive count, total count, time remaining, and "MY HITS: N" when actively scoring
+- Warm orange-brown screen tint while stampede is active (subtle dust cloud atmosphere)
+- Active buffs HUD pill: "🐦 STAMPEDE — N/N birds · Xs · POOP INTO THE HERD! · MY HITS: N"
+- Minimap: pulsing warm orange-brown dots for all alive stampede birds + alive/total counter in bottom-right
+
+**Events & announcements:**
+- `stampede_start`: screen shake + big orange announcement with count + entry direction
+- `stampede_bird_down`: feather burst emoji effect at kill position
+- `stampede_repelled`: screen shake + city-wide "ALL CLEARED" bonus announcement
+- `stampede_end`: champion announcement with name, hit count, and reward callout
+
+**Creative intent**: Bird City has lots of precision/skill events (duels, races, arena) and lots of cooperative events (heists, sieges, migration). The stampede is pure CHAOTIC QUANTITY — 40+ panicked birds charging across the screen all at once, and you need to fire as fast as possible into the chaos. There's no strategy, no coordination required, no teams — just you, your poop, and a wall of terrified pigeons. The `drawStampedeBird()` sprite design captures the essence: wide eyes, open beak, erratic wings, motion blur — these birds are having the worst day of their lives. The repel bonus means solo birds can contribute without feeling pointless (every hit counts toward clearing), while the champion scoring gives skilled players a reason to compete. Pure CARNAGE energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)

@@ -4111,6 +4111,48 @@
       }
       addEventMessage(`🦅⚡ ${ev.birdName} stacks migration slipstream AND race boost gate — supercharge!`, '#f6ad55');
     }
+    // === PIGEON STAMPEDE EVENTS ===
+    if (ev.type === 'stampede_start') {
+      effects.push({ type: 'screen_shake', intensity: 12, duration: 800, time: now });
+      showAnnouncement(
+        `🐦 PIGEON STAMPEDE!\n${ev.count} panicked pigeons charging from the ${ev.edgeLabel}!\nFIRE INTO THE HERD — top scorer earns 300XP + 200c!`,
+        '#e09040', 7000
+      );
+      addEventMessage(`🐦 PIGEON STAMPEDE! ${ev.count} birds charging the city from the ${ev.edgeLabel}!`, '#e09040');
+    }
+    if (ev.type === 'stampede_bird_hit') {
+      if (ev.birdId === myId) {
+        effects.push({ type: 'text', x: ev.x, y: ev.y - 20, time: now, duration: 700,
+          text: '+HIT', color: '#e09040', size: 12 });
+      }
+    }
+    if (ev.type === 'stampede_bird_down') {
+      // Small feather burst at kill position
+      effects.push({ type: 'text', x: ev.x, y: ev.y - 15, time: now, duration: 900,
+        text: '💨', color: '#c08040', size: 14 });
+    }
+    if (ev.type === 'stampede_repelled') {
+      effects.push({ type: 'screen_shake', intensity: 14, duration: 900, time: now });
+      showAnnouncement(
+        `✅ STAMPEDE REPELLED!\nAll ${ev.birdsCleared} panicked pigeons downed!\n+75XP +30c for EVERYONE!`,
+        '#44dd88', 6000
+      );
+      addEventMessage(`✅ PIGEON STAMPEDE REPELLED! All birds downed — +75XP +30c for every online bird!`, '#44dd88');
+    }
+    if (ev.type === 'stampede_end') {
+      if (ev.champName) {
+        const tag = ev.champGangTag ? `[${ev.champGangTag}] ` : '';
+        effects.push({ type: 'screen_shake', intensity: 10, duration: 700, time: now });
+        showAnnouncement(
+          `🐦 STAMPEDE OVER!\n🏆 STAMPEDE KING: ${tag}${ev.champName}\n${ev.champHits} hits — +300XP +200c!`,
+          '#e09040', 6000
+        );
+        addEventMessage(`🐦 Stampede ended! KING: ${tag}${ev.champName} (${ev.champHits} hits)!`, '#e09040');
+      } else {
+        addEventMessage(`🐦 The pigeon stampede cleared the city.`, '#aaaaaa');
+      }
+    }
+
     if (ev.type === 'siege_cartel_backup') {
       effects.push({ type: 'screen_shake', intensity: 10, duration: 700, time: now });
       showAnnouncement(`⚔️🐦‍⬛ CROW CARTEL BACKUP!\nDon Corvino sends 3 thugs to [${ev.attackingGangTag}]'s siege!\nThe nest won't hold!`, '#aa44ff', 6000);
@@ -8539,6 +8581,18 @@
       }
     }
 
+    // === PIGEON STAMPEDE — panicked herd crossing the city ===
+    if (gameState.stampede && gameState.stampede.birds) {
+      for (const sb of gameState.stampede.birds) {
+        const ssx = sb.x - camera.x + camera.screenW / 2;
+        const ssy = sb.y - camera.y + camera.screenH / 2;
+        if (ssx > -margin - 40 && ssx < camera.screenW + margin + 40 &&
+            ssy > -margin - 40 && ssy < camera.screenH + margin + 40) {
+          Sprites.drawStampedeBird(ctx, ssx, ssy, sb.vx, sb.vy, sb.phase || 0, now);
+        }
+      }
+    }
+
     // The Pigeon Mafia Don — permanent NPC at his corner
     {
       const DON_WORLD_X = 1300, DON_WORLD_Y = 2380;
@@ -8993,7 +9047,7 @@
 
           Sprites.drawBird(ctx, sx, sy, b.rotation, b.type, b.wingPhase, isPlayer, b.birdColor || null);
           ctx.globalAlpha = 1; // Always reset after bird draw
-          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0, b.eagleFeather || false, b.idolBadge || false, b.royaleChampBadge || false, b.skillTreeMaster || false, b.fightingChampBadge || false, b.constellationBadge || false, b.courtTitle || null, b.hanamiLanternBadge || false, b.domeChampBadge || false, b.alphaFeather || false, b.arenaLegend || false, b.goldenBirdBadge || false, b.constellations || []);
+          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0, b.eagleFeather || false, b.idolBadge || false, b.royaleChampBadge || false, b.skillTreeMaster || false, b.fightingChampBadge || false, b.constellationBadge || false, b.courtTitle || null, b.hanamiLanternBadge || false, b.domeChampBadge || false, b.alphaFeather || false, b.arenaLegend || false, b.goldenBirdBadge || false, b.constellations || [], b.stampedeBadge || false);
 
           // Bird Flu: sneezing emoji indicator above infected birds
           if (b.isFlu) {
@@ -9622,6 +9676,68 @@
         ctx.fillText('💼', 0, 0);
         ctx.restore();
       }
+    }
+
+    // === PIGEON STAMPEDE HUD BAR ===
+    if (gameState.stampede) {
+      const st = gameState.stampede;
+      const stTimeLeft = Math.max(0, st.endsAt - now);
+      const stTotal = 80000; // ~80 second max duration
+      const stFrac = stTimeLeft / stTotal;
+      const stAlive = st.aliveCount || 0;
+      const stMyHits = st.myHits || 0;
+
+      // Warm brown/orange tint — a dusty stampede cloud
+      const stPulse = 0.5 + 0.5 * Math.abs(Math.sin(now * 0.006));
+      ctx.save();
+      ctx.globalAlpha = 0.04 + 0.02 * stPulse;
+      ctx.fillStyle = '#c08040';
+      ctx.fillRect(0, 0, camera.screenW, camera.screenH);
+      ctx.globalAlpha = 1;
+      ctx.restore();
+
+      // Stack below crime wave, seagull, migration, and vault truck bars
+      const hasCrimeWaveST = gameState.self && gameState.self.crimeWave;
+      const hasSeagullST = gameState.seagullInvasion;
+      const hasMigrationST = gameState.migration;
+      const hasVaultST = gameState.vaultTruck && !gameState.vaultTruck.cracked && !gameState.vaultTruck.escaped;
+      let stBarY = 132;
+      if (hasCrimeWaveST) stBarY += 43;
+      if (hasSeagullST) stBarY += 43;
+      if (hasMigrationST) stBarY += 43;
+      if (hasVaultST) stBarY += 43;
+
+      const stBarW = 210, stBarH = 12;
+      const stBarX = camera.screenW / 2 - stBarW / 2;
+
+      ctx.save();
+      ctx.globalAlpha = 0.92;
+      ctx.fillStyle = 'rgba(0,0,0,0.72)';
+      ctx.beginPath();
+      ctx.roundRect(stBarX - 60, stBarY - 18, stBarW + 120, stBarH + 32, 10);
+      ctx.fill();
+
+      const stLabelPulse = 0.75 + 0.25 * Math.sin(now * 0.009);
+      ctx.globalAlpha = stLabelPulse;
+      ctx.fillStyle = '#e09040';
+      ctx.font = 'bold 11px Arial';
+      ctx.textAlign = 'center';
+      const stHitsStr = stMyHits > 0 ? ` · MY HITS: ${stMyHits}` : '';
+      ctx.fillText(`🐦 PIGEON STAMPEDE — ${stAlive}/${st.totalCount} alive · ${Math.ceil(stTimeLeft / 1000)}s${stHitsStr}`, camera.screenW / 2, stBarY - 4);
+
+      ctx.globalAlpha = 0.85;
+      ctx.fillStyle = 'rgba(60,30,0,0.55)';
+      ctx.beginPath();
+      ctx.roundRect(stBarX, stBarY + 2, stBarW, stBarH, 4);
+      ctx.fill();
+
+      const stBarColor = stFrac > 0.5 ? '#e09040' : stFrac > 0.25 ? '#cc6020' : '#ff4400';
+      ctx.fillStyle = stBarColor;
+      ctx.beginPath();
+      ctx.roundRect(stBarX, stBarY + 2, stBarW * stFrac, stBarH, 4);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.restore();
     }
 
     // === CRIME WAVE OVERLAY ===
@@ -10903,6 +11019,25 @@
       minimapCtx.font = 'bold 7px monospace';
       minimapCtx.textAlign = 'left';
       minimapCtx.fillText(`🐦 ${gameState.seagullInvasion.aliveCount}/${gameState.seagullInvasion.totalCount}`, 3, mh - 3);
+    }
+
+    // Pigeon Stampede on minimap — warm orange-brown swarming dots
+    if (gameState.stampede && gameState.stampede.birds && worldData) {
+      const mw = minimapCtx.canvas.width;
+      const mh = minimapCtx.canvas.height;
+      const stPulse = 0.5 + 0.5 * Math.sin(now * 0.01);
+      for (const sb of gameState.stampede.birds) {
+        const sbmx = sb.x * mw / worldData.width;
+        const sbmy = sb.y * mh / worldData.height;
+        minimapCtx.fillStyle = `rgba(220,140,50,${0.55 + 0.35 * stPulse})`;
+        minimapCtx.beginPath();
+        minimapCtx.arc(sbmx, sbmy, 2 + stPulse * 0.5, 0, Math.PI * 2);
+        minimapCtx.fill();
+      }
+      minimapCtx.fillStyle = '#e09040';
+      minimapCtx.font = 'bold 7px monospace';
+      minimapCtx.textAlign = 'right';
+      minimapCtx.fillText(`🐦 ${gameState.stampede.aliveCount}/${gameState.stampede.totalCount}`, mw - 3, mh - 3);
     }
 
     // Blood Moon feral birds on minimap — pulsing red skull dots
@@ -12649,6 +12784,14 @@
     if (gameState.seagullInvasion && gameState.seagullInvasion.aliveCount > 0) {
       const sgLeft = Math.ceil((gameState.seagullInvasion.endsAt - now) / 1000);
       html += `<div class="bm-buff-pill" style="background:rgba(0,40,80,0.9);border-color:#44aaff;color:#88ccff;animation:kingpinGlow 1.0s ease-in-out infinite alternate;">🐦 SEAGULL RAID — ${gameState.seagullInvasion.aliveCount} left · ${sgLeft}s · POOP THEM!</div>`;
+    }
+
+    // Pigeon Stampede awareness pill
+    if (gameState.stampede && gameState.stampede.aliveCount > 0) {
+      const stLeft = Math.ceil((gameState.stampede.endsAt - now) / 1000);
+      const stHits = gameState.stampede.myHits || 0;
+      const stHitsStr = stHits > 0 ? ` · MY HITS: ${stHits}` : '';
+      html += `<div class="bm-buff-pill" style="background:rgba(60,30,0,0.9);border-color:#e09040;color:#f0b060;animation:kingpinGlow 0.9s ease-in-out infinite alternate;">🐦 STAMPEDE — ${gameState.stampede.aliveCount}/${gameState.stampede.totalCount} birds · ${stLeft}s · POOP INTO THE HERD!${stHitsStr}</div>`;
     }
 
     // Formation Flying buff pills

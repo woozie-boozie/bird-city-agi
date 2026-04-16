@@ -137,6 +137,9 @@ const DAILY_CHALLENGE_POOL = [
   // Session 96: Golden Rampage challenges
   { id: 'kingslayer',    title: 'Kingslayer',    desc: 'Hit the Golden Bird 5 times during the Golden Rampage',        target: 5,  trackType: 'golden_bird_hit', reward: { xp: 250, coins: 125 } },
   { id: 'last_king',     title: 'The Last King', desc: 'Survive as the Golden Bird for 60+ seconds',                  target: 1,  trackType: 'golden_survived', reward: { xp: 300, coins: 150 } },
+  // Session 98: Pigeon Stampede challenges
+  { id: 'stampede_hunter', title: 'Stampede Hunter', desc: 'Hit 15 stampede birds during a Pigeon Stampede',              target: 15, trackType: 'stampede_hit',    reward: { xp: 190, coins: 95  } },
+  { id: 'stampede_king',   title: 'Stampede King',   desc: 'Be the top scorer in a Pigeon Stampede',                      target: 1,  trackType: 'stampede_champ',  reward: { xp: 280, coins: 140 } },
 ];
 
 // ============================================================
@@ -727,6 +730,16 @@ class GameEngine {
     this.migration = null;       // null | { birds: Map, alpha, direction, endsAt, contributors: Map }
     this.migrationTimer = Date.now() + this._randomRange(20 * 60000, 30 * 60000);
     this._migrationIdCounter = 0;
+
+    // === PIGEON STAMPEDE ===
+    // Every 18-25 minutes, 35-45 panicked pigeons stampede through the city from one edge to the other.
+    // Each stampede bird is a fast-moving NPC (115-145px/s) flying in one direction.
+    // Players fire into the panicked herd: 4 XP + 2c per hit, +20 XP + 10c per kill (2 hits).
+    // STAMPEDE KING: most hits at the end of the 70s window earns 300 XP + 200c + session badge.
+    // ALL birds cleared before timer: city-wide bonus +75 XP + 30c.
+    this.stampede = null; // null | { birds: Map, startedAt, endsAt, dirAngle, hits: Map, totalCount, championGiven }
+    this._stampedeTimer = Date.now() + this._randomRange(18 * 60000, 25 * 60000);
+    this._stampedeIdCounter = 0;
 
     // === CHERRY BLOSSOMS SPRING FESTIVAL ===
     // Active every April — the park fills with pink mochi treats.
@@ -1792,6 +1805,9 @@ class GameEngine {
 
     // === The Great Migration ===
     this._updateMigration(dt, now);
+
+    // === Pigeon Stampede ===
+    this._updateStampede(dt, now);
 
     // === Golden Rampage ===
     this._updateGoldenRampage(now);
@@ -3666,6 +3682,44 @@ class GameEngine {
           // After first hit seagull becomes frantic — finds new target
           this.events.push({ type: 'seagull_hit', birdId: bird.id, x: sg.x, y: sg.y });
         }
+      } else if (hit.target === 'stampede_bird' && hit.stampedeBird && this.stampede) {
+        // Poop hit a stampede bird!
+        const sb = hit.stampedeBird;
+        const dmg = isMegaPoop ? 2 : 1; // mega = instant kill
+        sb.hp -= dmg;
+        xpGain = 4;
+        coinGain = 2;
+
+        // Track per-player hits for champion tracking
+        const prevHits = (this.stampede.hits.get(bird.id) || 0);
+        this.stampede.hits.set(bird.id, prevHits + 1);
+        // Track name/gangTag for champion award
+        this.stampede.hitNames = this.stampede.hitNames || new Map();
+        this.stampede.hitNames.set(bird.id, { name: bird.name, gangTag: bird.gangTag || null });
+
+        // Daily challenge: stampede_hit
+        this._trackDailyProgress(bird, 'stampede_hit', 1);
+
+        if (sb.hp <= 0) {
+          sb.state = 'dead';
+          xpGain += 20;
+          coinGain += 10;
+          // Count alive birds to check for full repel
+          const aliveCount = Array.from(this.stampede.birds.values()).filter(b => b.state !== 'dead').length;
+          this.events.push({ type: 'stampede_bird_down', birdId: bird.id, x: sb.x, y: sb.y, aliveCount });
+          if (aliveCount === 0 && !this.stampede.repelBonusGiven) {
+            this.stampede.repelBonusGiven = true;
+            // City-wide bonus for clearing all stampede birds
+            for (const b of this.birds.values()) {
+              b.xp += 75;
+              b.coins += 30;
+            }
+            this.events.push({ type: 'stampede_repelled', birdsCleared: this.stampede.totalCount });
+          }
+        } else {
+          // First hit — bird flails (visual event)
+          this.events.push({ type: 'stampede_bird_hit', birdId: bird.id, x: sb.x, y: sb.y });
+        }
       } else if (hit.target === 'migration_alpha' && this.migration && this.migration.alpha && this.migration.alpha.hp > 0) {
         // Intercepted the Migration Alpha Leader! Contribute to bringing it down.
         const alpha = this.migration.alpha;
@@ -4831,6 +4885,19 @@ class GameEngine {
         if (Math.sqrt(sdx * sdx + sdy * sdy) < hitRadius + 10) {
           if (!isMegaPoop) return { target: 'seagull', seagull: sg };
           allHits.push({ target: 'seagull', seagull: sg });
+        }
+      }
+    }
+
+    // Check Stampede Birds (panicked pigeons running through the city)
+    if (this.stampede) {
+      for (const sb of this.stampede.birds.values()) {
+        if (sb.state === 'dead') continue;
+        const sdx = poop.x - sb.x;
+        const sdy = poop.y - sb.y;
+        if (Math.sqrt(sdx * sdx + sdy * sdy) < hitRadius + 10) {
+          if (!isMegaPoop) return { target: 'stampede_bird', stampedeBird: sb };
+          allHits.push({ target: 'stampede_bird', stampedeBird: sb });
         }
       }
     }
@@ -6315,6 +6382,9 @@ class GameEngine {
           exorcismProgress: (() => { const e = this.possessionHits.get(b.id); return e && e.windowEnd > now ? e.count : 0; })(),
           // Session 96: Golden Rampage — golden bird visible to all
           isGoldenBird: !!(this.goldenRampage && this.goldenRampage.birdId === b.id),
+          goldenBirdBadge: b.goldenBirdBadge || false,
+          // Session 98: Stampede King badge
+          stampedeBadge: b.stampedeBadge || false,
         });
       }
     }
@@ -6939,6 +7009,7 @@ class GameEngine {
         // Session 96: Golden Rampage
         isGoldenBird: !!(this.goldenRampage && this.goldenRampage.birdId === bird.id),
         goldenBirdBadge: bird.goldenBirdBadge || false,
+        stampedeBadge: bird.stampedeBadge || false,
         nearNightMarket: (() => {
           if (!this.nightMarket) return false;
           const dx = bird.x - this.nightMarket.x;
@@ -7656,6 +7727,17 @@ class GameEngine {
         } : null,
       } : null,
       // Golden Rampage
+      // Pigeon Stampede
+      stampede: this.stampede ? {
+        endsAt: this.stampede.endsAt,
+        totalCount: this.stampede.totalCount,
+        aliveCount: Array.from(this.stampede.birds.values()).filter(b => b.state !== 'dead').length,
+        myHits: this.stampede.hits.get(bird.id) || 0,
+        dirAngle: this.stampede.dirAngle,
+        birds: Array.from(this.stampede.birds.values()).filter(b => b.state !== 'dead').map(b => ({
+          id: b.id, x: b.x, y: b.y, vx: b.vx, vy: b.vy, hp: b.hp, phase: b.phase,
+        })),
+      } : null,
       goldenRampage: this.goldenRampage ? {
         birdId: this.goldenRampage.birdId,
         birdName: this.goldenRampage.birdName,
@@ -15231,6 +15313,8 @@ class GameEngine {
       siegeVictory:    null,// { attackTag, defendTag } if a siege was won this cycle
       vaultCracked:    false, // vault truck cracked this cycle
       vaultTopCracker: null,  // name of top contributor
+      stampedeCount:   0,     // stampedes triggered this cycle
+      stampedeChampiom: null, // { name, gangTag, hits }
     };
   }
 
@@ -15540,6 +15624,24 @@ class GameEngine {
         headline: `THUNDER DOME DESCENDS ON THE CITY — BIRDS TRAPPED IN ELECTRIC ARENA`,
         subline: 'Electromagnetic walls confine birds to a single district. Scientists baffled. Birds delighted.',
       });
+    }
+
+    // Pigeon Stampede headline
+    if (stats.stampedeCount > 0) {
+      if (stats.stampedeChampiom) {
+        const tag = stats.stampedeChampiom.gangTag ? `[${stats.stampedeChampiom.gangTag}] ` : '';
+        headlines.push({
+          icon: '🐦',
+          headline: `PIGEON STAMPEDE RAMPAGES THROUGH CITY — ${tag}${stats.stampedeChampiom.name} TOPS THE FLOCK`,
+          subline: `${stats.stampedeChampiom.hits} stampede birds hit. City warns pedestrians about "traumatic quantities of panicked pigeons."`,
+        });
+      } else {
+        headlines.push({
+          icon: '🐦',
+          headline: `PIGEON STAMPEDE — ${stats.stampedeCount * 40} PANICKED BIRDS TEAR THROUGH CITY`,
+          subline: `Local birds report "relentless poop opportunities." Police confirm "total bird mayhem." Nobody surprised.`,
+        });
+      }
     }
 
     // Default headline if nothing notable happened
@@ -20981,6 +21083,170 @@ class GameEngine {
       }
     }
     this._addChaos(30);
+  }
+
+  // ============================================================
+  // PIGEON STAMPEDE — Session 98: 35-45 panicked pigeons
+  // stampede through the city in ~70 seconds. Players fire
+  // into the herd for XP + coins. Most hits = STAMPEDE KING.
+  // ============================================================
+  _updateStampede(dt, now) {
+    const WORLD_W = 3000, WORLD_H = 3000;
+
+    // Spawn timer
+    if (!this.stampede && now >= this._stampedeTimer && this.birds.size > 0) {
+      this._startStampede(now);
+    }
+
+    if (!this.stampede) return;
+    const st = this.stampede;
+
+    // Check timeout (70-80s window)
+    if (now >= st.endsAt) {
+      this._endStampede(now, 'timeout');
+      return;
+    }
+
+    // Move stampede birds
+    const dtS = dt / 1000;
+    for (const sb of st.birds.values()) {
+      if (sb.state === 'dead') continue;
+      // Each bird has slight direction variation around main dir
+      sb.x += sb.vx * dtS;
+      sb.y += sb.vy * dtS;
+      sb.phase += dtS * 8; // wing flap phase
+
+      // Exit the world = die (left the map edge)
+      if (sb.x < -100 || sb.x > WORLD_W + 100 || sb.y < -100 || sb.y > WORLD_H + 100) {
+        sb.state = 'dead';
+      }
+    }
+
+    // Check if all birds are dead / left the map
+    const alive = Array.from(st.birds.values()).filter(b => b.state !== 'dead');
+    if (alive.length === 0 && !st.championGiven) {
+      this._endStampede(now, 'complete');
+    }
+  }
+
+  _startStampede(now) {
+    const WORLD_W = 3000, WORLD_H = 3000;
+    const count = 35 + Math.floor(Math.random() * 11); // 35-45
+
+    // Pick random entry edge and direction
+    const edges = ['top', 'right', 'bottom', 'left'];
+    const entryEdge = edges[Math.floor(Math.random() * 4)];
+    let baseDirAngle;
+    // Direction toward the opposite side (with slight variation)
+    switch (entryEdge) {
+      case 'top':    baseDirAngle = Math.PI / 2 + (Math.random() - 0.5) * 0.5; break;
+      case 'right':  baseDirAngle = Math.PI   + (Math.random() - 0.5) * 0.5; break;
+      case 'bottom': baseDirAngle = -Math.PI / 2 + (Math.random() - 0.5) * 0.5; break;
+      case 'left':   baseDirAngle = 0           + (Math.random() - 0.5) * 0.5; break;
+    }
+
+    const birds = new Map();
+    for (let i = 0; i < count; i++) {
+      // Spread spawn along the entry edge in a wide band
+      let spawnX, spawnY;
+      const spread = WORLD_W * 0.6; // 60% of world width as spread zone
+      const offset = (Math.random() - 0.5) * spread;
+      switch (entryEdge) {
+        case 'top':    spawnX = WORLD_W / 2 + offset; spawnY = -30; break;
+        case 'right':  spawnX = WORLD_W + 30; spawnY = WORLD_H / 2 + offset; break;
+        case 'bottom': spawnX = WORLD_W / 2 + offset; spawnY = WORLD_H + 30; break;
+        case 'left':   spawnX = -30; spawnY = WORLD_H / 2 + offset; break;
+      }
+      // Each bird has slightly different angle (±15°) and speed (115-145px/s)
+      const birdAngle = baseDirAngle + (Math.random() - 0.5) * 0.5;
+      const speed = 115 + Math.random() * 30;
+      const id = 'sb_' + (++this._stampedeIdCounter);
+      birds.set(id, {
+        id,
+        x: spawnX,
+        y: spawnY,
+        vx: Math.cos(birdAngle) * speed,
+        vy: Math.sin(birdAngle) * speed,
+        hp: 2,
+        state: 'running', // 'running' | 'dead'
+        phase: Math.random() * Math.PI * 2, // wing flap offset
+      });
+    }
+
+    this.stampede = {
+      birds,
+      startedAt: now,
+      endsAt: now + this._randomRange(70000, 80000),
+      entryEdge,
+      dirAngle: baseDirAngle,
+      hits: new Map(),     // birdId -> hit count
+      hitNames: new Map(), // birdId -> { name, gangTag }
+      totalCount: count,
+      championGiven: false,
+      repelBonusGiven: false,
+    };
+
+    this.gazetteStats.stampedeCount = (this.gazetteStats.stampedeCount || 0) + 1;
+    this._addChaos(20);
+
+    const dirName = { top: 'from the north', right: 'from the east', bottom: 'from the south', left: 'from the west' }[entryEdge];
+    const edgeLabel = { top: 'north', right: 'east', bottom: 'south', left: 'west' }[entryEdge];
+    this.events.push({
+      type: 'stampede_start',
+      count,
+      entryEdge,
+      edgeLabel,
+      dirAngle: baseDirAngle,
+      message: `🐦 PIGEON STAMPEDE! ${count} panicked pigeons charging through the city ${dirName}! FIRE AT WILL!`,
+    });
+    console.log(`[GameEngine] PIGEON STAMPEDE started: ${count} birds from ${entryEdge}`);
+  }
+
+  _endStampede(now, reason) {
+    const st = this.stampede;
+    if (!st) return;
+
+    // Find the champion (most hits)
+    let champId = null, champHits = 0;
+    for (const [id, hits] of st.hits) {
+      if (hits > champHits) { champHits = hits; champId = id; }
+    }
+
+    if (champId && champHits > 0 && !st.championGiven) {
+      st.championGiven = true;
+      const champBird = this.birds.get(champId);
+      const nameInfo = st.hitNames.get(champId) || { name: '???', gangTag: null };
+      const champXP = 300, champCoins = 200;
+      if (champBird) {
+        champBird.xp += champXP;
+        champBird.coins += champCoins;
+        champBird.stampedeBadge = true; // session-only 🐦 STAMPEDE KING badge
+        this._checkLevelUp(champBird);
+        this._trackDailyProgress(champBird, 'stampede_champ', 1);
+      }
+      const gangPrefix = nameInfo.gangTag ? `[${nameInfo.gangTag}] ` : '';
+      this.events.push({
+        type: 'stampede_end',
+        reason,
+        champName: nameInfo.name,
+        champGangTag: nameInfo.gangTag || null,
+        champHits,
+        champXP,
+        champCoins,
+        message: reason === 'complete'
+          ? `🐦 STAMPEDE CLEARED! ${gangPrefix}${nameInfo.name} is STAMPEDE KING with ${champHits} hits! +${champXP} XP +${champCoins}c!`
+          : `🐦 Stampede disperses. ${gangPrefix}${nameInfo.name} wins STAMPEDE KING with ${champHits} hits! +${champXP} XP +${champCoins}c!`,
+      });
+      if (this.gazetteStats) {
+        this.gazetteStats.stampedeChampiom = { name: nameInfo.name, gangTag: nameInfo.gangTag, hits: champHits };
+      }
+    } else {
+      this.events.push({ type: 'stampede_end', reason, champName: null, message: '🐦 The stampede disperses into the city.' });
+    }
+
+    this.stampede = null;
+    this._stampedeTimer = now + this._randomRange(18 * 60000, 25 * 60000);
+    console.log(`[GameEngine] PIGEON STAMPEDE ended (${reason})`);
   }
 
 }

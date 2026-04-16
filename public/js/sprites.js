@@ -106,7 +106,7 @@ window.Sprites = {
   },
 
   // === NAME TAG ===
-  drawNameTag(ctx, x, y, name, level, type, isPlayer, mafiaTitle, gangTag, gangColor, tattoosEquipped, prestige, eagleFeather, idolBadge, royaleChampBadge, skillTreeMaster, fightingChampBadge, constellationBadge, courtTitle, hanamiLanternBadge, domeChampBadge, alphaFeather, arenaLegend, goldenBirdBadge, constellations) {
+  drawNameTag(ctx, x, y, name, level, type, isPlayer, mafiaTitle, gangTag, gangColor, tattoosEquipped, prestige, eagleFeather, idolBadge, royaleChampBadge, skillTreeMaster, fightingChampBadge, constellationBadge, courtTitle, hanamiLanternBadge, domeChampBadge, alphaFeather, arenaLegend, goldenBirdBadge, constellations, stampedeBadge) {
     const text = `${name} [Lv.${level}]`;
     ctx.font = 'bold 11px Courier New';
     ctx.textAlign = 'center';
@@ -262,6 +262,25 @@ window.Sprites = {
       ctx.shadowBlur = 9;
       ctx.fillStyle = '#88ccff';
       ctx.fillText(dStr, x, y - 41 - offsetY);
+      ctx.shadowBlur = 0;
+      ctx.font = 'bold 11px Courier New';
+      offsetY += 14;
+    }
+
+    // 🐦 Stampede King Badge — session badge, earned by scoring the most hits in a Pigeon Stampede
+    if (stampedeBadge) {
+      ctx.font = '10px serif';
+      const sbStr = '🐦 STAMPEDE KING';
+      const sbw = ctx.measureText(sbStr).width + 10;
+      ctx.fillStyle = 'rgba(50,25,0,0.93)';
+      ctx.fillRect(x - sbw / 2, y - 52 - offsetY, sbw, 14);
+      ctx.strokeStyle = '#e09040';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(x - sbw / 2, y - 52 - offsetY, sbw, 14);
+      ctx.shadowColor = '#e09040';
+      ctx.shadowBlur = 9;
+      ctx.fillStyle = '#f0b868';
+      ctx.fillText(sbStr, x, y - 41 - offsetY);
       ctx.shadowBlur = 0;
       ctx.font = 'bold 11px Courier New';
       offsetY += 14;
@@ -6690,6 +6709,141 @@ window.Sprites = {
       ctx.shadowBlur = 0;
       ctx.globalAlpha = 1;
     }
+
+    ctx.restore();
+  },
+
+  /**
+   * Stampede Bird — panicked urban pigeon fleeing in a frenzy.
+   * Chubby round body, wide terrified eyes, wings flapping erratically, motion blur streaks.
+   * phase: per-bird unique offset (0..1) for animation variety.
+   */
+  drawStampedeBird(ctx, x, y, vx, vy, phase, now) {
+    ctx.save();
+    ctx.translate(x, y);
+
+    // Rotate in the direction of movement
+    const angle = Math.atan2(vy, vx);
+    ctx.rotate(angle);
+
+    // === Motion blur / speed lines (behind the bird, in screen space) ===
+    const speed = Math.sqrt(vx * vx + vy * vy);
+    const blurAlpha = Math.min(0.45, speed / 500);
+    if (blurAlpha > 0.05) {
+      const numLines = 4;
+      for (let i = 0; i < numLines; i++) {
+        const lineY = (i - 1.5) * 3;
+        const lineLen = 10 + Math.random() * 8;
+        ctx.strokeStyle = `rgba(180,170,160,${blurAlpha * (1 - i / numLines * 0.5)})`;
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(-8, lineY);
+        ctx.lineTo(-8 - lineLen, lineY);
+        ctx.stroke();
+      }
+    }
+
+    // Erratic wing flap — faster than normal, offset by phase
+    const flapPhase = (now / 130 + phase * Math.PI * 2) % (Math.PI * 2);
+    const wingFlap = Math.sin(flapPhase) * 0.45;
+    const flapAmp = 0.3 + 0.2 * Math.abs(Math.sin(now * 0.008 + phase));
+
+    // === Left wing ===
+    ctx.save();
+    ctx.rotate(-wingFlap * (1 + flapAmp) - 0.2);
+    ctx.fillStyle = '#9090a8';
+    ctx.beginPath();
+    ctx.ellipse(-3, -9, 8, 3, -0.2, 0, Math.PI * 2);
+    ctx.fill();
+    // Wing tip
+    ctx.fillStyle = '#606070';
+    ctx.beginPath();
+    ctx.ellipse(-8, -12, 4, 1.6, -0.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // === Right wing ===
+    ctx.save();
+    ctx.rotate(wingFlap * (1 + flapAmp) + 0.2);
+    ctx.fillStyle = '#9090a8';
+    ctx.beginPath();
+    ctx.ellipse(-3, 9, 8, 3, 0.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#606070';
+    ctx.beginPath();
+    ctx.ellipse(-8, 12, 4, 1.6, 0.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // === Chubby body (classic urban pigeon) ===
+    ctx.fillStyle = '#8080a0';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 11, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Iridescent neck patch
+    ctx.fillStyle = '#7090b8';
+    ctx.beginPath();
+    ctx.ellipse(4, -1, 5, 3.5, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // === Round head ===
+    ctx.fillStyle = '#6878a0';
+    ctx.beginPath();
+    ctx.arc(10, -1, 6, 0, Math.PI * 2);
+    ctx.fill();
+
+    // === Wide terrified eyes ===
+    // Left eye (top side, slightly behind)
+    ctx.fillStyle = '#ffe0a0';
+    ctx.beginPath();
+    ctx.arc(9, -4, 2.8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#111';
+    ctx.beginPath();
+    ctx.arc(9.3, -4, 1.4, 0, Math.PI * 2);
+    ctx.fill();
+    // White highlight
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(9.8, -4.6, 0.7, 0, Math.PI * 2);
+    ctx.fill();
+    // Panic sweat drop near eye
+    ctx.fillStyle = 'rgba(120,160,220,0.75)';
+    ctx.beginPath();
+    ctx.arc(7, -6.5, 1, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Right eye (bottom side)
+    ctx.fillStyle = '#ffe0a0';
+    ctx.beginPath();
+    ctx.arc(9, 2.5, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#111';
+    ctx.beginPath();
+    ctx.arc(9.3, 2.5, 1.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(9.8, 1.9, 0.6, 0, Math.PI * 2);
+    ctx.fill();
+
+    // === Small beak (slightly open in panic) ===
+    ctx.fillStyle = '#c0a060';
+    ctx.beginPath();
+    ctx.moveTo(15.5, -0.5);
+    ctx.lineTo(19, -2);
+    ctx.lineTo(18.5, 0.5);
+    ctx.closePath();
+    ctx.fill();
+    // Lower beak (open)
+    ctx.fillStyle = '#c0a060';
+    ctx.beginPath();
+    ctx.moveTo(15.5, 0.5);
+    ctx.lineTo(18.5, 1.5);
+    ctx.lineTo(18, 2.5);
+    ctx.closePath();
+    ctx.fill();
 
     ctx.restore();
   },
