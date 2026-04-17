@@ -831,6 +831,14 @@ class GameEngine {
     this.flashMob = null; // null | { x, y, locationName, state, startsAt, endsAt, participants: Set, peakCount, lastTickAt }
     this._flashMobTimer = Date.now() + this._randomRange(12 * 60000, 18 * 60000);
 
+    // === COURIER PIGEON ===
+    // Every 15-20 minutes, a messenger pigeon flies across the city carrying a parcel.
+    // Escort it (stay within 60px) to earn a bonus when it delivers.
+    // Intercept it (3 poop hits) to steal the parcel for a random reward (40-120c).
+    // Flies from a random landmark to another at 72px/s. Expires after 90s if not intercepted.
+    this.courierPigeon = null;
+    this._courierPigeonTimer = Date.now() + this._randomRange(15 * 60000, 20 * 60000);
+
     // === CHERRY BLOSSOMS SPRING FESTIVAL ===
     // Active every April — the park fills with pink mochi treats.
     // Birds collect mochi for +30 food, +50 XP, +20c. Aurora doubles all rewards.
@@ -869,6 +877,7 @@ class GameEngine {
     this.birdRoyaleTimer = Date.now() + this._randomRange(35 * 60000, 50 * 60000);
     this._royaleIdCounter = 0;
     this.gangRoyaleBonus = null; // { gangId, gangTag, gangName, bonusUntil } — 5-min territory bonus for royale-winning gang
+    this.gangPardonBoost = null; // { gangId, gangTag, until } — 2-min 1.5× territory boost for Kingpin's gang when King's Pardon is issued
 
     // === STREET DUELS ===
     // Any bird can challenge a nearby rival to a 1v1 poop duel right in the street.
@@ -1959,6 +1968,9 @@ class GameEngine {
 
     // === Suspicious Package ===
     this._tickSuspiciousPackage(dt, now);
+
+    // === Courier Pigeon ===
+    this._updateCourierPigeon(dt, now);
 
     // === Flash Mob ===
     this._updateFlashMob(now);
@@ -3833,6 +3845,28 @@ class GameEngine {
         this._hitRatKing(bird, isMegaPoop, now);
         xpGain = 0; // awarded inside _hitRatKing
         coinGain = 0;
+      } else if (hit.target === 'courier_pigeon' && this.courierPigeon && this.courierPigeon.state === 'flying') {
+        // Intercepted the courier pigeon! 3 hits to steal the parcel.
+        const cp = this.courierPigeon;
+        const dmg = isMegaPoop ? 3 : 1; // mega poop = instant intercept
+        cp.hitsDealt = (cp.hitsDealt || 0) + dmg;
+        xpGain = isMegaPoop ? 45 : 15;
+        coinGain = isMegaPoop ? 12 : 4;
+        this.events.push({ type: 'courier_hit', birdId: bird.id, birdName: bird.name, hitCount: Math.min(cp.hitsDealt, cp.maxHits), maxHits: cp.maxHits, x: cp.x, y: cp.y });
+        if (cp.hitsDealt >= cp.maxHits) {
+          // Parcel stolen!
+          const parcelReward = 40 + Math.floor(Math.random() * 81); // 40-120c
+          const parcelXp = 80 + Math.floor(Math.random() * 41); // 80-120 XP
+          bird.coins += parcelReward;
+          bird.xp += parcelXp;
+          const newLevel = world.getLevelFromXP(bird.xp);
+          if (newLevel !== bird.level) { bird.level = newLevel; bird.type = world.getBirdTypeForLevel(newLevel); }
+          this._trackDailyProgress(bird, 'courier_intercepted', 1);
+          this.events.push({ type: 'courier_parcel_stolen', birdId: bird.id, birdName: bird.name, gangTag: bird.gangTag || null, parcelReward, parcelXp, x: cp.x, y: cp.y });
+          this.courierPigeon = null;
+          this._courierPigeonTimer = Date.now() + this._randomRange(15 * 60000, 20 * 60000);
+          xpGain = 0; coinGain = 0; // already awarded above
+        }
       } else if (hit.target === 'seagull' && hit.seagull && this.seagullInvasion) {
         // Poop hit a seagull! Two hits to knock one out.
         const sg = hit.seagull;
@@ -5323,6 +5357,16 @@ class GameEngine {
       }
     }
 
+    // Check Courier Pigeon — intercept the parcel by pooping it 3 times
+    if (this.courierPigeon && this.courierPigeon.state === 'flying') {
+      const cpdx = poop.x - this.courierPigeon.x;
+      const cpdy = poop.y - this.courierPigeon.y;
+      if (Math.sqrt(cpdx * cpdx + cpdy * cpdy) < hitRadius + 14) {
+        if (!isMegaPoop) return { target: 'courier_pigeon' };
+        allHits.push({ target: 'courier_pigeon' });
+      }
+    }
+
     return { target: null };
   }
 
@@ -6286,7 +6330,14 @@ class GameEngine {
       if (this.gangRoyaleBonus && now > this.gangRoyaleBonus.bonusUntil) {
         this.gangRoyaleBonus = null;
       }
-      const gangCaptureMult = (this.gangRoyaleBonus && now < this.gangRoyaleBonus.bonusUntil && dominantTeamId === this.gangRoyaleBonus.gangId) ? 1.5 : 1.0;
+      if (this.gangPardonBoost && now > this.gangPardonBoost.until) {
+        this.gangPardonBoost = null;
+      }
+      let gangCaptureMult = (this.gangRoyaleBonus && now < this.gangRoyaleBonus.bonusUntil && dominantTeamId === this.gangRoyaleBonus.gangId) ? 1.5 : 1.0;
+      // King's Pardon territory boost: Kingpin's gang gets 1.5× capture speed for 2 min (stacks with royale bonus)
+      if (this.gangPardonBoost && now < this.gangPardonBoost.until && dominantTeamId === this.gangPardonBoost.gangId) {
+        gangCaptureMult = Math.max(gangCaptureMult, 1.5);
+      }
       const effectivePower = dominantPower * gangCaptureMult;
 
       // --- Update capture state ---
@@ -7129,6 +7180,21 @@ class GameEngine {
         startsAt: this.flashMob.startsAt,
         endsAt: this.flashMob.endsAt,
         participantCount: this.flashMob.participants.size,
+      } : null,
+      courierPigeon: this.courierPigeon ? {
+        x: this.courierPigeon.x,
+        y: this.courierPigeon.y,
+        destX: this.courierPigeon.destX,
+        destY: this.courierPigeon.destY,
+        destName: this.courierPigeon.destName,
+        srcName: this.courierPigeon.srcName,
+        angle: this.courierPigeon.angle,
+        state: this.courierPigeon.state,
+        hitsDealt: this.courierPigeon.hitsDealt || 0,
+        maxHits: this.courierPigeon.maxHits,
+        expiresAt: this.courierPigeon.expiresAt,
+        amEscorting: this.courierPigeon.escorts.has(bird.id),
+        myTimeNear: (this.courierPigeon.escorts.get(bird.id) || { timeNear: 0 }).timeNear,
       } : null,
       raccoons: nearbyRaccoons,
       drunkPigeons: nearbyDrunkPigeons,
@@ -9730,6 +9796,35 @@ class GameEngine {
     // Daily challenge: Don contract completed
     this._trackDailyProgress(bird, 'don_contract', 1);
     this._trackDailyProgress(bird, 'coins_earned', coinReward);
+
+    // Noble Challenge double-dip: completing a Don contract also increments noble challenges matching its type
+    const missionNobleMappings = {
+      don_hit: 'poop_npcs',
+      don_cars: 'poop_npcs',
+      don_spray: 'tag_buildings',
+      don_heist: null, // heist is its own type handled elsewhere
+      don_getaway: 'stun_cops', // surviving cops counts toward cop-related challenges
+    };
+    const nobleType = missionNobleMappings[def.id];
+    if (nobleType) {
+      const doublepRewardCoins = 20;
+      const doublepRewardXp = 30;
+      bird.coins += doublepRewardCoins;
+      bird.xp += doublepRewardXp;
+      const nChallengesActive = [this.dukeChallenge, this.baronChallenge, this.countChallenge].filter(c => c && c.type === nobleType).length;
+      if (nChallengesActive > 0) {
+        this._incrementAllNobleChallenges(bird, nobleType);
+        this.events.push({
+          type: 'don_noble_doubletip',
+          birdId: bird.id,
+          birdName: bird.name,
+          nobleType,
+          bonusCoins: doublepRewardCoins,
+          bonusXp: doublepRewardXp,
+        });
+      }
+    }
+
     this._saveBird(bird);
   }
 
@@ -14681,6 +14776,23 @@ class GameEngine {
         pardonedName: pardoned.name,
         clearedHeat: highestHeat,
       });
+
+      // === CROSS-SYSTEM: King's Pardon → Gang Territory Boost ===
+      // If the Kingpin has a gang, pardoning a criminal earns the gang 2 min of 1.5× territory capture
+      if (bird.gangId) {
+        this.gangPardonBoost = {
+          gangId: bird.gangId,
+          gangTag: bird.gangTag || '???',
+          until: now + 120000,
+        };
+        this.events.push({
+          type: 'pardon_territory_boost',
+          kingpinName: bird.name,
+          gangTag: bird.gangTag || '???',
+          pardonedName: pardoned.name,
+          duration: 120,
+        });
+      }
     }
 
     // City-wide decree announcement
@@ -23303,6 +23415,120 @@ class GameEngine {
       policyName: pol ? pol.name : policyId,
       voteCount: el.voteCount,
       totalVotes: el.totalVotes,
+    });
+  }
+
+  // ============================================================
+  // COURIER PIGEON SYSTEM (Session 107)
+  // Every 15-20 min a messenger pigeon flies from one landmark to another.
+  // Escort it (stay within 60px for 5+ cumulative seconds) for delivery bonus.
+  // Intercept it (3 poop hits, mega = instant) to steal the parcel for 40-120c.
+  // Expires after 90s if nobody stops or delivers it.
+  // ============================================================
+  _updateCourierPigeon(dt, now) {
+    // Spawn
+    if (!this.courierPigeon && now >= this._courierPigeonTimer && this.birds.size > 0) {
+      this._spawnCourierPigeon(now);
+      return;
+    }
+    if (!this.courierPigeon) return;
+    const cp = this.courierPigeon;
+
+    // Expired?
+    if (now >= cp.expiresAt) {
+      this.events.push({ type: 'courier_escaped', x: cp.x, y: cp.y, destName: cp.destName });
+      this.courierPigeon = null;
+      this._courierPigeonTimer = now + this._randomRange(15 * 60000, 20 * 60000);
+      return;
+    }
+
+    // Move toward destination
+    const dx = cp.destX - cp.x;
+    const dy = cp.destY - cp.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < 40) {
+      // Delivered! Reward escorts.
+      const escortRewards = [];
+      for (const [bid, escort] of cp.escorts) {
+        if (escort.timeNear >= 5000) { // 5+ cumulative seconds near the courier
+          const escBird = this.birds.get(bid);
+          if (escBird && escBird.connected) {
+            const escXp = 60;
+            const escCoins = 25;
+            escBird.xp += escXp;
+            escBird.coins += escCoins;
+            const newLevel = world.getLevelFromXP(escBird.xp);
+            if (newLevel !== escBird.level) { escBird.level = newLevel; escBird.type = world.getBirdTypeForLevel(newLevel); }
+            this._trackDailyProgress(escBird, 'courier_escorted', 1);
+            escortRewards.push({ birdId: bid, name: escort.name, gangTag: escort.gangTag || null, xp: escXp, coins: escCoins });
+          }
+        }
+      }
+      this.events.push({ type: 'courier_delivered', x: cp.x, y: cp.y, destName: cp.destName, escortRewards });
+      this.courierPigeon = null;
+      this._courierPigeonTimer = now + this._randomRange(15 * 60000, 20 * 60000);
+      return;
+    }
+
+    // Advance position
+    const speed = 72; // px/s
+    cp.x += (dx / dist) * speed * (dt / 1000);
+    cp.y += (dy / dist) * speed * (dt / 1000);
+    cp.angle = Math.atan2(dy, dx);
+
+    // Track escort proximity (accumulate time near the courier)
+    for (const [, bird] of this.birds) {
+      if (!bird.connected || bird.inSewer) continue;
+      const bdx = bird.x - cp.x;
+      const bdy = bird.y - cp.y;
+      if (bdx * bdx + bdy * bdy <= 60 * 60) {
+        let esc = cp.escorts.get(bird.id);
+        if (!esc) {
+          esc = { timeNear: 0, name: bird.name, gangTag: bird.gangTag || null };
+          cp.escorts.set(bird.id, esc);
+        }
+        esc.timeNear += dt;
+      }
+    }
+  }
+
+  _spawnCourierPigeon(now) {
+    const landmarks = [
+      { name: 'The Park',        x: 1150, y: 1200 },
+      { name: 'Downtown',        x: 1900, y: 1900 },
+      { name: 'The Mall',        x: 2100, y: 300  },
+      { name: 'Cafe District',   x: 350,  y: 1900 },
+      { name: 'Residential',     x: 380,  y: 350  },
+      { name: 'The Docks',       x: 900,  y: 2650 },
+      { name: 'Radio Tower',     x: 1200, y: 450  },
+      { name: 'City Hall',       x: 1780, y: 1050 },
+      { name: 'Hall of Legends', x: 1050, y: 640  },
+      { name: 'The Arena',       x: 2750, y: 1200 },
+    ];
+    const srcIdx = Math.floor(Math.random() * landmarks.length);
+    let destIdx;
+    do { destIdx = Math.floor(Math.random() * landmarks.length); } while (destIdx === srcIdx);
+    const src = landmarks[srcIdx];
+    const dest = landmarks[destIdx];
+    this.courierPigeon = {
+      x: src.x, y: src.y,
+      destX: dest.x, destY: dest.y,
+      destName: dest.name,
+      srcName: src.name,
+      angle: 0,
+      state: 'flying',
+      hitsDealt: 0,
+      maxHits: 3,
+      escorts: new Map(), // birdId -> { timeNear, name, gangTag }
+      spawnedAt: now,
+      expiresAt: now + 90000,
+    };
+    this.events.push({
+      type: 'courier_spawned',
+      x: src.x, y: src.y,
+      destX: dest.x, destY: dest.y,
+      destName: dest.name, srcName: src.name,
+      expiresAt: this.courierPigeon.expiresAt,
     });
   }
 

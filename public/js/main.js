@@ -4712,7 +4712,6 @@
           '#ff44cc', 8000
         );
         addEventMessage(`🌟 MEGA MOB! ${count} birds at ${ev.locationName} (+${ev.xpReward}XP +${ev.coinReward}c each + spectator bonus)!`, '#ff44cc');
-        // Coin burst effects at each winner's reported position
         for (const w of (ev.winners || [])) {
           effects.push({ type: 'coins', x: ev.x || 1500, y: ev.y || 1500, count: 6, time: now });
         }
@@ -4724,6 +4723,65 @@
           '#ff88cc', 5000
         );
         addEventMessage(`🎉 Flash Mob over — ${count} bird${count !== 1 ? 's' : ''} at ${ev.locationName}${tag ? ' (' + tag + ')' : ''}!`, '#ff88cc');
+      }
+    }
+
+    // === COURIER PIGEON (Session 107) ===
+    if (ev.type === 'courier_spawned') {
+      window._courierPigeonDir = { x: ev.destX, y: ev.destY };
+      effects.push({ type: 'screen_shake', intensity: 5, duration: 400, time: now });
+      showAnnouncement(
+        `📬 COURIER PIGEON!\nDelivering a secret letter from ${ev.srcName} → ${ev.destName}\nEscort it for rewards — or INTERCEPT it for a parcel! (3 poop hits)`,
+        '#e8c060', 7000
+      );
+      addEventMessage(`📬 A Courier Pigeon is flying from ${ev.srcName} to ${ev.destName}! Escort or intercept!`, '#e8c060');
+    }
+    if (ev.type === 'courier_hit') {
+      effects.push({ type: 'text', x: ev.x, y: ev.y, time: now, duration: 900,
+        text: `📬 HIT! ${ev.hitCount}/${ev.maxHits}`, color: '#ff8800', size: 13 });
+      if (ev.birdId === myId) {
+        addEventMessage(`📬 You intercepted the courier! ${ev.hitCount}/${ev.maxHits} — ${ev.maxHits - ev.hitCount} more to steal the parcel!`, '#ff8800');
+      }
+    }
+    if (ev.type === 'courier_parcel_stolen') {
+      window._courierPigeonDir = null;
+      effects.push({ type: 'screen_shake', intensity: 10, duration: 600, time: now });
+      effects.push({ type: 'coins', x: ev.x, y: ev.y, count: 10, time: now });
+      const gangPart = ev.gangTag ? `[${ev.gangTag}] ` : '';
+      if (ev.birdId === myId) {
+        showAnnouncement(
+          `📬 PARCEL STOLEN!\n+${ev.parcelReward}c +${ev.parcelXp}XP — you intercepted the courier!`,
+          '#ffd700', 6000
+        );
+      }
+      addEventMessage(`📬 ${gangPart}${ev.birdName} STOLE the courier's parcel! (+${ev.parcelReward}c +${ev.parcelXp}XP)`, '#ffd700');
+    }
+    if (ev.type === 'courier_delivered') {
+      window._courierPigeonDir = null;
+      addEventMessage(`📬 The Courier Pigeon delivered its letter to ${ev.destName}!`, '#88aaff');
+      if (ev.escortRewards && ev.escortRewards.length > 0) {
+        for (const r of ev.escortRewards) {
+          if (r.birdId === myId) {
+            showAnnouncement(`📬 ESCORT REWARD!\n+${r.xp}XP +${r.coins}c — you safely guided the courier!`, '#88aaff', 5000);
+          } else {
+            addEventMessage(`📬 ${r.birdName} earned escort reward: +${r.xp}XP +${r.coins}c`, '#88aaff');
+          }
+        }
+      }
+    }
+    if (ev.type === 'courier_escaped') {
+      window._courierPigeonDir = null;
+      addEventMessage(`📬 The Courier Pigeon escaped without being intercepted. Letter delivered... somewhere.`, '#888888');
+    }
+    if (ev.type === 'don_noble_doubletip') {
+      if (ev.birdId === myId) {
+        showAnnouncement(`🎩 DON CONTRACT DOUBLE-DIP!\n+${ev.bonusCoins}c +${ev.bonusXp}XP — your mission also ticked the Noble Challenge!`, '#d4af37', 4000);
+      }
+    }
+    if (ev.type === 'pardon_territory_boost') {
+      addEventMessage(`👑 [${ev.gangTag}] ${ev.kingpinName}'s pardon of ${ev.pardonedName} earns their gang 1.5× territory capture for 2 minutes!`, '#d4af37');
+      if (gameState.self && gameState.self.gangTag === ev.gangTag) {
+        showAnnouncement(`👑 ROYAL PARDON BONUS!\n[${ev.gangTag}] earns 1.5× territory capture speed for 2 minutes!`, '#d4af37', 5000);
       }
     }
   }
@@ -8929,6 +8987,16 @@
       }
     }
 
+    // Courier Pigeon (Session 107)
+    if (gameState.courierPigeon) {
+      const cp = gameState.courierPigeon;
+      const cpsx = cp.x - camera.x + camera.screenW / 2;
+      const cpsy = cp.y - camera.y + camera.screenH / 2;
+      if (cpsx > -margin - 40 && cpsx < camera.screenW + margin + 40 && cpsy > -margin - 40 && cpsy < camera.screenH + margin + 40) {
+        Sprites.drawCourierPigeon(ctx, cpsx, cpsy, cp.angle || 0, cp.state, cp.hitsDealt || 0, cp.maxHits, cp.amEscorting, now);
+      }
+    }
+
     // Raccoon Thieves (night-only)
     if (gameState.raccoons) {
       for (const raccoon of gameState.raccoons) {
@@ -11643,6 +11711,44 @@
       }
     }
 
+    // === COURIER PIGEON — off-screen direction arrow ===
+    if (gameState.courierPigeon && window._courierPigeonDir) {
+      const cp = gameState.courierPigeon;
+      const cpsx = cp.x - camera.x + camera.screenW / 2;
+      const cpsy = cp.y - camera.y + camera.screenH / 2;
+      const cpOnScreen = cpsx > 50 && cpsx < camera.screenW - 50 && cpsy > 50 && cpsy < camera.screenH - 50;
+      if (!cpOnScreen) {
+        const cpAngle = Math.atan2(cpsy - camera.screenH / 2, cpsx - camera.screenW / 2);
+        const cpArrDist = Math.min(camera.screenW, camera.screenH) / 2 - 60;
+        const cpAx = camera.screenW / 2 + Math.cos(cpAngle) * cpArrDist;
+        const cpAy = camera.screenH / 2 + Math.sin(cpAngle) * cpArrDist;
+        const cpPulse = 0.7 + 0.3 * Math.sin(now * 0.006);
+        ctx.save();
+        ctx.translate(cpAx, cpAy);
+        ctx.rotate(cpAngle);
+        ctx.globalAlpha = 0.9 * cpPulse;
+        ctx.fillStyle = '#e8c060';
+        ctx.shadowColor = '#ffd700';
+        ctx.shadowBlur = 10;
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(22, 0);
+        ctx.lineTo(-10, -10);
+        ctx.lineTo(-5, 0);
+        ctx.lineTo(-10, 10);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.font = 'bold 11px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('📬', 4, 0);
+        ctx.restore();
+      }
+    }
+
     // Announcements (screen-space)
     drawAnnouncements(ctx, now);
 
@@ -12128,6 +12234,28 @@
       minimapCtx.textAlign = 'center';
       minimapCtx.textBaseline = 'alphabetic';
       minimapCtx.fillText('🚐', bvmx, bvmy - 5);
+      minimapCtx.restore();
+    }
+
+    // === COURIER PIGEON — pulsing warm-gold 📬 dot on minimap ===
+    if (gameState.courierPigeon && worldData) {
+      const mw = minimapCtx.canvas.width;
+      const mh = minimapCtx.canvas.height;
+      const cpPulse = 0.5 + 0.5 * Math.sin(now * 0.008);
+      const cpmx = gameState.courierPigeon.x * mw / worldData.width;
+      const cpmy = gameState.courierPigeon.y * mh / worldData.height;
+      minimapCtx.save();
+      minimapCtx.shadowColor = '#e8c060';
+      minimapCtx.shadowBlur = 8 + 4 * cpPulse;
+      minimapCtx.fillStyle = `rgba(232,192,96,${0.8 + 0.2 * cpPulse})`;
+      minimapCtx.beginPath();
+      minimapCtx.arc(cpmx, cpmy, 4 + cpPulse, 0, Math.PI * 2);
+      minimapCtx.fill();
+      minimapCtx.shadowBlur = 0;
+      minimapCtx.font = '8px sans-serif';
+      minimapCtx.textAlign = 'center';
+      minimapCtx.textBaseline = 'alphabetic';
+      minimapCtx.fillText('📬', cpmx, cpmy - 5);
       minimapCtx.restore();
     }
 
@@ -14317,6 +14445,19 @@
         if (gDist < 300) {
           html += `<div class="bm-buff-pill" style="background:rgba(80,20,0,0.85);border-color:#ff4400;color:#ffaa66;">😤 ${grudgeHunter.name} has a GRUDGE on YOU — they're hunting you!</div>`;
         }
+      }
+    }
+
+    // === COURIER PIGEON pill (Session 107) ===
+    if (gameState.courierPigeon) {
+      const cp = gameState.courierPigeon;
+      const cpSecsLeft = Math.max(0, Math.ceil((cp.expiresAt - now) / 1000));
+      if (cp.amEscorting) {
+        const myTimeNearSecs = Math.floor((cp.myTimeNear || 0) / 1000);
+        html += `<div class="bm-buff-pill" style="background:rgba(60,40,0,0.92);border-color:#e8c060;color:#ffe899;animation:kingpinGlow 0.8s ease-in-out infinite alternate;font-weight:bold;">📬 ESCORTING COURIER — ${myTimeNearSecs}s near · Deliver for reward! (${cpSecsLeft}s left)</div>`;
+      } else {
+        const hitsLeft = cp.maxHits - cp.hitsDealt;
+        html += `<div class="bm-buff-pill" style="background:rgba(40,30,0,0.85);border-color:#c8a060;color:#ffe070;">📬 COURIER PIGEON flying ${cp.srcName}→${cp.destName} — ESCORT (+reward) or INTERCEPT ${hitsLeft > 0 ? `(${cp.hitsDealt}/${cp.maxHits} hits)` : ''}! ${cpSecsLeft}s left</div>`;
       }
     }
 

@@ -3675,6 +3675,39 @@ Bird City now has a periodic social gathering event that rewards birds for simpl
 
 **Creative intent**: Bird City rewards CARNAGE (poop) and COMBAT (duels, raids) constantly. But it never rewarded simply being PRESENT with other birds. The Flash Mob creates a periodic "just hang out here" moment that's accessible to every player regardless of level, coins, or wanted status. Even a freshly-spawned Pigeon can earn 175 XP by showing up to the Arena with 4 other birds for 60 seconds. The 6-bird MEGA MOB threshold creates emergent coordination — city-wide announcement prompts everyone to sprint toward the same landmark, and the spectator bonus means even birds who arrive late still get paid. The minimap dot turns the Flash Mob into a visible city-wide gathering beacon: "I see 🎉 near the Hall of Legends — everyone go there now!" Pure SOCIAL + DISCOVERY + SPECTACLE energy — the city now has parties.
 
+**Session 107 — 2026-04-17: The Pigeon Post + Three Cross-System Synergies**
+Three interlocking additions that deepen social drama and emergent chaos through a roaming NPC and two new system connections.
+
+**The Courier Pigeon (the city's most interceptable NPC):**
+- Spawns every 15–20 minutes flying between two of 8 landmark districts (Park, Downtown, Mall, Cafe, Docks, Radio Tower, Arena, Hall of Legends) at 90px/s
+- Carries a secret letter — its route and destination are announced city-wide on spawn
+- **Escort mechanic**: Fly within 60px of the courier for 6+ cumulative seconds to earn escort credit — on safe delivery all escorts split 80 XP + 40c proportional to time spent near it
+- **Intercept mechanic**: Poop the courier 3 times before it reaches its destination — parcel drops! First bird to fly over the dropped parcel claims 100–250c + 60 XP + a 2-minute Lucky Charm effect. Cops are dispatched when the heist succeeds (you stole the mail!)
+- Courier despawns automatically when it reaches the destination or after 3-minute flight window
+- Custom `drawCourierPigeon()` sprite: warm tan pigeon body, flapping wings, leather satchel with envelope peeking out + red wax seal, "📬 COURIER" label, intercept progress bar when hit, dashed escort ring when escorting
+- Minimap: warm gold 📬 pulsing dot tracking the courier's real-time position
+- Off-screen direction arrow: gold arrow pointing toward courier
+- Active buffs HUD: escort progress pill (shows cumulative escort seconds) or generic intercept awareness pill
+
+**Don Mission × Noble Challenge Double-Dip (cross-system synergy):**
+- When a bird completes a Don Featherstone contract, the mission type is mapped to the equivalent Noble Challenge type:
+  - `don_hit` / `don_cars` → `poop_npcs` Noble challenge
+  - `don_spray` → `tag_buildings` Noble challenge
+  - `don_getaway` → `stun_cops` Noble challenge
+- If any active noble challenge (Duke/Baron/Count) matches the Don mission type: bird earns a bonus +20c +30 XP AND the noble challenge progress increments automatically
+- City-wide `don_noble_doubletip` event fires for the bird who double-dipped
+- "You completed a Don job that also counts toward the Baron's Decree! +20c +30 XP Double-Dip!" personal announcement
+- Creates a compelling reason to check which noble challenges are active before picking a Don contract
+
+**King's Pardon → Gang Territory Boost (cross-system synergy):**
+- When the Kingpin issues the King's Pardon decree AND is a gang member: their gang receives 2 minutes of 1.5× territory capture speed (identical boost to winning Bird Royale)
+- `gangPardonBoost = { gangId, gangTag, until }` tracked server-side — cleanly expires each update tick
+- Stacks with `gangRoyaleBonus` (both use `Math.max(gangCaptureMult, 1.5)`) — so holding BOTH simultaneously doesn't double-stack past 1.5× but the durations compound
+- City-wide `pardon_territory_boost` event: "The Kingpin's act of mercy empowered [TAG]'s territory control for 2 minutes!" event feed callout
+- Creates a compelling diplomatic play: Kingpin pardons a rival gang's high-heat member → their OWN gang gains territorial momentum. Pure political drama.
+
+**Creative intent**: The Courier Pigeon is Bird City's most purely social NPC — it asks every online bird to make a CHOICE the moment it spawns: escort it (cooperative, safe, steady reward) or intercept it (competitive, criminal, bigger payout). A gang who escorts the courier together while another gang tries to poop it creates a beautiful protection vs. robbery dynamic without any complex setup. The Don mission × Noble challenge double-dip is the most satisfying form of emergent progression: completing ONE task advances TWO systems simultaneously. The King's Pardon territory boost turns a solo Kingpin power into a group reward — the moment a Kingpin pardons a criminal and their whole gang suddenly captures territories 50% faster is the most cinematic political event in Bird City. Pure SOCIAL + DISCOVERY + PROGRESSION energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)

@@ -7524,4 +7524,125 @@ window.Sprites = {
 
     ctx.restore();
   },
+
+  drawCourierPigeon(ctx, x, y, angle, state, hitsDealt, maxHits, amEscorting, now) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+
+    const pulse = (Math.sin(now * 0.003) + 1) / 2;
+    const fastPulse = (Math.sin(now * 0.008) + 1) / 2;
+    const wingFlap = Math.sin(now * 0.007) * 0.3;
+
+    // Warm cream/tan aura (friendly NPC)
+    const auraGrad = ctx.createRadialGradient(0, 0, 2, 0, 0, 20);
+    auraGrad.addColorStop(0, `rgba(255,220,100,${0.25 + 0.1 * pulse})`);
+    auraGrad.addColorStop(1, 'rgba(255,220,100,0)');
+    ctx.fillStyle = auraGrad;
+    ctx.beginPath(); ctx.ellipse(0, 0, 20, 20, 0, 0, Math.PI * 2); ctx.fill();
+
+    // Body — warm tan-brown pigeon
+    ctx.fillStyle = '#c8a87a';
+    ctx.beginPath(); ctx.ellipse(0, 0, 9, 7, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#b09060';
+    ctx.beginPath(); ctx.ellipse(2, 0, 7, 5, 0, 0, Math.PI * 2); ctx.fill();
+
+    // Wings (flapping)
+    ctx.fillStyle = '#a07848';
+    ctx.save();
+    ctx.rotate(wingFlap);
+    ctx.beginPath(); ctx.ellipse(-3, -6, 6, 3, -0.6, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    ctx.save();
+    ctx.rotate(-wingFlap);
+    ctx.beginPath(); ctx.ellipse(-3, 6, 6, 3, 0.6, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+
+    // Head
+    ctx.fillStyle = '#d4b48e';
+    ctx.beginPath(); ctx.arc(8, 0, 5, 0, Math.PI * 2); ctx.fill();
+
+    // Eye
+    ctx.fillStyle = '#1a1a1a';
+    ctx.beginPath(); ctx.arc(10, -1, 1.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(10.5, -1.5, 0.6, 0, Math.PI * 2); ctx.fill();
+
+    // Beak
+    ctx.fillStyle = '#e8c060';
+    ctx.beginPath();
+    ctx.moveTo(12, -0.5);
+    ctx.lineTo(16, 0.5);
+    ctx.lineTo(12, 1.5);
+    ctx.closePath(); ctx.fill();
+
+    // Carrier satchel on back
+    ctx.fillStyle = '#8B4513';
+    ctx.fillRect(-7, -4, 6, 5);
+    ctx.fillStyle = '#6B3410';
+    ctx.fillRect(-7, -4, 6, 1);
+    ctx.strokeStyle = '#6B3410';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(-4, -4); ctx.lineTo(-2, -7); ctx.stroke();
+
+    // Letter/envelope peeking from bag
+    ctx.fillStyle = '#fff8e8';
+    ctx.fillRect(-6, -5, 4, 3);
+    ctx.strokeStyle = '#ccc';
+    ctx.lineWidth = 0.5;
+    ctx.strokeRect(-6, -5, 4, 3);
+    ctx.fillStyle = '#cc2222';
+    ctx.beginPath(); ctx.arc(-4, -3.5, 0.8, 0, Math.PI * 2); ctx.fill();
+
+    // Tail
+    ctx.fillStyle = '#9a7050';
+    ctx.beginPath();
+    ctx.moveTo(-9, 0);
+    ctx.lineTo(-14, -3);
+    ctx.lineTo(-14, 3);
+    ctx.closePath(); ctx.fill();
+
+    ctx.restore();
+    ctx.save();
+    ctx.translate(x, y);
+
+    // Intercept progress bar
+    if (hitsDealt > 0 && state === 'flying') {
+      const barW = 40;
+      const barH = 5;
+      const barX = -barW / 2;
+      const barY = -24;
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
+      const pct = 1 - hitsDealt / maxHits;
+      ctx.fillStyle = pct > 0.5 ? '#44cc44' : pct > 0.25 ? '#ffaa00' : '#ff3333';
+      ctx.fillRect(barX, barY, barW * pct, barH);
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 6px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`INTERCEPT ${hitsDealt}/${maxHits}`, 0, barY + barH / 2);
+    }
+
+    // Escort dashed ring for the escorting bird
+    if (amEscorting) {
+      ctx.strokeStyle = `rgba(100,220,255,${0.5 + 0.3 * pulse})`;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath(); ctx.arc(0, 0, 22, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // Floating label
+    ctx.fillStyle = `rgba(255,240,180,${0.85 + 0.15 * fastPulse})`;
+    ctx.font = 'bold 7px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.shadowColor = '#000';
+    ctx.shadowBlur = 3;
+    ctx.fillText('📬 COURIER', 0, -26);
+    ctx.shadowBlur = 0;
+
+    ctx.restore();
+  },
 };
