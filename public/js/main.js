@@ -4606,6 +4606,37 @@
       if (idolOverlayVisible) renderIdolOverlay();
       else showIdolOverlay(); // Show results to everyone
     }
+
+    // === WANTED HOTLINE (Session 104) ===
+    if (ev.type === 'hotline_confirm' && ev.birdId === myId) {
+      showAnnouncement(`📞 TIP SENT on ${ev.targetName}!\n+${ev.heatAdded} heat applied. Anonymous.`, '#ff4444', 3500);
+    }
+    if (ev.type === 'hotline_alert' && ev.birdId === myId) {
+      showAnnouncement(`📞 ANONYMOUS TIP!\nSomeone reported you to the Wanted Hotline!\n+70 heat added to your record.`, '#ff2222', 4500);
+      effects.push({ type: 'screen_shake', intensity: 6, duration: 400, time: now });
+    }
+    if (ev.type === 'hotline_fail' && ev.birdId === myId) {
+      const msgText = ev.msg || 'Hotline tip failed.';
+      showAnnouncement(`📞 ${msgText}`, '#ff6666', 3000);
+    }
+    if (ev.type === 'hotline_tipped') {
+      const tag = ev.targetGangTag ? `[${ev.targetGangTag}] ` : '';
+      addEventMessage(`📞 ANONYMOUS TIP: ${tag}${ev.targetName} was reported to the authorities! (+${ev.heatAdded} heat)`, '#ff4444');
+    }
+    if (ev.type === 'hotline_shield_triggered') {
+      effects.push({ type: 'screen_shake', intensity: 8, duration: 500, time: now });
+      showAnnouncement(
+        `🛡 INFORMANT SHIELD TRIGGERED!\n${ev.snitchName} tried to tip on ${ev.targetName}\n— BOUNCED! Snitch gets +${ev.bounceHeat} heat!`,
+        '#ff8800', 6000
+      );
+      addEventMessage(`🛡 ${ev.targetName}'s shield EXPOSED the snitch: ${ev.snitchName} (+${ev.bounceHeat} heat)!`, '#ff8800');
+    }
+    if (ev.type === 'informant_shield_active' && ev.birdId === myId) {
+      showAnnouncement(
+        `🛡 INFORMANT SHIELD ACTIVE!\nNext tip on you BOUNCES back — exposing the snitch!\n(5 minutes)`,
+        '#ff8800', 5000
+      );
+    }
   }
 
   function showAnnouncement(text, color, duration) {
@@ -14616,6 +14647,73 @@
           <div style="color:#33aa55;font:8px monospace;margin-top:6px;">Expires in ${mins}:${rem.toString().padStart(2,'0')}</div>`;
       }
     }
+
+    // === WANTED HOTLINE section ===
+    const now3 = Date.now();
+    const bbShieldStatus = document.getElementById('bbHotlineShieldStatus');
+    const bbShieldBtn = document.getElementById('bbShieldBtn');
+    const bbTargets = document.getElementById('bbHotlineTargets');
+
+    if (bbShieldStatus && self) {
+      const shieldActive = self.informantShieldUntil && self.informantShieldUntil > now3;
+      const shieldCd = self.hotlineShieldCooldown && self.hotlineShieldCooldown > now3;
+      if (shieldActive) {
+        const s = Math.ceil((self.informantShieldUntil - now3) / 1000);
+        bbShieldStatus.innerHTML = `<span style="color:#ff4444;font-weight:bold;">🛡 SHIELD ACTIVE — ${s}s · Next tip BOUNCES BACK on snitch</span>`;
+      } else if (shieldCd) {
+        const s = Math.ceil((self.hotlineShieldCooldown - now3) / 1000);
+        bbShieldStatus.innerHTML = `<span style="color:#664444;">Cooldown: ${s}s</span>`;
+      } else if ((self.coins || 0) < 75) {
+        bbShieldStatus.innerHTML = `<span style="color:#554444;">Need 75c (have ${self.coins || 0}c)</span>`;
+      } else {
+        bbShieldStatus.innerHTML = `<span style="color:#886666;">Unprotected — buy the shield to expose snitches</span>`;
+      }
+    }
+
+    if (bbShieldBtn && self) {
+      const shieldActive = self.informantShieldUntil && self.informantShieldUntil > now3;
+      const shieldCd = self.hotlineShieldCooldown && self.hotlineShieldCooldown > now3;
+      const canBuy = !shieldActive && !shieldCd && (self.coins || 0) >= 75;
+      bbShieldBtn.disabled = !canBuy;
+      bbShieldBtn.style.opacity = canBuy ? '1' : '0.4';
+      bbShieldBtn.style.cursor = canBuy ? 'pointer' : 'not-allowed';
+    }
+
+    if (bbTargets && gameState) {
+      const online = gameState.onlineBirds || [];
+      const myCoins = (self && self.coins) || 0;
+      if (online.length === 0) {
+        bbTargets.innerHTML = `<span style="color:#554444;font:italic 9px monospace;">No other birds online to tip on</span>`;
+      } else {
+        bbTargets.innerHTML = online.map(b => {
+          const tag = b.gangTag ? `<span style="color:#774444;">[${b.gangTag}]</span> ` : '';
+          const hasShield = b.informantShieldUntil && b.informantShieldUntil > now3;
+          const shieldTip = hasShield ? ' 🛡' : '';
+          const canTip = myCoins >= 60;
+          return `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
+            <span>${tag}<span style="color:#cc8888;">${b.name}</span>${shieldTip}${hasShield ? '<span style="color:#553333;font:8px monospace;"> (SHIELDED)</span>' : ''}</span>
+            <button data-tipid="${b.id}" data-tipname="${b.name}"
+              style="background:rgba(100,10,10,0.85);color:#ff6666;border:1px solid #881111;
+              border-radius:4px;font:bold 8px monospace;padding:2px 7px;cursor:${canTip ? 'pointer' : 'not-allowed'};
+              opacity:${canTip ? '1' : '0.4'};white-space:nowrap;"
+              ${canTip ? '' : 'disabled'}>📞 TIP (60c)</button>
+          </div>`;
+        }).join('');
+
+        // Wire up tip buttons
+        bbTargets.querySelectorAll('[data-tipid]').forEach(btn => {
+          btn.addEventListener('click', e => {
+            e.stopPropagation();
+            const tid = btn.dataset.tipid;
+            const tname = btn.dataset.tipname;
+            if (!socket || !joined) return;
+            socket.emit('action', { type: 'hotline_tip', targetId: tid });
+            const msg = document.getElementById('bbHotlineMsg');
+            if (msg) { msg.textContent = `📞 Tip sent on ${tname}...`; setTimeout(() => { if (msg) msg.textContent = ''; }, 2500); }
+          });
+        });
+      }
+    }
   }
 
   function updatePoolHudPill(total) {
@@ -16051,6 +16149,16 @@
   });
 
   document.getElementById('skillTreeCloseBtn').addEventListener('click', hideSkillTree);
+
+  // === WANTED HOTLINE — shield button click handler (Session 104) ===
+  const _bbShieldBtnEl = document.getElementById('bbShieldBtn');
+  if (_bbShieldBtnEl) {
+    _bbShieldBtnEl.addEventListener('click', e => {
+      e.stopPropagation();
+      if (!socket || !joined) return;
+      socket.emit('action', { type: 'buy_informant_shield' });
+    });
+  }
 
   // ============================================================
   // INIT

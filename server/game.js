@@ -149,6 +149,9 @@ const DAILY_CHALLENGE_POOL = [
   // Session 102: Birdnapper Van challenges
   { id: 'van_escape',   title: 'Close Call',       desc: 'Escape the Birdnapper Van after being hunted for 8+ seconds',  target: 1,  trackType: 'van_escaped',      reward: { xp: 180, coins: 90  } },
   { id: 'van_rescuer',  title: 'To The Rescue',    desc: 'Help rescue an abducted bird by pooping the Birdnapper Van',   target: 1,  trackType: 'van_rescue_hit',   reward: { xp: 220, coins: 110 } },
+  // Session 104: Wanted Hotline challenges
+  { id: 'the_snitch',    title: 'The Snitch',       desc: 'Tip off the Wanted Hotline on 3 different birds',              target: 3,  trackType: 'hotline_tipped',   reward: { xp: 180, coins: 90  } },
+  { id: 'snitch_shield', title: 'Untouchable',      desc: 'Trigger the Informant Shield (expose a snitch)',                target: 1,  trackType: 'shield_triggered', reward: { xp: 200, coins: 100 } },
 ];
 
 // ============================================================
@@ -256,6 +259,12 @@ class GameEngine {
     // Heat thresholds: level 1-5
     // 10 = ⭐, 25 = ⭐⭐ (1 cop), 50 = ⭐⭐⭐ (2 cops), 100 = ⭐⭐⭐⭐ (3 cops + SWAT), 200 = ⭐⭐⭐⭐⭐ (SWAT hawk + bounty)
     this.WANTED_THRESHOLDS = [10, 25, 50, 100, 200];
+
+    // === WANTED HOTLINE (Session 104) ===
+    // Anonymous tip line: spend 60c to instantly add +70 heat to any online bird.
+    // Per-tipper-per-target cooldown: 10 minutes.
+    // Informant Shield (75c at City Hall): bounces the next tip back — reveals the snitch +40 heat + city-wide callout.
+    this._hotlineCooldowns = new Map(); // `${tipperId}:${targetId}` -> timestamp (cooldown expiry)
 
     // === MOST WANTED BOARD + CITY LOCKDOWN ===
     // Tracks the top-3 most wanted birds city-wide (visible to all players on a persistent HUD).
@@ -1150,6 +1159,8 @@ class GameEngine {
       // === WITNESS PROTECTION ===
       witnessProtectionUntil: 0,       // timestamp when WP expires
       witnessProtectionCooldown: 0,    // timestamp when WP can be purchased again
+      // === WANTED HOTLINE (Session 104) ===
+      informantShieldUntil: 0,         // timestamp when Informant Shield expires (bounces tips back)
       // === POSSESSION (Session 93) ===
       possessedUntil: 0,               // possessed by a feral spirit — +50% radius, immune to arrest
       // === SKILL TREE MASTERY ===
@@ -1489,6 +1500,14 @@ class GameEngine {
     }
     if (action.type === 'buy_witness_protection') {
       this._handleWitnessProtection(bird, now);
+    }
+
+    // === Wanted Hotline (Session 104) ===
+    if (action.type === 'hotline_tip') {
+      this._handleHotlineTip(bird, action.targetId, now);
+    }
+    if (action.type === 'buy_informant_shield') {
+      this._handleBuyInformantShield(bird, now);
     }
 
     // === City Elections ===
@@ -6974,6 +6993,15 @@ class GameEngine {
         };
       })(),
       wantedBirdId: this.wantedBirdId,
+      // Online birds list (for Hotline targeting)
+      onlineBirds: (() => {
+        const list = [];
+        for (const b of this.birds.values()) {
+          if (!b.online || b.id === bird.id) continue;
+          list.push({ id: b.id, name: b.name, gangTag: b.gangTag || null, coins: b.coins, informantShieldUntil: b.informantShieldUntil });
+        }
+        return list;
+      })(),
       // Most Wanted Board + City Lockdown
       wantedTopThree: this.wantedTopThree,
       cityLockdown: this.cityLockdown ? {
@@ -7354,6 +7382,9 @@ class GameEngine {
         // Witness Protection
         witnessProtectionUntil: bird.witnessProtectionUntil || 0,
         witnessProtectionCooldown: bird.witnessProtectionCooldown || 0,
+        // Wanted Hotline
+        informantShieldUntil: bird.informantShieldUntil || 0,
+        hotlineShieldCooldown: bird.hotlineShieldCooldown || 0,
         // Duel Betting — spectators see open betting windows
         duelBetting: (() => {
           if (bird.streetDuelId) return null; // duelers don't see betting panel
@@ -14788,6 +14819,136 @@ class GameEngine {
   }
 
   // ============================================================
+  // WANTED HOTLINE (Session 104)
+  // Anonymous tip line: 60c to add +70 heat to any online rival.
+  // Informant Shield: 75c protects you for 5 min — next tip bounces
+  // back to the snitch, exposing their identity city-wide (+40 heat).
+  // ============================================================
+
+  _handleHotlineTip(bird, targetId, now) {
+    const TIP_COST = 60;
+    const TIP_HEAT = 70;
+    const TIP_SHIELD_BOUNCE_HEAT = 40;
+    const COOLDOWN_MS = 10 * 60 * 1000; // 10 min per tipper per target
+
+    if (!targetId) {
+      this.events.push({ type: 'hotline_fail', birdId: bird.id, msg: 'No target specified.' });
+      return;
+    }
+
+    const target = this.birds.get(targetId);
+    if (!target || !target.online) {
+      this.events.push({ type: 'hotline_fail', birdId: bird.id, msg: 'That bird is not online.' });
+      return;
+    }
+
+    if (targetId === bird.id) {
+      this.events.push({ type: 'hotline_fail', birdId: bird.id, msg: 'Can\'t tip yourself in.' });
+      return;
+    }
+
+    if (bird.coins < TIP_COST) {
+      this.events.push({ type: 'hotline_fail', birdId: bird.id, msg: `Need ${TIP_COST}c to call the Hotline.` });
+      return;
+    }
+
+    const cooldownKey = `${bird.id}:${targetId}`;
+    const cooldownExpiry = this._hotlineCooldowns.get(cooldownKey) || 0;
+    if (now < cooldownExpiry) {
+      const secsLeft = Math.ceil((cooldownExpiry - now) / 1000);
+      const mins = Math.floor(secsLeft / 60);
+      this.events.push({ type: 'hotline_fail', birdId: bird.id, msg: `Cooldown: ${mins}m ${secsLeft % 60}s before you can tip on ${target.name} again.` });
+      return;
+    }
+
+    // Deduct cost and set cooldown regardless of shield
+    bird.coins -= TIP_COST;
+    this._hotlineCooldowns.set(cooldownKey, now + COOLDOWN_MS);
+
+    // Check if target has Informant Shield active — if so, bounce the tip
+    if (target.informantShieldUntil > now) {
+      // Shield triggered! Expose the snitch
+      this._addHeat(bird.id, TIP_SHIELD_BOUNCE_HEAT);
+      this._trackDailyProgress(target.id, 'shield_triggered', 1);
+
+      this.events.push({
+        type: 'hotline_shield_triggered',
+        snitchId: bird.id,
+        snitchName: bird.name,
+        snitchGangTag: bird.gangTag || null,
+        targetId: target.id,
+        targetName: target.name,
+        bounceHeat: TIP_SHIELD_BOUNCE_HEAT,
+      });
+
+      // Personal alerts
+      this.events.push({ type: 'hotline_fail', birdId: bird.id, msg: `🛡 ${target.name}'s Informant Shield BOUNCED your tip! Your identity is blown (+${TIP_SHIELD_BOUNCE_HEAT} heat)!` });
+      this.events.push({ type: 'hotline_alert', birdId: target.id, msg: `🛡 Informant Shield triggered! ${bird.name} tried to rat you out — their cover is blown!` });
+      return;
+    }
+
+    // Normal tip — add heat to target
+    this._addHeat(targetId, TIP_HEAT);
+    this._trackDailyProgress(bird.id, 'hotline_tipped', 1);
+    if (!this.gazetteStats.hotlineTips) this.gazetteStats.hotlineTips = 0;
+    this.gazetteStats.hotlineTips++;
+
+    // City-wide anonymous announcement (no tipper name)
+    this.events.push({
+      type: 'hotline_tipped',
+      targetId: target.id,
+      targetName: target.name,
+      targetGangTag: target.gangTag || null,
+      heatAdded: TIP_HEAT,
+    });
+
+    // Personal confirm to tipper + alert to target
+    this.events.push({ type: 'hotline_confirm', birdId: bird.id, targetName: target.name, heatAdded: TIP_HEAT });
+    this.events.push({ type: 'hotline_alert', birdId: target.id, msg: `📞 ANONYMOUS TIP — Someone called the Hotline on you! +${TIP_HEAT} heat. Watch your back.` });
+  }
+
+  _handleBuyInformantShield(bird, now) {
+    const COST = 75;
+    const DURATION = 5 * 60 * 1000; // 5 minutes
+    const COOLDOWN_MS = 8 * 60 * 1000; // 8 min cooldown
+
+    // Must be near City Hall
+    const ch = this.CITY_HALL_POS;
+    const dx = bird.x - ch.x;
+    const dy = bird.y - ch.y;
+    if (Math.sqrt(dx * dx + dy * dy) > ch.radius * 1.4) {
+      this.events.push({ type: 'hotline_fail', birdId: bird.id, msg: 'Must be near City Hall to buy the Informant Shield.' });
+      return;
+    }
+
+    if (bird.coins < COST) {
+      this.events.push({ type: 'hotline_fail', birdId: bird.id, msg: `Need ${COST}c to buy Informant Shield.` });
+      return;
+    }
+
+    if (now < (bird.hotlineShieldCooldown || 0)) {
+      const secsLeft = Math.ceil(((bird.hotlineShieldCooldown || 0) - now) / 1000);
+      this.events.push({ type: 'hotline_fail', birdId: bird.id, msg: `Informant Shield on cooldown — ${secsLeft}s remaining.` });
+      return;
+    }
+
+    if (bird.informantShieldUntil > now) {
+      this.events.push({ type: 'hotline_fail', birdId: bird.id, msg: 'Informant Shield is already active!' });
+      return;
+    }
+
+    bird.coins -= COST;
+    bird.informantShieldUntil = now + DURATION;
+    bird.hotlineShieldCooldown = now + COOLDOWN_MS;
+
+    this.events.push({
+      type: 'informant_shield_active',
+      birdId: bird.id,
+      endsAt: bird.informantShieldUntil,
+    });
+  }
+
+  // ============================================================
   // GANG NESTS — persistent home bases for criminal crews
   // ============================================================
 
@@ -15625,6 +15786,7 @@ class GameEngine {
       birdnapperRescued:    0,  // captives rescued
       birdnapperEscaped:    0,  // captives not rescued (van escaped)
       electionPolicy:       null, // name of policy enacted this cycle
+      hotlineTips:          0,    // anonymous tips placed this cycle
     };
   }
 
@@ -15999,6 +16161,15 @@ class GameEngine {
         icon: '🗳️',
         headline: `CITY ELECTION RESULTS: "${stats.electionPolicy.toUpperCase()}" POLICY ENACTED`,
         subline: (elKey ? ELECTION_SUBLINES[elKey] : 'Democracy descends on Bird City. Results were immediately taken advantage of.'),
+      });
+    }
+
+    // Wanted Hotline tip frenzy headline
+    if (stats.hotlineTips >= 3) {
+      headlines.push({
+        icon: '📞',
+        headline: `SNITCH CITY: WANTED HOTLINE FIELDS ${stats.hotlineTips} ANONYMOUS TIPS`,
+        subline: 'Paranoia sweeps Bird City. Nobody trusts nobody. The Don says he knew this day would come.',
       });
     }
 
