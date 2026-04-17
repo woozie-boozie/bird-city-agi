@@ -4637,6 +4637,42 @@
         '#ff8800', 5000
       );
     }
+
+    // === GRUDGE SYSTEM (Session 105) ===
+    if (ev.type === 'grudge_set' && ev.birdId === myId) {
+      showAnnouncement(
+        `😤 GRUDGE SET!\nYou ${ev.reasonDesc} ${ev.targetName}!\nPoop them 3× for revenge! (+${ev.rewardXp} XP +${ev.rewardCoins}c)`,
+        '#ff6600', 6000
+      );
+      addEventMessage(`😤 ${ev.targetName} is your grudge target — poop them 3 times!`, '#ff6600');
+      effects.push({ type: 'screen_shake', intensity: 4, duration: 300, time: now });
+    }
+    if (ev.type === 'grudge_hit') {
+      if (ev.revengerId === myId) {
+        const done = ev.hitsDealt >= ev.hitsNeeded;
+        const msg = done
+          ? `😤 GRUDGE HIT ${ev.hitsDealt}/${ev.hitsNeeded} — REVENGE INCOMING!`
+          : `😤 GRUDGE HIT ${ev.hitsDealt}/${ev.hitsNeeded} on ${ev.targetName}!`;
+        addEventMessage(msg, '#ff8800');
+        effects.push({ type: 'float_text', text: `😤 ${ev.hitsDealt}/${ev.hitsNeeded}`, x: ev.targetX || 0, y: (ev.targetY || 0) - 30, color: '#ff8800', duration: 1000, time: now });
+      }
+      if (ev.targetId === myId) {
+        addEventMessage(`😤 ${ev.revengerName} has a GRUDGE — they hit you! (${ev.hitsDealt}/${ev.hitsNeeded})`, '#ff4400');
+      }
+    }
+    if (ev.type === 'grudge_complete') {
+      const tag = ev.revengerGangTag ? `[${ev.revengerGangTag}] ` : '';
+      if (ev.revengerId === myId) {
+        showAnnouncement(
+          `😤 REVENGE COMPLETE!\nYou settled the score with ${ev.targetName}!\n+${ev.xp} XP +${ev.coins}c`,
+          '#ff8800', 5000
+        );
+        addEventMessage(`😤 REVENGE! ${tag}${ev.revengerName} settled the score (+${ev.xp} XP +${ev.coins}c)`, '#ff8800');
+        effects.push({ type: 'screen_shake', intensity: 7, duration: 500, time: now });
+      } else {
+        addEventMessage(`😤 ${tag}${ev.revengerName} got REVENGE on ${ev.targetName}!`, '#ff6600');
+      }
+    }
   }
 
   function showAnnouncement(text, color, duration) {
@@ -11956,6 +11992,31 @@
       minimapCtx.restore();
     }
 
+    // === GRUDGE TARGET — pulsing orange 😤 dot on minimap at target's position ===
+    if (gameState.self && gameState.self.grudge && gameState.birds && worldData) {
+      const grudgeTarget = gameState.birds.find(b => b.id === gameState.self.grudge.targetId);
+      if (grudgeTarget) {
+        const mw = minimapCtx.canvas.width;
+        const mh = minimapCtx.canvas.height;
+        const gPulse = 0.5 + 0.5 * Math.sin(now * 0.01);
+        const gmx = grudgeTarget.x * mw / worldData.width;
+        const gmy = grudgeTarget.y * mh / worldData.height;
+        minimapCtx.save();
+        minimapCtx.shadowColor = '#ff6600';
+        minimapCtx.shadowBlur = 8 + 4 * gPulse;
+        minimapCtx.fillStyle = `rgba(255,100,0,${0.8 + 0.2 * gPulse})`;
+        minimapCtx.beginPath();
+        minimapCtx.arc(gmx, gmy, 4 + gPulse, 0, Math.PI * 2);
+        minimapCtx.fill();
+        minimapCtx.shadowBlur = 0;
+        minimapCtx.font = '8px sans-serif';
+        minimapCtx.textAlign = 'center';
+        minimapCtx.textBaseline = 'alphabetic';
+        minimapCtx.fillText('😤', gmx, gmy - 5);
+        minimapCtx.restore();
+      }
+    }
+
     // Bird Royale safe zone ring on minimap
     if (gameState.birdRoyale && gameState.birdRoyale.state === 'active' && worldData) {
       Renderer.drawBirdRoyaleOnMinimap(minimapCtx, worldData, gameState.birdRoyale, now);
@@ -14056,6 +14117,26 @@
         const POLICY_COLORS = { feast:'#88ff44', tax_revolt:'#ffdd44', anarchy:'#ff4444', unity:'#44aaff', festival:'#ff88ff', bloodsport:'#ff6622' };
         const col = POLICY_COLORS[elState.policy] || '#66ffaa';
         html += `<div class="bm-buff-pill" style="background:rgba(0,40,15,0.88);border-color:${col};color:${col};animation:pulseGreen 2s ease-in-out infinite alternate;">🗳️ ${elState.emoji || ''} ${(elState.policy || '').toUpperCase()} POLICY — ${mins}:${rem.toString().padStart(2,'0')} left</div>`;
+      }
+    }
+
+    // === GRUDGE SYSTEM pill (Session 105) ===
+    if (s.grudge) {
+      const g = s.grudge;
+      const hitsLeft = 3 - g.hitsDealt;
+      const anim = g.hitsDealt >= 2 ? 'animation:pulseRed 0.5s infinite alternate;' : 'animation:kingpinGlow 0.9s ease-in-out infinite alternate;';
+      html += `<div class="bm-buff-pill" style="background:rgba(100,30,0,0.92);border-color:#ff6600;color:#ffaa44;font-weight:bold;${anim}">😤 GRUDGE — Poop ${g.targetName} ${hitsLeft} more time${hitsLeft !== 1 ? 's' : ''} for REVENGE! (${g.hitsDealt}/3)</div>`;
+    }
+    // Show warning when a nearby bird has a grudge targeting you
+    if (gameState.birds) {
+      const grudgeHunter = gameState.birds.find(b => b.hasGrudgeOnMe);
+      if (grudgeHunter) {
+        const gdx = (s.x || 0) - grudgeHunter.x;
+        const gdy = (s.y || 0) - grudgeHunter.y;
+        const gDist = Math.sqrt(gdx * gdx + gdy * gdy);
+        if (gDist < 300) {
+          html += `<div class="bm-buff-pill" style="background:rgba(80,20,0,0.85);border-color:#ff4400;color:#ffaa66;">😤 ${grudgeHunter.name} has a GRUDGE on YOU — they're hunting you!</div>`;
+        }
       }
     }
 

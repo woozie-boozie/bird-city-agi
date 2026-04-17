@@ -3604,6 +3604,40 @@ Bird City's new shadow economy of betrayal. Any bird can spend 60c to anonymousl
 
 **Creative intent**: The Hotline turns every online session into a paranoia meta-game. Got destroyed by a high-combo Kingpin? Spend 60c to anonymously escalate their heat. Rich birds buy the Informant Shield as defensive insurance — but now the 60c still burns on a bounced tip AND the snitch gets publicly exposed. "Who tipped on me?!" becomes the most dramatic question in Bird City. A Wanted Level 5 bird who just bought Witness Protection getting HOTLINED back to Level 3 the moment protection expires — that chain of events is pure SOCIAL + CARNAGE drama. The 10-min cooldown and 75c shield cost create meaningful economic decisions rather than spam. Pure SOCIAL + CARNAGE energy — the city now has a snitch line.
 
+**Session 105 — 2026-04-17: The Grudge System — Personal Vendettas Across the City**
+Bird City now has a personal vendetta layer. When a bird is wronged — loses a street duel, gets killed in a gang war, is dethroned as Kingpin, has their Golden Egg tackled, Cursed Coin stolen, or gets carjacked — they automatically hold a grudge against the perpetrator. The grudge target is tracked on the minimap as a pulsing orange 😤 dot, and pooping within grudge radius 3 times completes the revenge for bonus XP and coins.
+
+**Six grudge triggers (`server/game.js`):**
+- **Street Duel loss**: loser gets a grudge against the winner (200 XP, 80c revenge reward)
+- **Gang War kill**: the killed bird gets a grudge against their attacker (250 XP, 100c)
+- **Kingpin dethronement**: the dethroned Kingpin holds a serious grudge against their usurper (400 XP, 200c)
+- **Golden Egg tackle**: the carrier holds a grudge against whoever stole their egg (150 XP, 60c)
+- **Cursed Coin steal**: the previous holder holds a grudge against the thief (200 XP, 80c)
+- **Pigeon Coupe carjack**: the ejected driver holds a grudge against the carjacker (150 XP, 60c)
+
+**Grudge mechanics:**
+- Session-only `grudge` field on each bird: stores `{ targetId, targetName, reason, reasonDesc, hitsDealt, rewardXp, rewardCoins, setAt }`
+- Poop within 28px (or 60px for mega poop) of the grudge target counts as a grudge hit — even if the primary poop hit someone else
+- 3 hits completes the grudge → `_completeGrudge()` pays out XP + coins, clears grudge, fires city-wide event
+- Near-complete grudges (2+ hits) are NOT overwritten by a new wrongdoing — you finish your revenge first
+- Daily challenges: **Revenge!** (complete a Grudge, 220 XP/110c) + **Grudge Target** (have a Grudge placed on you, 150 XP/75c)
+
+**`_setGrudge(victimId, attacker, reason)` helper:** Sets grudge on the victim against the attacker. Doesn't overwrite grudges with ≥2 hits. Tracks `grudge_targeted` daily challenge progress. Fires `grudge_set` event to the victim.
+
+**`_completeGrudge(revenger, now)` helper:** Pays out XP + coins, clears grudge, tracks `grudge_completed` daily challenge progress, records in `gazetteStats.grudgeRevenges[]`. Fires `grudge_complete` city-wide event.
+
+**Gazette headline:** "😤 COLD DISH SERVED: [Name] GETS REVENGE ON [Name]" when any grudge is completed this cycle.
+
+**Client (`public/js/main.js`):**
+- `grudge_set` event: "😤 GRUDGE SET — You [reason desc] [target]! Poop them 3× for revenge! (+XP +coins)" announcement + screen shake
+- `grudge_hit` event: progress floating text for revenger ("😤 1/3", "2/3"); warning for target ("someone hit 2/3 — RUN!")
+- `grudge_complete` event: "😤 REVENGE COMPLETE! +XP +coins" announcement for revenger; city-wide event feed entry
+- Active buffs HUD pill: "😤 GRUDGE — Poop [target] N more times for REVENGE! (X/3)" in orange, red-pulses at 2/3
+- Proximity warning pill: "😤 [name] has a GRUDGE on YOU — they're hunting you!" when grudge hunter is within 300px
+- Minimap: pulsing orange 😤 dot at grudge target's real-time world position — always trackable
+
+**Creative intent**: Bird City had many CITY-WIDE drama mechanics (Kingpin, hit contracts, gang wars) but nothing PERSONAL. The Grudge System is pure one-on-one narrative tension. You lose a duel and immediately see your grudge target pulse orange on the minimap. You spend the next 5 minutes hunting them across the city, weaving through cops and weather events, finally landing that third shot — and the city announces YOUR revenge. The grudge reason ("was carjacked by", "was dethroned as Kingpin by") tells a STORY about your session. The Dethronement grudge is worth 400 XP + 200c — a former Kingpin who successfully hunts down their usurper is Bird City's most cinematic revenge arc. Pure SOCIAL + CARNAGE + DISCOVERY energy — the city now has personal vendettas.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)

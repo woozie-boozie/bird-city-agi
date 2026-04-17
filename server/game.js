@@ -152,6 +152,9 @@ const DAILY_CHALLENGE_POOL = [
   // Session 104: Wanted Hotline challenges
   { id: 'the_snitch',    title: 'The Snitch',       desc: 'Tip off the Wanted Hotline on 3 different birds',              target: 3,  trackType: 'hotline_tipped',   reward: { xp: 180, coins: 90  } },
   { id: 'snitch_shield', title: 'Untouchable',      desc: 'Trigger the Informant Shield (expose a snitch)',                target: 1,  trackType: 'shield_triggered', reward: { xp: 200, coins: 100 } },
+  // Session 105: Grudge System challenges
+  { id: 'grudge_revenge',  title: 'Revenge!',         desc: 'Complete a Grudge — poop your target 3 times after being wronged', target: 1, trackType: 'grudge_completed', reward: { xp: 220, coins: 110 } },
+  { id: 'grudge_escape',   title: 'Grudge Target',    desc: 'Have a Grudge placed on you by a rival (survive or clear it)',    target: 1, trackType: 'grudge_targeted',  reward: { xp: 150, coins: 75  } },
 ];
 
 // ============================================================
@@ -1206,6 +1209,8 @@ class GameEngine {
       // === PIGEON COUPE (session-only) ===
       drivingCoupeId: null,         // spawnedAt ID of the coupe being driven (null if not driving)
       _coupeJoyRiderTracked: false, // whether the 10-second joy-ride daily challenge has been counted
+      // === GRUDGE SYSTEM (session-only) ===
+      grudge: null, // null | { targetId, targetName, reason, reasonDesc, hitsDealt, rewardXp, rewardCoins, setAt }
     };
 
     // Determine bird type from XP
@@ -4370,6 +4375,31 @@ class GameEngine {
         }
       }
 
+      // === GRUDGE HIT — did this poop land near the shooter's grudge target? ===
+      if (bird.grudge) {
+        const target = this.birds.get(bird.grudge.targetId);
+        if (target && !target.inSewer) {
+          const gdx = poop.x - target.x;
+          const gdy = poop.y - target.y;
+          const gRadius = isMegaPoop ? 60 : 28;
+          if (Math.sqrt(gdx * gdx + gdy * gdy) < gRadius) {
+            bird.grudge.hitsDealt++;
+            this.events.push({
+              type: 'grudge_hit',
+              revengerId: bird.id,
+              revengerName: bird.name,
+              targetId: target.id,
+              targetName: target.name,
+              hitsDealt: bird.grudge.hitsDealt,
+              hitsNeeded: 3,
+            });
+            if (bird.grudge.hitsDealt >= 3) {
+              this._completeGrudge(bird, now);
+            }
+          }
+        }
+      }
+
       // Gang Nest Raid: check if poop landed near a rival gang's nest
       if (bird.gangId) {
         for (const [nestGangId, nest] of this.gangNests) {
@@ -6616,6 +6646,8 @@ class GameEngine {
           stampedeBadge: b.stampedeBadge || false,
           // Session 100: Golden Throne champion badge
           throneChampBadge: b.throneChampBadge || false,
+          // Session 105: Grudge — show nearby birds if they have a grudge targeting the viewer (so viewer knows)
+          hasGrudgeOnMe: !!(b.grudge && b.grudge.targetId === bird.id),
         });
       }
     }
@@ -7385,6 +7417,16 @@ class GameEngine {
         // Wanted Hotline
         informantShieldUntil: bird.informantShieldUntil || 0,
         hotlineShieldCooldown: bird.hotlineShieldCooldown || 0,
+        // Grudge System
+        grudge: bird.grudge ? {
+          targetId: bird.grudge.targetId,
+          targetName: bird.grudge.targetName,
+          reason: bird.grudge.reason,
+          reasonDesc: bird.grudge.reasonDesc,
+          hitsDealt: bird.grudge.hitsDealt,
+          rewardXp: bird.grudge.rewardXp,
+          rewardCoins: bird.grudge.rewardCoins,
+        } : null,
         // Duel Betting — spectators see open betting windows
         duelBetting: (() => {
           if (bird.streetDuelId) return null; // duelers don't see betting panel
@@ -9311,6 +9353,8 @@ class GameEngine {
         targetId: target.id, targetName: target.name, targetGangTag: target.gangTag,
         loot, auroraBonus: auroraWarBonus, bloodMoonBonus: bloodMoonWarBonus, decreeBonus: decreeWarBonus, domeBonus, xp: killXp,
       });
+      // Set grudge: gang war victim holds a grudge against their killer
+      this._setGrudge(target.id, attacker, 'gangwar');
     }
   }
 
@@ -14033,6 +14077,8 @@ class GameEngine {
               eggId: egg.id,
               x: rival.x, y: rival.y,
             });
+            // Set grudge: carrier holds a grudge against the tackler
+            this._setGrudge(carrier.id, rival, 'eggtackle');
             break;
           }
         }
@@ -14408,6 +14454,9 @@ class GameEngine {
       poolPayout,
       reason: 'defeated',
     });
+
+    // Set grudge: dethroned Kingpin holds a serious grudge against the usurper
+    this._setGrudge(dethroned.birdId, attacker, 'dethrone');
 
     // Trigger screen shake for all players via a shockwave event
     this.events.push({ type: 'kingpin_topple_shockwave', x: kBird ? kBird.x : 1500, y: kBird ? kBird.y : 1500 });
@@ -15787,6 +15836,7 @@ class GameEngine {
       birdnapperEscaped:    0,  // captives not rescued (van escaped)
       electionPolicy:       null, // name of policy enacted this cycle
       hotlineTips:          0,    // anonymous tips placed this cycle
+      grudgeRevenges:       [],   // [{ revenger, revengerGangTag, target }] — completed grudges this cycle
     };
   }
 
@@ -16170,6 +16220,17 @@ class GameEngine {
         icon: '📞',
         headline: `SNITCH CITY: WANTED HOTLINE FIELDS ${stats.hotlineTips} ANONYMOUS TIPS`,
         subline: 'Paranoia sweeps Bird City. Nobody trusts nobody. The Don says he knew this day would come.',
+      });
+    }
+
+    // Grudge revenge headline
+    if (stats.grudgeRevenges && stats.grudgeRevenges.length > 0) {
+      const topRevenge = stats.grudgeRevenges[0];
+      const tag = topRevenge.revengerGangTag ? `[${topRevenge.revengerGangTag}] ` : '';
+      headlines.push({
+        icon: '😤',
+        headline: `COLD DISH SERVED: ${tag}${topRevenge.revenger} GETS REVENGE ON ${topRevenge.target}`,
+        subline: 'City witnesses vow to never wrong a bird again. "They wait," says local grudge expert. "They always wait."',
       });
     }
 
@@ -17018,6 +17079,8 @@ class GameEngine {
           // Reward thief: XP + daily challenge progress
           bird.xp += 40;
           this._trackDailyProgress(bird, 'cursed_steal', 1);
+          // Set grudge: original holder holds a grudge against the thief
+          this._setGrudge(prevHolder.id, bird, 'coinstealing');
           break;
         }
       }
@@ -20109,6 +20172,8 @@ class GameEngine {
       loser.streetDuelId = null;
       // Wipe combo on duel loss
       loser.comboCount = 0;
+      // Set grudge: loser now holds a grudge against the winner
+      if (winner && reason === 'knockout') this._setGrudge(loserId, winner, 'duel');
     }
 
     // Gazette tracking — record notable duels for the morning newspaper
@@ -20187,6 +20252,73 @@ class GameEngine {
     }
 
     this.streetDuels.delete(duel.id);
+  }
+
+  // ============================================================
+  // GRUDGE SYSTEM — hold grudges, get revenge
+  // ============================================================
+
+  _setGrudge(victimId, attacker, reason) {
+    const victim = this.birds.get(victimId);
+    if (!victim || !attacker || victim.id === attacker.id) return;
+    // Don't overwrite a near-complete grudge (2+ hits already)
+    if (victim.grudge && victim.grudge.hitsDealt >= 2) return;
+    const rewards = {
+      'duel':      { xp: 200, coins: 80,  desc: 'lost a duel to' },
+      'gangwar':   { xp: 250, coins: 100, desc: 'was killed in gang war by' },
+      'dethrone':  { xp: 400, coins: 200, desc: 'was dethroned as Kingpin by' },
+      'eggtackle': { xp: 150, coins: 60,  desc: 'had their Golden Egg tackled by' },
+      'coinstealing':{ xp: 200, coins: 80, desc: 'had their Cursed Coin stolen by' },
+      'carjack':   { xp: 150, coins: 60,  desc: 'was carjacked by' },
+    };
+    const reward = rewards[reason] || { xp: 150, coins: 60, desc: 'was wronged by' };
+    victim.grudge = {
+      targetId: attacker.id,
+      targetName: attacker.name,
+      reason,
+      reasonDesc: reward.desc,
+      hitsDealt: 0,
+      rewardXp: reward.xp,
+      rewardCoins: reward.coins,
+      setAt: Date.now(),
+    };
+    this._trackDailyProgress(victim, 'grudge_targeted', 1);
+    this.events.push({
+      type: 'grudge_set',
+      birdId: victim.id,
+      targetId: attacker.id,
+      targetName: attacker.name,
+      reason,
+      reasonDesc: reward.desc,
+      rewardXp: reward.xp,
+      rewardCoins: reward.coins,
+    });
+  }
+
+  _completeGrudge(revenger, now) {
+    const g = revenger.grudge;
+    if (!g) return;
+    revenger.xp += g.rewardXp;
+    revenger.coins += g.rewardCoins;
+    revenger.grudge = null;
+    this._trackDailyProgress(revenger, 'grudge_completed', 1);
+    if (this.gazetteStats.grudgeRevenges) {
+      this.gazetteStats.grudgeRevenges.push({
+        revenger: revenger.name,
+        revengerGangTag: revenger.gangTag || null,
+        target: g.targetName,
+      });
+    }
+    this.events.push({
+      type: 'grudge_complete',
+      revengerId: revenger.id,
+      revengerName: revenger.name,
+      revengerGangTag: revenger.gangTag || null,
+      targetName: g.targetName,
+      reason: g.reason,
+      xp: g.rewardXp,
+      coins: g.rewardCoins,
+    });
   }
 
   _tickStreetDuels(now) {
@@ -22499,6 +22631,9 @@ class GameEngine {
       x: coupe.x, y: coupe.y,
       message: `🚨 ${bird.gangTag ? `[${bird.gangTag}] ` : ''}${bird.name} CARJACKED THE PIGEON COUPE from ${previousDriverName}! (${coupe.carjacks}/3 carjacks — explodes at 3!)`,
     });
+
+    // Set grudge: ejected driver holds a grudge against the carjacker
+    if (previousDriver) this._setGrudge(previousDriver.id, bird, 'carjack');
 
     // If reached 3 carjacks → EXPLODE
     if (coupe.carjacks >= 3) {
