@@ -3539,6 +3539,42 @@ A mysterious black van prowls Bird City's roads every 25-35 minutes, hunting sol
 
 **Creative intent**: Bird City already had threats that chase you (cops, bounty hunter, helicopter). The Birdnapper Van is fundamentally different because it creates a VICTIM who needs other players to save them. The moment a bird gets abducted and the whole city sees "🚐💀 [Name] ABDUCTED! Poop the van to rescue!" — the social dynamic inverts completely. Cooperative rescue supersedes every ongoing activity. The rescuer mechanic is intuitive (poop the thing that's escaping), but requires actively hunting down a moving target. Getting rescued at the last second before the van hits the map edge is a genuine cinematic moment. A high-combo player who gets abducted mid-rampage loses their streak and their coins while their flock scrambles to intercept the van — pure SOCIAL drama. Pure SOCIAL + CARNAGE + DISCOVERY energy — the city now has a kidnapper.
 
+**Session 103 — 2026-04-17: The Bird City Elections — Democracy Descends on the City**
+Bird City now has a democratic layer. Every 35-45 minutes, City Hall opens a 45-second city-wide vote on 3 randomly selected policies. Every online bird can vote. The winning policy reshapes the game for 8 full minutes.
+
+**Six policy types:**
+- 🍗 **FEAST** (40% more food, 2.5× respawn rate): The city feasts — food is everywhere, survival is trivial, energy is high
+- 💰 **TAX REVOLT** (all crime coin rewards ×1.5): Crime pays today — every poop on NPCs, cars, and cops yields 50% more coins
+- 🚔 **ANARCHY** (all cops stand down for 8 minutes): Total lawlessness — no cop spawns, existing cops despawn. The Black Market doesn't care.
+- 🗺️ **UNITY** (territory capture rate ×2.5): Territory capture moves 2.5× faster — flock wars erupt as capture windows narrow dramatically
+- 🎊 **FESTIVAL** (all XP gains ×1.5): City-wide XP party — stacks with Lucky Charm, Signal Boost, Prestige, combo streaks for astronomical numbers
+- 🥊 **BLOODSPORT** (arena free + duel stakes doubled): Fight night — Arena entry drops from 30c to 0c, street duel stakes double for maximum skin in the game
+
+**Voting mechanics (`server/game.js`):**
+- Election timer: 35-45 minutes between elections (when ≥1 player online)
+- 45-second voting window: fly to City Hall ([V] opens Bounty Board) and click any of the 3 policy options
+- 3 policies selected randomly from the 6-policy pool — no two elections are identical
+- 8-minute policy duration after voting closes
+- Server-authoritative vote tracking via Map<birdId, policyId> — one vote per bird, changeable before window closes
+- `_resolveElection()` tallies votes, finds the winner, broadcasts `election_result` city-wide, activates policy with timestamp
+- `_electionPolicyActive(policyId)` helper used throughout the game engine at every relevant reward calculation point
+- Policy effects wired into: food respawn loops, coin gain chain in `_checkPoopHit()`, cop spawn logic, XP gain chain, territory capture rate, Arena entry cost, duel stake math
+- `gazetteStats.electionPolicy` tracked for newspaper headline generation
+
+**Client implementation (`public/index.html`, `public/js/main.js`):**
+- `#electionHudPill`: fixed top-center HUD pill — pulses green "VOTE NOW!" during voting with live countdown + vote count; shows policy name and countdown during active phase
+- `#bbElectionSection` inside the Bounty Board overlay: renders the full election UI (voting buttons with live % bars, your vote highlighted, active policy display)
+- `window._castElectionVote(policyId)` global for inline vote button click handlers
+- Vote buttons show live percentage bars for each option + total vote count — the city's preference visible in real time
+- Event handlers for all 6 election events: `election_started`, `election_vote_cast`, `election_result`, `election_personal_result`, `election_policy_expired`, `election_vote_fail`
+- Active Buffs HUD pill shows policy name and color-coded countdown (feast=green, tax_revolt=yellow, anarchy=red, unity=blue, festival=magenta, bloodsport=orange)
+- City Hall proximity prompt updated to note active election during voting
+
+**Gazette integration:**
+- `🗳️ CITY ELECTION RESULTS: "FESTIVAL" POLICY ENACTED` headline with satirical sublines per policy type
+
+**Creative intent**: The election adds a periodic meta-layer of agency. Instead of the game doing things TO you, you get to CHOOSE what happens to the city for the next 8 minutes. The strategic depth: do you vote for ANARCHY (great if you're Most Wanted), TAX REVOLT (great if you're grinding coins), or FESTIVAL (great for everyone's XP)? When the vote is tied and your vote could be the tiebreaker, the 45-second window creates real tension. The city-wide vote results announcement — "Bird City voted for 🚔 ANARCHY! All cops stand down for 8 minutes!" — creates a collective moment where every player immediately understands what just changed. Pure SOCIAL + PROGRESSION + DISCOVERY energy — the city now has politics.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
