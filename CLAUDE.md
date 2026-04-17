@@ -3575,6 +3575,35 @@ Bird City now has a democratic layer. Every 35-45 minutes, City Hall opens a 45-
 
 **Creative intent**: The election adds a periodic meta-layer of agency. Instead of the game doing things TO you, you get to CHOOSE what happens to the city for the next 8 minutes. The strategic depth: do you vote for ANARCHY (great if you're Most Wanted), TAX REVOLT (great if you're grinding coins), or FESTIVAL (great for everyone's XP)? When the vote is tied and your vote could be the tiebreaker, the 45-second window creates real tension. The city-wide vote results announcement — "Bird City voted for 🚔 ANARCHY! All cops stand down for 8 minutes!" — creates a collective moment where every player immediately understands what just changed. Pure SOCIAL + PROGRESSION + DISCOVERY energy — the city now has politics.
 
+**Session 104 — 2026-04-17: The Wanted Hotline — Anonymous Tip Line with Informant Shield**
+Bird City's new shadow economy of betrayal. Any bird can spend 60c to anonymously report a rival to the authorities — instantly adding +70 heat to their wanted level. No name attached. No questions asked. Accessible from City Hall's Bounty Board ([V]).
+
+**The Hotline mechanics (`server/game.js`):**
+- Fly to City Hall ([V]) → open the Bounty Board → `#bbHotlineSection` lists all online birds
+- Spend 60c → target gets +70 heat immediately; tipper identity stays anonymous city-wide
+- 10-minute per-pair cooldown: can't spam-tip the same target repeatedly
+- 60c deducted regardless of outcome — even a failed/bounced tip costs you
+
+**Informant Shield counter (`server/game.js`):**
+- Spend 75c at City Hall to activate 5-minute Informant Shield (`informantShieldUntil` timestamp)
+- 8-minute cooldown between shield purchases — can't maintain permanent protection
+- If someone tips on you while your shield is active: tip BOUNCES — tipper gets +40 heat instead, exposed city-wide as a snitch
+- `hotline_shield_triggered` event names the snitch to the whole city (drama!)
+- Daily challenge: **Untouchable** — trigger the Informant Shield (bounce a tip) (200 XP, 100c)
+
+**Two daily challenges:**
+- 📞 **The Snitch**: Tip off the Wanted Hotline on 3 different birds (180 XP, 90c)
+- 🛡 **Untouchable**: Trigger the Informant Shield (expose a snitch) (200 XP, 100c)
+
+**State & client (`public/js/main.js`, `public/index.html`):**
+- `onlineBirds` field in per-bird state snapshot: lists all other online birds with shield status
+- `#bbHotlineSection` inside the Bounty Board overlay: shield status + buy button + live target list
+- 🛡 emoji shown next to shielded targets; disabled TIP buttons if insufficient coins
+- `handleEvent()` handles all 6 hotline event types: city-wide announce for tips/bounces, personal alerts for tipper/target, red-themed announcement overlays
+- Gazette headline: "SNITCH CITY: WANTED HOTLINE FIELDS N ANONYMOUS TIPS" when 3+ tips fire per cycle
+
+**Creative intent**: The Hotline turns every online session into a paranoia meta-game. Got destroyed by a high-combo Kingpin? Spend 60c to anonymously escalate their heat. Rich birds buy the Informant Shield as defensive insurance — but now the 60c still burns on a bounced tip AND the snitch gets publicly exposed. "Who tipped on me?!" becomes the most dramatic question in Bird City. A Wanted Level 5 bird who just bought Witness Protection getting HOTLINED back to Level 3 the moment protection expires — that chain of events is pure SOCIAL + CARNAGE drama. The 10-min cooldown and 75c shield cost create meaningful economic decisions rather than spam. Pure SOCIAL + CARNAGE energy — the city now has a snitch line.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
