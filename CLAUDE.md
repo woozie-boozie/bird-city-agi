@@ -3638,6 +3638,43 @@ Bird City now has a personal vendetta layer. When a bird is wronged — loses a 
 
 **Creative intent**: Bird City had many CITY-WIDE drama mechanics (Kingpin, hit contracts, gang wars) but nothing PERSONAL. The Grudge System is pure one-on-one narrative tension. You lose a duel and immediately see your grudge target pulse orange on the minimap. You spend the next 5 minutes hunting them across the city, weaving through cops and weather events, finally landing that third shot — and the city announces YOUR revenge. The grudge reason ("was carjacked by", "was dethroned as Kingpin by") tells a STORY about your session. The Dethronement grudge is worth 400 XP + 200c — a former Kingpin who successfully hunts down their usurper is Bird City's most cinematic revenge arc. Pure SOCIAL + CARNAGE + DISCOVERY energy — the city now has personal vendettas.
 
+**Session 106 — 2026-04-17: The City Flash Mob — Spontaneous Crowd Congregation**
+Bird City now has a periodic social gathering event that rewards birds for simply BEING TOGETHER. Every 12–18 minutes, a Flash Mob pops at one of 10 iconic city landmarks. 30-second warning phase announces the location, then 60 seconds of active mob where any bird inside the 90px participation zone earns passive rewards every 10 seconds. 6+ birds = MEGA MOB with extra spectacle and city-wide spectator bonus.
+
+**The Flash Mob Flow (`server/game.js`):**
+- Timer fires every 12–18 minutes (when ≥1 player online)
+- 10 handpicked city locations: Park Center, Downtown Plaza, Mall Atrium, Cafe Corner, Residential Square, Radio Tower Base, The Arena, City Docks, City Hall Steps, Hall of Legends
+- `'warning'` phase (30s): city-wide announcement + direction arrow points all birds toward the location
+- `'active'` phase (60s): passive XP/coin tick every 10s (+20 XP +5c) for all birds within 90px
+- Participants tracked via `Set` — deduplicated, counts toward final reward tier
+
+**Crowd-scaled finale rewards:**
+- 0 birds (fizzle): no reward, quiet end
+- 1 bird: 50 XP + 15c (lonely dancer)
+- 2–3 birds: 100 XP + 40c (decent showing)
+- 4–5 birds: 175 XP + 70c (real crowd)
+- 6+ birds: 275 XP + 120c **MEGA MOB** — all spectators get +30 XP +10c city-wide
+
+**Two new daily challenges (added to `DAILY_CHALLENGE_POOL`):**
+- 🎉 **Mob Scene**: Join a Flash Mob (be in the zone during active phase) — 160 XP, 80c
+- 🎉 **Mega Mob**: Be part of a 6+ bird Flash Mob — 250 XP, 125c
+
+**Visual system (`public/js/renderer.js`):**
+- Warning phase: pulsing purple beacon glow at the landmark with "🎉 INCOMING!" label and location name
+- Active phase: 90px dashed ring around the mob center (gold when MEGA, pink otherwise), radial gradient pink/magenta glow, rotating colored particle orbits during MEGA MOB, "🎉 MEGA MOB!" / "🎉 FLASH MOB" label above, participant count below
+- Minimap: pulsing pink/gold 🎉 dot at mob position — trackable from anywhere
+- Off-screen direction arrow: pink/purple arrow pointing toward mob location during both phases
+- HUD countdown bar (stacks below existing bars): shows label with location + birds + time; pink fill when active, purple when warning; subtle pink tint overlay on screen during active phase
+
+**Active buffs HUD:**
+- "🎉 IN THE MOB — +20XP +5c every 10s!" pink pill when bird is inside the 90px zone
+- "🎉 FLASH MOB at [location] — Xs · FLY THERE!" purple pill when active but bird is outside
+- (During warning phase, just the HUD bar announces it — no pill cluttering until it's live)
+
+**Gazette headline:** "🎉 MEGA FLASH MOB ERUPTS AT [LOCATION] — N BIRDS SHOW UP" or "🎉 FLASH MOB HITS BIRD CITY — N BIRDS DESCEND ON [LOCATION]" depending on crowd size.
+
+**Creative intent**: Bird City rewards CARNAGE (poop) and COMBAT (duels, raids) constantly. But it never rewarded simply being PRESENT with other birds. The Flash Mob creates a periodic "just hang out here" moment that's accessible to every player regardless of level, coins, or wanted status. Even a freshly-spawned Pigeon can earn 175 XP by showing up to the Arena with 4 other birds for 60 seconds. The 6-bird MEGA MOB threshold creates emergent coordination — city-wide announcement prompts everyone to sprint toward the same landmark, and the spectator bonus means even birds who arrive late still get paid. The minimap dot turns the Flash Mob into a visible city-wide gathering beacon: "I see 🎉 near the Hall of Legends — everyone go there now!" Pure SOCIAL + DISCOVERY + SPECTACLE energy — the city now has parties.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)

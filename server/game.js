@@ -155,6 +155,9 @@ const DAILY_CHALLENGE_POOL = [
   // Session 105: Grudge System challenges
   { id: 'grudge_revenge',  title: 'Revenge!',         desc: 'Complete a Grudge — poop your target 3 times after being wronged', target: 1, trackType: 'grudge_completed', reward: { xp: 220, coins: 110 } },
   { id: 'grudge_escape',   title: 'Grudge Target',    desc: 'Have a Grudge placed on you by a rival (survive or clear it)',    target: 1, trackType: 'grudge_targeted',  reward: { xp: 150, coins: 75  } },
+  // Session 106: Flash Mob challenges
+  { id: 'mob_goer',    title: 'Mob Scene',   desc: 'Join a city Flash Mob (be in the zone during the active phase)',   target: 1, trackType: 'mob_participant', reward: { xp: 160, coins: 80  } },
+  { id: 'mega_mob',    title: 'Mega Mob',    desc: 'Be part of a 6+ bird Flash Mob (legendary crowd)',                 target: 1, trackType: 'mega_mob',       reward: { xp: 250, coins: 125 } },
 ];
 
 // ============================================================
@@ -174,6 +177,22 @@ const CONSTELLATION_DEFS = [
   { id: 'capricorn',   sign: '♑', name: 'Capricorn',   title: 'The Sea-Goat',     desc: 'Be Kingpin AND own the Radio Tower simultaneously' },
   { id: 'aquarius',    sign: '♒', name: 'Aquarius',    title: 'The Water-Bearer', desc: 'Catch 5 Cosmic Fish in a single aurora night' },
   { id: 'pisces',      sign: '♓', name: 'Pisces',      title: 'The Fish',         desc: 'Maintain a 7-day daily challenge streak' },
+];
+
+// ============================================================
+// FLASH MOB LOCATIONS — 10 iconic spots across Bird City
+// ============================================================
+const FLASH_MOB_LOCATIONS = [
+  { name: 'The Park Center',      x: 1200, y: 1200 },
+  { name: 'Downtown Plaza',       x: 2100, y: 1200 },
+  { name: 'Mall Atrium',          x: 2350, y: 700  },
+  { name: 'Cafe Corner',          x: 600,  y: 1900 },
+  { name: 'Residential Square',   x: 600,  y: 600  },
+  { name: 'Radio Tower Base',     x: 1200, y: 450  },
+  { name: 'The Arena',            x: 2750, y: 1200 },
+  { name: 'City Docks',           x: 1200, y: 2500 },
+  { name: 'City Hall Steps',      x: 1780, y: 1050 },
+  { name: 'Hall of Legends',      x: 1050, y: 640  },
 ];
 
 class GameEngine {
@@ -804,6 +823,13 @@ class GameEngine {
     // Chain reactions: casino jackpot scatter, gang nest damage, vault truck instant crack.
     this.suspiciousPackage = null; // null | { x, y, timeLeft, defuseHits, maxDefuseHits, contributors: Map, spawnedAt, copDeployed }
     this._suspiciousPackageTimer = Date.now() + this._randomRange(20 * 60000, 30 * 60000);
+
+    // === FLASH MOB ===
+    // Every 12-18 minutes a Flash Mob event pops up at a city landmark.
+    // 30-second warning → 60-second active phase. Reward scales with crowd size.
+    // 6+ birds = MEGA MOB — city-wide bonus for everyone.
+    this.flashMob = null; // null | { x, y, locationName, state, startsAt, endsAt, participants: Set, peakCount, lastTickAt }
+    this._flashMobTimer = Date.now() + this._randomRange(12 * 60000, 18 * 60000);
 
     // === CHERRY BLOSSOMS SPRING FESTIVAL ===
     // Active every April — the park fills with pink mochi treats.
@@ -1933,6 +1959,9 @@ class GameEngine {
 
     // === Suspicious Package ===
     this._tickSuspiciousPackage(dt, now);
+
+    // === Flash Mob ===
+    this._updateFlashMob(now);
   }
 
   // ============================================================
@@ -7092,6 +7121,15 @@ class GameEngine {
         isCaptive: this.birdnapperVan.captiveId === bird.id,
         isHuntTarget: this.birdnapperVan.huntTargetId === bird.id,
       } : null,
+      flashMob: this.flashMob ? {
+        x: this.flashMob.x,
+        y: this.flashMob.y,
+        locationName: this.flashMob.locationName,
+        state: this.flashMob.state,
+        startsAt: this.flashMob.startsAt,
+        endsAt: this.flashMob.endsAt,
+        participantCount: this.flashMob.participants.size,
+      } : null,
       raccoons: nearbyRaccoons,
       drunkPigeons: nearbyDrunkPigeons,
       cops: nearbyCops,
@@ -7316,6 +7354,12 @@ class GameEngine {
           const dx = bird.x - this.nightMarket.x;
           const dy = bird.y - this.nightMarket.y;
           return Math.sqrt(dx * dx + dy * dy) < 110;
+        })(),
+        nearFlashMob: (() => {
+          if (!this.flashMob || this.flashMob.state !== 'active') return false;
+          const dx = bird.x - this.flashMob.x;
+          const dy = bird.y - this.flashMob.y;
+          return dx * dx + dy * dy <= 90 * 90;
         })(),
         // Combo streak
         comboCount: bird.comboCount,
@@ -15837,6 +15881,7 @@ class GameEngine {
       electionPolicy:       null, // name of policy enacted this cycle
       hotlineTips:          0,    // anonymous tips placed this cycle
       grudgeRevenges:       [],   // [{ revenger, revengerGangTag, target }] — completed grudges this cycle
+      flashMobs:            [],   // [{ location, count, isMega }] — flash mobs this cycle
     };
   }
 
@@ -16232,6 +16277,25 @@ class GameEngine {
         headline: `COLD DISH SERVED: ${tag}${topRevenge.revenger} GETS REVENGE ON ${topRevenge.target}`,
         subline: 'City witnesses vow to never wrong a bird again. "They wait," says local grudge expert. "They always wait."',
       });
+    }
+
+    // Flash Mob headline
+    if (stats.flashMobs && stats.flashMobs.length > 0) {
+      const megaMob = stats.flashMobs.find(m => m.isMega);
+      const topMob = megaMob || stats.flashMobs[stats.flashMobs.length - 1];
+      if (topMob.isMega) {
+        headlines.push({
+          icon: '🎉',
+          headline: `MEGA FLASH MOB ERUPTS AT ${topMob.location.toUpperCase()} — ${topMob.count} BIRDS SHOW UP`,
+          subline: 'Spontaneous city-wide dance party breaks out. Even the cops were briefly confused. Nobody arrested. Witnesses report "excessive amounts of joy."',
+        });
+      } else {
+        headlines.push({
+          icon: '🎉',
+          headline: `FLASH MOB HITS BIRD CITY — ${topMob.count} BIRD${topMob.count !== 1 ? 'S' : ''} DESCEND ON ${topMob.location.toUpperCase()}`,
+          subline: 'Coordinated chaos at a key city landmark. Police describe it as "weird but harmless." Still, coins changed hands.',
+        });
+      }
     }
 
     // Default headline if nothing notable happened
@@ -23240,6 +23304,160 @@ class GameEngine {
       voteCount: el.voteCount,
       totalVotes: el.totalVotes,
     });
+  }
+
+  // ============================================================
+  // FLASH MOB SYSTEM (Session 106)
+  // Every 12-18 min a Flash Mob pops at a city landmark.
+  // 30s warning → 60s active. Reward scales with crowd size.
+  // 6+ birds = MEGA MOB — city-wide spectator bonus.
+  // ============================================================
+  _updateFlashMob(now) {
+    // Spawn new mob
+    if (!this.flashMob && now >= this._flashMobTimer && this.birds.size > 0) {
+      this._spawnFlashMob(now);
+      return;
+    }
+
+    if (!this.flashMob) return;
+    const mob = this.flashMob;
+
+    if (mob.state === 'warning') {
+      // Transition to active when warning expires
+      if (now >= mob.startsAt) {
+        mob.state = 'active';
+        mob.endsAt = now + 60000;
+        mob.lastTickAt = now;
+        this.events.push({
+          type: 'flash_mob_active',
+          x: mob.x,
+          y: mob.y,
+          locationName: mob.locationName,
+          endsAt: mob.endsAt,
+        });
+      }
+      return;
+    }
+
+    if (mob.state === 'active') {
+      // Track participants within 90px and give passive XP ticks every 10s
+      for (const [, bird] of this.birds) {
+        if (!bird.connected) continue;
+        const dx = bird.x - mob.x;
+        const dy = bird.y - mob.y;
+        if (dx * dx + dy * dy <= 90 * 90) {
+          mob.participants.add(bird.id);
+        }
+      }
+      mob.peakCount = Math.max(mob.peakCount, mob.participants.size);
+
+      // Passive XP/coin tick every 10s for birds inside the radius
+      if (now - mob.lastTickAt >= 10000) {
+        mob.lastTickAt = now;
+        for (const [, bird] of this.birds) {
+          if (!bird.connected) continue;
+          const dx = bird.x - mob.x;
+          const dy = bird.y - mob.y;
+          if (dx * dx + dy * dy <= 90 * 90) {
+            bird.xp += 20;
+            bird.coins += 5;
+            this.events.push({ type: 'flash_mob_tick_reward', birdId: bird.id, xp: 20, coins: 5 });
+          }
+        }
+      }
+
+      // End when timer expires
+      if (now >= mob.endsAt) {
+        this._resolveFlashMob(now);
+      }
+    }
+  }
+
+  _spawnFlashMob(now) {
+    const loc = FLASH_MOB_LOCATIONS[Math.floor(Math.random() * FLASH_MOB_LOCATIONS.length)];
+    this.flashMob = {
+      x: loc.x,
+      y: loc.y,
+      locationName: loc.name,
+      state: 'warning',
+      startsAt: now + 30000,
+      endsAt: null,
+      participants: new Set(),
+      peakCount: 0,
+      lastTickAt: now,
+    };
+    this.events.push({
+      type: 'flash_mob_warning',
+      x: loc.x,
+      y: loc.y,
+      locationName: loc.name,
+      startsAt: this.flashMob.startsAt,
+    });
+  }
+
+  _resolveFlashMob(now) {
+    const mob = this.flashMob;
+    if (!mob) return;
+
+    const count = mob.participants.size;
+    const isMega = count >= 6;
+
+    // Reward tiers
+    let xpReward = 0, coinReward = 0;
+    if (count === 0) {
+      // No birds showed up — fizzle quietly
+    } else if (count === 1) {
+      xpReward = 50; coinReward = 15;
+    } else if (count <= 3) {
+      xpReward = 100; coinReward = 40;
+    } else if (count <= 5) {
+      xpReward = 175; coinReward = 70;
+    } else {
+      xpReward = 275; coinReward = 120;
+    }
+
+    // Pay out participants
+    const winners = [];
+    for (const [, bird] of this.birds) {
+      if (!mob.participants.has(bird.id)) continue;
+      if (xpReward > 0) {
+        bird.xp += xpReward;
+        bird.coins += coinReward;
+      }
+      this._trackDailyProgress(bird, 'mob_participant', 1);
+      if (isMega) this._trackDailyProgress(bird, 'mega_mob', 1);
+      winners.push({ id: bird.id, name: bird.name, gangTag: bird.gangTag || null });
+    }
+
+    // MEGA MOB: spectator bonus for all online birds not in the mob
+    if (isMega) {
+      for (const [, bird] of this.birds) {
+        if (!bird.connected) continue;
+        if (mob.participants.has(bird.id)) continue;
+        bird.xp += 30;
+        bird.coins += 10;
+      }
+    }
+
+    // Gazette tracking
+    if (count > 0 && this.gazetteStats) {
+      if (!this.gazetteStats.flashMobs) this.gazetteStats.flashMobs = [];
+      this.gazetteStats.flashMobs.push({ location: mob.locationName, count, isMega });
+    }
+
+    this.events.push({
+      type: 'flash_mob_ended',
+      locationName: mob.locationName,
+      count,
+      isMega,
+      xpReward,
+      coinReward,
+      winners,
+    });
+
+    this.flashMob = null;
+    // Schedule next mob 12-18 min from now
+    this._flashMobTimer = now + this._randomRange(12 * 60000, 18 * 60000);
   }
 
 }

@@ -5158,4 +5158,127 @@ window.Renderer = {
     minimapCtx.fillText('⚡', cx, cy);
     minimapCtx.restore();
   },
+
+  // ── Flash Mob ────────────────────────────────────────────────
+  drawFlashMob(ctx, camera, flashMob, now) {
+    if (!flashMob) return;
+    const sx = flashMob.x - camera.x + camera.screenW / 2;
+    const sy = flashMob.y - camera.y + camera.screenH / 2;
+
+    const isActive = flashMob.state === 'active';
+    const isMega = flashMob.participantCount >= 6;
+    const pulse = 0.6 + 0.4 * Math.abs(Math.sin(now * (isActive ? 0.006 : 0.004)));
+
+    ctx.save();
+
+    if (isActive) {
+      // Outer pulsing glow ring
+      const glowR = 100 * pulse;
+      const grad = ctx.createRadialGradient(sx, sy, 30, sx, sy, glowR);
+      const alpha = isMega ? 0.35 * pulse : 0.2 * pulse;
+      grad.addColorStop(0, `rgba(255, 60, 200, ${alpha})`);
+      grad.addColorStop(1, 'rgba(255, 60, 200, 0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(sx, sy, glowR, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Participation radius ring (90px in world → scaled)
+      const worldR = 90;
+      const screenR = worldR; // 1:1 zoom assumed; renderer handles camera scale elsewhere
+      ctx.beginPath();
+      ctx.arc(sx, sy, screenR, 0, Math.PI * 2);
+      ctx.strokeStyle = isMega
+        ? `rgba(255, 220, 0, ${0.6 + 0.4 * pulse})`
+        : `rgba(255, 100, 220, ${0.5 + 0.5 * pulse})`;
+      ctx.lineWidth = isMega ? 3 : 2;
+      ctx.setLineDash([8, 6]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Party particles when MEGA MOB
+      if (isMega) {
+        const nParticles = 10;
+        for (let i = 0; i < nParticles; i++) {
+          const angle = (i / nParticles) * Math.PI * 2 + now * 0.0018;
+          const r = 55 + 30 * Math.sin(now * 0.003 + i);
+          const px = sx + Math.cos(angle) * r;
+          const py = sy + Math.sin(angle) * r;
+          const colors = ['#ff88cc', '#ffdd00', '#88ffee', '#ff6644', '#ccaaff'];
+          ctx.beginPath();
+          ctx.arc(px, py, 3 + pulse * 2, 0, Math.PI * 2);
+          ctx.fillStyle = colors[i % colors.length];
+          ctx.fill();
+        }
+      }
+
+      // Center label
+      ctx.font = `bold ${14 + 2 * pulse}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = isMega ? '#ffdd00' : '#ff88cc';
+      ctx.shadowColor = isMega ? '#ff8800' : '#cc00aa';
+      ctx.shadowBlur = 8;
+      ctx.fillText(isMega ? '🎉 MEGA MOB!' : '🎉 FLASH MOB', sx, sy - 110);
+      ctx.shadowBlur = 0;
+
+      // Participant count
+      ctx.font = '12px sans-serif';
+      ctx.fillStyle = 'rgba(255,200,240,0.9)';
+      ctx.fillText(`${flashMob.participantCount} birds inside`, sx, sy + 108);
+    } else {
+      // Warning phase — pulsing beacon
+      const beaconR = 20 + 10 * pulse;
+      const grad = ctx.createRadialGradient(sx, sy, 5, sx, sy, beaconR);
+      grad.addColorStop(0, `rgba(200, 160, 255, ${0.7 * pulse})`);
+      grad.addColorStop(1, 'rgba(200, 160, 255, 0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(sx, sy, beaconR, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.font = 'bold 13px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = `rgba(220, 180, 255, ${0.7 + 0.3 * pulse})`;
+      ctx.fillText('🎉 INCOMING!', sx, sy - 30);
+      ctx.font = '11px sans-serif';
+      ctx.fillStyle = 'rgba(200,160,255,0.8)';
+      ctx.fillText(flashMob.locationName, sx, sy + 28);
+    }
+
+    ctx.restore();
+  },
+
+  drawFlashMobOnMinimap(minimapCtx, worldData, flashMob, now) {
+    if (!flashMob) return;
+    const { worldW, worldH, mmW, mmH } = worldData;
+    const cx = (flashMob.x / worldW) * mmW;
+    const cy = (flashMob.y / worldH) * mmH;
+
+    const isActive = flashMob.state === 'active';
+    const isMega = flashMob.participantCount >= 6;
+    const pulse = 0.6 + 0.4 * Math.abs(Math.sin(now * (isActive ? 0.008 : 0.005)));
+
+    minimapCtx.save();
+    const r = isActive ? 5 + 2 * pulse : 4 + 2 * pulse;
+    minimapCtx.beginPath();
+    minimapCtx.arc(cx, cy, r, 0, Math.PI * 2);
+    minimapCtx.fillStyle = isMega
+      ? `rgba(255, 220, 0, ${0.8 + 0.2 * pulse})`
+      : isActive
+        ? `rgba(255, 80, 200, ${0.8 + 0.2 * pulse})`
+        : `rgba(200, 160, 255, ${0.6 + 0.4 * pulse})`;
+    minimapCtx.shadowColor = isMega ? '#ffcc00' : '#ff44cc';
+    minimapCtx.shadowBlur = 5 + 3 * pulse;
+    minimapCtx.fill();
+    minimapCtx.shadowBlur = 0;
+
+    minimapCtx.font = '9px sans-serif';
+    minimapCtx.textAlign = 'center';
+    minimapCtx.textBaseline = 'middle';
+    minimapCtx.fillStyle = 'rgba(255,255,255,0.9)';
+    minimapCtx.fillText('🎉', cx, cy);
+    minimapCtx.restore();
+  },
 };

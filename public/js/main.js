@@ -4673,6 +4673,59 @@
         addEventMessage(`😤 ${tag}${ev.revengerName} got REVENGE on ${ev.targetName}!`, '#ff6600');
       }
     }
+
+    // === FLASH MOB (Session 106) ===
+    if (ev.type === 'flash_mob_warning') {
+      // Draw direction arrow so players can find the mob location
+      window._flashMobDir = { x: ev.x, y: ev.y, startsAt: ev.startsAt };
+      showAnnouncement(
+        `🎉 FLASH MOB IN 30s!\nLocation: ${ev.locationName}\nFly there for XP + coins — bigger crowd = bigger reward!\n6+ birds = MEGA MOB 🌟`,
+        '#cc88ff', 8000
+      );
+      addEventMessage(`🎉 FLASH MOB INCOMING at ${ev.locationName} in 30s — FLY THERE!`, '#cc88ff');
+    }
+    if (ev.type === 'flash_mob_active') {
+      window._flashMobDir = { x: ev.x, y: ev.y, endsAt: ev.endsAt };
+      effects.push({ type: 'screen_shake', intensity: 8, duration: 600, time: now });
+      showAnnouncement(
+        `🎉 FLASH MOB STARTED at ${ev.locationName}!\nFly within 90px for passive XP + coins!\n6+ birds = MEGA MOB!`,
+        '#ff44cc', 6000
+      );
+      addEventMessage(`🎉 FLASH MOB ACTIVE at ${ev.locationName}! Fly there now!`, '#ff44cc');
+    }
+    if (ev.type === 'flash_mob_tick_reward') {
+      if (ev.birdId === myId) {
+        effects.push({ type: 'text', x: (gameState.self && gameState.self.x) || 1500,
+          y: (gameState.self && gameState.self.y) || 1500, time: now, duration: 900,
+          text: `🎉 +${ev.xp}XP`, color: '#ff88cc', size: 13 });
+      }
+    }
+    if (ev.type === 'flash_mob_ended') {
+      window._flashMobDir = null;
+      const count = ev.count || 0;
+      if (count === 0) {
+        addEventMessage(`🎉 Flash Mob at ${ev.locationName} fizzled out... nobody showed up.`, '#888888');
+      } else if (ev.isMega) {
+        effects.push({ type: 'screen_shake', intensity: 14, duration: 900, time: now });
+        showAnnouncement(
+          `🌟 MEGA MOB!\n${count} birds partied at ${ev.locationName}!\n+${ev.xpReward}XP +${ev.coinReward}c for participants!\n+30XP +10c for EVERY online bird!`,
+          '#ff44cc', 8000
+        );
+        addEventMessage(`🌟 MEGA MOB! ${count} birds at ${ev.locationName} (+${ev.xpReward}XP +${ev.coinReward}c each + spectator bonus)!`, '#ff44cc');
+        // Coin burst effects at each winner's reported position
+        for (const w of (ev.winners || [])) {
+          effects.push({ type: 'coins', x: ev.x || 1500, y: ev.y || 1500, count: 6, time: now });
+        }
+      } else {
+        effects.push({ type: 'screen_shake', intensity: 7, duration: 500, time: now });
+        const tag = ev.rewardXp > 0 ? `+${ev.xpReward}XP +${ev.coinReward}c each` : '';
+        showAnnouncement(
+          `🎉 FLASH MOB ENDED at ${ev.locationName}!\n${count} bird${count !== 1 ? 's' : ''} showed up${tag ? ' — ' + tag : ''}!`,
+          '#ff88cc', 5000
+        );
+        addEventMessage(`🎉 Flash Mob over — ${count} bird${count !== 1 ? 's' : ''} at ${ev.locationName}${tag ? ' (' + tag + ')' : ''}!`, '#ff88cc');
+      }
+    }
   }
 
   function showAnnouncement(text, color, duration) {
@@ -9266,6 +9319,11 @@
       Renderer.drawIceRink(ctx, camera, gameState.iceRink, now);
     }
 
+    // Flash Mob — social congregation event (drawn before birds)
+    if (gameState.flashMob) {
+      Renderer.drawFlashMob(ctx, camera, gameState.flashMob, now);
+    }
+
     // Thunder Dome — electromagnetic arena (drawn before birds so birds appear inside the ring)
     const _domeToDraw = gameState.thunderDome || window._thunderDomeData;
     if (_domeToDraw) {
@@ -10310,6 +10368,111 @@
 
       ctx.globalAlpha = 1;
       ctx.restore();
+    }
+
+    // === FLASH MOB HUD BAR (Session 106) ===
+    if (gameState.flashMob) {
+      const fm = gameState.flashMob;
+      const fmIsActive = fm.state === 'active';
+      const fmSecsLeft = fmIsActive
+        ? Math.max(0, Math.ceil((fm.endsAt - now) / 1000))
+        : Math.max(0, Math.ceil((fm.startsAt - now) / 1000));
+      const fmColor = fmIsActive ? '#ff44cc' : '#cc88ff';
+      const fmPulse = 0.7 + 0.3 * Math.abs(Math.sin(now * (fmIsActive ? 0.012 : 0.007)));
+
+      // Party pink tint when active
+      if (fmIsActive) {
+        ctx.save();
+        ctx.globalAlpha = 0.04 + 0.02 * fmPulse;
+        ctx.fillStyle = '#ff44cc';
+        ctx.fillRect(0, 0, camera.screenW, camera.screenH);
+        ctx.globalAlpha = 1;
+        ctx.restore();
+      }
+
+      // Stack below all other HUD bars
+      const hasCrimeWaveFM = gameState.self && gameState.self.crimeWave;
+      const hasSeagullFM = gameState.seagullInvasion;
+      const hasMigrationFM = gameState.migration;
+      const hasVaultFM = gameState.vaultTruck && !gameState.vaultTruck.cracked && !gameState.vaultTruck.escaped;
+      const hasStampedeFM = gameState.stampede;
+      const hasPackageFM = gameState.suspiciousPackage;
+      const hasBVFM = gameState.birdnapperVan && gameState.birdnapperVan.state === 'escaping';
+      let fmBarY = 132;
+      if (hasCrimeWaveFM) fmBarY += 43;
+      if (hasSeagullFM) fmBarY += 43;
+      if (hasMigrationFM) fmBarY += 43;
+      if (hasVaultFM) fmBarY += 43;
+      if (hasStampedeFM) fmBarY += 43;
+      if (hasPackageFM) fmBarY += 43;
+      if (hasBVFM) fmBarY += 43;
+
+      const fmBarW = 230, fmBarH = 12;
+      const fmBarX = camera.screenW / 2 - fmBarW / 2;
+
+      ctx.save();
+      ctx.globalAlpha = 0.93;
+      ctx.fillStyle = 'rgba(0,0,0,0.72)';
+      ctx.beginPath();
+      ctx.roundRect(fmBarX - 60, fmBarY - 18, fmBarW + 120, fmBarH + 32, 10);
+      ctx.fill();
+
+      ctx.globalAlpha = fmPulse;
+      ctx.fillStyle = fmColor;
+      ctx.font = 'bold 11px Arial';
+      ctx.textAlign = 'center';
+      const fmLabel = fmIsActive
+        ? `🎉 FLASH MOB at ${fm.locationName} — ${fm.participantCount || 0} birds · ${fmSecsLeft}s · FLY THERE!`
+        : `🎉 FLASH MOB INCOMING — ${fm.locationName} in ${fmSecsLeft}s!`;
+      ctx.fillText(fmLabel, camera.screenW / 2, fmBarY - 4);
+
+      ctx.globalAlpha = 0.85;
+      ctx.fillStyle = fmIsActive ? 'rgba(80,0,60,0.55)' : 'rgba(50,20,80,0.55)';
+      ctx.beginPath();
+      ctx.roundRect(fmBarX, fmBarY + 2, fmBarW, fmBarH, 4);
+      ctx.fill();
+
+      const fmFracTotal = fmIsActive ? 60000 : 30000;
+      const fmFrac = fmIsActive ? fmSecsLeft / 60 : fmSecsLeft / 30;
+      ctx.fillStyle = fmIsActive ? '#ff44cc' : '#9944ff';
+      ctx.beginPath();
+      ctx.roundRect(fmBarX, fmBarY + 2, fmBarW * Math.max(0, Math.min(1, fmFrac)), fmBarH, 4);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.restore();
+
+      // Off-screen direction arrow
+      const fmSX = fm.x - camera.x + camera.screenW / 2;
+      const fmSY = fm.y - camera.y + camera.screenH / 2;
+      const fmPad = 60;
+      if (fmSX < fmPad || fmSX > camera.screenW - fmPad || fmSY < fmPad || fmSY > camera.screenH - fmPad) {
+        const fmAngle = Math.atan2(fmSY - camera.screenH / 2, fmSX - camera.screenW / 2);
+        const fmArrR = Math.min(camera.screenW, camera.screenH) * 0.42;
+        const fmArrX = camera.screenW / 2 + Math.cos(fmAngle) * fmArrR;
+        const fmArrY = camera.screenH / 2 + Math.sin(fmAngle) * fmArrR;
+        const fmArrPulse = 0.6 + 0.4 * Math.sin(now * (fmIsActive ? 0.015 : 0.008));
+        ctx.save();
+        ctx.translate(fmArrX, fmArrY);
+        ctx.rotate(fmAngle);
+        ctx.globalAlpha = 0.85 + 0.15 * fmArrPulse;
+        ctx.fillStyle = fmIsActive ? '#ff44cc' : '#cc88ff';
+        ctx.strokeStyle = '#440033';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(22, 0);
+        ctx.lineTo(-10, 10);
+        ctx.lineTo(-5, 0);
+        ctx.lineTo(-10, -10);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+        ctx.font = '13px serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('🎉', 0, 0);
+        ctx.restore();
+      }
     }
 
     // === CRIME WAVE OVERLAY ===
@@ -12425,6 +12588,11 @@
       Renderer.drawIceRinkOnMinimap(minimapCtx, gameState.iceRink, worldData.width, worldData.height);
     }
 
+    // Flash Mob — pulsing party dot on minimap
+    if (gameState.flashMob && worldData) {
+      Renderer.drawFlashMobOnMinimap(minimapCtx, { worldW: worldData.width, worldH: worldData.height, mmW: minimapCanvas.width, mmH: minimapCanvas.height }, gameState.flashMob, now);
+    }
+
     // Thunder Dome — pulsing electric-blue ring on minimap
     const _domeForMinimap = gameState.thunderDome || window._thunderDomeData;
     if (_domeForMinimap && worldData) {
@@ -14117,6 +14285,18 @@
         const POLICY_COLORS = { feast:'#88ff44', tax_revolt:'#ffdd44', anarchy:'#ff4444', unity:'#44aaff', festival:'#ff88ff', bloodsport:'#ff6622' };
         const col = POLICY_COLORS[elState.policy] || '#66ffaa';
         html += `<div class="bm-buff-pill" style="background:rgba(0,40,15,0.88);border-color:${col};color:${col};animation:pulseGreen 2s ease-in-out infinite alternate;">🗳️ ${elState.emoji || ''} ${(elState.policy || '').toUpperCase()} POLICY — ${mins}:${rem.toString().padStart(2,'0')} left</div>`;
+      }
+    }
+
+    // === FLASH MOB pill (Session 106) ===
+    if (gameState.flashMob) {
+      const fm = gameState.flashMob;
+      const fmIsActive = fm.state === 'active';
+      if (fmIsActive && s.nearFlashMob) {
+        html += `<div class="bm-buff-pill" style="background:rgba(80,0,60,0.92);border-color:#ff44cc;color:#ff99ee;animation:kingpinGlow 0.6s ease-in-out infinite alternate;font-weight:bold;">🎉 IN THE MOB — +20XP +5c every 10s!</div>`;
+      } else if (fmIsActive && !s.nearFlashMob) {
+        const fmSecsLeft = Math.max(0, Math.ceil((fm.endsAt - now) / 1000));
+        html += `<div class="bm-buff-pill" style="background:rgba(50,0,40,0.85);border-color:#cc88ff;color:#ff88cc;">🎉 FLASH MOB at ${fm.locationName} — ${fmSecsLeft}s · FLY THERE!</div>`;
       }
     }
 
