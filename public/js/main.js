@@ -4238,6 +4238,52 @@
       window._birdnapperVanDir = null;
     }
 
+    // === CITY ELECTION EVENTS ===
+    if (ev.type === 'election_started') {
+      effects.push({ type: 'screen_shake', intensity: 8, duration: 700, time: now });
+      const opts = ev.options.map(o => `${o.emoji} ${o.name}`).join(' · ');
+      showAnnouncement(
+        `🗳️ CITY ELECTION!\nFly to City Hall and press [V] to vote!\nOptions: ${opts}\nVoting closes in ${Math.round(ev.duration / 1000)}s`,
+        '#44ee88', 8000
+      );
+      addEventMessage(`🗳️ CITY ELECTION OPEN! Vote at City Hall [V] — ${ev.options.length} policies on the ballot!`, '#44ee88');
+      updateElectionHudPill();
+    }
+    if (ev.type === 'election_vote_cast') {
+      addEventMessage(`🗳️ ${ev.voterName} voted in the City Election`, '#66cc88');
+      updateElectionHudPill();
+    }
+    if (ev.type === 'election_result') {
+      effects.push({ type: 'screen_shake', intensity: 10, duration: 800, time: now });
+      const pol = ev.policy || {};
+      const durationMs = ev.policyEndsAt ? (ev.policyEndsAt - now) : 480000;
+      const mins = Math.floor(durationMs / 60000);
+      showAnnouncement(
+        `🗳️ ELECTION RESULT!\nThe city voted for: ${pol.emoji || ''} ${pol.name || ev.winningId}\n${pol.desc || ''}\nActive for ${mins} minutes!`,
+        '#44ee88', 7000
+      );
+      const totalV = ev.totalVotes || 0;
+      addEventMessage(`🗳️ ELECTION: ${pol.emoji || ''} ${pol.name || ev.winningId} wins! (${totalV} total votes) · ${ev.voteBreakdown || ''}`, '#44ee88');
+      updateElectionHudPill();
+    }
+    if (ev.type === 'election_personal_result') {
+      if (ev.birdId === myId && ev.myVote) {
+        addEventMessage(ev.won
+          ? `🗳️ ✅ Your vote for ${ev.myVote} WON the election!`
+          : `🗳️ Your pick didn't win this time — next election soon!`, '#88ccaa');
+      }
+    }
+    if (ev.type === 'election_policy_expired') {
+      showAnnouncement(`🗳️ ${ev.emoji || ''} ${ev.policyName || ev.policy || ''} policy has EXPIRED\nThe city returns to normal.`, '#aaaaaa', 4000);
+      addEventMessage(`🗳️ Election policy ${ev.emoji || ''} ${ev.policyName || ev.policy || ''} has expired.`, '#888888');
+      updateElectionHudPill();
+    }
+    if (ev.type === 'election_vote_fail') {
+      if (ev.birdId === myId) {
+        addEventMessage(`🗳️ Vote failed: ${ev.reason}`, '#ff8844');
+      }
+    }
+
     // Cross-system synergy messages
     if (ev.type === 'migration_race_synergy') {
       if (ev.birdId === myId) {
@@ -5939,8 +5985,11 @@
     // Update pool HUD pill and proximity prompt if near
     const pool = gameState.dethronementPool || { total: 0 };
     updatePoolHudPill(pool.total);
+    updateElectionHudPill();
     if (nearCH && cityHallPrompt && cityHallPrompt.style.display !== 'none') {
-      const poolTxtLive = pool.total > 0 ? `💀 Pool: ${pool.total}c · 🛡 Witness Protection: 500c` : '🛡 Witness Protection 500c · Bounty Board';
+      const el = gameState.election;
+      const elNote = el && el.state === 'voting' ? ' · 🗳️ VOTE NOW!' : '';
+      const poolTxtLive = pool.total > 0 ? `💀 Pool: ${pool.total}c · 🛡 Witness Protection: 500c${elNote}` : `🛡 Witness Protection 500c${elNote}`;
       cityHallPrompt.innerHTML = `🏛 CITY HALL — Press [V]<br><span style="font:9px monospace;color:#ff8800;">${poolTxtLive}</span>`;
     }
 
@@ -13962,6 +14011,23 @@
       html += `<div class="bm-buff-pill" style="background:rgba(80,0,0,0.92);border-color:#ff2200;color:#ff8866;animation:pulseRed 0.6s infinite alternate;font-weight:bold;cursor:pointer;" onclick="sendAction({type:'coupe_carjack'})">🚨 CARJACK THE COUPE — [E] to steal it from ${gameState.pigeonCoupe.driverName}!</div>`;
     }
 
+    // Election policy active pill
+    const elState = gameState.election;
+    if (elState) {
+      const nowEl = Date.now();
+      if (elState.state === 'voting') {
+        const secsLeft = Math.max(0, Math.ceil((elState.endsAt - nowEl) / 1000));
+        html += `<div class="bm-buff-pill" style="background:rgba(0,50,20,0.92);border-color:#22aa44;color:#66ffaa;animation:pulseGreen 1s ease-in-out infinite alternate;cursor:pointer;font-weight:bold;" onclick="if(window.gameState&&window.gameState.nearCityHall)document.querySelector('#bountyBoardOverlay').style.display='block'">🗳️ ELECTION — VOTE NOW at City Hall [V] · ${secsLeft}s · ${elState.totalVotes || 0} votes</div>`;
+      } else if (elState.state === 'active') {
+        const secsLeft = Math.max(0, Math.ceil((elState.policyEndsAt - nowEl) / 1000));
+        const mins = Math.floor(secsLeft / 60);
+        const rem = secsLeft % 60;
+        const POLICY_COLORS = { feast:'#88ff44', tax_revolt:'#ffdd44', anarchy:'#ff4444', unity:'#44aaff', festival:'#ff88ff', bloodsport:'#ff6622' };
+        const col = POLICY_COLORS[elState.policy] || '#66ffaa';
+        html += `<div class="bm-buff-pill" style="background:rgba(0,40,15,0.88);border-color:${col};color:${col};animation:pulseGreen 2s ease-in-out infinite alternate;">🗳️ ${elState.emoji || ''} ${(elState.policy || '').toUpperCase()} POLICY — ${mins}:${rem.toString().padStart(2,'0')} left</div>`;
+      }
+    }
+
     el.innerHTML = html;
   }
 
@@ -14490,6 +14556,66 @@
         }).join('');
       }
     }
+
+    // Election section
+    const elEl = document.getElementById('bbElectionContent');
+    if (elEl && gameState) {
+      const el = gameState.election;
+      const now2 = Date.now();
+      if (!el) {
+        elEl.innerHTML = '<span style="color:#447755;font:italic 9px monospace;">No election in progress — next election fires automatically</span>';
+      } else if (el.state === 'voting') {
+        const secsLeft = Math.max(0, Math.ceil((el.endsAt - now2) / 1000));
+        const myVote = el.myVote;
+        const selfNearCH = gameState.nearCityHall;
+        let html2 = `<div style="color:#66ffaa;font:bold 10px monospace;margin-bottom:6px;">🗳️ VOTING OPEN — ${secsLeft}s remaining · ${el.totalVotes || 0} votes</div>`;
+        if (myVote) {
+          const myOpt = (el.options || []).find(o => o.id === myVote);
+          html2 += `<div style="color:#aaffcc;font:9px monospace;margin-bottom:6px;">✅ You voted: ${myOpt ? myOpt.emoji + ' ' + myOpt.name : myVote}</div>`;
+        } else if (!selfNearCH) {
+          html2 += `<div style="color:#aa9955;font:9px monospace;margin-bottom:6px;">⚠️ Fly to City Hall to vote!</div>`;
+        }
+        html2 += `<div style="display:flex;flex-direction:column;gap:4px;">`;
+        for (const opt of (el.options || [])) {
+          const isMyVote = myVote === opt.id;
+          const votePct = el.totalVotes > 0 ? Math.round((el.voteCount[opt.id] || 0) / el.totalVotes * 100) : 0;
+          const canVote = !myVote && selfNearCH;
+          html2 += `<div style="display:flex;align-items:center;gap:6px;">
+            <button onclick="window._castElectionVote('${opt.id}')"
+              style="background:${isMyVote ? 'rgba(0,80,40,0.9)' : 'rgba(20,50,30,0.7)'};
+              color:${isMyVote ? '#66ffaa' : '#99cc88'};border:1px solid ${isMyVote ? '#33aa66' : '#225533'};
+              border-radius:6px;padding:3px 8px;cursor:${canVote ? 'pointer' : 'default'};
+              font:bold 9px monospace;white-space:nowrap;opacity:${canVote || isMyVote ? '1' : '0.6'};"
+              ${canVote ? '' : 'disabled'}>
+              ${opt.emoji} ${opt.name}${isMyVote ? ' ✅' : ''}
+            </button>
+            <div style="flex:1;background:rgba(0,30,15,0.6);border-radius:4px;height:8px;overflow:hidden;">
+              <div style="background:#22aa55;height:100%;width:${votePct}%;border-radius:4px;transition:width 0.3s;"></div>
+            </div>
+            <span style="color:#669966;font:8px monospace;min-width:28px;">${votePct}%</span>
+          </div>
+          <div style="color:#557755;font:8px monospace;margin-left:4px;margin-bottom:2px;">${opt.desc}</div>`;
+        }
+        html2 += '</div>';
+        elEl.innerHTML = html2;
+      } else if (el.state === 'active') {
+        const secsLeft = Math.max(0, Math.ceil((el.policyEndsAt - now2) / 1000));
+        const mins = Math.floor(secsLeft / 60);
+        const rem = secsLeft % 60;
+        const POLICY_DESCS = {
+          feast: 'All food +60% more & +50% XP/coins from collecting',
+          tax_revolt: 'All poop-hit coin gains +50%',
+          anarchy: 'All cops despawned — total lawlessness',
+          unity: 'Territory capture speed ×2.5',
+          festival: 'All XP gains +50%',
+          bloodsport: 'Duel stakes ×2, Arena FREE entry, Arena pot ×2',
+        };
+        elEl.innerHTML = `
+          <div style="color:#66ffaa;font:bold 11px monospace;">✅ ${el.emoji || ''} ${(el.policy || '').toUpperCase()} ACTIVE</div>
+          <div style="color:#88ccaa;font:9px monospace;margin-top:4px;">${POLICY_DESCS[el.policy] || ''}</div>
+          <div style="color:#33aa55;font:8px monospace;margin-top:6px;">Expires in ${mins}:${rem.toString().padStart(2,'0')}</div>`;
+      }
+    }
   }
 
   function updatePoolHudPill(total) {
@@ -14501,6 +14627,39 @@
       poolHudPill.style.display = 'none';
     }
   }
+
+  function updateElectionHudPill() {
+    const pill = document.getElementById('electionHudPill');
+    if (!pill || !gameState) return;
+    const el = gameState.election;
+    const now = Date.now();
+    if (!el) { pill.style.display = 'none'; return; }
+    if (el.state === 'voting') {
+      const secsLeft = Math.max(0, Math.ceil((el.endsAt - now) / 1000));
+      pill.style.display = 'block';
+      pill.innerHTML = `🗳️ CITY ELECTION — VOTE NOW! Press [V] at City Hall · ${secsLeft}s left · ${el.totalVotes || 0} votes cast`;
+      pill.style.cursor = 'pointer';
+      pill.onclick = () => { if (gameState.nearCityHall) showBountyBoard(); };
+    } else if (el.state === 'active') {
+      const secsLeft = Math.max(0, Math.ceil((el.policyEndsAt - now) / 1000));
+      const mins = Math.floor(secsLeft / 60);
+      const rem = secsLeft % 60;
+      pill.style.display = 'block';
+      pill.style.background = 'rgba(0,60,30,0.92)';
+      pill.style.borderColor = '#22aa44';
+      pill.style.color = '#66ffaa';
+      pill.innerHTML = `🗳️ ${el.emoji || ''} ${el.policy ? el.policy.toUpperCase() : ''} POLICY ACTIVE — ${mins}:${rem.toString().padStart(2,'0')} left`;
+      pill.onclick = null;
+    } else {
+      pill.style.display = 'none';
+    }
+  }
+
+  // Election vote helper (called from inline onclick)
+  window._castElectionVote = function(policyId) {
+    if (!gameState || !gameState.nearCityHall) return;
+    socket.emit('action', { type: 'election_vote', policyId });
+  };
 
   // Bounty Board button listeners
   if (bbCloseBtn) {

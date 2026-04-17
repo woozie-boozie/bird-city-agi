@@ -367,6 +367,21 @@ class GameEngine {
     this.birdnapperVan = null;
     this._birdnapperVanTimer = Date.now() + this._randomRange(25 * 60000, 35 * 60000);
 
+    // === BIRD CITY ELECTIONS — Session 103 ===
+    // Every 35-45 minutes, City Hall puts 3 random policies to a city-wide vote (45s).
+    // Winning policy activates for 8 minutes, reshaping the game for everyone.
+    // Birds vote by opening the City Hall overlay [V] while near City Hall.
+    this.election = null; // null | { state:'voting'|'active', options:[], votes: Map, policy:str, endsAt, policyEndsAt }
+    this._electionTimer = Date.now() + this._randomRange(35 * 60000, 45 * 60000);
+    this.ELECTION_POLICIES = [
+      { id: 'feast',      emoji: '🌽', name: 'THE FEAST',    desc: 'All food spawns +60% more & gives +50% XP/coins for 8 min' },
+      { id: 'tax_revolt', emoji: '💰', name: 'TAX REVOLT',   desc: 'All poop-hit coin gains +50% for 8 min — crime pays!' },
+      { id: 'anarchy',    emoji: '🚨', name: 'ANARCHY',      desc: 'All cops immediately despawn. No new cops for 5 min!' },
+      { id: 'unity',      emoji: '🏗️', name: 'UNITY',        desc: 'Territory capture speed ×2.5 for 8 min — turf war time' },
+      { id: 'festival',   emoji: '🎪', name: 'FESTIVAL',     desc: 'All XP gains +50% for 8 min — stacks with everything' },
+      { id: 'bloodsport', emoji: '⚔️', name: 'BLOOD SPORT',  desc: 'Duel stakes ×2, Arena entry FREE, Arena pot ×2 for 8 min' },
+    ];
+
     // === GOLDEN EGG SCRAMBLE ===
     this.eggScramble = null;          // null or { state, startedAt, endsAt, eggs: Map(id->egg), delivered }
     this.eggScrambleTimer = Date.now() + this._randomRange(720000, 1080000); // first scramble 12-18 min in
@@ -1476,6 +1491,11 @@ class GameEngine {
       this._handleWitnessProtection(bird, now);
     }
 
+    // === City Elections ===
+    if (action.type === 'election_vote') {
+      this._handleElectionVote(bird, action.policyId, now);
+    }
+
     // === Bird Royale Spectator Cheer ===
     if (action.type === 'royale_cheer') {
       this._handleRoyaleCheer(bird, action, now);
@@ -1871,6 +1891,9 @@ class GameEngine {
 
     // === Birdnapper Van ===
     this._updateBirdnapperVan(dt, now);
+
+    // === City Elections ===
+    this._updateElection(now);
 
     // === Thunder Dome ===
     this._tickThunderDome(now);
@@ -4072,6 +4095,8 @@ class GameEngine {
       if (this.cursedCoin && this.cursedCoin.state === 'held' && this.cursedCoin.holderId === bird.id && coinGain > 0) {
         coinGain = Math.floor(coinGain * 2.5);
       }
+      // Election Policy — TAX REVOLT: +50% coin gains for everyone
+      if (this._electionPolicyActive('tax_revolt') && coinGain > 0) coinGain = Math.floor(coinGain * 1.5);
       // Crime Wave: ×2 all crime coin rewards — high risk, high reward
       if (this.crimeWave && coinGain > 0) coinGain *= 2;
       // City Lockdown: ×1.5 crime coin rewards — city in chaos, crime pays
@@ -4129,6 +4154,8 @@ class GameEngine {
       if (this.radioTower.signalBoostUntil > now) xpGain = Math.floor(xpGain * 1.5);
       // Bird City Idol: winner's boost gives 1.5x XP to ALL birds for 3 minutes
       if (this.idolXpBoostUntil > now) xpGain = Math.floor(xpGain * 1.5);
+      // Election Policy — FESTIVAL: +50% XP for everyone
+      if (this._electionPolicyActive('festival')) xpGain = Math.floor(xpGain * 1.5);
       // Aurora Borealis: sacred sky event gives +25% XP to ALL birds
       if (this.aurora) xpGain = Math.floor(xpGain * 1.25);
       // Blood Moon: crimson chaos gives +50% XP AND coins to ALL birds
@@ -4538,14 +4565,18 @@ class GameEngine {
       if (closest) {
         closest.active = false;
         if (!fromEventFoods) {
-          closest.respawnAt = now + 15000 + Math.random() * 15000; // 15-30s respawn
+          // Election Policy — FEAST: food respawns 60% faster
+          const feastRespawn = this._electionPolicyActive('feast') ? 0.4 : 1.0;
+          closest.respawnAt = now + (15000 + Math.random() * 15000) * feastRespawn;
         } else {
           // Event foods don't respawn, just remove
           this.worldEventFoods.delete(closest.id);
         }
-        bird.food += closest.value;
+        // Election Policy — FEAST: food gives +50% more XP and coins
+        const feastMult = this._electionPolicyActive('feast') ? 1.5 : 1.0;
+        bird.food += Math.floor(closest.value * feastMult);
         bird.totalSteals++;
-        let stealXP = closest.value;
+        let stealXP = Math.floor(closest.value * feastMult);
         // Flock XP bonus
         if (bird.flockId) {
           let nearbyFlockMates = 0;
@@ -6135,7 +6166,8 @@ class GameEngine {
   }
 
   _updateTerritories(dt, now) {
-    const CAPTURE_RATE = 0.006;    // progress per bird per second (solo: ~167s to cap; 3-bird flock: ~37s)
+    // Election Policy — UNITY: territory capture speed ×2.5
+    const CAPTURE_RATE = this._electionPolicyActive('unity') ? 0.015 : 0.006;
     const FLOCK_MULTIPLIER = 2.0;  // flock birds count double
     const REWARD_INTERVAL = 20000; // ms between passive rewards
     const REWARD_XP = 20;
@@ -7403,6 +7435,21 @@ class GameEngine {
         topDonor: this.dethronementPool.topDonor,
         lastPaidTo: this.dethronementPool.lastPaidTo,
       },
+      election: this.election ? {
+        state: this.election.state,
+        options: this.election.options,
+        endsAt: this.election.endsAt,
+        policyEndsAt: this.election.policyEndsAt || null,
+        policy: this.election.policy || null,
+        emoji: (() => {
+          if (!this.election.policy) return null;
+          const p = this.ELECTION_POLICIES.find(x => x.id === this.election.policy);
+          return p ? p.emoji : null;
+        })(),
+        voteCount: this.election.voteCount,
+        totalVotes: this.election.totalVotes,
+        myVote: this.election.votes.get(bird.id) || null,
+      } : null,
       nearCityHall: (() => {
         const ch = this.CITY_HALL_POS;
         const dx = bird.x - ch.x;
@@ -10956,6 +11003,12 @@ class GameEngine {
       return; // No new cops spawn during amnesty
     }
 
+    // Election Policy — ANARCHY: no cops for 5 minutes (shorter than full amnesty but city-voted)
+    if (this._electionPolicyActive('anarchy')) {
+      if (this.copBirds.size > 0) this.copBirds.clear();
+      return;
+    }
+
     // King's Pardon: pardoned bird is legally immune — no new cop spawns targeting them
     if (wpBird && wpBird.pardonedUntil > now) {
       if (this.copBirds.size > 0) this.copBirds.clear();
@@ -11989,15 +12042,17 @@ class GameEngine {
       return;
     }
 
-    // Coins check
-    if (bird.coins < this.ARENA_ENTRY_FEE) {
-      this.events.push({ type: 'arena_enter_fail', birdId: bird.id, reason: `Need ${this.ARENA_ENTRY_FEE}c to enter!` });
+    // Coins check — Election Policy BLOOD SPORT: arena entry is FREE
+    const bloodSport = this._electionPolicyActive('bloodsport');
+    const effectiveFee = bloodSport ? 0 : this.ARENA_ENTRY_FEE;
+    if (bird.coins < effectiveFee) {
+      this.events.push({ type: 'arena_enter_fail', birdId: bird.id, reason: `Need ${effectiveFee}c to enter!` });
       return;
     }
 
-    // Charge entry fee and register fighter
-    bird.coins -= this.ARENA_ENTRY_FEE;
-    arena.pot += this.ARENA_ENTRY_FEE;
+    // Charge entry fee and register fighter (BLOOD SPORT: city subsidizes the pot with 60c)
+    bird.coins -= effectiveFee;
+    arena.pot += bloodSport ? 60 : this.ARENA_ENTRY_FEE; // city subsidizes free entry
 
     arena.fighters.set(bird.id, {
       arenaHp: 3,
@@ -15569,6 +15624,7 @@ class GameEngine {
       birdnapperVanSpawned: 0,  // birdnapper van spawns this cycle
       birdnapperRescued:    0,  // captives rescued
       birdnapperEscaped:    0,  // captives not rescued (van escaped)
+      electionPolicy:       null, // name of policy enacted this cycle
     };
   }
 
@@ -15925,6 +15981,24 @@ class GameEngine {
         icon: '🐦',
         headline: `DARING RESCUE — BIRDS SAVED FROM THE BIRDNAPPER VAN`,
         subline: `Heroic birds bombarded the van with poop until captives were freed. The van fled. The poop remained.`,
+      });
+    }
+
+    // City Election headline
+    if (stats.electionPolicy) {
+      const ELECTION_SUBLINES = {
+        feast: 'Citizens celebrate free buffet. Food stalls overwhelmed. Raccoons furious.',
+        tax_revolt: 'Crime pays double today. The Don approves. The cops do not.',
+        anarchy: 'Police force takes unplanned vacation. Nobody complains.',
+        unity: 'Territory lines redrawn in real time. Feathers everywhere.',
+        festival: 'XP gains spike city-wide. Pigeon economy reaches all-time highs.',
+        bloodsport: 'Arena entry free. Duel stakes doubled. City becomes a boxing ring.',
+      };
+      const elKey = Object.keys(ELECTION_SUBLINES).find(k => stats.electionPolicy && stats.electionPolicy.toLowerCase().includes(k));
+      headlines.push({
+        icon: '🗳️',
+        headline: `CITY ELECTION RESULTS: "${stats.electionPolicy.toUpperCase()}" POLICY ENACTED`,
+        subline: (elKey ? ELECTION_SUBLINES[elKey] : 'Democracy descends on Bird City. Results were immediately taken advantage of.'),
       });
     }
 
@@ -19677,8 +19751,11 @@ class GameEngine {
     }
 
     // Calculate pot: 25% of each bird's coins, min 30c each side, max 250c each side
-    const challengerStake = Math.min(250, Math.max(30, Math.floor(challenger.coins * 0.25)));
-    const targetStake = Math.min(250, Math.max(30, Math.floor(target.coins * 0.25)));
+    // Election Policy — BLOOD SPORT: stakes doubled!
+    const bloodSportDuel = this._electionPolicyActive('bloodsport');
+    const stakeMax = bloodSportDuel ? 500 : 250;
+    const challengerStake = Math.min(stakeMax, Math.max(30, Math.floor(challenger.coins * (bloodSportDuel ? 0.50 : 0.25))));
+    const targetStake = Math.min(stakeMax, Math.max(30, Math.floor(target.coins * (bloodSportDuel ? 0.50 : 0.25))));
     if (challenger.coins < challengerStake) {
       this.events.push({ type: 'duel_fail', birdId: challenger.id, reason: 'no_coins' });
       return;
@@ -22682,6 +22759,181 @@ class GameEngine {
     this.birdnapperVan = null;
     this._birdnapperVanTimer = now + this._randomRange(25 * 60000, 35 * 60000);
     console.log('[GameEngine] Birdnapper Van escaped with captive!');
+  }
+
+  // ============================================================
+  // THE BIRD CITY ELECTIONS — Session 103
+  // Every 35-45 minutes, City Hall puts 3 random policies to a city-wide vote (45s).
+  // Winning policy activates for 8 minutes, reshaping the game for everyone.
+  // ============================================================
+
+  _electionPolicyActive(policyId) {
+    return !!(this.election && this.election.state === 'active' && this.election.policy === policyId);
+  }
+
+  _updateElection(now) {
+    // Spawn check
+    if (!this.election && now >= this._electionTimer && this.birds.size > 0) {
+      this._startElection(now);
+      return;
+    }
+    if (!this.election) return;
+
+    if (this.election.state === 'voting' && now >= this.election.endsAt) {
+      this._resolveElection(now);
+      return;
+    }
+
+    if (this.election.state === 'active' && now >= this.election.policyEndsAt) {
+      // Policy expires
+      const pol = this.ELECTION_POLICIES.find(p => p.id === this.election.policy);
+      const polName = pol ? pol.name : this.election.policy;
+      this.events.push({
+        type: 'election_policy_expired',
+        policy: this.election.policy,
+        message: `🏛️ The "${polName}" policy has expired. City Hall returns to normal.`,
+      });
+      this.election = null;
+      this._electionTimer = now + this._randomRange(35 * 60000, 45 * 60000);
+    }
+  }
+
+  _startElection(now) {
+    // Pick 3 random distinct policies
+    const shuffled = [...this.ELECTION_POLICIES].sort(() => Math.random() - 0.5);
+    const options = shuffled.slice(0, 3);
+
+    this.election = {
+      state: 'voting',
+      options,
+      votes: new Map(),
+      voteCount: {},
+      totalVotes: 0,
+      policy: null,
+      endsAt: now + 45000, // 45-second vote window
+      policyEndsAt: null,
+    };
+
+    for (const opt of options) this.election.voteCount[opt.id] = 0;
+
+    // City-wide announcement
+    const optList = options.map(o => `${o.emoji} ${o.name}`).join(' · ');
+    this.events.push({
+      type: 'election_started',
+      options,
+      endsAt: this.election.endsAt,
+      message: `🏛️ CITY HALL ELECTION! 45 seconds to vote. Candidates: ${optList}. Open [V] near City Hall to cast your vote!`,
+    });
+
+    console.log(`[Elections] Voting started — options: ${options.map(o => o.id).join(', ')}`);
+  }
+
+  _resolveElection(now) {
+    const el = this.election;
+    // Find winning policy (most votes; tie → random winner among tied)
+    let maxVotes = -1;
+    let winners = [];
+    for (const [pid, count] of Object.entries(el.voteCount)) {
+      if (count > maxVotes) { maxVotes = count; winners = [pid]; }
+      else if (count === maxVotes) winners.push(pid);
+    }
+
+    // If nobody voted, pick at random
+    const winningId = winners[Math.floor(Math.random() * winners.length)];
+    const pol = this.ELECTION_POLICIES.find(p => p.id === winningId);
+
+    const POLICY_DURATIONS = {
+      feast: 8 * 60000,
+      tax_revolt: 8 * 60000,
+      anarchy: 5 * 60000, // shorter for total lawlessness
+      unity: 8 * 60000,
+      festival: 8 * 60000,
+      bloodsport: 8 * 60000,
+    };
+
+    el.state = 'active';
+    el.policy = winningId;
+    el.policyEndsAt = now + (POLICY_DURATIONS[winningId] || 480000);
+
+    // ANARCHY: immediately clear all cops
+    if (winningId === 'anarchy') this.copBirds.clear();
+
+    const totalVotes = el.totalVotes;
+    const voteBreakdown = el.options
+      .map(o => `${o.emoji}${o.name}: ${el.voteCount[o.id]}`)
+      .join(' | ');
+
+    // City-wide announcement with results
+    this.events.push({
+      type: 'election_result',
+      winningId,
+      policy: pol,
+      policyEndsAt: el.policyEndsAt,
+      totalVotes,
+      voteBreakdown,
+      message: `🏛️ ELECTION RESULT: ${pol.emoji} ${pol.name} WINS! (${el.voteCount[winningId]}/${totalVotes} votes) · ${pol.desc}`,
+    });
+
+    // Personal vote confirmation for each bird
+    for (const bird of this.birds.values()) {
+      const myVote = el.votes.get(bird.id);
+      const won = myVote === winningId;
+      this.events.push({
+        type: 'election_personal_result',
+        birdId: bird.id,
+        won,
+        myVote,
+        winningId,
+        policyEndsAt: el.policyEndsAt,
+      });
+    }
+
+    // Track for gazette
+    if (this.gazetteStats) {
+      this.gazetteStats.electionPolicy = pol ? pol.name : winningId;
+    }
+
+    console.log(`[Elections] Policy elected: ${winningId} (${el.voteCount[winningId]}/${totalVotes} votes)`);
+  }
+
+  _handleElectionVote(bird, policyId, now) {
+    const el = this.election;
+    if (!el || el.state !== 'voting') {
+      this.events.push({ type: 'election_vote_fail', birdId: bird.id, reason: 'No active election right now!' });
+      return;
+    }
+    if (!policyId || !el.options.find(o => o.id === policyId)) {
+      this.events.push({ type: 'election_vote_fail', birdId: bird.id, reason: 'Invalid policy choice!' });
+      return;
+    }
+    if (el.votes.has(bird.id)) {
+      this.events.push({ type: 'election_vote_fail', birdId: bird.id, reason: 'You already voted!' });
+      return;
+    }
+    // Proximity check — must be within 200px of City Hall
+    const ch = this.CITY_HALL_POS;
+    const dx = bird.x - ch.x;
+    const dy = bird.y - ch.y;
+    if (Math.sqrt(dx * dx + dy * dy) > 200) {
+      this.events.push({ type: 'election_vote_fail', birdId: bird.id, reason: 'Fly to City Hall to vote!' });
+      return;
+    }
+
+    el.votes.set(bird.id, policyId);
+    el.voteCount[policyId]++;
+    el.totalVotes++;
+
+    const pol = el.options.find(o => o.id === policyId);
+    this.events.push({
+      type: 'election_vote_cast',
+      birdId: bird.id,
+      birdName: bird.name,
+      policyId,
+      policyEmoji: pol ? pol.emoji : '',
+      policyName: pol ? pol.name : policyId,
+      voteCount: el.voteCount,
+      totalVotes: el.totalVotes,
+    });
   }
 
 }

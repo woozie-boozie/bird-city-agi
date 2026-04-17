@@ -759,11 +759,28 @@
         margin-top:4px;min-height:14px;"></div>
     </div>
 
+    <!-- City Election Section -->
+    <div id="bbElectionSection" style="background:rgba(0,30,20,0.65);border:1px solid #229944;
+      border-radius:10px;padding:10px 14px;margin-bottom:12px;">
+      <div style="font:bold 11px monospace;color:#44ee88;margin-bottom:4px;">🗳️ CITY ELECTION</div>
+      <div id="bbElectionContent" style="font:10px monospace;color:#88ccaa;">
+        <span style="color:#447755;font:italic 9px monospace;">No election in progress</span>
+      </div>
+    </div>
+
     <button id="bbCloseBtn"
       style="display:block;margin:0 auto;background:rgba(40,20,0,0.8);color:#aa7700;
       border:1px solid #664400;border-radius:10px;padding:6px 24px;cursor:pointer;
       font:11px 'Courier New',monospace;">CLOSE  [V]</button>
   </div>
+
+  <!-- Election HUD pill (shows VOTE NOW during voting) -->
+  <div id="electionHudPill" style="display:none;position:fixed;top:70px;left:50%;
+    transform:translateX(-50%);background:rgba(0,50,20,0.92);color:#44ff88;
+    font:bold 10px 'Courier New',monospace;padding:4px 14px;border-radius:12px;
+    border:1.5px solid #22aa44;pointer-events:auto;z-index:63;
+    text-align:center;cursor:pointer;text-shadow:0 0 6px #22ff66;
+    animation:pulseGreen 1s ease-in-out infinite alternate;"></div>
 
   <!-- City Hall proximity prompt -->
   <div id="cityHallPrompt" style="display:none;position:fixed;bottom:120px;left:50%;
