@@ -3788,6 +3788,41 @@ Every 22-32 minutes a random bird gets inflated into a 3× scale bowling ball an
 
 **Creative intent**: The Bowling Bird is the game's most PHYSICALLY chaotic role-swap. Unlike the Golden Rampage (the city hunts a godlike bird) or the Golden Throne (combat for a prize), the Bowling Bird turns movement itself into a weapon. The chosen bird doesn't need to aim — they just CHARGE, and proximity does the rest. Meanwhile the whole city is trying to poop them down while dodging the knockback. A high-combo bird who gets chosen as the Bowling Bird mid-crime-wave is simultaneously the most dangerous and most hunted entity in Bird City — 220px/s momentum plus mega poop immunity for 75 seconds. The 🎳 badge for surviving is a pure speed-and-endurance prestige signal. Pure CARNAGE + SPECTACLE energy.
 
+**Session 110 — 2026-04-18: Sky Pirate Airship — Flying Fortress Crosses the City**
+Bird City's first aerial raid event. Every 35-50 minutes, a creaking wooden airship with a crimson skull balloon crosses the city from one map edge to the opposite at 55px/s — announced with a screen shake and city-wide broadcast. The whole server must cooperate to poop it down before it escapes (or robs the richest bird on its way out).
+
+**Sky Pirate Airship mechanics (`server/game.js`):**
+- Spawns every 35-50 minutes at a random map edge (top/bottom/left/right), flies slowly toward the opposite side at 55px/s
+- 20 HP shared pool: normal poop = 1 HP (8 XP, 3c immediate), mega poop = 3 HP (24 XP, 9c) — all hits tracked per-contributor
+- 2-3 Pirate Guard birds orbit the ship (70-100px orbit radius), diving on any bird within 280px at 150px/s to steal 6% of their coins (min 5, max 60c). Guards return to orbit after each steal. 2 poop hits to stun a guard (12 seconds).
+- Loot crates drop from the ship every 18-28 seconds — fly over one (within 45px) to auto-collect 30-80c + 40 XP each
+- 150-second window before the ship exits the map. If it escapes: robs the richest online bird of 12% coins (max 200c)
+- **Destroyed**: sinking animation (4 seconds, drifts and falls), 5 final loot crates scatter, proportional XP/coin split among all contributors (600 total XP + 350 total coins, scaled by damage share)
+
+**Visual system (`renderer.js`, `sprites.js`):**
+- `drawSkyPirateShip()`: red radial gradient balloon ellipse with ☠ marking, wooden gondola with plank detail, side cannons, triangular flag on mast, animated smoke puffs at low HP, sinking fire/explosion effect. HP bar shown above ship when damaged.
+- `drawPirateBird()`: dark charcoal body, glowing red eye with shadowBlur, pirate hat with ☠ emblem, dive state adds red aura, stun state shows X-eyes + orbiting stars
+- `drawLootCrate()`: bobbing golden chest with pulsing glow, "LOOT" label — hard to miss in the chaos
+- Minimap: pulsing red/orange skull dot tracking the ship's real-time position
+- Off-screen direction arrow: pulsing red 🏴‍☠️ arrow pointing toward the airship when off-screen
+- HUD bar: stacks below all other event bars, shows HP/maxHP + seconds remaining + personal hit count
+
+**Two new daily challenges:**
+- 🏴‍☠️ **Sky Raider**: Hit the Sky Pirate Airship at least 5 times (190 XP, 95c)
+- 🏴‍☠️ **Pirate Hunter**: Help bring down the Sky Pirate Airship (200 XP, 100c) — triggers on `pirate_ship_down` track type
+
+**Events & announcements:**
+- `sky_pirate_ship_spawn`: screen shake + "🏴‍☠️ SKY PIRATE AIRSHIP APPROACHES!" big announcement + event feed with direction hint
+- `sky_pirate_ship_hit`: floating "☠️ hp/maxHp" for own hits
+- `pirate_guard_hit` / `pirate_guard_stunned`: personal hit callouts
+- `pirate_steal`: personal announcement for victim + city-wide event feed
+- `pirate_loot_spawned` / `pirate_loot_collected`: loot tracking + personal reward callout
+- `sky_pirate_ship_destroyed`: massive screen shake + city-wide announcement
+- `sky_pirate_ship_reward`: personal proportional reward popup for contributors
+- `sky_pirate_ship_escaped`: city-wide callout + personal robbery announcement for the robbed bird
+
+**Creative intent**: Bird City had lots of stationary cooperative events (Bank Heist, gang sieges, suspended packages) and lots of ground-based chases. The Sky Pirate Airship is the first moving aerial raid. You have to CHASE it — it's flying away as you fight. The pirate guards create chaos: they're not trying to kill you, they're pickpocketing you while you try to coordinate the poop assault. Loot crates dropping mid-fight create a second layer of scramble — do you poop the ship or dive for the crate that just landed? A gang rallying under the airship while guards dive-bomb individual members trying to steal their coins is peak CARNAGE CITY cooperative madness. Pure CARNAGE + SOCIAL + SPECTACLE energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)

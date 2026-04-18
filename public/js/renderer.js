@@ -5378,6 +5378,188 @@ window.Renderer = {
     ctx.restore();
   },
 
+  drawSkyPirateShip(ctx, ship, now) {
+    if (!ship) return;
+    ctx.save();
+    ctx.translate(ship.x, ship.y);
+    ctx.rotate(ship.angle);
+
+    const hpFrac = ship.hp / ship.maxHp;
+    const sinking = ship.sinking;
+
+    // Balloon envelope (large oval)
+    const balloonGrad = ctx.createRadialGradient(-10, -20, 5, 0, 0, 50);
+    balloonGrad.addColorStop(0, '#cc2222');
+    balloonGrad.addColorStop(0.5, '#881111');
+    balloonGrad.addColorStop(1, '#440000');
+    ctx.beginPath();
+    ctx.ellipse(0, -18, 48, 30, 0, 0, Math.PI * 2);
+    ctx.fillStyle = balloonGrad;
+    ctx.fill();
+
+    // Skull & crossbones on the balloon
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 20px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('☠', 0, -18);
+
+    // Balloon outline
+    ctx.beginPath();
+    ctx.ellipse(0, -18, 48, 30, 0, 0, Math.PI * 2);
+    ctx.strokeStyle = '#660000';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Ropes connecting balloon to gondola
+    ctx.strokeStyle = '#996633';
+    ctx.lineWidth = 1.5;
+    for (let rx of [-20, 0, 20]) {
+      ctx.beginPath(); ctx.moveTo(rx, 12); ctx.lineTo(rx * 0.6, 14); ctx.stroke();
+    }
+
+    // Gondola (wooden hull)
+    ctx.fillStyle = '#8B4513';
+    ctx.beginPath();
+    ctx.roundRect(-28, 14, 56, 20, 4);
+    ctx.fill();
+    ctx.strokeStyle = '#5c2d0a';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Gondola planks
+    ctx.strokeStyle = '#6b3210';
+    ctx.lineWidth = 1;
+    for (let px = -24; px < 28; px += 9) {
+      ctx.beginPath(); ctx.moveTo(px, 14); ctx.lineTo(px, 34); ctx.stroke();
+    }
+
+    // Cannons (left and right)
+    ctx.fillStyle = '#333333';
+    ctx.save();
+    ctx.translate(-28, 22); ctx.rotate(-0.15);
+    ctx.fillRect(-10, -3, 18, 6); ctx.restore();
+
+    ctx.save();
+    ctx.translate(28, 22); ctx.rotate(0.15);
+    ctx.fillRect(-8, -3, 18, 6); ctx.restore();
+
+    // Pirate flag pole and flag
+    ctx.strokeStyle = '#888';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(6, -48); ctx.lineTo(6, -14); ctx.stroke();
+    ctx.fillStyle = '#111111';
+    ctx.beginPath(); ctx.moveTo(6, -48); ctx.lineTo(22, -41); ctx.lineTo(6, -34); ctx.closePath(); ctx.fill();
+
+    // Smoke damage at low HP
+    if (!sinking && hpFrac < 0.5) {
+      const numPuffs = Math.floor((1 - hpFrac) * 8);
+      for (let i = 0; i < numPuffs; i++) {
+        const puffX = -20 + i * 6 + Math.sin(now * 0.003 + i) * 4;
+        const puffY = -8 + Math.cos(now * 0.004 + i * 1.3) * 5;
+        const alpha = 0.3 + 0.3 * Math.abs(Math.sin(now * 0.002 + i));
+        ctx.beginPath();
+        ctx.arc(puffX, puffY, 5 + i * 0.5, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(80,80,80,${alpha})`;
+        ctx.fill();
+      }
+    }
+
+    // Sinking effect — extra smoke and red tint
+    if (sinking) {
+      for (let i = 0; i < 10; i++) {
+        const puffX = -25 + i * 5 + Math.sin(now * 0.008 + i) * 8;
+        const puffY = -30 + Math.cos(now * 0.006 + i) * 12;
+        const alpha = 0.5 + 0.3 * Math.abs(Math.sin(now * 0.005 + i));
+        ctx.beginPath();
+        ctx.arc(puffX, puffY, 8 + Math.random() * 4, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(200, 50, 0, ${alpha})`;
+        ctx.fill();
+      }
+      // Red danger glow
+      const sg = ctx.createRadialGradient(0, 0, 10, 0, 0, 60);
+      sg.addColorStop(0, 'rgba(255,50,0,0.15)');
+      sg.addColorStop(1, 'rgba(255,0,0,0)');
+      ctx.fillStyle = sg;
+      ctx.beginPath(); ctx.ellipse(0, 0, 70, 50, 0, 0, Math.PI * 2); ctx.fill();
+    }
+
+    ctx.restore();
+
+    // HP bar above ship (only when damaged)
+    if (!sinking && ship.hp < ship.maxHp) {
+      const bw = 90, bh = 8;
+      const bx = ship.x - bw / 2, by = ship.y - 70;
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.beginPath(); ctx.roundRect(bx - 2, by - 2, bw + 4, bh + 4, 3); ctx.fill();
+      ctx.fillStyle = hpFrac > 0.5 ? '#44cc44' : hpFrac > 0.25 ? '#eeaa22' : '#dd3333';
+      ctx.fillRect(bx, by, bw * hpFrac, bh);
+      ctx.strokeStyle = '#ffffff55';
+      ctx.lineWidth = 0.5;
+      ctx.strokeRect(bx, by, bw, bh);
+      // Label
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText(`☠️ AIRSHIP ${ship.hp}/${ship.maxHp}`, ship.x, by - 2);
+    }
+  },
+
+  drawSkyPirateShipOnMinimap(minimapCtx, ship, worldData, now) {
+    if (!ship) return;
+    const { worldW, worldH, mmW, mmH } = worldData;
+    const cx = (ship.x / worldW) * mmW;
+    const cy = (ship.y / worldH) * mmH;
+    const pulse = 0.5 + 0.5 * Math.abs(Math.sin(now * 0.004));
+    minimapCtx.save();
+    minimapCtx.shadowColor = ship.sinking ? '#ff4400' : '#cc0000';
+    minimapCtx.shadowBlur = 8 * pulse;
+    minimapCtx.beginPath();
+    minimapCtx.arc(cx, cy, 5 + 2 * pulse, 0, Math.PI * 2);
+    minimapCtx.fillStyle = ship.sinking ? `rgba(255,68,0,${0.7 + 0.3 * pulse})` : `rgba(200,0,0,${0.7 + 0.3 * pulse})`;
+    minimapCtx.fill();
+    minimapCtx.shadowBlur = 0;
+    minimapCtx.font = '10px sans-serif';
+    minimapCtx.textAlign = 'center';
+    minimapCtx.textBaseline = 'middle';
+    minimapCtx.fillText('☠', cx, cy);
+    minimapCtx.restore();
+  },
+
+  drawLootCrate(ctx, crate, now) {
+    const bob = Math.sin(now * 0.004 + crate.id.length) * 3;
+    const y = crate.y + bob;
+    const pulse = 0.5 + 0.5 * Math.abs(Math.sin(now * 0.005));
+
+    // Glow
+    const g = ctx.createRadialGradient(crate.x, y, 2, crate.x, y, 20);
+    g.addColorStop(0, `rgba(255, 200, 0, ${0.5 * pulse})`);
+    g.addColorStop(1, 'rgba(255,200,0,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(crate.x, y, 20, 20, 0, 0, Math.PI * 2); ctx.fill();
+
+    // Chest body
+    ctx.fillStyle = '#8B4513';
+    ctx.beginPath(); ctx.roundRect(crate.x - 12, y - 8, 24, 16, 2); ctx.fill();
+    ctx.strokeStyle = '#ffd700'; ctx.lineWidth = 1.5;
+    ctx.strokeRect(crate.x - 12, y - 8, 24, 16);
+
+    // Gold band across middle
+    ctx.fillStyle = '#ffd700';
+    ctx.fillRect(crate.x - 12, y - 2, 24, 4);
+
+    // Lock
+    ctx.beginPath(); ctx.arc(crate.x, y, 3, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffcc00'; ctx.fill();
+
+    // Label
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 9px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText('LOOT', crate.x, y - 10);
+  },
+
   drawAuctionHouseOnMinimap(minimapCtx, pos, worldData, auction, now) {
     const { worldW, worldH, mmW, mmH } = worldData;
     const cx = (pos.x / worldW) * mmW;

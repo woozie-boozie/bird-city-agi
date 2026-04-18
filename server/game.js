@@ -164,6 +164,9 @@ const DAILY_CHALLENGE_POOL = [
   // Session 109: Bowling Bird challenges
   { id: 'bowling_striker', title: 'Striker!',    desc: 'Knock 5 birds into the air while you are the Bowling Bird', target: 5,  trackType: 'bowling_knock',  reward: { xp: 200, coins: 100 } },
   { id: 'bowling_buster',  title: 'Ball Buster', desc: 'Land poop hits on the Bowling Bird to help pop it',          target: 1,  trackType: 'bowling_popped', reward: { xp: 250, coins: 125 } },
+  // Session 110: Sky Pirate Airship challenges
+  { id: 'cannoneer',       title: 'Cannoneer',      desc: 'Hit the Sky Pirate Airship 5 times',                         target: 5,  trackType: 'pirate_ship_hit',  reward: { xp: 200, coins: 100 } },
+  { id: 'pirate_slayer',   title: 'Pirate Slayer',  desc: 'Help bring down the Sky Pirate Airship',                     target: 1,  trackType: 'pirate_ship_down', reward: { xp: 280, coins: 140 } },
 ];
 
 // ============================================================
@@ -411,6 +414,15 @@ class GameEngine {
     // If it survives 75 seconds unpopped, the bowling bird gets 600 XP + 350c + a session badge.
     this.bowlingBall = null; // null | { birdId, birdName, gangTag, spawnedAt, endsAt, hp, maxHp, contributors: Map, knockCooldowns: Map }
     this._bowlingBallTimer = Date.now() + this._randomRange(22 * 60000, 32 * 60000);
+
+    // === SKY PIRATE AIRSHIP — Session 110 ===
+    // Every 35-50 minutes a massive pirate dirigible drifts across Bird City from edge to edge.
+    // 2-3 pirate guard birds orbit the ship and dive-bomb nearby players, stealing coins.
+    // The ship drops loot crates every 25s while airborne — first bird to reach one claims it.
+    // 40 poop hits (mega=3) bring it down for a massive cooperative reward.
+    // If it escapes undefeated: the richest bird gets robbed 15% coins (pirate raid).
+    this.skyPirateShip = null; // null | { x,y,vx,vy,angle,hp,maxHp,pirates:[],lootCrates:[],contributors:Map,spawnedAt,expiresAt,lastLootDrop,sinking }
+    this._skyPirateTimer = Date.now() + this._randomRange(35 * 60000, 50 * 60000);
 
     // === BIRD CITY ELECTIONS — Session 103 ===
     // Every 35-45 minutes, City Hall puts 3 random policies to a city-wide vote (45s).
@@ -2016,6 +2028,9 @@ class GameEngine {
 
     // === Bowling Bird ===
     this._updateBowlingBall(now);
+
+    // === Sky Pirate Airship ===
+    this._updateSkyPirateShip(dt, now);
   }
 
   // ============================================================
@@ -3802,6 +3817,33 @@ class GameEngine {
         if (gr.hp <= 0) {
           this._endGoldenRampage('freed', now);
         }
+      } else if (hit.target === 'sky_pirate_ship' && this.skyPirateShip && !this.skyPirateShip.sinking) {
+        const ship = this.skyPirateShip;
+        const dmg = isMegaPoop ? 3 : 1;
+        ship.hp = Math.max(0, ship.hp - dmg);
+        const contrib = ship.contributors.get(bird.id) || { name: bird.name, gangTag: bird.gangTag || null, dmg: 0 };
+        contrib.dmg += dmg;
+        ship.contributors.set(bird.id, contrib);
+        xpGain = isMegaPoop ? 30 : 10;
+        bird.coins += isMegaPoop ? 8 : 3;
+        this._trackDailyProgress(bird, 'pirate_ship_hit', 1);
+        this.events.push({ type: 'sky_pirate_ship_hit', hitterId: bird.id, hitterName: bird.name, hitterGang: bird.gangTag || null, hp: ship.hp, maxHp: ship.maxHp, x: ship.x, y: ship.y });
+        if (ship.hp <= 0) this._endSkyPirateShip('destroyed', now);
+      } else if (hit.target === 'pirate_guard' && this.skyPirateShip) {
+        const ship = this.skyPirateShip;
+        const pirate = ship.pirates.find(p => p.id === hit.pirateId);
+        if (pirate && pirate.state !== 'stunned') {
+          const pdmg = isMegaPoop ? 2 : 1;
+          pirate.hp = Math.max(0, pirate.hp - pdmg);
+          xpGain = isMegaPoop ? 40 : 20;
+          bird.coins += isMegaPoop ? 12 : 5;
+          this.events.push({ type: 'pirate_guard_hit', hitterId: bird.id, hitterName: bird.name, pirateId: pirate.id, hp: pirate.hp, x: pirate.x, y: pirate.y });
+          if (pirate.hp <= 0) {
+            pirate.state = 'stunned';
+            pirate.stunnedUntil = now + 12000;
+            this.events.push({ type: 'pirate_guard_stunned', pirateId: pirate.id, x: pirate.x, y: pirate.y });
+          }
+        }
       } else if (hit.target === 'bowling_bird' && this.bowlingBall && this.bowlingBall.hp > 0) {
         // Poop hit the Bowling Bird! Chip away at the shell to free the bird inside.
         const bb = this.bowlingBall;
@@ -5327,6 +5369,28 @@ class GameEngine {
         if (Math.sqrt(bbdx * bbdx + bbdy * bbdy) < hitRadius + 22) {
           if (!isMegaPoop) return { target: 'bowling_bird' };
           allHits.push({ target: 'bowling_bird' });
+        }
+      }
+    }
+
+    // Check Sky Pirate Airship — hit the ship body OR its pirate guard birds
+    if (this.skyPirateShip && !this.skyPirateShip.sinking) {
+      const ship = this.skyPirateShip;
+      // Check ship body (large 35px radius)
+      const shdx = poop.x - ship.x;
+      const shdy = poop.y - ship.y;
+      if (Math.sqrt(shdx * shdx + shdy * shdy) < hitRadius + 35) {
+        if (!isMegaPoop) return { target: 'sky_pirate_ship' };
+        allHits.push({ target: 'sky_pirate_ship' });
+      }
+      // Check pirate guard birds
+      for (const pirate of ship.pirates) {
+        if (pirate.state === 'stunned') continue;
+        const pdx = poop.x - pirate.x;
+        const pdy = poop.y - pirate.y;
+        if (Math.sqrt(pdx * pdx + pdy * pdy) < hitRadius + 14) {
+          if (!isMegaPoop) return { target: 'pirate_guard', pirateId: pirate.id };
+          allHits.push({ target: 'pirate_guard', pirateId: pirate.id });
         }
       }
     }
@@ -8329,6 +8393,23 @@ class GameEngine {
         isBowlingBird: this.bowlingBall.birdId === bird.id,
         bbX: (() => { const b = this.birds.get(this.bowlingBall.birdId); return b ? b.x : 0; })(),
         bbY: (() => { const b = this.birds.get(this.bowlingBall.birdId); return b ? b.y : 0; })(),
+      } : null,
+      // Sky Pirate Airship — flying fortress crosses the city, poop it down for loot
+      skyPirateShip: this.skyPirateShip ? {
+        x: this.skyPirateShip.x,
+        y: this.skyPirateShip.y,
+        angle: this.skyPirateShip.angle,
+        hp: this.skyPirateShip.hp,
+        maxHp: this.skyPirateShip.maxHp,
+        sinking: this.skyPirateShip.sinking,
+        expiresAt: this.skyPirateShip.expiresAt,
+        myHits: this.skyPirateShip.contributors.get(bird.id)?.dmg || 0,
+        pirates: this.skyPirateShip.pirates.map(p => ({
+          id: p.id, x: p.x, y: p.y, state: p.state, hp: p.hp, maxHp: p.maxHp,
+        })),
+        lootCrates: this.skyPirateShip.lootCrates.map(c => ({
+          id: c.id, x: c.x, y: c.y,
+        })),
       } : null,
       // Golden Throne — descends every 35-50 min, claim it to rule Bird City
       goldenThrone: this.goldenThrone ? {
@@ -24179,6 +24260,277 @@ class GameEngine {
 
     // Gazette tracking
     if (this.gazetteStats) this.gazetteStats.bowlingBallEvents = (this.gazetteStats.bowlingBallEvents || 0) + 1;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // SKY PIRATE AIRSHIP
+  // ─────────────────────────────────────────────────────────────────────────
+  _updateSkyPirateShip(dt, now) {
+    // Spawn timer
+    if (!this.skyPirateShip && now >= this._skyPirateTimer && this.birds.size > 0) {
+      this._startSkyPirateShip(now);
+      return;
+    }
+    if (!this.skyPirateShip) return;
+    const ship = this.skyPirateShip;
+
+    // Sinking animation — just drift and despawn
+    if (ship.sinking) {
+      if (now >= ship.sinkEndsAt) {
+        this.skyPirateShip = null;
+        this._skyPirateTimer = now + this._randomRange(35 * 60000, 50 * 60000);
+      }
+      return;
+    }
+
+    // Move the ship
+    ship.x += ship.vx * dt;
+    ship.y += ship.vy * dt;
+    ship.angle = Math.atan2(ship.vy, ship.vx);
+
+    // Escape check — ship reached map edge
+    const margin = 80;
+    if (ship.x < -margin || ship.x > 3000 + margin || ship.y < -margin || ship.y > 3000 + margin) {
+      this._endSkyPirateShip('escaped', now);
+      return;
+    }
+
+    // Expiry check
+    if (now >= ship.expiresAt) {
+      this._endSkyPirateShip('escaped', now);
+      return;
+    }
+
+    // Loot crate drops — every 18-28 seconds while flying
+    if (now - ship.lastLootDrop >= ship._nextLootInterval) {
+      ship.lastLootDrop = now;
+      ship._nextLootInterval = this._randomRange(18000, 28000);
+      // Drop a loot crate near the ship's current position
+      const crate = {
+        id: `loot_${now}_${Math.random().toString(36).slice(2, 7)}`,
+        x: ship.x + (Math.random() - 0.5) * 60,
+        y: ship.y + (Math.random() - 0.5) * 60,
+        spawnedAt: now,
+        expiresAt: now + 30000,
+      };
+      ship.lootCrates.push(crate);
+      this.events.push({ type: 'pirate_loot_spawned', id: crate.id, x: crate.x, y: crate.y });
+    }
+
+    // Loot crate collection — check all birds
+    for (const crate of ship.lootCrates) {
+      if (now > crate.expiresAt) continue;
+      for (const b of this.birds.values()) {
+        const dx = b.x - crate.x, dy = b.y - crate.y;
+        if (Math.sqrt(dx * dx + dy * dy) < 45) {
+          const reward = 30 + Math.floor(Math.random() * 50);
+          b.coins = (b.coins || 0) + reward;
+          b.xp = (b.xp || 0) + 40;
+          this._levelUpIfNeeded(b);
+          crate.expiresAt = 0; // mark collected
+          this.events.push({ type: 'pirate_loot_collected', birdId: b.id, birdName: b.name, coins: reward, x: crate.x, y: crate.y });
+          break;
+        }
+      }
+    }
+    // Prune expired crates
+    ship.lootCrates = ship.lootCrates.filter(c => now <= c.expiresAt);
+
+    // Pirate guard AI
+    for (const pirate of ship.pirates) {
+      // Recover from stun
+      if (pirate.state === 'stunned') {
+        if (now >= pirate.stunnedUntil) {
+          pirate.state = 'patrol';
+          pirate.hp = pirate.maxHp;
+        }
+        continue;
+      }
+
+      // Find nearest bird to dive at
+      let nearest = null, nearestDist = Infinity;
+      for (const b of this.birds.values()) {
+        if (b.isUnderground) continue;
+        const dx = b.x - pirate.x, dy = b.y - pirate.y;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d < nearestDist) { nearestDist = d; nearest = b; }
+      }
+
+      if (pirate.state === 'patrol') {
+        // Orbit ship at patrol radius
+        pirate.orbitAngle = (pirate.orbitAngle || 0) + 0.012 * dt * pirate.orbitDir;
+        pirate.x = ship.x + Math.cos(pirate.orbitAngle) * pirate.orbitRadius;
+        pirate.y = ship.y + Math.sin(pirate.orbitAngle) * pirate.orbitRadius;
+        // Dive if bird nearby
+        if (nearest && nearestDist < 280) {
+          pirate.state = 'diving';
+          pirate.diveTargetId = nearest.id;
+        }
+      } else if (pirate.state === 'diving') {
+        const target = pirate.diveTargetId ? this.birds.get(pirate.diveTargetId) : null;
+        if (!target || target.isUnderground) { pirate.state = 'return'; }
+        else {
+          const dx = target.x - pirate.x, dy = target.y - pirate.y;
+          const d = Math.sqrt(dx * dx + dy * dy);
+          if (d < 40) {
+            // Steal coins
+            const steal = Math.min(Math.floor((target.coins || 0) * 0.06) + 5, 60);
+            target.coins = Math.max(0, (target.coins || 0) - steal);
+            ship.contributors.set('_pirate_steal', { name: 'pirates', dmg: 0 }); // track it happened
+            this.events.push({ type: 'pirate_steal', pirateId: pirate.id, birdId: target.id, birdName: target.name, coins: steal, x: target.x, y: target.y });
+            pirate.state = 'return';
+            // Break combo
+            target.lastComboHitAt = 0;
+          } else {
+            const speed = 150;
+            pirate.x += (dx / d) * speed * dt;
+            pirate.y += (dy / d) * speed * dt;
+            // Give up if target gets too far away or we've been diving too long
+            if (d > 500) pirate.state = 'return';
+          }
+        }
+      } else if (pirate.state === 'return') {
+        // Return to orbit position on ship
+        const orbitX = ship.x + Math.cos(pirate.orbitAngle) * pirate.orbitRadius;
+        const orbitY = ship.y + Math.sin(pirate.orbitAngle) * pirate.orbitRadius;
+        const dx = orbitX - pirate.x, dy = orbitY - pirate.y;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d < 15) {
+          pirate.state = 'patrol';
+        } else {
+          const speed = 120;
+          pirate.x += (dx / d) * speed * dt;
+          pirate.y += (dy / d) * speed * dt;
+        }
+      }
+    }
+  }
+
+  _startSkyPirateShip(now) {
+    const WORLD_W = 3000, WORLD_H = 3000;
+    // Pick a random entry edge and direction
+    const edges = ['top', 'bottom', 'left', 'right'];
+    const edge = edges[Math.floor(Math.random() * edges.length)];
+    let sx, sy, vx, vy;
+    const speed = 55; // px/s
+    if (edge === 'top') {
+      sx = 400 + Math.random() * 2200; sy = -60;
+      vx = (Math.random() - 0.5) * speed * 0.5; vy = speed;
+    } else if (edge === 'bottom') {
+      sx = 400 + Math.random() * 2200; sy = WORLD_H + 60;
+      vx = (Math.random() - 0.5) * speed * 0.5; vy = -speed;
+    } else if (edge === 'left') {
+      sx = -60; sy = 400 + Math.random() * 2200;
+      vx = speed; vy = (Math.random() - 0.5) * speed * 0.5;
+    } else {
+      sx = WORLD_W + 60; sy = 400 + Math.random() * 2200;
+      vx = -speed; vy = (Math.random() - 0.5) * speed * 0.5;
+    }
+
+    const numPirates = 2 + Math.floor(Math.random() * 2); // 2-3 pirates
+    const pirates = [];
+    for (let i = 0; i < numPirates; i++) {
+      pirates.push({
+        id: `pirate_${now}_${i}`,
+        x: sx, y: sy,
+        hp: 3, maxHp: 3,
+        state: 'patrol',
+        stunnedUntil: 0,
+        orbitAngle: (Math.PI * 2 / numPirates) * i,
+        orbitRadius: 70 + i * 15,
+        orbitDir: i % 2 === 0 ? 1 : -1,
+        diveTargetId: null,
+      });
+    }
+
+    this.skyPirateShip = {
+      x: sx, y: sy, vx, vy,
+      angle: Math.atan2(vy, vx),
+      hp: 20, maxHp: 20,
+      sinking: false, sinkEndsAt: 0,
+      spawnedAt: now,
+      expiresAt: now + 150000, // 2.5 minute transit max
+      lastLootDrop: now,
+      _nextLootInterval: this._randomRange(18000, 28000),
+      contributors: new Map(),
+      pirates,
+      lootCrates: [],
+    };
+
+    this.events.push({
+      type: 'sky_pirate_ship_spawn',
+      x: sx, y: sy,
+      hp: 20,
+      msg: `☠️ SKY PIRATES! An airship is crossing the city — poop it 20 times to bring it down! Watch out for diving pirates stealing your coins!`,
+    });
+
+    if (this.gazetteStats) this.gazetteStats.skyPirateVisits = (this.gazetteStats.skyPirateVisits || 0) + 1;
+  }
+
+  _endSkyPirateShip(reason, now) {
+    const ship = this.skyPirateShip;
+    if (!ship) return;
+
+    if (reason === 'destroyed') {
+      ship.sinking = true;
+      ship.sinkEndsAt = now + 4000;
+      ship.vx *= 0.3; ship.vy += 20; // drift and fall
+
+      // Big scatter — 5 loot crates at the ship's position
+      for (let i = 0; i < 5; i++) {
+        const crate = {
+          id: `loot_final_${i}`,
+          x: ship.x + (Math.random() - 0.5) * 120,
+          y: ship.y + (Math.random() - 0.5) * 120,
+          spawnedAt: now,
+          expiresAt: now + 30000,
+        };
+        ship.lootCrates.push(crate);
+        this.events.push({ type: 'pirate_loot_spawned', id: crate.id, x: crate.x, y: crate.y });
+      }
+
+      // Proportional XP/coin rewards to all contributors
+      const totalDmg = Array.from(ship.contributors.values())
+        .filter(c => c.name !== 'pirates')
+        .reduce((s, c) => s + c.dmg, 0) || 1;
+      const totalXp = 600, totalCoins = 350;
+      for (const [birdId, contrib] of ship.contributors) {
+        if (contrib.name === 'pirates') continue;
+        const b = this.birds.get(birdId);
+        if (!b) continue;
+        const share = contrib.dmg / totalDmg;
+        const xpReward = Math.max(60, Math.floor(totalXp * share));
+        const coinReward = Math.max(25, Math.floor(totalCoins * share));
+        b.xp = (b.xp || 0) + xpReward;
+        b.coins = (b.coins || 0) + coinReward;
+        this._levelUpIfNeeded(b);
+        this._trackDailyProgress(b, 'pirate_ship_down', 1);
+        this.events.push({ type: 'sky_pirate_ship_reward', birdId, birdName: b.name, xp: xpReward, coins: coinReward });
+      }
+      this.events.push({
+        type: 'sky_pirate_ship_destroyed',
+        msg: `☠️💥 THE SKY PIRATE AIRSHIP GOES DOWN! Loot crates scatter across the city — FLY TO THEM!`,
+      });
+    } else {
+      // escaped — rob the richest bird
+      let richest = null;
+      for (const b of this.birds.values()) {
+        if (!richest || (b.coins || 0) > (richest.coins || 0)) richest = b;
+      }
+      if (richest && (richest.coins || 0) > 30) {
+        const loot = Math.min(Math.floor(richest.coins * 0.12), 200);
+        richest.coins -= loot;
+        this.events.push({
+          type: 'sky_pirate_ship_escaped',
+          birdId: richest.id, birdName: richest.name, loot,
+          msg: `☠️ The Sky Pirates escaped! They robbed ${richest.name} for ${loot}c on the way out. The city stands ashamed.`,
+        });
+      } else {
+        this.events.push({ type: 'sky_pirate_ship_escaped', msg: `☠️ The Sky Pirates escaped into the clouds...` });
+      }
+      this.skyPirateShip = null;
+      this._skyPirateTimer = now + this._randomRange(35 * 60000, 50 * 60000);
+    }
   }
 
   _endBowlingBall(reason, now) {

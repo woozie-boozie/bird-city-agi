@@ -7768,4 +7768,73 @@ window.Sprites = {
 
     ctx.restore();
   },
+
+  drawPirateBird(ctx, pirate, now) {
+    if (!pirate) return;
+    ctx.save();
+    ctx.translate(pirate.x, pirate.y);
+
+    const stunned = pirate.state === 'stunned';
+    const pulse = 0.5 + 0.5 * Math.abs(Math.sin(now * 0.005));
+
+    if (stunned) {
+      ctx.globalAlpha = 0.5 + 0.3 * pulse;
+    }
+
+    // Body — dark charcoal pirate bird
+    ctx.fillStyle = stunned ? '#666666' : '#1a1a2e';
+    ctx.beginPath(); ctx.ellipse(0, 0, 10, 8, 0, 0, Math.PI * 2); ctx.fill();
+
+    // Wings
+    ctx.fillStyle = stunned ? '#555' : '#0d0d1f';
+    ctx.beginPath(); ctx.ellipse(-8, 1, 7, 4, -0.3, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(8, 1, 7, 4, 0.3, 0, Math.PI * 2); ctx.fill();
+
+    // Head
+    ctx.fillStyle = stunned ? '#666' : '#222233';
+    ctx.beginPath(); ctx.arc(0, -7, 6, 0, Math.PI * 2); ctx.fill();
+
+    // Red eye (glowing when active)
+    if (!stunned) {
+      ctx.shadowColor = '#ff0000'; ctx.shadowBlur = 4;
+    }
+    ctx.fillStyle = stunned ? '#888' : '#ff2222';
+    ctx.beginPath(); ctx.arc(2, -8, 2, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Pirate hat
+    ctx.fillStyle = '#111111';
+    ctx.beginPath();
+    ctx.ellipse(0, -12, 7, 3, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillRect(-4, -18, 8, 7);
+    // Hat brim highlight
+    ctx.strokeStyle = '#444'; ctx.lineWidth = 0.5;
+    ctx.beginPath(); ctx.ellipse(0, -12, 7, 3, 0, 0, Math.PI * 2); ctx.stroke();
+    // Skull on hat
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '5px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('☠', 0, -15);
+
+    // Stunned stars
+    if (stunned) {
+      const t = now * 0.004;
+      for (let i = 0; i < 3; i++) {
+        const a = t + (i / 3) * Math.PI * 2;
+        const sx = Math.cos(a) * 14, sy = Math.sin(a) * 7 - 8;
+        ctx.font = '8px sans-serif';
+        ctx.fillText('⭐', sx, sy);
+      }
+    }
+
+    // Diving state — slight red aura
+    if (pirate.state === 'diving') {
+      const rg = ctx.createRadialGradient(0, 0, 4, 0, 0, 18);
+      rg.addColorStop(0, `rgba(255,0,0,${0.25 * pulse})`);
+      rg.addColorStop(1, 'rgba(255,0,0,0)');
+      ctx.fillStyle = rg;
+      ctx.beginPath(); ctx.ellipse(0, 0, 18, 18, 0, 0, Math.PI * 2); ctx.fill();
+    }
+
+    ctx.restore();
+  },
 };

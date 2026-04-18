@@ -4905,6 +4905,70 @@
     if (ev.type === 'bowling_consolation' && ev.targetId === myId) {
       addEventMessage(`🎳 The Bowling Bird survived... +15c consolation.`, '#888855');
     }
+
+    // === SKY PIRATE AIRSHIP (Session 110) ===
+    if (ev.type === 'sky_pirate_ship_spawn') {
+      showAnnouncement(`☠️ SKY PIRATES! Airship inbound — poop it 20 times!`, '#dd4422', 5000);
+      addEventMessage(`☠️ SKY PIRATE AIRSHIP crossing Bird City! Poop it down!`, '#ff6633');
+      triggerScreenShake(8, 400);
+      window._skyPirateDir = { x: ev.x, y: ev.y };
+    }
+    if (ev.type === 'sky_pirate_ship_hit') {
+      if (ev.hitterId === myId) {
+        const now2 = performance.now();
+        effects.push({ type: 'xp', x: ev.x, y: ev.y - 10, time: now2, duration: 1000, text: `☠️ ${ev.hp}/${ev.maxHp}`, color: '#ff9944' });
+      }
+    }
+    if (ev.type === 'pirate_guard_hit') {
+      if (ev.hitterId === myId) {
+        const now2 = performance.now();
+        effects.push({ type: 'xp', x: ev.x, y: ev.y - 10, time: now2, duration: 1000, text: `🏴‍☠️ HIT!`, color: '#ff6622' });
+      }
+    }
+    if (ev.type === 'pirate_guard_stunned') {
+      addEventMessage(`🏴‍☠️ A pirate guard was STUNNED!`, '#ff9944');
+    }
+    if (ev.type === 'pirate_steal') {
+      if (ev.birdId === myId) {
+        showAnnouncement(`🏴‍☠️ A PIRATE STOLE ${ev.coins}c FROM YOU!`, '#ff4422', 2500);
+        addEventMessage(`🏴‍☠️ ${ev.birdName} was robbed by a pirate guard! -${ev.coins}c`, '#ff6633');
+        triggerScreenShake(6, 400);
+      } else {
+        addEventMessage(`🏴‍☠️ ${ev.birdName} got robbed by a pirate guard! -${ev.coins}c`, '#ff9944');
+      }
+    }
+    if (ev.type === 'pirate_loot_spawned') {
+      window._skyPirateLootIds = window._skyPirateLootIds || new Set();
+      window._skyPirateLootIds.add(ev.id);
+    }
+    if (ev.type === 'pirate_loot_collected') {
+      if (ev.birdId === myId) {
+        showAnnouncement(`💰 PIRATE LOOT! +${ev.coins}c +40 XP!`, '#ffd700', 2500);
+        const now2 = performance.now();
+        effects.push({ type: 'xp', x: ev.x, y: ev.y - 10, time: now2, duration: 1200, text: `+${ev.coins}c 💰`, color: '#ffd700' });
+      } else {
+        addEventMessage(`💰 ${ev.birdName} grabbed pirate loot!`, '#aaaaaa');
+      }
+    }
+    if (ev.type === 'sky_pirate_ship_destroyed') {
+      showAnnouncement(`☠️💥 AIRSHIP DESTROYED! Grab the loot crates!`, '#ff4400', 6000);
+      addEventMessage(`☠️💥 THE SKY PIRATE AIRSHIP GOES DOWN! Loot crates scattered!`, '#ff6633');
+      triggerScreenShake(16, 800);
+      window._skyPirateDir = null;
+    }
+    if (ev.type === 'sky_pirate_ship_reward' && ev.birdId === myId) {
+      showAnnouncement(`☠️ AIRSHIP DOWN! +${ev.xp} XP +${ev.coins}c!`, '#ffd700', 4000);
+      const now2 = performance.now();
+      effects.push({ type: 'xp', x: myX || 1500, y: myY ? myY - 30 : 1500, time: now2, duration: 1800, text: `☠️ +${ev.xp} XP +${ev.coins}c`, color: '#ffd700' });
+    }
+    if (ev.type === 'sky_pirate_ship_escaped') {
+      addEventMessage(ev.msg || `☠️ The Sky Pirates escaped!`, '#ff6633');
+      if (ev.birdId === myId) {
+        showAnnouncement(`☠️ PIRATES ROBBED YOU! -${ev.loot}c`, '#ff3322', 3000);
+        triggerScreenShake(8, 500);
+      }
+      window._skyPirateDir = null;
+    }
   }
 
   function showAnnouncement(text, color, duration) {
@@ -10039,6 +10103,44 @@
       }
     }
 
+    // ===== SKY PIRATE AIRSHIP (Session 110) =====
+    if (gameState.skyPirateShip) {
+      const sp = gameState.skyPirateShip;
+
+      // Draw loot crates first (behind everything else)
+      for (const crate of (sp.lootCrates || [])) {
+        const crsx = crate.x - camera.x + camera.screenW / 2;
+        const crsy = crate.y - camera.y + camera.screenH / 2;
+        if (crsx > -40 && crsx < camera.screenW + 40 && crsy > -40 && crsy < camera.screenH + 40) {
+          Renderer.drawLootCrate(ctx, { ...crate, x: crsx, y: crsy }, now);
+        }
+      }
+
+      // Draw pirate guards
+      for (const pirate of (sp.pirates || [])) {
+        const psx = pirate.x - camera.x + camera.screenW / 2;
+        const psy = pirate.y - camera.y + camera.screenH / 2;
+        if (psx > -50 && psx < camera.screenW + 50 && psy > -50 && psy < camera.screenH + 50) {
+          Sprites.drawPirateBird(ctx, { ...pirate, x: psx, y: psy }, now);
+        }
+      }
+
+      // Draw the airship itself
+      const spsx = sp.x - camera.x + camera.screenW / 2;
+      const spsy = sp.y - camera.y + camera.screenH / 2;
+      if (spsx > -120 && spsx < camera.screenW + 120 && spsy > -120 && spsy < camera.screenH + 120) {
+        // Save ctx state, temporarily work in screen space
+        ctx.save();
+        ctx.translate(spsx - sp.x, spsy - sp.y); // offset to convert world→screen for drawing
+        Renderer.drawSkyPirateShip(ctx, sp, now);
+        ctx.restore();
+      }
+
+      // Minimap
+      const worldData = { worldW: WORLD_W, worldH: WORLD_H, mmW: minimapCanvas.width, mmH: minimapCanvas.height };
+      Renderer.drawSkyPirateShipOnMinimap(minimapCtx, sp, worldData, now);
+    }
+
     // Decoys
     if (gameState.decoys) {
       for (const d of gameState.decoys) {
@@ -10697,6 +10799,74 @@
         ctx.fillText('🎉', 0, 0);
         ctx.restore();
       }
+    }
+
+    // === SKY PIRATE AIRSHIP HUD BAR (Session 110) ===
+    if (gameState.skyPirateShip && !gameState.skyPirateShip.sinking) {
+      const sp = gameState.skyPirateShip;
+      const spTimeLeft = Math.max(0, Math.ceil((sp.expiresAt - now) / 1000));
+      const spHpFrac = sp.hp / sp.maxHp;
+      const spPulse = 0.7 + 0.3 * Math.abs(Math.sin(now * 0.008));
+      const spUrgent = spHpFrac < 0.35;
+      const spColor = spUrgent ? '#ff3333' : '#cc2200';
+
+      // Red screen tint when airship is active
+      ctx.save();
+      ctx.globalAlpha = 0.04 + 0.02 * spPulse;
+      ctx.fillStyle = '#cc0000';
+      ctx.fillRect(0, 0, camera.screenW, camera.screenH);
+      ctx.globalAlpha = 1;
+      ctx.restore();
+
+      // Stack below crime wave, seagull, migration, vault, stampede, package, birdnapper bars
+      const hasCWsp = gameState.self && gameState.self.crimeWave;
+      const hasSGsp = gameState.seagullInvasion;
+      const hasMGsp = gameState.migration;
+      const hasVTsp = gameState.vaultTruck && !gameState.vaultTruck.cracked && !gameState.vaultTruck.escaped;
+      const hasSTsp = gameState.stampede;
+      const hasPKsp = gameState.suspiciousPackage;
+      const hasBVsp = gameState.birdnapperVan && gameState.birdnapperVan.state === 'escaping';
+      const hasFMsp = gameState.flashMob;
+      let spBarY = 132;
+      if (hasCWsp) spBarY += 43;
+      if (hasSGsp) spBarY += 43;
+      if (hasMGsp) spBarY += 43;
+      if (hasVTsp) spBarY += 43;
+      if (hasSTsp) spBarY += 43;
+      if (hasPKsp) spBarY += 43;
+      if (hasBVsp) spBarY += 43;
+      if (hasFMsp) spBarY += 43;
+
+      const spBarW = 230, spBarH = 12;
+      const spBarX = camera.screenW / 2 - spBarW / 2;
+
+      ctx.save();
+      ctx.globalAlpha = 0.93;
+      ctx.fillStyle = 'rgba(0,0,0,0.78)';
+      ctx.beginPath();
+      ctx.roundRect(spBarX - 60, spBarY - 18, spBarW + 120, spBarH + 32, 10);
+      ctx.fill();
+
+      ctx.globalAlpha = spUrgent ? spPulse : 0.9;
+      ctx.fillStyle = spColor;
+      ctx.font = 'bold 11px Arial';
+      ctx.textAlign = 'center';
+      const spMyHitsStr = sp.myHits > 0 ? ` · MY HITS: ${sp.myHits}` : '';
+      ctx.fillText(`🏴‍☠️ SKY PIRATE AIRSHIP — ${sp.hp}/${sp.maxHp} HP · ${spTimeLeft}s${spMyHitsStr} · POOP IT DOWN!`, camera.screenW / 2, spBarY - 4);
+
+      ctx.globalAlpha = 0.85;
+      ctx.fillStyle = 'rgba(60,0,0,0.55)';
+      ctx.beginPath();
+      ctx.roundRect(spBarX, spBarY + 2, spBarW, spBarH, 4);
+      ctx.fill();
+
+      const spFillColor = spUrgent ? '#ff2222' : '#cc3311';
+      ctx.fillStyle = spFillColor;
+      ctx.beginPath();
+      ctx.roundRect(spBarX, spBarY + 2, spBarW * Math.max(0, spHpFrac), spBarH, 4);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.restore();
     }
 
     // === CRIME WAVE OVERLAY ===
@@ -11746,6 +11916,44 @@
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText('🎳', 4, 0);
+        ctx.restore();
+      }
+    }
+
+    // === SKY PIRATE AIRSHIP — off-screen direction arrow ===
+    if (gameState.skyPirateShip && !gameState.skyPirateShip.sinking) {
+      const spsx2 = gameState.skyPirateShip.x - camera.x + camera.screenW / 2;
+      const spsy2 = gameState.skyPirateShip.y - camera.y + camera.screenH / 2;
+      const spOnScreen = spsx2 > 60 && spsx2 < camera.screenW - 60 && spsy2 > 60 && spsy2 < camera.screenH - 60;
+      if (!spOnScreen) {
+        const spAngle = Math.atan2(spsy2 - camera.screenH / 2, spsx2 - camera.screenW / 2);
+        const spArrowDist = Math.min(camera.screenW, camera.screenH) / 2 - 60;
+        const spAx = camera.screenW / 2 + Math.cos(spAngle) * spArrowDist;
+        const spAy = camera.screenH / 2 + Math.sin(spAngle) * spArrowDist;
+        const spPulse = 0.7 + 0.3 * Math.sin(now * 0.007);
+        ctx.save();
+        ctx.translate(spAx, spAy);
+        ctx.rotate(spAngle);
+        ctx.globalAlpha = 0.9 * spPulse;
+        ctx.fillStyle = '#cc2222';
+        ctx.shadowColor = '#ff4444';
+        ctx.shadowBlur = 12;
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(22, 0);
+        ctx.lineTo(-10, -10);
+        ctx.lineTo(-5, 0);
+        ctx.lineTo(-10, 10);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 10px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('🏴‍☠️', 4, 0);
         ctx.restore();
       }
     }
@@ -14606,6 +14814,15 @@
         const myHits = bb.myHits || 0;
         html += `<div class="bm-buff-pill" style="background:rgba(40,15,0,0.9);border-color:#cc5500;color:#ff9944;font-weight:bold;">🎳 BOWLING BIRD — ${bb.gangTag ? '[' + bb.gangTag + '] ' : ''}${bb.birdName} · HP: ${bb.hp}/${bb.maxHp} · ${bbSecsLeft}s · MY HITS: ${myHits} · POOP THEM!</div>`;
       }
+    }
+
+    // === SKY PIRATE AIRSHIP (Session 110) pill ===
+    if (gameState.skyPirateShip && !gameState.skyPirateShip.sinking) {
+      const sp = gameState.skyPirateShip;
+      const spSecs = Math.max(0, Math.ceil((sp.expiresAt - now) / 1000));
+      const myHits = sp.myHits || 0;
+      const urgency = sp.hp <= 5 ? 'animation:pulseRed 0.3s infinite alternate;' : sp.hp <= 10 ? 'animation:kingpinGlow 0.5s ease-in-out infinite alternate;' : '';
+      html += `<div class="bm-buff-pill" style="background:rgba(60,0,0,0.92);border-color:#cc2200;color:#ff6644;font-weight:bold;${urgency}">🏴‍☠️ SKY PIRATE AIRSHIP — ${sp.hp}/${sp.maxHp} HP · ${spSecs}s · MY HITS: ${myHits} · POOP IT DOWN!</div>`;
     }
 
     // === Golden Throne — claim progress or champion badge pill ===
