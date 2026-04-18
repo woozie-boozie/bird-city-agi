@@ -158,6 +158,9 @@ const DAILY_CHALLENGE_POOL = [
   // Session 106: Flash Mob challenges
   { id: 'mob_goer',    title: 'Mob Scene',   desc: 'Join a city Flash Mob (be in the zone during the active phase)',   target: 1, trackType: 'mob_participant', reward: { xp: 160, coins: 80  } },
   { id: 'mega_mob',    title: 'Mega Mob',    desc: 'Be part of a 6+ bird Flash Mob (legendary crowd)',                 target: 1, trackType: 'mega_mob',       reward: { xp: 250, coins: 125 } },
+  // Session 108: Auction House challenges
+  { id: 'auction_winner', title: 'Going Once!', desc: 'Win a lot at the Bird City Auction House', target: 1, trackType: 'auction_win', reward: { xp: 200, coins: 100 } },
+  { id: 'auction_bidder', title: 'High Roller',  desc: 'Place a bid of 150c or more at the Auction House', target: 1, trackType: 'auction_big_bid', reward: { xp: 120, coins: 60  } },
 ];
 
 // ============================================================
@@ -612,6 +615,23 @@ class GameEngine {
       { id: 'broken_crate',  emoji: '📦', name: 'BROKEN CRATE',  weight: 3,  desc: 'Empty... but here\'s 75c consolation prize' },
     ];
     this.MYSTERY_CRATE_TOTAL_WEIGHT = this.MYSTERY_CRATE_ITEMS.reduce((s, i) => s + i.weight, 0);
+
+    // === BIRD CITY AUCTION HOUSE ===
+    // Items available to bid on. Gold Sack goldAmount is rolled at auction open.
+    this.AUCTION_ITEMS = [
+      { id: 'gold_sack',    emoji: '💰', name: 'Gold Sack',    startBid: 50,  desc: 'Instant coin windfall (200–400c)' },
+      { id: 'disguise_kit', emoji: '🎭', name: 'Disguise Kit', startBid: 65,  desc: 'Wipe all heat + despawn every cop targeting you' },
+      { id: 'jet_wings',    emoji: '🚀', name: 'Jet Wings',    startBid: 80,  desc: '3.5× speed for 15 seconds' },
+      { id: 'diamond_poop', emoji: '💎', name: 'Diamond Poop', startBid: 85,  desc: 'Triple coins per poop hit for 20 seconds' },
+      { id: 'riot_shield',  emoji: '🛡️', name: 'Riot Shield',  startBid: 75,  desc: 'Full cop + predator immunity for 12 seconds' },
+      { id: 'lucky_dip',    emoji: '🎲', name: 'Lucky Dip',    startBid: 50,  desc: 'A random Mystery Crate power-up — could be anything!' },
+      { id: 'coin_magnet',  emoji: '🧲', name: 'Coin Magnet',  startBid: 70,  desc: 'Pull all coins + food within 350px for 10 seconds' },
+      { id: 'xp_bomb',      emoji: '⚡', name: 'XP Bomb',      startBid: 60,  desc: 'Instantly earn +400 XP right now' },
+    ];
+    // State: null when no auction, otherwise active auction object
+    this.auction = null;
+    this._auctionTimer = Date.now() + this._randomRange(20 * 60000, 30 * 60000);
+    this.AUCTION_HOUSE_POS = world.AUCTION_HOUSE_POS;
 
     // === BIRD FLU OUTBREAK ===
     // Every 25-40 minutes, Patient Zero is infected and flu spreads between nearby birds.
@@ -1633,6 +1653,11 @@ class GameEngine {
       this._handleTournamentJoin(bird, now);
     }
 
+    // === Auction House ===
+    if (action.type === 'place_auction_bid') {
+      this._handleAuctionBid(bird, action.amount, now);
+    }
+
     // === Graffiti Tagging ===
     if (action.type === 'spray_tag') {
       const buildingIdx = typeof action.buildingIdx === 'number' ? action.buildingIdx : -1;
@@ -1971,6 +1996,9 @@ class GameEngine {
 
     // === Courier Pigeon ===
     this._updateCourierPigeon(dt, now);
+
+    // === Auction House ===
+    this._updateAuction(now);
 
     // === Flash Mob ===
     this._updateFlashMob(now);
@@ -7181,6 +7209,24 @@ class GameEngine {
         endsAt: this.flashMob.endsAt,
         participantCount: this.flashMob.participants.size,
       } : null,
+      auction: this.auction ? {
+        state: this.auction.state,
+        lots: this.auction.lots,
+        currentLot: this.auction.currentLot,
+        currentBid: this.auction.currentBid,
+        currentBidder: this.auction.currentBidder,
+        currentBidderName: this.auction.currentBidderName,
+        currentBidderGang: this.auction.currentBidderGang,
+        lotEndsAt: this.auction.lotEndsAt,
+        nextLotAt: this.auction.nextLotAt,
+        startedAt: this.auction.startedAt,
+        myBid: this.auction.currentBidder === bird.id ? this.auction.currentBid : null,
+      } : null,
+      nearAuctionHouse: (() => {
+        const ap = this.AUCTION_HOUSE_POS;
+        const adx = bird.x - ap.x, ady = bird.y - ap.y;
+        return Math.sqrt(adx * adx + ady * ady) < ap.radius;
+      })(),
       courierPigeon: this.courierPigeon ? {
         x: this.courierPigeon.x,
         y: this.courierPigeon.y,
@@ -15994,6 +16040,7 @@ class GameEngine {
       hotlineTips:          0,    // anonymous tips placed this cycle
       grudgeRevenges:       [],   // [{ revenger, revengerGangTag, target }] — completed grudges this cycle
       flashMobs:            [],   // [{ location, count, isMega }] — flash mobs this cycle
+      auctionResults:       [],   // [{ itemName, itemEmoji, winnerName, winnerGangTag, finalBid }]
     };
   }
 
@@ -16408,6 +16455,17 @@ class GameEngine {
           subline: 'Coordinated chaos at a key city landmark. Police describe it as "weird but harmless." Still, coins changed hands.',
         });
       }
+    }
+
+    // Auction House headline
+    if (stats.auctionResults && stats.auctionResults.length > 0) {
+      const topLot = stats.auctionResults.reduce((a, b) => b.finalBid > a.finalBid ? b : a);
+      const tag = topLot.winnerGangTag ? `[${topLot.winnerGangTag}] ` : '';
+      headlines.push({
+        icon: '🏛️',
+        headline: `AUCTION FEVER: ${tag}${topLot.winnerName} WINS ${topLot.itemEmoji} ${topLot.itemName.toUpperCase()} FOR ${topLot.finalBid}c`,
+        subline: `${stats.auctionResults.length} lot${stats.auctionResults.length > 1 ? 's' : ''} sold at the Auction House. Bidding wars described as "fierce, chaotic, and very birdy."`,
+      });
     }
 
     // Default headline if nothing notable happened
@@ -23529,6 +23587,261 @@ class GameEngine {
       destX: dest.x, destY: dest.y,
       destName: dest.name, srcName: src.name,
       expiresAt: this.courierPigeon.expiresAt,
+    });
+  }
+
+  // ============================================================
+  // BIRD CITY AUCTION HOUSE (Session 108)
+  // Every 20-30 min a 3-lot live auction opens at the Auction House
+  // on the west-central road. Birds within 120px press [A] to open
+  // the bid panel and outbid rivals for powerful items. Highest bid
+  // wins each lot. Coins deducted only on victory.
+  // ============================================================
+  _updateAuction(now) {
+    // Spawn a new auction when timer fires and at least 1 player online
+    if (!this.auction && now >= this._auctionTimer && this.birds.size > 0) {
+      this._startAuction(now);
+      return;
+    }
+    if (!this.auction) return;
+
+    if (this.auction.state === 'bidding') {
+      // Check if current lot timer expired
+      if (now >= this.auction.lotEndsAt) {
+        this._closeAuctionLot(now);
+      }
+    } else if (this.auction.state === 'gap') {
+      // Advance to next lot or end the auction
+      if (now >= this.auction.nextLotAt) {
+        if (this.auction.currentLot >= this.auction.lots.length) {
+          // All lots sold — auction complete
+          this.auction = null;
+          this._auctionTimer = now + this._randomRange(20 * 60000, 30 * 60000);
+        } else {
+          // Open the next lot for bidding
+          this.auction.state = 'bidding';
+          this.auction.currentBid = this.auction.lots[this.auction.currentLot].startBid;
+          this.auction.currentBidder = null;
+          this.auction.currentBidderName = '';
+          this.auction.currentBidderGang = null;
+          this.auction.lotEndsAt = now + 45000; // 45 seconds per lot
+          const lot = this.auction.lots[this.auction.currentLot];
+          this.events.push({
+            type: 'auction_lot_open',
+            lotIndex: this.auction.currentLot,
+            lotTotal: this.auction.lots.length,
+            item: lot,
+            startBid: lot.startBid,
+            endsAt: this.auction.lotEndsAt,
+          });
+        }
+      }
+    }
+  }
+
+  _startAuction(now) {
+    // Pick 3 random unique items from AUCTION_ITEMS
+    const shuffled = [...this.AUCTION_ITEMS].sort(() => Math.random() - 0.5);
+    const lots = shuffled.slice(0, 3).map(item => {
+      const lot = { ...item };
+      if (lot.id === 'gold_sack') lot.goldAmount = this._randomRange(200, 400);
+      return lot;
+    });
+    this.auction = {
+      state: 'gap',
+      lots,
+      currentLot: 0,
+      currentBid: 0,
+      currentBidder: null,
+      currentBidderName: '',
+      currentBidderGang: null,
+      lotEndsAt: 0,
+      nextLotAt: now + 8000, // 8-second intro before first lot opens
+      startedAt: now,
+    };
+    this.events.push({
+      type: 'auction_open',
+      lots: lots.map(l => ({ id: l.id, emoji: l.emoji, name: l.name, startBid: l.startBid, desc: l.desc })),
+      pos: { x: this.AUCTION_HOUSE_POS.x, y: this.AUCTION_HOUSE_POS.y },
+    });
+  }
+
+  _closeAuctionLot(now) {
+    const lot = this.auction.lots[this.auction.currentLot];
+    const winnerId = this.auction.currentBidder;
+    const finalBid = this.auction.currentBid;
+
+    if (winnerId) {
+      const winner = this.birds.get(winnerId);
+      if (winner && winner.coins >= finalBid) {
+        winner.coins -= finalBid;
+        this._applyAuctionItem(winner, lot, now);
+
+        // Track for gazette
+        const winnerTag = winner.gangId ? (this.gangs.get(winner.gangId) || {}).tag : null;
+        this.gazetteStats.auctionResults.push({
+          itemName: lot.name,
+          itemEmoji: lot.emoji,
+          winnerName: winner.name,
+          winnerGangTag: winnerTag || null,
+          finalBid,
+        });
+
+        // Daily challenge: win a lot
+        this._trackDailyProgress(winner, 'auction_win', 1);
+
+        this.events.push({
+          type: 'auction_lot_won',
+          lotIndex: this.auction.currentLot,
+          item: lot,
+          winnerId,
+          winnerName: winner.name,
+          winnerGangTag: winnerTag || null,
+          finalBid,
+        });
+      } else {
+        // Winner can't afford it (edge case) — no sale
+        this.events.push({
+          type: 'auction_lot_no_sale',
+          lotIndex: this.auction.currentLot,
+          item: lot,
+        });
+      }
+    } else {
+      // No bids were placed
+      this.events.push({
+        type: 'auction_lot_no_sale',
+        lotIndex: this.auction.currentLot,
+        item: lot,
+      });
+    }
+
+    // Advance to next lot
+    this.auction.currentLot++;
+    this.auction.state = 'gap';
+    this.auction.nextLotAt = now + (this.auction.currentLot >= this.auction.lots.length ? 5000 : 12000);
+  }
+
+  _applyAuctionItem(bird, lot, now) {
+    switch (lot.id) {
+      case 'gold_sack': {
+        const amount = lot.goldAmount || this._randomRange(200, 400);
+        bird.coins += amount;
+        this.events.push({ type: 'auction_item_applied', birdId: bird.id, item: lot, value: amount });
+        break;
+      }
+      case 'disguise_kit':
+        // Replicate the BM disguise kit — clear heat, despawn cops targeting bird
+        this.heatScores.delete(bird.id);
+        this.copBirds = this.copBirds.filter(c => c.targetBirdId !== bird.id);
+        if (this.bountyHunter && this.bountyHunter.targetId === bird.id) {
+          this.bountyHunter.state = 'offDuty';
+          this.bountyHunter.offDutyUntil = now + 30000;
+        }
+        // Cancel active hit contracts on this bird
+        this.hitContracts.forEach((h, hid) => {
+          if (h.targetId === bird.id) this.hitContracts.delete(hid);
+        });
+        this.events.push({ type: 'auction_item_applied', birdId: bird.id, item: lot });
+        break;
+      case 'jet_wings':
+        bird.mcJetWingsUntil = now + 15000;
+        this.events.push({ type: 'auction_item_applied', birdId: bird.id, item: lot });
+        break;
+      case 'diamond_poop':
+        bird.mcDiamondPoopUntil = now + 20000;
+        this.events.push({ type: 'auction_item_applied', birdId: bird.id, item: lot });
+        break;
+      case 'riot_shield':
+        bird.mcRiotShieldUntil = now + 12000;
+        this.events.push({ type: 'auction_item_applied', birdId: bird.id, item: lot });
+        break;
+      case 'lucky_dip': {
+        // Pick a random mystery crate item and apply its effect inline
+        let roll = Math.random() * this.MYSTERY_CRATE_TOTAL_WEIGHT;
+        let pick = this.MYSTERY_CRATE_ITEMS[this.MYSTERY_CRATE_ITEMS.length - 1];
+        for (const candidate of this.MYSTERY_CRATE_ITEMS) {
+          if (roll < candidate.weight) { pick = candidate; break; }
+          roll -= candidate.weight;
+        }
+        switch (pick.id) {
+          case 'nuke_poop':   bird.mcNukePoop = true; break;
+          case 'jet_wings':   bird.mcJetWingsUntil = now + 15000; break;
+          case 'coin_cache':  { const cc = 250 + Math.floor(Math.random() * 200); bird.coins += cc; this._trackDailyProgress(bird, 'coins_earned', cc); break; }
+          case 'riot_shield': bird.mcRiotShieldUntil = now + 12000; break;
+          case 'lightning_rod': bird.mcLightningRodUntil = now + 20000; break;
+          case 'coin_magnet': bird.mcMagnetUntil = now + 10000; bird.mcMagnetLastPull = 0; break;
+          case 'ghost_mode':  bird.mcGhostModeUntil = now + 15000; break;
+          case 'diamond_poop': bird.mcDiamondPoopUntil = now + 20000; break;
+          case 'broken_crate': bird.coins += 75; this._trackDailyProgress(bird, 'coins_earned', 75); break;
+          default: bird.coins += 100; break; // fallback
+        }
+        this.events.push({ type: 'auction_item_applied', birdId: bird.id, item: lot, luckyItem: { id: pick.id, emoji: pick.emoji, name: pick.name } });
+        break;
+      }
+      case 'coin_magnet':
+        bird.mcMagnetUntil = now + 10000;
+        bird.mcMagnetLastPull = 0;
+        this.events.push({ type: 'auction_item_applied', birdId: bird.id, item: lot });
+        break;
+      case 'xp_bomb':
+        bird.xp += 400;
+        this._trackDailyProgress(bird, 'xp_earned', 400);
+        this.events.push({ type: 'auction_item_applied', birdId: bird.id, item: lot, value: 400 });
+        break;
+    }
+  }
+
+  _handleAuctionBid(bird, amount, now) {
+    if (!this.auction || this.auction.state !== 'bidding') {
+      this.events.push({ type: 'auction_bid_fail', birdId: bird.id, reason: 'no_active_auction' });
+      return;
+    }
+    // Proximity check
+    const ap = this.AUCTION_HOUSE_POS;
+    const dx = bird.x - ap.x, dy = bird.y - ap.y;
+    if (Math.sqrt(dx * dx + dy * dy) > ap.radius) {
+      this.events.push({ type: 'auction_bid_fail', birdId: bird.id, reason: 'too_far' });
+      return;
+    }
+    // Validate amount
+    const minBid = this.auction.currentBid + 5;
+    if (typeof amount !== 'number' || amount < minBid || amount > 2000) {
+      this.events.push({ type: 'auction_bid_fail', birdId: bird.id, reason: 'invalid_amount', minBid });
+      return;
+    }
+    // Can they afford it?
+    if (bird.coins < amount) {
+      this.events.push({ type: 'auction_bid_fail', birdId: bird.id, reason: 'no_coins', have: bird.coins, need: amount });
+      return;
+    }
+
+    // Accept the bid
+    this.auction.currentBid = amount;
+    this.auction.currentBidder = bird.id;
+    this.auction.currentBidderName = bird.name;
+    const gang = bird.gangId ? this.gangs.get(bird.gangId) : null;
+    this.auction.currentBidderGang = gang ? gang.tag : null;
+
+    // Extend lot timer slightly if bid placed in last 10 seconds (prevents sniping)
+    const timeLeft = this.auction.lotEndsAt - now;
+    if (timeLeft < 10000) {
+      this.auction.lotEndsAt = now + 10000;
+    }
+
+    // Daily challenge: bid 150c+
+    if (amount >= 150) {
+      this._trackDailyProgress(bird, 'auction_big_bid', 1);
+    }
+
+    this.events.push({
+      type: 'auction_bid_placed',
+      birdId: bird.id,
+      bidderName: bird.name,
+      bidderGang: gang ? gang.tag : null,
+      amount,
+      lotIndex: this.auction.currentLot,
+      lotEndsAt: this.auction.lotEndsAt,
     });
   }
 

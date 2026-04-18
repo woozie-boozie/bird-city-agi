@@ -3708,6 +3708,53 @@ Three interlocking additions that deepen social drama and emergent chaos through
 
 **Creative intent**: The Courier Pigeon is Bird City's most purely social NPC — it asks every online bird to make a CHOICE the moment it spawns: escort it (cooperative, safe, steady reward) or intercept it (competitive, criminal, bigger payout). A gang who escorts the courier together while another gang tries to poop it creates a beautiful protection vs. robbery dynamic without any complex setup. The Don mission × Noble challenge double-dip is the most satisfying form of emergent progression: completing ONE task advances TWO systems simultaneously. The King's Pardon territory boost turns a solo Kingpin power into a group reward — the moment a Kingpin pardons a criminal and their whole gang suddenly captures territories 50% faster is the most cinematic political event in Bird City. Pure SOCIAL + DISCOVERY + PROGRESSION energy.
 
+**Session 108 — 2026-04-18: Bird City Auction House — Live Bidding Wars**
+Bird City now has a permanent auction house landmark at the western edge of the city (x:570, y:1050). Every 18–25 minutes, three lots go up for competitive bidding — each with a 40-second window where any bird can outbid the current highest offer. The city's rarest items now have a market price.
+
+**The Auction House flow (`server/game.js`):**
+- Timer fires every 18–25 minutes (when ≥1 player online); 3 lots auctioned sequentially with a 6-second gap between each
+- Each lot drawn from a 7-item catalog: Speed Serum (min 40c), Mega Poop Charge (min 50c), Diamond Poop 20s (min 80c), Coin Magnet 10s (min 60c), XP Bomb +400XP (min 70c), Lucky Dip Mystery Crate item (min 90c), Prestige Boost +15% XP 5min (min 100c)
+- 40-second bidding window per lot — any bird within 120px of the Auction House can place bids
+- Minimum bid = previous bid + 5c; first bid must meet the starting price
+- On close: winner is announced city-wide, coins deducted, item applied immediately via `_applyAuctionItem()`
+- If no bids: "No Sale" announced quietly and auction moves to next lot
+- `auction_item_applied` event fires with lucky_dip revealing which Mystery Crate item was rolled
+
+**7 Auction Items:**
+- 🚀 **Speed Serum** (min 40c): +60% speed for 30 seconds — piggybacked on existing Black Market speed serum effect
+- 💣 **Mega Poop Charge** (min 50c): next 3 poops are mega AOE — piggybacked on `bmMegaPoops`
+- 💎 **Diamond Poop** (min 80c): 3× coins per poop hit for 20 seconds — piggybacked on `mcDiamondPoopUntil`
+- 🧲 **Coin Magnet** (min 60c): auto-collect all food/coins within 350px for 10 seconds — piggybacked on `mcMagnetUntil`
+- ⚡ **XP Bomb** (min 70c): instant +400 XP, no poop required — direct XP injection
+- 📦 **Lucky Dip** (min 90c): random Mystery Crate item (same 10-item weighted pool) — fully inlined effect application
+- ⚜️ **Prestige Boost** (min 100c): +15% XP on all poop hits for 5 minutes — piggybacked on `prestigeBoostUntil`
+
+**Proximity + state snapshot:**
+- `nearAuctionHouse` boolean in self-snapshot (within 120px of x:570, y:1050) — gates bid placement
+- `auction` object in global state snapshot: `{ state, lots, currentLot, lotEndsAt, timeLeft, topBid, topBidder, topBidderName }`
+- [A] key opens the overlay when near and auction is active; auto-shows/hides via the state update loop
+
+**Visual system (`public/js/renderer.js`):**
+- Grand civic building: 6 golden columns, triangular pediment with 🔨 in the apex, arched entrance, "AUCTION HOUSE" sign in gold
+- Pulsing gold radial glow aura when an auction is active — visible from across the map
+- Proximity prompt "[A] Bid at Auction House" appears when within interaction range
+- Minimap: pulsing gold 🔨 dot — brighter when auction active
+
+**Auction Overlay UI (`#auctionOverlay`, `public/index.html`):**
+- Dark gold-themed full overlay showing current lot number, item emoji, name, description
+- Live current bid + bidder name + time remaining (updated each state tick)
+- Bid amount input (min 5c, max 2000c) + BID button + keyboard [A] shortcut
+- Error/confirmation messages in bid message div
+- All 3 lots summary shown at the bottom so players can see what's coming up
+
+**Two new daily challenges (added to `DAILY_CHALLENGE_POOL`):**
+- 🔨 **High Bidder**: Win any Auction House lot (200 XP, 100c)
+- 🔨 **Auction Regular**: Place a bid at the Auction House (120 XP, 60c)
+
+**Gazette tracking:** `auctionLots` counter in `gazetteStats` — headline: "🔨 AUCTION HOUSE FRENZY — N LOTS SOLD!" when 2+ lots complete with bids.
+
+**Creative intent**: The Auction House fills a critical gap in Bird City's economy. The Black Market has fixed prices at night. The Casino is pure gambling. The Auction House is the first COMPETITIVE price discovery mechanism — items go to whoever wants them most. A Kingpin who just earned tribute watching the current lot climb past 300c as two rival gang members bid war each other is pure SOCIAL drama. The Lucky Dip lot creates the classic "blind box" tension — you might get Jet Wings or a broken crate. The Prestige Boost is the rarest lot and the most coveted by grinders who want to stack it with Signal Boost + Lucky Charm + Aurora. The 18-25 minute timer means auctions fire once per extended session, always feeling like an event. Pure SOCIAL + PROGRESSION + DISCOVERY energy — the city now has a real economy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)

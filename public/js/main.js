@@ -4784,6 +4784,65 @@
         showAnnouncement(`👑 ROYAL PARDON BONUS!\n[${ev.gangTag}] earns 1.5× territory capture speed for 2 minutes!`, '#d4af37', 5000);
       }
     }
+
+    // === AUCTION HOUSE (Session 108) ===
+    if (ev.type === 'auction_open') {
+      effects.push({ type: 'screen_shake', intensity: 6, duration: 400, time: now });
+      showAnnouncement(`🔨 BIRD CITY AUCTION HOUSE OPENS!\n3 lots up for bid — fly to the Auction House (SW) and press [A]!\nStarting bid: ${ev.lots && ev.lots[0] ? ev.lots[0].currentBid + 'c' : '?'}`, '#ffd700', 6000);
+      addEventMessage('🔨 AUCTION HOUSE OPEN! 3 lots for bid — press [A] near the Auction House!', '#ffd700');
+      window._renderAuctionOverlay();
+    }
+    if (ev.type === 'auction_lot_open') {
+      const lot = ev.lot;
+      addEventMessage(`🔨 LOT ${ev.lotIndex + 1}/3: ${lot.emoji} ${lot.name} — starting at ${ev.currentBid}c`, '#ffd700');
+      window._renderAuctionOverlay();
+    }
+    if (ev.type === 'auction_bid_placed') {
+      const isMine = ev.birdId === myId;
+      const tag = ev.bidderGang ? `[${ev.bidderGang}] ` : '';
+      addEventMessage(`🔨 ${tag}${ev.bidderName} bids ${ev.amount}c`, '#ffe066');
+      if (!isMine) {
+        const bidMsg = document.getElementById('auctionBidMsg');
+        if (bidMsg) { bidMsg.textContent = `${tag}${ev.bidderName} outbids — new: ${ev.amount}c`; bidMsg.style.color = '#ff8844'; }
+      }
+      window._renderAuctionOverlay();
+    }
+    if (ev.type === 'auction_bid_fail') {
+      if (ev.birdId === myId) {
+        const msgs = { no_active_auction: 'No active lot right now.', too_far: 'You\'re too far from the Auction House!', invalid_amount: `Minimum bid is ${ev.minBid}c!`, no_coins: `Need ${ev.need}c — you only have ${ev.have}c!` };
+        const bidMsg = document.getElementById('auctionBidMsg');
+        if (bidMsg) { bidMsg.textContent = msgs[ev.reason] || 'Bid failed.'; bidMsg.style.color = '#ff4444'; }
+      }
+    }
+    if (ev.type === 'auction_lot_won') {
+      const tag = ev.winnerGang ? `[${ev.winnerGang}] ` : '';
+      const isMine = ev.winnerId === myId;
+      effects.push({ type: 'screen_shake', intensity: 8, duration: 500, time: now });
+      if (isMine) {
+        effects.push({ type: 'coins', x: gameState.self?.x || 1500, y: gameState.self?.y || 1500, count: 10, time: now });
+        showAnnouncement(`🔨 SOLD! You won ${ev.item.emoji} ${ev.item.name} for ${ev.finalBid}c!`, '#ffd700', 5000);
+      } else {
+        addEventMessage(`🔨 SOLD! ${tag}${ev.winnerName} wins ${ev.item.emoji} ${ev.item.name} for ${ev.finalBid}c`, '#ffd700');
+      }
+      window._renderAuctionOverlay();
+    }
+    if (ev.type === 'auction_lot_no_sale') {
+      addEventMessage(`🔨 No bids — ${ev.item.emoji} ${ev.item.name} passes unsold.`, '#888855');
+      window._renderAuctionOverlay();
+    }
+    if (ev.type === 'auction_closed') {
+      addEventMessage('🔨 Auction House closes. See you next time!', '#a08030');
+      const overlay = document.getElementById('auctionOverlay');
+      if (overlay) overlay.style.display = 'none';
+    }
+    if (ev.type === 'auction_item_applied') {
+      if (ev.birdId === myId) {
+        let msg = `🔨 ${ev.item.emoji} ${ev.item.name} applied!`;
+        if (ev.luckyItem) msg += ` (Lucky Dip: ${ev.luckyItem.emoji} ${ev.luckyItem.name}!)`;
+        if (ev.value) msg += ` +${ev.value}${ev.item.id === 'xp_bomb' ? ' XP' : 'c'}`;
+        showAnnouncement(msg, '#ffd700', 4000);
+      }
+    }
   }
 
   function showAnnouncement(text, color, duration) {
@@ -4996,6 +5055,20 @@
       }
     }
     // Black Market toggle
+    // Auction House bid [A]
+    if (e.key.toLowerCase() === 'a') {
+      const auctionOverlay = document.getElementById('auctionOverlay');
+      if (auctionOverlay && auctionOverlay.style.display !== 'none') {
+        // Overlay open — place bid
+        window._placeAuctionBid();
+      } else if (gameState && gameState.self && gameState.self.nearAuctionHouse &&
+                 gameState.auction && (gameState.auction.state === 'bidding' || gameState.auction.state === 'gap')) {
+        // Open the overlay
+        window._renderAuctionOverlay();
+        auctionOverlay.style.display = 'block';
+      }
+      e.preventDefault();
+    }
     if (e.key.toLowerCase() === 'b') {
       if (gameState && gameState.blackMarket && lastNearBlackMarket) {
         toggleBlackMarketShop();
@@ -6300,6 +6373,15 @@
 
     // Duel Bet Panel (spectators)
     updateDuelBetPanel();
+
+    // Auction House — update overlay when near and auction is active
+    if (gameState.self && gameState.self.nearAuctionHouse && gameState.auction &&
+        (gameState.auction.state === 'bidding' || gameState.auction.state === 'gap')) {
+      if (typeof window._renderAuctionOverlay === 'function') window._renderAuctionOverlay();
+    } else {
+      const auctionOverlay = document.getElementById('auctionOverlay');
+      if (auctionOverlay && auctionOverlay.style.display !== 'none') auctionOverlay.style.display = 'none';
+    }
 
     // Tournament Bet Panel (spectators during championship rounds)
     updateTournamentBetPanel();
@@ -9385,6 +9467,11 @@
     // Ice Rink — slippery blizzard plaza
     if (gameState.iceRink) {
       Renderer.drawIceRink(ctx, camera, gameState.iceRink, now);
+    }
+
+    // Auction House (Session 108)
+    if (worldData && worldData.auctionHousePos) {
+      Renderer.drawAuctionHouse(ctx, camera, worldData.auctionHousePos, gameState.auction || null, !!gameState.self?.nearAuctionHouse, now);
     }
 
     // Flash Mob — social congregation event (drawn before birds)
@@ -12721,6 +12808,11 @@
       Renderer.drawFlashMobOnMinimap(minimapCtx, { worldW: worldData.width, worldH: worldData.height, mmW: minimapCanvas.width, mmH: minimapCanvas.height }, gameState.flashMob, now);
     }
 
+    // Auction House — permanent gold dot, pulses brighter when auction active
+    if (worldData && worldData.auctionHousePos) {
+      Renderer.drawAuctionHouseOnMinimap(minimapCtx, worldData.auctionHousePos, { worldW: worldData.width, worldH: worldData.height, mmW: minimapCanvas.width, mmH: minimapCanvas.height }, gameState.auction || null, now);
+    }
+
     // Thunder Dome — pulsing electric-blue ring on minimap
     const _domeForMinimap = gameState.thunderDome || window._thunderDomeData;
     if (_domeForMinimap && worldData) {
@@ -15159,6 +15251,81 @@
   window._castElectionVote = function(policyId) {
     if (!gameState || !gameState.nearCityHall) return;
     socket.emit('action', { type: 'election_vote', policyId });
+  };
+
+  // ============================================================
+  // AUCTION HOUSE (Session 108) — helper functions
+  // ============================================================
+  window._renderAuctionOverlay = function() {
+    const overlay = document.getElementById('auctionOverlay');
+    if (!overlay) return;
+    const au = gameState && gameState.auction;
+    if (!au) { overlay.style.display = 'none'; return; }
+
+    const lotLabel = document.getElementById('auctionLotLabel');
+    const lotItem = document.getElementById('auctionLotItem');
+    const lotName = document.getElementById('auctionLotName');
+    const lotDesc = document.getElementById('auctionLotDesc');
+    const bidInfo = document.getElementById('auctionBidInfo');
+    const timerEl = document.getElementById('auctionTimer');
+    const bidRow = document.getElementById('auctionBidRow');
+    const allLots = document.getElementById('auctionAllLots');
+
+    if (au.state === 'gap') {
+      const nextMs = Math.max(0, au.nextLotAt - Date.now());
+      if (lotLabel) lotLabel.textContent = au.currentLot === 0 ? 'Auction opens in...' : 'Next lot in...';
+      if (lotItem) lotItem.textContent = au.lots && au.lots[au.currentLot] ? au.lots[au.currentLot].emoji : '🔨';
+      if (lotName) lotName.textContent = au.lots && au.lots[au.currentLot] ? au.lots[au.currentLot].name : '';
+      if (lotDesc) lotDesc.textContent = au.lots && au.lots[au.currentLot] ? au.lots[au.currentLot].desc : '';
+      if (bidInfo) bidInfo.textContent = `Starting bid: ${au.lots && au.lots[au.currentLot] ? au.lots[au.currentLot].currentBid : '?'}c`;
+      if (timerEl) timerEl.textContent = `${Math.ceil(nextMs / 1000)}s`;
+      if (bidRow) bidRow.style.display = 'none';
+    } else {
+      // bidding state
+      const lot = au.lots && au.lots[au.currentLot];
+      const timeLeft = Math.max(0, au.lotEndsAt - Date.now());
+      if (lotLabel) lotLabel.textContent = `Lot ${au.currentLot + 1} of ${au.lots ? au.lots.length : 3} — BIDDING LIVE`;
+      if (lotItem) lotItem.textContent = lot ? lot.emoji : '?';
+      if (lotName) lotName.textContent = lot ? lot.name : '';
+      if (lotDesc) lotDesc.textContent = lot ? lot.desc : '';
+      const bidderTag = au.currentBidderGang ? `[${au.currentBidderGang}] ` : '';
+      if (bidInfo) bidInfo.textContent = au.currentBidder
+        ? `Current bid: ${au.currentBid}c by ${bidderTag}${au.currentBidderName}`
+        : `Opening bid: ${au.currentBid}c — no bids yet`;
+      if (timerEl) timerEl.textContent = `Lot closes in: ${Math.ceil(timeLeft / 1000)}s`;
+      if (bidRow) bidRow.style.display = 'flex';
+      // Pre-fill input with min bid
+      const input = document.getElementById('auctionBidInput');
+      if (input) input.min = au.currentBid + 5;
+      const bidMsg = document.getElementById('auctionBidMsg');
+      if (bidMsg && !bidMsg._userMsg) bidMsg.textContent = '';
+    }
+
+    // All lots preview
+    if (allLots && au.lots) {
+      allLots.textContent = 'Lots: ' + au.lots.map((l, i) => `${i + 1}.${l.emoji}${l.name}`).join(' | ');
+    }
+
+    if (!gameState.self || !gameState.self.nearAuctionHouse) {
+      overlay.style.display = 'none';
+    } else {
+      overlay.style.display = 'block';
+    }
+  };
+
+  window._placeAuctionBid = function() {
+    const input = document.getElementById('auctionBidInput');
+    if (!input) return;
+    const amount = parseInt(input.value, 10);
+    if (isNaN(amount) || amount < 5) return;
+    const bidMsg = document.getElementById('auctionBidMsg');
+    if (bidMsg) { bidMsg.textContent = ''; bidMsg._userMsg = false; }
+    socket.emit('action', { type: 'place_auction_bid', amount });
+  };
+
+  window._closeAuctionOverlay = function() {
+    const overlay = document.getElementById('auctionOverlay');
+    if (overlay) overlay.style.display = 'none';
   };
 
   // Bounty Board button listeners

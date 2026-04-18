@@ -5281,4 +5281,125 @@ window.Renderer = {
     minimapCtx.fillText('🎉', cx, cy);
     minimapCtx.restore();
   },
+
+  // ============================================================
+  // AUCTION HOUSE (Session 108)
+  // ============================================================
+  drawAuctionHouse(ctx, camera, pos, auction, isNear, now) {
+    const sx = (pos.x - camera.x) * camera.zoom + ctx.canvas.width / 2;
+    const sy = (pos.y - camera.y) * camera.zoom + ctx.canvas.height / 2;
+    const scale = camera.zoom;
+    const isActive = auction && (auction.state === 'bidding' || auction.state === 'gap');
+    const pulse = 0.6 + 0.4 * Math.abs(Math.sin(now * 0.003));
+
+    ctx.save();
+    ctx.translate(sx, sy);
+
+    // Building body — grand ornate hall
+    const bw = 90 * scale, bh = 65 * scale;
+    const bx = -bw / 2, by = -bh;
+
+    // Main building
+    ctx.fillStyle = '#d4c08a';
+    ctx.strokeStyle = '#8a6c2a';
+    ctx.lineWidth = 1.5 * scale;
+    ctx.fillRect(bx, by, bw, bh);
+    ctx.strokeRect(bx, by, bw, bh);
+
+    // Roof / pediment triangle
+    ctx.beginPath();
+    ctx.moveTo(bx - 6 * scale, by);
+    ctx.lineTo(sx - sx + 0, by - 22 * scale); // apex
+    ctx.lineTo(bx + bw + 6 * scale, by);
+    ctx.closePath();
+    ctx.fillStyle = '#c0a060';
+    ctx.fill();
+    ctx.strokeStyle = '#7a5820';
+    ctx.stroke();
+
+    // Gavel icon in pediment
+    ctx.font = `${12 * scale}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('🔨', 0, by - 10 * scale);
+
+    // Six columns
+    const numCols = 6;
+    const colSpacing = bw / (numCols - 1);
+    for (let i = 0; i < numCols; i++) {
+      const cx2 = bx + i * colSpacing;
+      ctx.fillStyle = '#f0dfa0';
+      ctx.strokeStyle = '#8a6c2a';
+      ctx.lineWidth = 1 * scale;
+      ctx.fillRect(cx2 - 3 * scale, by, 6 * scale, bh);
+      ctx.strokeRect(cx2 - 3 * scale, by, 6 * scale, bh);
+    }
+
+    // Grand entrance arch
+    ctx.fillStyle = isActive ? `rgba(255, 220, 100, ${0.4 + 0.3 * pulse})` : '#c8a855';
+    ctx.strokeStyle = '#7a5820';
+    ctx.lineWidth = 1.5 * scale;
+    const aw = 24 * scale, ah = 30 * scale;
+    ctx.beginPath();
+    ctx.arc(0, by + bh - ah + aw / 2, aw / 2, Math.PI, 0);
+    ctx.lineTo(aw / 2, by + bh);
+    ctx.lineTo(-aw / 2, by + bh);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Sign above entrance
+    ctx.fillStyle = '#2a1a00';
+    ctx.font = `bold ${7 * scale}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText('AUCTION', 0, by + 14 * scale);
+    ctx.fillText('HOUSE', 0, by + 22 * scale);
+
+    // Glow when auction is active
+    if (isActive) {
+      const grad = ctx.createRadialGradient(0, by - 10 * scale, 0, 0, by - 10 * scale, 60 * scale);
+      grad.addColorStop(0, `rgba(255, 200, 50, ${0.25 * pulse})`);
+      grad.addColorStop(1, 'rgba(255, 200, 50, 0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(0, by - 10 * scale, 60 * scale, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Proximity prompt
+    if (isNear) {
+      ctx.font = `${10 * scale}px sans-serif`;
+      ctx.fillStyle = isActive ? '#ffd700' : '#cccc66';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText(isActive ? '🔨 [A] Bid at Auction House' : '🏛️ Auction House', 0, by - 26 * scale);
+    }
+
+    ctx.restore();
+  },
+
+  drawAuctionHouseOnMinimap(minimapCtx, pos, worldData, auction, now) {
+    const { worldW, worldH, mmW, mmH } = worldData;
+    const cx = (pos.x / worldW) * mmW;
+    const cy = (pos.y / worldH) * mmH;
+    const isActive = auction && (auction.state === 'bidding' || auction.state === 'gap');
+    const pulse = 0.6 + 0.4 * Math.abs(Math.sin(now * 0.003));
+
+    minimapCtx.save();
+    minimapCtx.beginPath();
+    minimapCtx.arc(cx, cy, isActive ? 5 + 2 * pulse : 4, 0, Math.PI * 2);
+    minimapCtx.fillStyle = isActive
+      ? `rgba(255, 210, 60, ${0.85 + 0.15 * pulse})`
+      : 'rgba(200, 160, 60, 0.7)';
+    minimapCtx.shadowColor = '#ffd700';
+    minimapCtx.shadowBlur = isActive ? 6 + 3 * pulse : 3;
+    minimapCtx.fill();
+    minimapCtx.shadowBlur = 0;
+
+    minimapCtx.font = '9px sans-serif';
+    minimapCtx.textAlign = 'center';
+    minimapCtx.textBaseline = 'middle';
+    minimapCtx.fillText('🔨', cx, cy);
+    minimapCtx.restore();
+  },
 };

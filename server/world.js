@@ -385,6 +385,11 @@ const CITY_HALL_POS = { x: 1780, y: 1050, radius: 110 };
 // eating for double XP/coin ambush reward.
 const DONUT_SHOP_POS = { x: 1620, y: 750, radius: 100 };
 
+// Bird City Auction House — an ornate stone hall on the west-central road (between the park and cafe district).
+// Every 20-30 minutes a 3-lot live auction opens. Birds bid real coins for rare items.
+// [A] to open the bid panel when within 120px of the front steps.
+const AUCTION_HOUSE_POS = { x: 570, y: 1050, radius: 120 };
+
 // Poop Power-Up Vending Machines — 5 colorful street machines scattered across the city.
 // Fly within 70px and press [X] to buy a random single-use poop effect for 20 coins.
 // Effects: Spicy (wide splash), Freeze (slow target), Rainbow (3× coins), Toxic (chain hit), Shock (stun)
@@ -457,6 +462,7 @@ module.exports = {
   PREDATOR_TERRITORIES,
   IDOL_STAGE_POS,
   DONUT_SHOP_POS,
+  AUCTION_HOUSE_POS,
   VENDING_MACHINES,
   getXPForLevel, getLevelFromXP, getBirdTypeForLevel,
 };

@@ -45,6 +45,7 @@ app.get('/api/world', (req, res) => {
     idolStagePos: world.IDOL_STAGE_POS,
     donutShopPos: world.DONUT_SHOP_POS,
     vendingMachines: world.VENDING_MACHINES,
+    auctionHousePos: world.AUCTION_HOUSE_POS,
   });
 });
 
