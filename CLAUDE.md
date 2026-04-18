@@ -3823,6 +3823,37 @@ Bird City's first aerial raid event. Every 35-50 minutes, a creaking wooden airs
 
 **Creative intent**: Bird City had lots of stationary cooperative events (Bank Heist, gang sieges, suspended packages) and lots of ground-based chases. The Sky Pirate Airship is the first moving aerial raid. You have to CHASE it — it's flying away as you fight. The pirate guards create chaos: they're not trying to kill you, they're pickpocketing you while you try to coordinate the poop assault. Loot crates dropping mid-fight create a second layer of scramble — do you poop the ship or dive for the crate that just landed? A gang rallying under the airship while guards dive-bomb individual members trying to steal their coins is peak CARNAGE CITY cooperative madness. Pure CARNAGE + SOCIAL + SPECTACLE energy.
 
+**Session 111 — 2026-04-18: The Mayor's Motorcade — GTA-Style City Convoy**
+The most GTA1 moment yet. A black stretch limo flanked by 2 motorcycle cops rolls through Bird City every 20-30 minutes on the main roads. Stun the escorts (2 poop hits each), then poop the exposed limo (8 HP total). After 5 limo hits the Mayor calls OUTRAGE — cops flood the streets and every bird gets +20 heat. Contributors split 800c + 500 XP on departure.
+
+**Motorcade mechanics (`server/game.js`):**
+- Spawns every 20-30 minutes at a random road waypoint, travels at 65px/s along road waypoints
+- 2 motorcycle escorts orbit the limo at 80px radius — each has 2 HP (2 poop hits to stun, mega poop = instant stun). Stunned for 10 seconds before recovering
+- Limo has 8 HP: poop hits only register if both escorts are stunned (they physically block access when active). Normal poop = 1 HP (12 XP, 5c immediate), mega = 3 HP (36 XP, 15c)
+- At 5 limo hits (≥5 HP dealt): Mayor calls OUTRAGE — all online birds get +20 wanted heat, 3 cop pigeons dispatch immediately, escorts recover instantly
+- 90-second motorcade window; if limo not destroyed, it drives off map edge
+- **Reward on departure/destruction**: all contributors split 500 XP + 800 coins proportional to damage dealt (min 80 XP + 50c floor)
+- Gazette tracking: "🚗 MAYOR'S MOTORCADE ATTACKED — [Name] LED THE ASSAULT" headline
+
+**Visual system (`sprites.js`, `renderer.js`):**
+- `drawMayorLimo()`: long black stretch limo body with gold trim, tinted windows, VIP license plate, animated wheels, pulsing red/blue siren flasher on roof, HP bar when damaged, "MAYOR" gold label
+- `drawMotorcycleCop()`: police-blue motorcycle with rider, police cap, red/blue siren light, lean animation when turning, X-eyes + orbiting stars when stunned
+- Escorts draw with blue patrol aura; stunned escorts go grey with ★★ spin
+- Minimap: black/gold 🚗 limo dot + blue escort dots; red aura on all dots when outraged
+- Off-screen direction arrow: blue 🚗 arrow (red when outraged) pointing toward motorcade
+
+**HUD & Events:**
+- HUD bar stacks below sky pirate bar — shows `🚗 MAYOR'S MOTORCADE — X/8 HP · Xs · Stun escorts first!` or `🚨 OUTRAGE! LIMO — X/8 HP · Xs` in red when outraged
+- Active buffs pill: live escort stun count tip ("Stun 2 escort(s) first!" → "LIMO IS EXPOSED! POOP IT!")
+- Red screen flash on outrage event (same pattern as lightning flash)
+- Full event handlers: spawn, escort_hit, escort_stunned, limo_hit, outrage, escort_recovered, departed, reward
+
+**Two new daily challenges:**
+- 🚗 **VIP Crasher**: Land 3 poop hits on the Mayor's Limo (190 XP, 95c)
+- 🏍 **Escort Buster**: Stun both motorcycle escorts in a single motorcade event (200 XP, 100c)
+
+**Creative intent**: The motorcade is pure GTA1 energy — a dignitary convoy rolling through the city that players can choose to ignore OR coordinate to attack. The two-phase design (stun escorts first, then hit limo) creates natural teamwork: one bird peels off to handle an escort while another waits for the opening. The OUTRAGE mechanic at 5 hits is the killer feature: the moment the Mayor calls the cops, everyone who was lurking nearby suddenly has heat — causing chaotic scrambles to the Black Market or sewer. A motorcade rolling through downtown during a Crime Wave, escorts stunned by two rival gang birds who weren't even cooperating, followed by a limo poop-frenzy while 3 cops close in — that's peak CARNAGE CITY emergent chaos. Pure CARNAGE + SOCIAL + SPECTACLE energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)

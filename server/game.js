@@ -167,6 +167,9 @@ const DAILY_CHALLENGE_POOL = [
   // Session 110: Sky Pirate Airship challenges
   { id: 'cannoneer',       title: 'Cannoneer',      desc: 'Hit the Sky Pirate Airship 5 times',                         target: 5,  trackType: 'pirate_ship_hit',  reward: { xp: 200, coins: 100 } },
   { id: 'pirate_slayer',   title: 'Pirate Slayer',  desc: 'Help bring down the Sky Pirate Airship',                     target: 1,  trackType: 'pirate_ship_down', reward: { xp: 280, coins: 140 } },
+  // Session 111: Mayor's Motorcade challenges
+  { id: 'motorcade_hit',     title: 'Road Rage',         desc: "Poop the Mayor's limo at least once",                    target: 1,  trackType: 'motorcade_hit',     reward: { xp: 190, coins:  95 } },
+  { id: 'motorcade_outrage', title: 'Motorcade Crasher', desc: "Trigger the Mayor's Outrage (contribute limo hits)",     target: 1,  trackType: 'motorcade_outrage', reward: { xp: 250, coins: 125 } },
 ];
 
 // ============================================================
@@ -423,6 +426,21 @@ class GameEngine {
     // If it escapes undefeated: the richest bird gets robbed 15% coins (pirate raid).
     this.skyPirateShip = null; // null | { x,y,vx,vy,angle,hp,maxHp,pirates:[],lootCrates:[],contributors:Map,spawnedAt,expiresAt,lastLootDrop,sinking }
     this._skyPirateTimer = Date.now() + this._randomRange(35 * 60000, 50 * 60000);
+
+    // === MAYOR'S MOTORCADE — Session 111 ===
+    // The Mayor's black limo rolls through Bird City flanked by 2 motorcycle cops.
+    // Poop the escort cops to stun them (2 hits each), then hit the unguarded limo (8 HP).
+    // After 5 limo hits the Mayor calls the OUTRAGE — red-and-blue police flood the streets,
+    // every bird online gets +20 heat. But contributors split 800c + 500 XP on departure.
+    this.motorcade = null;
+    this._motorcadeTimer = Date.now() + this._randomRange(18 * 60000, 25 * 60000);
+    // Four routes along road centerlines: y=870 / y=1570 across; x=770 / x=1670 down+across
+    this.MOTORCADE_ROUTES = [
+      [{ x: -100, y: 870 }, { x: 800, y: 870 }, { x: 3100, y: 870 }],
+      [{ x: 3100, y: 1570 }, { x: 2570, y: 1570 }, { x: 800, y: 1570 }, { x: -100, y: 1570 }],
+      [{ x: 1670, y: -100 }, { x: 1670, y: 870 }, { x: 3100, y: 870 }],
+      [{ x: -100, y: 870 }, { x: 770, y: 870 }, { x: 770, y: 1570 }, { x: 770, y: 2310 }, { x: -100, y: 2310 }],
+    ];
 
     // === BIRD CITY ELECTIONS — Session 103 ===
     // Every 35-45 minutes, City Hall puts 3 random policies to a city-wide vote (45s).
@@ -2031,6 +2049,9 @@ class GameEngine {
 
     // === Sky Pirate Airship ===
     this._updateSkyPirateShip(dt, now);
+
+    // === Mayor's Motorcade ===
+    this._updateMotorcade(dt, now);
   }
 
   // ============================================================
@@ -3844,6 +3865,52 @@ class GameEngine {
             this.events.push({ type: 'pirate_guard_stunned', pirateId: pirate.id, x: pirate.x, y: pirate.y });
           }
         }
+      } else if (hit.target === 'motorcade_limo' && this.motorcade && !this.motorcade.departed) {
+        // Poop hit the Mayor's Limo!
+        const mc = this.motorcade;
+        // Only 1 hit per bird per 8s cooldown (prevents infinite farming while driving alongside)
+        const lastHit = mc.attackCooldowns.get(bird.id) || 0;
+        if (now - lastHit < 8000) {
+          xpGain = 0; // silently ignore, don't cancel the poop but no reward
+        } else {
+          mc.attackCooldowns.set(bird.id, now);
+          const dmg = isMegaPoop ? 2 : 1;
+          mc.hp = Math.max(0, mc.hp - dmg);
+          // Track contributor
+          const mc_c = mc.contributors.get(bird.id) || { name: bird.name, gangTag: bird.gangTag || null, hits: 0 };
+          mc_c.hits += dmg;
+          mc.contributors.set(bird.id, mc_c);
+          xpGain = isMegaPoop ? 40 : 15;
+          bird.coins += isMegaPoop ? 12 : 4;
+          this._trackDailyProgress(bird, 'motorcade_hit', 1);
+          this.events.push({ type: 'motorcade_limo_hit', hitterId: bird.id, hitterName: bird.name, hitterGang: bird.gangTag || null, hp: mc.hp, maxHp: mc.maxHp, dmg, x: mc.x, y: mc.y });
+          // Trigger outrage at 5 hits (mc.maxHp - 3)
+          if (!mc.outraged && mc.hp <= mc.maxHp - 5) {
+            this._triggerMotorcadeOutrage(mc, now);
+          }
+          // Motorcade departs when HP hits 0 (limo finally escapes after sustained assault)
+          if (mc.hp <= 0) {
+            this._departMotorcade(mc, now);
+          }
+        }
+      } else if (hit.target === 'motorcade_escort' && this.motorcade && !this.motorcade.departed) {
+        // Poop hit a motorcycle cop escort!
+        const mc = this.motorcade;
+        const escort = mc.escorts.find(e => e.id === hit.escortId);
+        if (escort && !escort.stunned) {
+          const esc_dmg = isMegaPoop ? 2 : 1;
+          escort.hitCount = (escort.hitCount || 0) + esc_dmg;
+          xpGain = isMegaPoop ? 30 : 12;
+          bird.coins += isMegaPoop ? 8 : 3;
+          this.events.push({ type: 'motorcade_escort_hit', hitterId: bird.id, hitterName: bird.name, escortId: escort.id, hitCount: escort.hitCount, x: escort.x, y: escort.y });
+          if (escort.hitCount >= 2) {
+            escort.stunned = true;
+            escort.stunnedUntil = now + 10000; // 10s stun
+            xpGain += 30;
+            bird.coins += 10;
+            this.events.push({ type: 'motorcade_escort_stunned', hitterId: bird.id, hitterName: bird.name, escortId: escort.id, x: escort.x, y: escort.y });
+          }
+        }
       } else if (hit.target === 'bowling_bird' && this.bowlingBall && this.bowlingBall.hp > 0) {
         // Poop hit the Bowling Bird! Chip away at the shell to free the bird inside.
         const bb = this.bowlingBall;
@@ -5417,6 +5484,28 @@ class GameEngine {
         if (Math.sqrt(gdx * gdx + gdy * gdy) < hitRadius + 14) {
           if (!isMegaPoop) return { target: 'throne_guard', guardId: guard.id };
           allHits.push({ target: 'throne_guard', guardId: guard.id });
+        }
+      }
+    }
+
+    // Check Mayor's Motorcade — limo body and escort motorcycle cops
+    if (this.motorcade && !this.motorcade.departed) {
+      const mc = this.motorcade;
+      // Limo body (40px radius — big target)
+      const mdx = poop.x - mc.x;
+      const mdy = poop.y - mc.y;
+      if (Math.sqrt(mdx * mdx + mdy * mdy) < hitRadius + 40) {
+        if (!isMegaPoop) return { target: 'motorcade_limo' };
+        allHits.push({ target: 'motorcade_limo' });
+      }
+      // Escort motorcycle cops
+      for (const escort of mc.escorts) {
+        if (escort.stunned) continue;
+        const edx = poop.x - escort.x;
+        const edy = poop.y - escort.y;
+        if (Math.sqrt(edx * edx + edy * edy) < hitRadius + 12) {
+          if (!isMegaPoop) return { target: 'motorcade_escort', escortId: escort.id };
+          allHits.push({ target: 'motorcade_escort', escortId: escort.id });
         }
       }
     }
@@ -7359,6 +7448,18 @@ class GameEngine {
         expiresAt: this.courierPigeon.expiresAt,
         amEscorting: this.courierPigeon.escorts.has(bird.id),
         myTimeNear: (this.courierPigeon.escorts.get(bird.id) || { timeNear: 0 }).timeNear,
+      } : null,
+      motorcade: this.motorcade && !this.motorcade.departed ? {
+        x: this.motorcade.x,
+        y: this.motorcade.y,
+        angle: this.motorcade.angle || 0,
+        hp: this.motorcade.hp,
+        maxHp: this.motorcade.maxHp,
+        outraged: this.motorcade.outraged || false,
+        outragedAt: this.motorcade.outragedAt || null,
+        endsAt: this.motorcade.endsAt,
+        myHits: (this.motorcade.contributors.get(bird.id) || { hits: 0 }).hits,
+        escorts: this.motorcade.escorts.map(e => ({ id: e.id, x: e.x, y: e.y, angle: e.angle, stunned: e.stunned })),
       } : null,
       raccoons: nearbyRaccoons,
       drunkPigeons: nearbyDrunkPigeons,
@@ -16192,6 +16293,7 @@ class GameEngine {
       grudgeRevenges:       [],   // [{ revenger, revengerGangTag, target }] — completed grudges this cycle
       flashMobs:            [],   // [{ location, count, isMega }] — flash mobs this cycle
       auctionResults:       [],   // [{ itemName, itemEmoji, winnerName, winnerGangTag, finalBid }]
+      motorcadeAttacked:    false, // someone attacked the motorcade
     };
   }
 
@@ -24598,6 +24700,170 @@ class GameEngine {
     // 'disconnected' — silent cleanup, no reward
   }
 
+  // ============================================================
+  // MAYOR'S MOTORCADE — Session 111
+  // ============================================================
+  _updateMotorcade(dt, now) {
+    // Spawn timer
+    if (!this.motorcade && now >= this._motorcadeTimer && this.birds.size > 0) {
+      this._spawnMotorcade(now);
+    }
+    if (!this.motorcade) return;
+    const mc = this.motorcade;
+
+    // Expiry / departure
+    if (mc.departed || now >= mc.endsAt) {
+      if (!mc.departed) this._departMotorcade(mc, now);
+      this.motorcade = null;
+      this._motorcadeTimer = now + this._randomRange(18 * 60000, 25 * 60000);
+      return;
+    }
+
+    // Move limo along route
+    const dtSec = dt / 1000;
+    const target = mc.route[mc.routeIdx];
+    if (target) {
+      const dx = target.x - mc.x;
+      const dy = target.y - mc.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 8) {
+        mc.routeIdx++;
+        if (mc.routeIdx >= mc.route.length) {
+          // Reached end of route — depart quietly
+          this._departMotorcade(mc, now);
+          return;
+        }
+      } else {
+        const speed = mc.outraged ? mc.speed * 1.6 : mc.speed;
+        mc.x += (dx / dist) * speed * dtSec;
+        mc.y += (dy / dist) * speed * dtSec;
+        mc.angle = Math.atan2(dy, dx);
+      }
+    }
+
+    // Recover stunned escorts
+    for (const escort of mc.escorts) {
+      if (escort.stunned && now >= escort.stunnedUntil) {
+        escort.stunned = false;
+        escort.hitCount = 0;
+        this.events.push({ type: 'motorcade_escort_recovered', escortId: escort.id });
+      }
+    }
+
+    // Orbit escorts around the limo
+    const escortOffset = 80;
+    mc.escorts.forEach((escort, i) => {
+      const side = i === 0 ? 1 : -1;
+      // Perpendicular to travel direction
+      const perpX = -Math.sin(mc.angle);
+      const perpY = Math.cos(mc.angle);
+      const targetX = mc.x + perpX * side * escortOffset - Math.cos(mc.angle) * 30;
+      const targetY = mc.y + perpY * side * escortOffset - Math.sin(mc.angle) * 30;
+      // Lerp toward target position
+      escort.x += (targetX - escort.x) * 0.08;
+      escort.y += (targetY - escort.y) * 0.08;
+      escort.angle = mc.angle;
+    });
+
+    // If outraged and not yet announced a heat surge, push the event (one-shot)
+    if (mc.outraged && !mc.outrageEventFired) {
+      mc.outrageEventFired = true;
+      // Extra cops dispatched — add heat to all birds
+      for (const b of this.birds.values()) {
+        this._addHeat(b.id, 20);
+      }
+      this.events.push({ type: 'motorcade_outrage_heat', msg: '🚨 The Mayor calls in EXTRA COPS! Every bird gains +20 heat!' });
+    }
+  }
+
+  _spawnMotorcade(now) {
+    const route = this.MOTORCADE_ROUTES[Math.floor(Math.random() * this.MOTORCADE_ROUTES.length)];
+    const start = route[0];
+    const mc = {
+      x: start.x,
+      y: start.y,
+      angle: 0,
+      speed: 70,
+      route,
+      routeIdx: 1,
+      hp: 8,
+      maxHp: 8,
+      outraged: false,
+      outragedAt: null,
+      outrageEventFired: false,
+      departed: false,
+      departedAt: null,
+      contributors: new Map(),
+      attackCooldowns: new Map(),
+      spawnedAt: now,
+      endsAt: now + 5 * 60000,
+      escorts: [
+        { id: 0, x: start.x - 30, y: start.y + 80, angle: 0, stunned: false, stunnedUntil: 0, hitCount: 0 },
+        { id: 1, x: start.x - 30, y: start.y - 80, angle: 0, stunned: false, stunnedUntil: 0, hitCount: 0 },
+      ],
+    };
+    this.motorcade = mc;
+    // Find a rough entry direction for the announcement
+    const secondPt = route[1] || route[0];
+    const entryDir = secondPt.x > start.x ? 'west' : secondPt.x < start.x ? 'east' : secondPt.y > start.y ? 'north' : 'south';
+    this.events.push({
+      type: 'motorcade_spawn',
+      x: mc.x,
+      y: mc.y,
+      msg: `🚗 THE MAYOR'S MOTORCADE enters from the ${entryDir}! Stun the escort cops (2 hits) then poop the limo!`,
+    });
+    // Track for Gazette
+    if (this.gazetteStats) this.gazetteStats.motorcades = (this.gazetteStats.motorcades || 0) + 1;
+  }
+
+  _triggerMotorcadeOutrage(mc, now) {
+    mc.outraged = true;
+    mc.outragedAt = now;
+    this.events.push({
+      type: 'motorcade_outrage',
+      x: mc.x,
+      y: mc.y,
+      msg: `🚨 THE MAYOR IS OUTRAGED! Extra cops surge into the city — every bird gains +20 heat!`,
+    });
+    // Track daily challenge progress for every contributor
+    for (const birdId of mc.contributors.keys()) {
+      const b = this.birds.get(birdId);
+      if (b) this._trackDailyProgress(b, 'motorcade_outrage', 1);
+    }
+  }
+
+  _departMotorcade(mc, now) {
+    mc.departed = true;
+    mc.departedAt = now;
+    const totalHits = Array.from(mc.contributors.values()).reduce((s, c) => s + c.hits, 0);
+    if (totalHits === 0) {
+      // Pristine departure — no one touched it
+      this.events.push({ type: 'motorcade_departed', msg: '🚗 The Mayor\'s Motorcade exits the city unscathed. The Mayor is pleased.' });
+      return;
+    }
+    // Reward contributors proportionally
+    const totalXp = 500, totalCoins = 800;
+    for (const [birdId, contrib] of mc.contributors) {
+      const b = this.birds.get(birdId);
+      if (!b) continue;
+      const share = contrib.hits / Math.max(totalHits, 1);
+      const xpReward = Math.max(60, Math.floor(totalXp * share));
+      const coinReward = Math.max(25, Math.floor(totalCoins * share));
+      b.xp = (b.xp || 0) + xpReward;
+      b.coins = (b.coins || 0) + coinReward;
+      this._levelUpIfNeeded(b);
+      this.events.push({ type: 'motorcade_reward', targetId: birdId, xp: xpReward, coins: coinReward, targetName: b.name, gangTag: b.gangTag || null });
+    }
+    if (this.gazetteStats) this.gazetteStats.motorcadeAttacked = true;
+    const topContrib = [...mc.contributors.entries()].sort((a, b) => b[1].hits - a[1].hits)[0];
+    const topName = topContrib ? mc.contributors.get(topContrib[0]).name : 'Unknown';
+    this.events.push({
+      type: 'motorcade_departed',
+      attacked: true,
+      topName,
+      msg: `🚗 The Mayor's Motorcade flees the city! Top attacker: ${topName}. Contributors rewarded!`,
+    });
+  }
 }
 
 module.exports = GameEngine;

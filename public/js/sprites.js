@@ -7837,4 +7837,187 @@ window.Sprites = {
 
     ctx.restore();
   },
+
+  // ============================================================
+  // MAYOR'S MOTORCADE — Session 111
+  // ============================================================
+  drawMayorLimo(ctx, x, y, angle, outraged, hp, maxHp, now) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+
+    const pulse = 0.75 + 0.25 * Math.sin(now * 0.004);
+
+    // Ground shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.28)';
+    ctx.beginPath();
+    ctx.ellipse(0, 4, 52, 11, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Body — long sleek black limo
+    ctx.fillStyle = outraged ? '#1a0505' : '#111111';
+    ctx.strokeStyle = outraged ? '#cc2222' : '#3a3a3a';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.roundRect(-46, -12, 92, 24, 5);
+    ctx.fill(); ctx.stroke();
+
+    // Roof section (shorter, centered)
+    ctx.fillStyle = outraged ? '#220808' : '#1c1c1c';
+    ctx.beginPath();
+    ctx.roundRect(-28, -20, 56, 12, 4);
+    ctx.fill();
+
+    // Windows (3 tinted windows)
+    ctx.fillStyle = 'rgba(80,120,160,0.55)';
+    ctx.beginPath(); ctx.roundRect(-22, -18, 14, 10, 2); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(-5, -18, 14, 10, 2); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(12, -18, 14, 10, 2); ctx.fill();
+
+    // Front windshield
+    ctx.fillStyle = 'rgba(100,160,200,0.5)';
+    ctx.beginPath(); ctx.roundRect(30, -15, 12, 8, 2); ctx.fill();
+
+    // Headlights
+    ctx.fillStyle = outraged ? '#ffaaaa' : '#ffffcc';
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = outraged ? '#ff4444' : '#ffff88';
+    ctx.beginPath(); ctx.ellipse(46, -6, 4, 3, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(46, 6, 4, 3, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Tail lights (small red)
+    ctx.fillStyle = '#cc2222';
+    ctx.beginPath(); ctx.ellipse(-46, -6, 3, 3, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(-46, 6, 3, 3, 0, 0, Math.PI * 2); ctx.fill();
+
+    // Wheels (4)
+    ctx.fillStyle = '#555';
+    ctx.strokeStyle = '#888';
+    ctx.lineWidth = 1;
+    for (const wx of [-28, 24]) {
+      for (const wy of [-14, 14]) {
+        ctx.beginPath(); ctx.ellipse(wx, wy, 7, 5, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#333';
+        ctx.beginPath(); ctx.ellipse(wx, wy, 3, 2.5, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#555';
+      }
+    }
+
+    // USA flag on front hood
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('🇺🇸', 36, -22);
+
+    // Outraged red flashing siren lights on roof
+    if (outraged) {
+      const sirenPhase = Math.floor(now / 200) % 2;
+      ctx.beginPath();
+      ctx.ellipse(-10, -22, 5, 3, 0, 0, Math.PI * 2);
+      ctx.fillStyle = sirenPhase === 0 ? '#ff2222' : '#ff8888';
+      ctx.shadowBlur = 10; ctx.shadowColor = '#ff2222';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(10, -22, 5, 3, 0, 0, Math.PI * 2);
+      ctx.fillStyle = sirenPhase === 1 ? '#2222ff' : '#8888ff';
+      ctx.shadowColor = '#2222ff';
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
+    // HP bar (shown when damaged)
+    if (hp < maxHp) {
+      const barW = 90, barH = 5;
+      const bx = -barW / 2, by = -30;
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.fillRect(bx - 1, by - 1, barW + 2, barH + 2);
+      const pct = hp / maxHp;
+      ctx.fillStyle = pct > 0.5 ? '#44cc44' : pct > 0.25 ? '#ccaa00' : '#cc2222';
+      ctx.fillRect(bx, by, Math.floor(barW * pct), barH);
+      ctx.strokeStyle = '#333';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(bx - 1, by - 1, barW + 2, barH + 2);
+    }
+
+    ctx.restore();
+  },
+
+  drawMotorcycleCop(ctx, x, y, angle, stunned, now) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+
+    const pulse = 0.7 + 0.3 * Math.sin(now * 0.005);
+
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.22)';
+    ctx.beginPath();
+    ctx.ellipse(0, 3, 18, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (stunned) {
+      // Stunned — bike tipped over, grey look, orbiting stars
+      ctx.globalAlpha = 0.75;
+      ctx.fillStyle = '#666';
+      ctx.beginPath(); ctx.ellipse(0, 4, 16, 8, 0.4, 0, Math.PI * 2); ctx.fill();
+      // Stars
+      const t = now * 0.004;
+      for (let i = 0; i < 3; i++) {
+        const a = t + (i / 3) * Math.PI * 2;
+        const sx = Math.cos(a) * 12, sy = Math.sin(a) * 6 - 12;
+        ctx.font = '9px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('⭐', sx, sy);
+      }
+      ctx.globalAlpha = 1;
+      ctx.restore();
+      return;
+    }
+
+    // Motorcycle body — dark blue police
+    ctx.fillStyle = '#1c2a4a';
+    ctx.strokeStyle = '#4466aa';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 18, 7, 0, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+
+    // Wheels
+    ctx.fillStyle = '#333';
+    ctx.beginPath(); ctx.ellipse(-13, 0, 7, 7, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(13, 0, 7, 7, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#888';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(-13, 0, 7, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(13, 0, 7, 0, Math.PI * 2); ctx.stroke();
+
+    // Rider (compact pigeon silhouette)
+    ctx.fillStyle = '#1c2a4a';
+    ctx.beginPath();
+    ctx.ellipse(2, -10, 7, 8, -0.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Helmet
+    ctx.fillStyle = '#223366';
+    ctx.beginPath();
+    ctx.arc(4, -14, 6, 0, Math.PI * 2);
+    ctx.fill();
+    // Gold badge
+    ctx.fillStyle = '#ffcc00';
+    ctx.beginPath();
+    ctx.ellipse(4, -14, 2.5, 2.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Siren light on top of rider
+    const sirenPhase = Math.floor(now / 250) % 2;
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.ellipse(4, -22, 3, 2, 0, 0, Math.PI * 2);
+    ctx.fillStyle = sirenPhase === 0 ? '#ff2222' : '#2222ff';
+    ctx.shadowColor = sirenPhase === 0 ? '#ff2222' : '#2222ff';
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    ctx.restore();
+  },
 };

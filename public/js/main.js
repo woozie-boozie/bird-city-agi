@@ -4906,6 +4906,57 @@
       addEventMessage(`🎳 The Bowling Bird survived... +15c consolation.`, '#888855');
     }
 
+    // === MAYOR'S MOTORCADE (Session 111) ===
+    if (ev.type === 'motorcade_spawn') {
+      showAnnouncement(`🚗 MAYOR'S MOTORCADE! Hit the limo 8 times!`, '#1a3a6b', 5000);
+      addEventMessage(`🚗 MAYOR'S MOTORCADE is cruising through Bird City! Stun the escorts, then poop the limo!`, '#3366cc');
+      triggerScreenShake(7, 400);
+      window._motorcadeDir = { x: ev.x, y: ev.y };
+    }
+    if (ev.type === 'motorcade_escort_hit') {
+      if (ev.hitterId === myId) {
+        const now2 = performance.now();
+        effects.push({ type: 'xp', x: ev.x, y: ev.y - 10, time: now2, duration: 900, text: `🏍 HIT! ${ev.hitCount}/2`, color: '#5588ff' });
+      }
+    }
+    if (ev.type === 'motorcade_escort_stunned') {
+      addEventMessage(`🏍💫 ${ev.hitterName} stunned a motorcycle escort!`, '#5599ff');
+      if (ev.hitterId === myId) {
+        showAnnouncement(`🏍 ESCORT STUNNED! Now hit the LIMO!`, '#5588ff', 2500);
+      }
+      triggerScreenShake(4, 300);
+    }
+    if (ev.type === 'motorcade_limo_hit') {
+      if (ev.hitterId === myId) {
+        const now2 = performance.now();
+        effects.push({ type: 'xp', x: ev.x, y: ev.y - 10, time: now2, duration: 1000, text: `🚗 ${ev.hp}/${ev.maxHp}`, color: '#ffcc33' });
+      }
+    }
+    if (ev.type === 'motorcade_outrage') {
+      showAnnouncement(`🚨 THE MAYOR'S OUTRAGED! Cops flooding the streets!`, '#cc2200', 6000);
+      addEventMessage(`🚨 MAYOR'S MOTORCADE OUTRAGE — every bird in the city gets +20 heat!`, '#ff3322');
+      triggerScreenShake(12, 700);
+      // Full-screen red flash
+      window._motorcadeOutrageFlash = performance.now();
+    }
+    if (ev.type === 'motorcade_escort_recovered') {
+      addEventMessage(`🏍 A motorcycle escort recovered!`, '#aaaaaa');
+    }
+    if (ev.type === 'motorcade_departed') {
+      if (ev.attacked) {
+        showAnnouncement(`🚗 MOTORCADE FLED! ${ev.topName} led the attack!`, '#3366cc', 4000);
+        addEventMessage(`🚗 Mayor's Motorcade has fled Bird City! Chaos left in its wake.`, '#5588ff');
+      } else {
+        addEventMessage(`🚗 The Mayor's Motorcade passed through peacefully.`, '#aaaaaa');
+      }
+      window._motorcadeDir = null;
+    }
+    if (ev.type === 'motorcade_reward' && (ev.birdId === myId || ev.targetId === myId)) {
+      showAnnouncement(`🚗 MOTORCADE! +${ev.xp} XP +${ev.coins}c!`, '#ffd700', 4000);
+      const now2 = performance.now();
+      effects.push({ type: 'xp', x: myX || 1500, y: myY ? myY - 30 : 1500, time: now2, duration: 1800, text: `🚗 +${ev.xp} XP +${ev.coins}c`, color: '#ffd700' });
+    }
+
     // === SKY PIRATE AIRSHIP (Session 110) ===
     if (ev.type === 'sky_pirate_ship_spawn') {
       showAnnouncement(`☠️ SKY PIRATES! Airship inbound — poop it 20 times!`, '#dd4422', 5000);
@@ -9195,6 +9246,24 @@
       }
     }
 
+    // Mayor's Motorcade (Session 111)
+    if (gameState.motorcade) {
+      const mc = gameState.motorcade;
+      const mcsx = mc.x - camera.x + camera.screenW / 2;
+      const mcsy = mc.y - camera.y + camera.screenH / 2;
+      if (mcsx > -margin - 120 && mcsx < camera.screenW + margin + 120 && mcsy > -margin - 120 && mcsy < camera.screenH + margin + 120) {
+        Renderer.drawMotorcade(ctx, {
+          x: mcsx, y: mcsy, angle: mc.angle || 0, hp: mc.hp, maxHp: mc.maxHp,
+          outraged: mc.outraged, now,
+          escorts: (mc.escorts || []).map(e => ({
+            ...e,
+            x: e.x - camera.x + camera.screenW / 2,
+            y: e.y - camera.y + camera.screenH / 2,
+          })),
+        }, now);
+      }
+    }
+
     // Courier Pigeon (Session 107)
     if (gameState.courierPigeon) {
       const cp = gameState.courierPigeon;
@@ -10141,6 +10210,11 @@
       Renderer.drawSkyPirateShipOnMinimap(minimapCtx, sp, worldData, now);
     }
 
+    // Mayor's Motorcade minimap (Session 111)
+    if (gameState.motorcade) {
+      Renderer.drawMotorcadeOnMinimap(minimapCtx, gameState.motorcade, WORLD_W, WORLD_H, minimapCanvas.width, minimapCanvas.height, now);
+    }
+
     // Decoys
     if (gameState.decoys) {
       for (const d of gameState.decoys) {
@@ -10869,6 +10943,111 @@
       ctx.restore();
     }
 
+    // === MAYOR'S MOTORCADE HUD BAR (Session 111) ===
+    if (gameState.motorcade) {
+      const mc = gameState.motorcade;
+      const mcTimeLeft = Math.max(0, mc.endsAt - now);
+      const mcHpFrac = mc.hp / mc.maxHp;
+      const mcPulse = 0.7 + 0.3 * Math.abs(Math.sin(now * (mc.outraged ? 0.016 : 0.007)));
+      const mcOutraged = mc.outraged;
+      const mcColor = mcOutraged ? '#dd2200' : '#1a3a8f';
+
+      // Subtle blue/red tint
+      ctx.save();
+      ctx.globalAlpha = 0.03 + 0.02 * mcPulse;
+      ctx.fillStyle = mcOutraged ? '#cc1100' : '#1133aa';
+      ctx.fillRect(0, 0, camera.screenW, camera.screenH);
+      ctx.globalAlpha = 1;
+      ctx.restore();
+
+      // Stack below all other HUD bars
+      const hasCWmc = gameState.self && gameState.self.crimeWave;
+      const hasSGmc = gameState.seagullInvasion;
+      const hasMGmc = gameState.migration;
+      const hasVTmc = gameState.vaultTruck && !gameState.vaultTruck.cracked && !gameState.vaultTruck.escaped;
+      const hasSTmc = gameState.stampede;
+      const hasPKmc = gameState.suspiciousPackage;
+      const hasBVmc = gameState.birdnapperVan && gameState.birdnapperVan.state === 'escaping';
+      const hasFMmc = gameState.flashMob;
+      const hasSPmc = gameState.skyPirateShip && !gameState.skyPirateShip.sinking;
+      let mcBarY = 132;
+      if (hasCWmc) mcBarY += 43;
+      if (hasSGmc) mcBarY += 43;
+      if (hasMGmc) mcBarY += 43;
+      if (hasVTmc) mcBarY += 43;
+      if (hasSTmc) mcBarY += 43;
+      if (hasPKmc) mcBarY += 43;
+      if (hasBVmc) mcBarY += 43;
+      if (hasFMmc) mcBarY += 43;
+      if (hasSPmc) mcBarY += 43;
+
+      const mcBarW = 240, mcBarH = 12;
+      const mcBarX = camera.screenW / 2 - mcBarW / 2;
+
+      ctx.save();
+      ctx.globalAlpha = 0.93;
+      ctx.fillStyle = 'rgba(0,0,0,0.78)';
+      ctx.beginPath();
+      ctx.roundRect(mcBarX - 60, mcBarY - 18, mcBarW + 120, mcBarH + 32, 10);
+      ctx.fill();
+
+      ctx.globalAlpha = mcPulse;
+      ctx.fillStyle = mcColor;
+      ctx.font = 'bold 11px Arial';
+      ctx.textAlign = 'center';
+      const mcMyHitsStr = mc.myHits > 0 ? ` · MY HITS: ${mc.myHits}` : '';
+      const mcLabel = mcOutraged
+        ? `🚨 OUTRAGE! LIMO — ${mc.hp}/${mc.maxHp} HP · ${Math.ceil(mcTimeLeft / 1000)}s${mcMyHitsStr}`
+        : `🚗 MAYOR'S MOTORCADE — ${mc.hp}/${mc.maxHp} HP · ${Math.ceil(mcTimeLeft / 1000)}s · Stun escorts first!${mcMyHitsStr}`;
+      ctx.fillText(mcLabel, camera.screenW / 2, mcBarY - 4);
+
+      ctx.globalAlpha = 0.85;
+      ctx.fillStyle = mcOutraged ? 'rgba(60,0,0,0.55)' : 'rgba(0,15,60,0.55)';
+      ctx.beginPath();
+      ctx.roundRect(mcBarX, mcBarY + 2, mcBarW, mcBarH, 4);
+      ctx.fill();
+
+      const mcFillColor = mcHpFrac > 0.5 ? (mcOutraged ? '#ff3300' : '#3366dd') : mcHpFrac > 0.25 ? '#ff8800' : '#ff2200';
+      ctx.fillStyle = mcFillColor;
+      ctx.beginPath();
+      ctx.roundRect(mcBarX, mcBarY + 2, mcBarW * Math.max(0, mcHpFrac), mcBarH, 4);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.restore();
+
+      // Off-screen direction arrow
+      const mcSX = mc.x - camera.x + camera.screenW / 2;
+      const mcSY = mc.y - camera.y + camera.screenH / 2;
+      const mcPad = 60;
+      if (mcSX < mcPad || mcSX > camera.screenW - mcPad || mcSY < mcPad || mcSY > camera.screenH - mcPad) {
+        const mcArrAngle = Math.atan2(mcSY - camera.screenH / 2, mcSX - camera.screenW / 2);
+        const mcArrRadius = Math.min(camera.screenW, camera.screenH) * 0.42;
+        const mcArrX = camera.screenW / 2 + Math.cos(mcArrAngle) * mcArrRadius;
+        const mcArrY = camera.screenH / 2 + Math.sin(mcArrAngle) * mcArrRadius;
+        ctx.save();
+        ctx.translate(mcArrX, mcArrY);
+        ctx.rotate(mcArrAngle);
+        ctx.globalAlpha = 0.85 + 0.15 * mcPulse;
+        ctx.fillStyle = mcOutraged ? '#ff4400' : '#2255cc';
+        ctx.strokeStyle = mcOutraged ? '#660000' : '#001144';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(22, 0);
+        ctx.lineTo(-10, 10);
+        ctx.lineTo(-5, 0);
+        ctx.lineTo(-10, -10);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+        ctx.font = '13px serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('🚗', 0, 0);
+        ctx.restore();
+      }
+    }
+
     // === CRIME WAVE OVERLAY ===
     if (gameState.self && gameState.self.crimeWave) {
       const cw = gameState.self.crimeWave;
@@ -11283,6 +11462,19 @@
         ctx.fillRect(0, 0, camera.screenW, camera.screenH);
       } else {
         lightningFlash = null;
+      }
+    }
+
+    // Motorcade outrage flash (red)
+    if (window._motorcadeOutrageFlash) {
+      const mof_age = now - window._motorcadeOutrageFlash;
+      const mof_dur = 600;
+      if (mof_age < mof_dur) {
+        const mof_alpha = Math.max(0, 0.55 * (1 - mof_age / mof_dur));
+        ctx.fillStyle = `rgba(220, 30, 30, ${mof_alpha})`;
+        ctx.fillRect(0, 0, camera.screenW, camera.screenH);
+      } else {
+        window._motorcadeOutrageFlash = null;
       }
     }
 
@@ -14755,6 +14947,23 @@
       const timeStr = mins > 0 ? `${mins}m ${rem}s` : `${secs}s`;
       const urgency = hpPct <= 10 ? 'animation:pulseRed 0.4s infinite alternate;' : hpPct <= 25 ? 'animation:kingpinGlow 0.6s ease-in-out infinite alternate;' : '';
       html += `<div class="bm-buff-pill" style="background:rgba(80,65,0,0.92);border-color:#ffd700;color:#ffe566;font-weight:bold;${urgency}">💼 VAULT TRUCK — ${vt.hp}HP · ${timeStr} · MY HITS: ${myHits} · POOP IT!</div>`;
+    }
+
+    // === MAYOR'S MOTORCADE pill (Session 111) ===
+    if (gameState.motorcade) {
+      const mc = gameState.motorcade;
+      const mcMyHits = mc.myHits || 0;
+      const mcSecs = Math.ceil(Math.max(0, mc.endsAt - now) / 1000);
+      const mcHpFrac = mc.hp / mc.maxHp;
+      const mcUrgency = mcHpFrac <= 0.25 ? 'animation:pulseRed 0.4s infinite alternate;' : '';
+      if (mc.outraged) {
+        html += `<div class="bm-buff-pill" style="background:rgba(80,10,0,0.95);border-color:#ff3300;color:#ff6644;font-weight:bold;${mcUrgency}">🚨 MAYOR OUTRAGED! Limo fleeing — ${mc.hp}/${mc.maxHp}HP · ${mcSecs}s · MY HITS: ${mcMyHits}</div>`;
+      } else {
+        const escortsLeft = (mc.escorts || []).filter(e => !e.stunned).length;
+        const hitsStr = mcMyHits > 0 ? ` · MY HITS: ${mcMyHits}` : '';
+        const tipStr = escortsLeft > 0 ? ` · Stun ${escortsLeft} escort(s) first!` : ' · LIMO IS EXPOSED! POOP IT!';
+        html += `<div class="bm-buff-pill" style="background:rgba(10,25,80,0.92);border-color:#3366cc;color:#6699ff;font-weight:bold;">🚗 MAYOR'S MOTORCADE — ${mc.hp}/${mc.maxHp}HP · ${mcSecs}s${tipStr}${hitsStr}</div>`;
+      }
     }
 
     // === DUEL REMATCH pill ===

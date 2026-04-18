@@ -5584,4 +5584,63 @@ window.Renderer = {
     minimapCtx.fillText('🔨', cx, cy);
     minimapCtx.restore();
   },
+
+  // ============================================================
+  // MAYOR'S MOTORCADE — Session 111
+  // ============================================================
+  drawMotorcade(ctx, motorcade, now) {
+    if (!motorcade) return;
+    const { x, y, angle, escorts, outraged, hp, maxHp } = motorcade;
+
+    // Draw escort motorcycle cops first (behind limo visually)
+    for (const escort of escorts) {
+      if (window.Sprites && Sprites.drawMotorcycleCop) {
+        Sprites.drawMotorcycleCop(ctx, escort.x, escort.y, escort.angle, escort.stunned, now);
+      }
+    }
+
+    // Draw the limo
+    if (window.Sprites && Sprites.drawMayorLimo) {
+      Sprites.drawMayorLimo(ctx, x, y, angle, outraged, hp, maxHp, now);
+    }
+  },
+
+  drawMotorcadeOnMinimap(minimapCtx, motorcade, worldW, worldH, mmW, mmH, now) {
+    if (!motorcade) return;
+    const { x, y, outraged, escorts } = motorcade;
+
+    const cx = (x / worldW) * mmW;
+    const cy = (y / worldH) * mmH;
+    const pulse = 0.6 + 0.4 * Math.abs(Math.sin(now * 0.004));
+    const color = outraged ? '#ff3333' : '#222222';
+    const glowColor = outraged ? '#ff0000' : '#cccccc';
+
+    minimapCtx.save();
+
+    // Limo dot
+    minimapCtx.shadowBlur = 8 * pulse;
+    minimapCtx.shadowColor = glowColor;
+    minimapCtx.fillStyle = color;
+    minimapCtx.beginPath();
+    minimapCtx.arc(cx, cy, 4 + pulse * 1.5, 0, Math.PI * 2);
+    minimapCtx.fill();
+    minimapCtx.shadowBlur = 0;
+
+    minimapCtx.font = '9px sans-serif';
+    minimapCtx.textAlign = 'center';
+    minimapCtx.textBaseline = 'middle';
+    minimapCtx.fillText('🚗', cx, cy);
+
+    // Escort dots
+    for (const escort of escorts) {
+      const ex = (escort.x / worldW) * mmW;
+      const ey = (escort.y / worldH) * mmH;
+      minimapCtx.fillStyle = escort.stunned ? '#888888' : '#3355cc';
+      minimapCtx.beginPath();
+      minimapCtx.arc(ex, ey, 2.5, 0, Math.PI * 2);
+      minimapCtx.fill();
+    }
+
+    minimapCtx.restore();
+  },
 };
