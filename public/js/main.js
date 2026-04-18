@@ -158,7 +158,11 @@
   }
 
   // === State ===
-  let socket = null;
+  // Eager init: later autonomous sessions added top-level socket.on() handlers
+  // (around line 16137, 17226+) that ran before connectSocket(), crashing on null.
+  // Creating the socket here keeps those registrations valid; connectSocket() below
+  // only attaches its own handlers and handles the connect-race.
+  let socket = io();
   let worldData = null;
   let myId = null;
   let gameState = null;
@@ -329,8 +333,6 @@
 
   // === Socket Connection ===
   function connectSocket() {
-    socket = io();
-
     socket.on('connect', () => {
       console.log('Connected to Bird City!');
       // Auto-rejoin if we have a saved account
@@ -339,6 +341,16 @@
         joinGame(saved);
       }
     });
+
+    // If the eager socket already connected before this handler was registered,
+    // the 'connect' event is missed — run the auto-rejoin path manually.
+    if (socket.connected) {
+      console.log('Connected to Bird City! (pre-registration)');
+      const saved = getSavedAccount();
+      if (saved && saved.id && saved.name) {
+        joinGame(saved);
+      }
+    }
 
     socket.on('welcome', (data) => {
       myId = data.id;
