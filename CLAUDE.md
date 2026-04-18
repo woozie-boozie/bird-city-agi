@@ -3755,6 +3755,39 @@ Bird City now has a permanent auction house landmark at the western edge of the 
 
 **Creative intent**: The Auction House fills a critical gap in Bird City's economy. The Black Market has fixed prices at night. The Casino is pure gambling. The Auction House is the first COMPETITIVE price discovery mechanism — items go to whoever wants them most. A Kingpin who just earned tribute watching the current lot climb past 300c as two rival gang members bid war each other is pure SOCIAL drama. The Lucky Dip lot creates the classic "blind box" tension — you might get Jet Wings or a broken crate. The Prestige Boost is the rarest lot and the most coveted by grinders who want to stack it with Signal Boost + Lucky Charm + Aurora. The 18-25 minute timer means auctions fire once per extended session, always feeling like an event. Pure SOCIAL + PROGRESSION + DISCOVERY energy — the city now has a real economy.
 
+**Session 109 — 2026-04-18: The Bowling Bird — Giant Rolling Menace**
+Every 22-32 minutes a random bird gets inflated into a 3× scale bowling ball and charged with unstoppable momentum. The city must cooperate to pop it — or the Bowling Bird survives and earns legendary rewards.
+
+**The Bowling Bird mechanics (`server/game.js`):**
+- Timer fires every 22-32 minutes (when ≥1 player online). Chosen bird is random, biased toward active players.
+- 75-second duration: the chosen bird charges at a flat 220px/s (minimum — applies on top of all other speed bonuses)
+- **Knock mechanic**: when the Bowling Bird flies within 55px of any other bird, that bird is flung 300px in the opposite direction (atan2 physics), stunned for 1.5s (`arrestedUntil`), and their combo streak is wiped. 8-second per-bird cooldown prevents infinite knock spam.
+- Daily challenge tracking: knocking 5 birds = "Striker!" challenge progress
+- **12 HP to pop**: normal poop = 1 HP, mega poop = 3 HP. All contributors tracked proportionally via `contributors` Map.
+- **Per-hit rewards**: +15 XP +5c (normal), +45 XP +15c (mega). Daily "Ball Buster" challenge progress on first hit.
+- **Survived** (75s with HP > 0): +600 XP +350c + `bowlingBadge = true` (session badge visible to all), coin scatter consolation to nearby birds
+- **Popped** (HP hits 0): proportional XP/coin split among contributors (100-500 XP, 50-250c based on damage share), +100 XP +50c consolation to the freed bird
+- Bowling Bird is IMMUNE to cop arrests, predator attacks, and Bounty Hunter catches during the 75s
+
+**Visual system (`public/js/sprites.js` — `drawBowlingBirdEffects()`):**
+- Dark sphere shell overlay (radial gradient #555→#222→#0a0a0a) drawn on top of the bird sprite
+- 3 animated finger holes orbiting the sphere, positions computed from spin angle
+- Shiny highlight and pulsing orange ring outline
+- 🎳 emoji bounces above the ball; HP bar shows in orange-to-red gradient
+- Urgent countdown timer appears at <20s remaining (turns red at ≤5s)
+
+**HUD & tracking:**
+- Active buffs HUD: orange "🎳 YOU ARE THE BOWLING BALL" pill when you're chosen; dark "🎳 BOWLING BIRD — [name] · HP/maxHP · MY HITS" hunter pill for everyone else
+- Off-screen direction arrow: pulsing orange/brown 🎳 arrow pointing toward the Bowling Bird
+- Minimap: pulsing orange 🎳 dot at Bowling Bird's real-time position
+- Gazette headline: "🎳 BOWLING BIRD MAYHEM — N BIRDS TRANSFORMED INTO GIANT BOWLING BALLS"
+
+**Two new daily challenges (added to `DAILY_CHALLENGE_POOL`):**
+- 🎳 **Striker!**: Knock 5 birds into the air while you are the Bowling Bird (200 XP, 100c)
+- 🎳 **Ball Buster**: Land poop hits on the Bowling Bird to help pop it (250 XP, 125c)
+
+**Creative intent**: The Bowling Bird is the game's most PHYSICALLY chaotic role-swap. Unlike the Golden Rampage (the city hunts a godlike bird) or the Golden Throne (combat for a prize), the Bowling Bird turns movement itself into a weapon. The chosen bird doesn't need to aim — they just CHARGE, and proximity does the rest. Meanwhile the whole city is trying to poop them down while dodging the knockback. A high-combo bird who gets chosen as the Bowling Bird mid-crime-wave is simultaneously the most dangerous and most hunted entity in Bird City — 220px/s momentum plus mega poop immunity for 75 seconds. The 🎳 badge for surviving is a pure speed-and-endurance prestige signal. Pure CARNAGE + SPECTACLE energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)

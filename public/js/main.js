@@ -4843,6 +4843,68 @@
         showAnnouncement(msg, '#ffd700', 4000);
       }
     }
+
+    // === BOWLING BIRD (Session 109) ===
+    if (ev.type === 'bowling_ball_start') {
+      effects.push({ type: 'screen_shake', intensity: 14, duration: 900, time: now });
+      const isMe = ev.birdId === myId;
+      const tag = ev.gangTag ? `[${ev.gangTag}] ` : '';
+      if (isMe) {
+        showAnnouncement(
+          `🎳 YOU ARE THE BOWLING BIRD!\n2.2× size · KNOCK birds aside at 220px/s\nSurvive 75s for 600XP +350c · Poop disabled while rolling!`,
+          '#e06000', 8000
+        );
+      } else {
+        showAnnouncement(
+          `🎳 BOWLING BIRD!\n${tag}${ev.birdName} has been INFLATED into a giant bowling ball!\nPoop them 12× to pop the shell! DODGE if they charge you!`,
+          '#e06000', 7000
+        );
+      }
+      addEventMessage(`🎳 ${tag}${ev.birdName} became a BOWLING BIRD! Poop them 12× to pop the shell!`, '#e06000');
+      window._bowlingBallDir = null; // reset off-screen arrow tracking
+    }
+    if (ev.type === 'bowling_bird_hit') {
+      effects.push({ type: 'text', x: ev.x, y: ev.y - 20, time: now, duration: 800,
+        text: `🎳 −${ev.dmg}`, color: '#ff8800', size: 13 });
+      if (ev.hitterId === myId) {
+        addEventMessage(`🎳 You hit the Bowling Bird! ${ev.hp}/${ev.maxHp} HP left!`, '#ff8800');
+      }
+    }
+    if (ev.type === 'bowling_knock') {
+      if (ev.targetId === myId) {
+        effects.push({ type: 'screen_shake', intensity: 16, duration: 700, time: now });
+        showAnnouncement(`🎳 KNOCKED ASIDE by the Bowling Bird!`, '#ff4400', 2500);
+        addEventMessage(`🎳 ${ev.bowlerName} knocked you flying!`, '#ff6600');
+      } else {
+        effects.push({ type: 'text', x: ev.x, y: ev.y, time: now, duration: 900,
+          text: '🎳 KO!', color: '#ff4400', size: 14 });
+      }
+    }
+    if (ev.type === 'bowling_ball_popped') {
+      effects.push({ type: 'screen_shake', intensity: 16, duration: 900, time: now });
+      effects.push({ type: 'coins', x: ev.x || 1500, y: ev.y || 1500, count: 15, time: now });
+      const tag = ev.gangTag ? `[${ev.gangTag}] ` : '';
+      showAnnouncement(
+        `🎳💥 BOWLING BALL POPPED!\n${tag}${ev.birdName}'s shell SHATTERED!\nContributors rewarded!`,
+        '#ff8800', 7000
+      );
+      addEventMessage(`🎳💥 Bowling Bird ${tag}${ev.birdName} was POPPED by the city! Well done!`, '#ff8800');
+    }
+    if (ev.type === 'bowling_ball_survived') {
+      effects.push({ type: 'screen_shake', intensity: 14, duration: 900, time: now });
+      const tag = ev.gangTag ? `[${ev.gangTag}] ` : '';
+      showAnnouncement(
+        `🎳🏆 BOWLING BIRD SURVIVED!\n${tag}${ev.birdName} outlasted the city!\n+600XP +350c — UNSTOPPABLE!`,
+        '#ffd700', 8000
+      );
+      addEventMessage(`🎳🏆 ${tag}${ev.birdName} SURVIVED as the Bowling Bird! +600XP +350c + 🎳 badge!`, '#ffd700');
+    }
+    if (ev.type === 'bowling_ball_reward' && ev.targetId === myId) {
+      showAnnouncement(`🎳 BOWLING BIRD POPPED! +${ev.xp}XP +${ev.coins}c — nice work!`, '#ff8800', 4000);
+    }
+    if (ev.type === 'bowling_consolation' && ev.targetId === myId) {
+      addEventMessage(`🎳 The Bowling Bird survived... +15c consolation.`, '#888855');
+    }
   }
 
   function showAnnouncement(text, color, duration) {
@@ -9925,6 +9987,13 @@
             const timeLeft = gr.endsAt - now;
             Sprites.drawGoldenBirdEffects(ctx, sx, sy, b.rotation, gr.hp, gr.maxHp, timeLeft, now);
           }
+
+          // === BOWLING BIRD (Session 109) — giant bowling ball overlay drawn ON TOP of the bird ===
+          if (b.isBowlingBird && gameState.bowlingBall) {
+            const bb = gameState.bowlingBall;
+            const timeLeft = bb.endsAt - now;
+            Sprites.drawBowlingBirdEffects(ctx, sx, sy, b.rotation, bb.hp, bb.maxHp, timeLeft, now);
+          }
         }
       }
     }
@@ -11643,6 +11712,44 @@
       }
     }
 
+    // === BOWLING BIRD — off-screen direction arrow ===
+    if (gameState.bowlingBall && gameState.bowlingBall.bbX !== undefined) {
+      const bbsx = gameState.bowlingBall.bbX - camera.x + camera.screenW / 2;
+      const bbsy = gameState.bowlingBall.bbY - camera.y + camera.screenH / 2;
+      const bbOnScreen = bbsx > 50 && bbsx < camera.screenW - 50 && bbsy > 50 && bbsy < camera.screenH - 50;
+      if (!bbOnScreen) {
+        const bbAngle = Math.atan2(bbsy - camera.screenH / 2, bbsx - camera.screenW / 2);
+        const bbArrowDist = Math.min(camera.screenW, camera.screenH) / 2 - 60;
+        const bbAx = camera.screenW / 2 + Math.cos(bbAngle) * bbArrowDist;
+        const bbAy = camera.screenH / 2 + Math.sin(bbAngle) * bbArrowDist;
+        const bbPulse = 0.7 + 0.3 * Math.sin(now * 0.009);
+        ctx.save();
+        ctx.translate(bbAx, bbAy);
+        ctx.rotate(bbAngle);
+        ctx.globalAlpha = 0.9 * bbPulse;
+        ctx.fillStyle = '#e06000';
+        ctx.shadowColor = '#ff8800';
+        ctx.shadowBlur = 10;
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(22, 0);
+        ctx.lineTo(-10, -10);
+        ctx.lineTo(-5, 0);
+        ctx.lineTo(-10, 10);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 10px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('🎳', 4, 0);
+        ctx.restore();
+      }
+    }
+
     // Ice Rink — direction arrow when off-screen (during blizzard)
     if (gameState.iceRink && selfBird && weatherState && weatherState.type === 'blizzard') {
       const irsx = gameState.iceRink.x - camera.x + camera.screenW / 2;
@@ -12367,6 +12474,30 @@
       minimapCtx.textAlign = 'center';
       minimapCtx.textBaseline = 'alphabetic';
       minimapCtx.fillText('👑', gbmx, gbmy - 5);
+      minimapCtx.restore();
+    }
+
+    // === BOWLING BIRD — pulsing orange 🎳 dot on minimap ===
+    if (gameState.bowlingBall && gameState.bowlingBall.bbX !== undefined && worldData) {
+      const mw = minimapCtx.canvas.width;
+      const mh = minimapCtx.canvas.height;
+      const msx = mw / worldData.width;
+      const msy = mh / worldData.height;
+      const bbPulse = 0.5 + 0.5 * Math.sin(now * 0.01);
+      const bbmmx = gameState.bowlingBall.bbX * msx;
+      const bbmmy = gameState.bowlingBall.bbY * msy;
+      minimapCtx.save();
+      minimapCtx.shadowColor = '#e06000';
+      minimapCtx.shadowBlur = 10 + 6 * bbPulse;
+      minimapCtx.fillStyle = `rgba(224,96,0,${0.85 + 0.15 * bbPulse})`;
+      minimapCtx.beginPath();
+      minimapCtx.arc(bbmmx, bbmmy, 5 + bbPulse * 1.5, 0, Math.PI * 2);
+      minimapCtx.fill();
+      minimapCtx.shadowBlur = 0;
+      minimapCtx.font = '9px sans-serif';
+      minimapCtx.textAlign = 'center';
+      minimapCtx.textBaseline = 'alphabetic';
+      minimapCtx.fillText('🎳', bbmmx, bbmmy - 5);
       minimapCtx.restore();
     }
 
@@ -14460,6 +14591,20 @@
         // Someone else is the Golden Bird — show hunt prompt + distance info
         const myHits = gr.myHits || 0;
         html += `<div class="bm-buff-pill" style="background:rgba(60,40,0,0.9);border-color:#cc9900;color:#ffdd44;font-weight:bold;">🌟 GOLDEN RAMPAGE — ${gr.gangTag ? '[' + gr.gangTag + '] ' : ''}${gr.birdName} · ${secsLeft}s · HP: ${gr.hp}/${gr.maxHp} · MY HITS: ${myHits} · POOP THEM!</div>`;
+      }
+    }
+
+    // === BOWLING BIRD (Session 109) pills ===
+    if (gameState.bowlingBall) {
+      const bb = gameState.bowlingBall;
+      const bbSecsLeft = Math.max(0, Math.ceil((bb.endsAt - now) / 1000));
+      if (bb.isBowlingBird) {
+        const urgentStyle = bbSecsLeft < 15 ? 'animation:pulseRed 0.3s infinite alternate;' : 'animation:kingpinGlow 0.5s ease-in-out infinite alternate;';
+        const urgentColor = bbSecsLeft < 15 ? '#ff6600' : '#ff9900';
+        html += `<div class="bm-buff-pill" style="background:rgba(60,20,0,0.95);border-color:${urgentColor};color:${urgentColor};${urgentStyle}font-weight:bold;">🎳 YOU ARE THE BOWLING BALL — Charge birds! HP: ${bb.hp}/${bb.maxHp} · ${bbSecsLeft}s — SURVIVE FOR 600 XP + 350c!</div>`;
+      } else {
+        const myHits = bb.myHits || 0;
+        html += `<div class="bm-buff-pill" style="background:rgba(40,15,0,0.9);border-color:#cc5500;color:#ff9944;font-weight:bold;">🎳 BOWLING BIRD — ${bb.gangTag ? '[' + bb.gangTag + '] ' : ''}${bb.birdName} · HP: ${bb.hp}/${bb.maxHp} · ${bbSecsLeft}s · MY HITS: ${myHits} · POOP THEM!</div>`;
       }
     }
 

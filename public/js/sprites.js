@@ -6733,6 +6733,129 @@ window.Sprites = {
   },
 
   /**
+   * Bowling Bird shell overlay — drawn on top of the bird sprite when that bird is the Bowling Ball.
+   * Large dark sphere shell, finger holes, HP bar, countdown timer, orange pulsing aura, spin FX.
+   */
+  drawBowlingBirdEffects(ctx, x, y, rotation, hp, maxHp, timeLeft, now) {
+    ctx.save();
+    ctx.translate(x, y);
+
+    const pulse = 0.5 + 0.5 * Math.sin(now * 0.004);
+    const fastPulse = 0.5 + 0.5 * Math.sin(now * 0.012);
+    const hpPct = maxHp ? Math.max(0, hp / maxHp) : 1;
+    const spin = (now * 0.003 + rotation) % (Math.PI * 2);
+
+    // --- Outer bowling-ball aura: dark orange glow ---
+    const aura = ctx.createRadialGradient(0, 0, 8, 0, 0, 50);
+    aura.addColorStop(0, `rgba(220,120,0,${0.45 + 0.2 * pulse})`);
+    aura.addColorStop(0.6, `rgba(180,60,0,${0.22 + 0.1 * pulse})`);
+    aura.addColorStop(1, 'rgba(100,20,0,0)');
+    ctx.fillStyle = aura;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 50, 46, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // --- Bowling ball shell (dark sphere) ---
+    const ballR = 22;
+    const ball = ctx.createRadialGradient(-6, -6, 2, 0, 0, ballR);
+    ball.addColorStop(0, '#555');
+    ball.addColorStop(0.35, '#222');
+    ball.addColorStop(1, '#0a0a0a');
+    ctx.globalAlpha = 0.82;
+    ctx.fillStyle = ball;
+    ctx.shadowColor = '#ff7700';
+    ctx.shadowBlur = 14 + 8 * fastPulse;
+    ctx.beginPath();
+    ctx.arc(0, 0, ballR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
+
+    // --- Finger holes (3 holes typical of a bowling ball) ---
+    const holePositions = [
+      { a: spin,              r: 9 },
+      { a: spin + 2.2,        r: 8 },
+      { a: spin - 2.2,        r: 8 },
+    ];
+    ctx.globalAlpha = 0.82;
+    for (const h of holePositions) {
+      const hx = Math.cos(h.a) * h.r;
+      const hy = Math.sin(h.a) * h.r;
+      ctx.fillStyle = '#111';
+      ctx.beginPath();
+      ctx.arc(hx, hy, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // --- Shiny highlight on sphere ---
+    const shine = ctx.createRadialGradient(-7, -7, 1, -6, -6, 9);
+    shine.addColorStop(0, 'rgba(255,255,255,0.25)');
+    shine.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = shine;
+    ctx.beginPath();
+    ctx.arc(0, 0, ballR, 0, Math.PI * 2);
+    ctx.fill();
+
+    // --- Pulsing ring outline ---
+    ctx.strokeStyle = `rgba(255,140,0,${0.6 + 0.3 * fastPulse})`;
+    ctx.lineWidth = 2.5;
+    ctx.shadowColor = '#ff8800';
+    ctx.shadowBlur = 10;
+    ctx.beginPath();
+    ctx.arc(0, 0, ballR + 3 + fastPulse * 3, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // --- 🎳 emoji above the ball ---
+    const bobY = Math.sin(now * 0.005) * 2;
+    ctx.font = '14px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.globalAlpha = 0.9 + 0.1 * pulse;
+    ctx.fillText('🎳', 0, -30 + bobY);
+    ctx.globalAlpha = 1;
+
+    // --- HP bar ---
+    if (hp !== undefined && maxHp) {
+      const barW = 50;
+      const barH = 5;
+      const bx = -barW / 2;
+      const by = -44;
+      ctx.fillStyle = 'rgba(0,0,0,0.65)';
+      ctx.fillRect(bx - 1, by - 1, barW + 2, barH + 2);
+      const hpColor = hpPct > 0.6 ? '#ff8800' : hpPct > 0.3 ? '#ff5500' : '#ff2200';
+      ctx.fillStyle = hpColor;
+      ctx.shadowColor = hpColor;
+      ctx.shadowBlur = 5;
+      ctx.fillRect(bx, by, barW * hpPct, barH);
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#fff';
+      ctx.font = '7px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`${hp}/${maxHp}`, 0, by - 6);
+    }
+
+    // --- Urgent countdown when < 20s remaining ---
+    if (timeLeft !== undefined && timeLeft < 20000) {
+      const secLeft = Math.ceil(timeLeft / 1000);
+      ctx.font = 'bold 8px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      ctx.globalAlpha = 0.7 + 0.3 * fastPulse;
+      ctx.fillStyle = secLeft <= 5 ? '#ff4400' : '#ffaa00';
+      ctx.shadowColor = '#000';
+      ctx.shadowBlur = 4;
+      ctx.fillText(`⏱ ${secLeft}s`, 0, -56);
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = 1;
+    }
+
+    ctx.restore();
+  },
+
+  /**
    * Stampede Bird — panicked urban pigeon fleeing in a frenzy.
    * Chubby round body, wide terrified eyes, wings flapping erratically, motion blur streaks.
    * phase: per-bird unique offset (0..1) for animation variety.

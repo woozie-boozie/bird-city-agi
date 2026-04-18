@@ -161,6 +161,9 @@ const DAILY_CHALLENGE_POOL = [
   // Session 108: Auction House challenges
   { id: 'auction_winner', title: 'Going Once!', desc: 'Win a lot at the Bird City Auction House', target: 1, trackType: 'auction_win', reward: { xp: 200, coins: 100 } },
   { id: 'auction_bidder', title: 'High Roller',  desc: 'Place a bid of 150c or more at the Auction House', target: 1, trackType: 'auction_big_bid', reward: { xp: 120, coins: 60  } },
+  // Session 109: Bowling Bird challenges
+  { id: 'bowling_striker', title: 'Striker!',    desc: 'Knock 5 birds into the air while you are the Bowling Bird', target: 5,  trackType: 'bowling_knock',  reward: { xp: 200, coins: 100 } },
+  { id: 'bowling_buster',  title: 'Ball Buster', desc: 'Land poop hits on the Bowling Bird to help pop it',          target: 1,  trackType: 'bowling_popped', reward: { xp: 250, coins: 125 } },
 ];
 
 // ============================================================
@@ -400,6 +403,14 @@ class GameEngine {
     // If van escapes: captive loses 20% coins, respawns at city center.
     this.birdnapperVan = null;
     this._birdnapperVanTimer = Date.now() + this._randomRange(25 * 60000, 35 * 60000);
+
+    // === THE BOWLING BIRD — Session 109 ===
+    // Every 22-32 minutes, one random bird gets turned into a giant 3× scale bowling ball.
+    // The bowling bird charges at 220px/s, KNOCKING other birds 300px on contact (1.5s stun).
+    // City must poop it 12 times to pop the bowling ball and free the bird inside.
+    // If it survives 75 seconds unpopped, the bowling bird gets 600 XP + 350c + a session badge.
+    this.bowlingBall = null; // null | { birdId, birdName, gangTag, spawnedAt, endsAt, hp, maxHp, contributors: Map, knockCooldowns: Map }
+    this._bowlingBallTimer = Date.now() + this._randomRange(22 * 60000, 32 * 60000);
 
     // === BIRD CITY ELECTIONS — Session 103 ===
     // Every 35-45 minutes, City Hall puts 3 random policies to a city-wide vote (45s).
@@ -2002,6 +2013,9 @@ class GameEngine {
 
     // === Flash Mob ===
     this._updateFlashMob(now);
+
+    // === Bowling Bird ===
+    this._updateBowlingBall(now);
   }
 
   // ============================================================
@@ -2991,6 +3005,11 @@ class GameEngine {
       maxSpeed *= 2.5;
     }
 
+    // Bowling Ball: the chosen bird charges at bowling-ball speed — 220px/s flat
+    if (this.bowlingBall && this.bowlingBall.birdId === bird.id && this.bowlingBall.hp > 0) {
+      maxSpeed = Math.max(maxSpeed, 220);
+    }
+
     // Pigeon Coupe: the driver rides in style at a flat 220px/s minimum (sports car speed!)
     if (bird.drivingCoupeId && this.pigeonCoupe && this.pigeonCoupe.driverId === bird.id) {
       maxSpeed = Math.max(maxSpeed, 220);
@@ -3782,6 +3801,25 @@ class GameEngine {
         // Freed!
         if (gr.hp <= 0) {
           this._endGoldenRampage('freed', now);
+        }
+      } else if (hit.target === 'bowling_bird' && this.bowlingBall && this.bowlingBall.hp > 0) {
+        // Poop hit the Bowling Bird! Chip away at the shell to free the bird inside.
+        const bb = this.bowlingBall;
+        const dmg = isMegaPoop ? 3 : 1;
+        bb.hp = Math.max(0, bb.hp - dmg);
+        // Track contributor
+        const bbContrib = bb.contributors.get(bird.id) || { name: bird.name, gangTag: bird.gangTag || null, hits: 0 };
+        bbContrib.hits += dmg;
+        bb.contributors.set(bird.id, bbContrib);
+        // Immediate reward for popping the ball
+        xpGain = isMegaPoop ? 45 : 15;
+        bird.coins += isMegaPoop ? 15 : 5;
+        this._trackDailyProgress(bird, 'bowling_popped', 1);
+        const bbBird = this.birds.get(bb.birdId);
+        this.events.push({ type: 'bowling_bird_hit', hitterId: bird.id, hitterName: bird.name, hitterGangTag: bird.gangTag || null, targetName: bb.birdName, hp: bb.hp, maxHp: bb.maxHp, dmg, x: bbBird ? bbBird.x : 0, y: bbBird ? bbBird.y : 0 });
+        // Popped!
+        if (bb.hp <= 0) {
+          this._endBowlingBall('popped', now);
         }
       } else if (hit.target === 'crow_cartel' && hit.crow && this.crowCartel) {
         // Poop hit a Crow Cartel member — deal damage!
@@ -5280,6 +5318,19 @@ class GameEngine {
       }
     }
 
+    // Check Bowling Bird — the giant rolling bird-ball. Shooter cannot be the bowling bird.
+    if (this.bowlingBall && this.bowlingBall.hp > 0 && poop.birdId !== this.bowlingBall.birdId) {
+      const bbBird = this.birds.get(this.bowlingBall.birdId);
+      if (bbBird) {
+        const bbdx = poop.x - bbBird.x;
+        const bbdy = poop.y - bbBird.y;
+        if (Math.sqrt(bbdx * bbdx + bbdy * bbdy) < hitRadius + 22) {
+          if (!isMegaPoop) return { target: 'bowling_bird' };
+          allHits.push({ target: 'bowling_bird' });
+        }
+      }
+    }
+
     // Check Golden Bird — the city's chosen berserker. The shooter CANNOT be the golden bird themselves.
     if (this.goldenRampage && this.goldenRampage.hp > 0 && poop.birdId !== this.goldenRampage.birdId) {
       const gbBird = this.birds.get(this.goldenRampage.birdId);
@@ -6754,6 +6805,9 @@ class GameEngine {
           stampedeBadge: b.stampedeBadge || false,
           // Session 100: Golden Throne champion badge
           throneChampBadge: b.throneChampBadge || false,
+          // Session 109: Bowling Ball — giant rolling bird visible to all
+          isBowlingBird: !!(this.bowlingBall && this.bowlingBall.birdId === b.id && this.bowlingBall.hp > 0),
+          bowlingBadge: b.bowlingBadge || false,
           // Session 105: Grudge — show nearby birds if they have a grudge targeting the viewer (so viewer knows)
           hasGrudgeOnMe: !!(b.grudge && b.grudge.targetId === bird.id),
         });
@@ -7461,6 +7515,9 @@ class GameEngine {
         goldenBirdBadge: bird.goldenBirdBadge || false,
         stampedeBadge: bird.stampedeBadge || false,
         throneChampBadge: bird.throneChampBadge || false,
+        // Session 109: Bowling Ball
+        isBowlingBird: !!(this.bowlingBall && this.bowlingBall.birdId === bird.id && this.bowlingBall.hp > 0),
+        bowlingBadge: bird.bowlingBadge || false,
         nearNightMarket: (() => {
           if (!this.nightMarket) return false;
           const dx = bird.x - this.nightMarket.x;
@@ -8259,6 +8316,19 @@ class GameEngine {
         isGoldenBird: this.goldenRampage.birdId === bird.id,
         goldenBirdX: (() => { const b = this.birds.get(this.goldenRampage.birdId); return b ? b.x : 0; })(),
         goldenBirdY: (() => { const b = this.birds.get(this.goldenRampage.birdId); return b ? b.y : 0; })(),
+      } : null,
+      // Bowling Ball — the giant rolling bird the city must pop
+      bowlingBall: this.bowlingBall ? {
+        birdId: this.bowlingBall.birdId,
+        birdName: this.bowlingBall.birdName,
+        gangTag: this.bowlingBall.gangTag,
+        endsAt: this.bowlingBall.endsAt,
+        hp: this.bowlingBall.hp,
+        maxHp: this.bowlingBall.maxHp,
+        myHits: this.bowlingBall.contributors.get(bird.id)?.hits || 0,
+        isBowlingBird: this.bowlingBall.birdId === bird.id,
+        bbX: (() => { const b = this.birds.get(this.bowlingBall.birdId); return b ? b.x : 0; })(),
+        bbY: (() => { const b = this.birds.get(this.bowlingBall.birdId); return b ? b.y : 0; })(),
       } : null,
       // Golden Throne — descends every 35-50 min, claim it to rule Bird City
       goldenThrone: this.goldenThrone ? {
@@ -16468,6 +16538,15 @@ class GameEngine {
       });
     }
 
+    // Bowling Ball events
+    if (stats.bowlingBallEvents > 0) {
+      headlines.push({
+        icon: '🎳',
+        headline: `BOWLING BIRD MAYHEM — ${stats.bowlingBallEvents} BIRD${stats.bowlingBallEvents > 1 ? 'S' : ''} TRANSFORMED INTO GIANT BOWLING BALLS`,
+        subline: `City birds scattered like pins. Police baffled. Chiropractors booked solid for weeks.`,
+      });
+    }
+
     // Default headline if nothing notable happened
     if (headlines.length === 0) {
       headlines.push({
@@ -23997,6 +24076,174 @@ class GameEngine {
     this.flashMob = null;
     // Schedule next mob 12-18 min from now
     this._flashMobTimer = now + this._randomRange(12 * 60000, 18 * 60000);
+  }
+
+  // ============================================================
+  // BOWLING BIRD — Session 109
+  // A random bird gets inflated into a giant bowling ball.
+  // It charges at 220px/s and KNOCKS other birds 300px away.
+  // City must poop it 12 times (mega=3 hits) to pop the shell.
+  // Survive 75 seconds unpopped → 600 XP + 350c + 🎳 badge.
+  // ============================================================
+  _updateBowlingBall(now) {
+    // Spawn timer
+    if (!this.bowlingBall && now >= this._bowlingBallTimer && this.birds.size > 0) {
+      this._startBowlingBall(now);
+      return;
+    }
+
+    if (!this.bowlingBall) return;
+    const bb = this.bowlingBall;
+
+    // Timer expired → bowling bird survives!
+    if (now >= bb.endsAt && bb.hp > 0) {
+      this._endBowlingBall('survived', now);
+      return;
+    }
+
+    // Knock detection — bowling bird rolls through other birds
+    const bowler = this.birds.get(bb.birdId);
+    if (!bowler) {
+      // The bowling bird disconnected
+      this._endBowlingBall('disconnected', now);
+      return;
+    }
+
+    for (const other of this.birds.values()) {
+      if (other.id === bb.birdId) continue;
+      const dx = bowler.x - other.x;
+      const dy = bowler.y - other.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 55) {
+        // Check per-bird cooldown (8s between knocks per bird)
+        const lastKnock = bb.knockCooldowns.get(other.id) || 0;
+        if (now - lastKnock < 8000) continue;
+        bb.knockCooldowns.set(other.id, now);
+
+        // Fling the other bird 300px away from the bowler
+        const angle = dist < 1 ? Math.random() * Math.PI * 2 : Math.atan2(-dy, -dx);
+        const flingDist = 300;
+        other.x = Math.max(20, Math.min(this.worldWidth - 20, other.x + Math.cos(angle) * flingDist));
+        other.y = Math.max(20, Math.min(this.worldHeight - 20, other.y + Math.sin(angle) * flingDist));
+        // Stun the knocked bird for 1.5 seconds
+        other.arrestedUntil = Math.max(other.arrestedUntil || 0, now + 1500);
+        // Break their combo streak
+        other.comboCount = 0;
+        other.comboExpiresAt = 0;
+
+        // Track bowling knock for daily challenge
+        this._trackDailyProgress(bowler, 'bowling_knock', 1);
+
+        // Notify city
+        this.events.push({
+          type: 'bowling_knock',
+          bowlerName: bb.birdName,
+          bowlerGangTag: bb.gangTag || null,
+          targetId: other.id,
+          targetName: other.name,
+          x: other.x, y: other.y,
+        });
+      }
+    }
+  }
+
+  _startBowlingBall(now) {
+    // Pick a random bird that has been online for a bit
+    const candidates = Array.from(this.birds.values()).filter(b => !b.isUnderground);
+    if (candidates.length === 0) {
+      this._bowlingBallTimer = now + this._randomRange(22 * 60000, 32 * 60000);
+      return;
+    }
+    const target = candidates[Math.floor(Math.random() * candidates.length)];
+
+    this.bowlingBall = {
+      birdId: target.id,
+      birdName: target.name,
+      gangTag: target.gangTag || null,
+      spawnedAt: now,
+      endsAt: now + 75000, // 75 seconds
+      hp: 12,
+      maxHp: 12,
+      contributors: new Map(),
+      knockCooldowns: new Map(),
+    };
+
+    const gangPart = target.gangTag ? `[${target.gangTag}] ` : '';
+    this.events.push({
+      type: 'bowling_ball_start',
+      birdId: target.id,
+      birdName: target.name,
+      gangTag: target.gangTag || null,
+      msg: `🎳 ${gangPart}${target.name} has been TURNED INTO A BOWLING BALL! Poop them 12 times to pop the shell — or get KNOCKED aside!`,
+    });
+
+    // Gazette tracking
+    if (this.gazetteStats) this.gazetteStats.bowlingBallEvents = (this.gazetteStats.bowlingBallEvents || 0) + 1;
+  }
+
+  _endBowlingBall(reason, now) {
+    const bb = this.bowlingBall;
+    if (!bb) return;
+    this.bowlingBall = null;
+    this._bowlingBallTimer = now + this._randomRange(22 * 60000, 32 * 60000);
+
+    const target = this.birds.get(bb.birdId);
+
+    if (reason === 'survived') {
+      // Bowling bird survived — big reward
+      if (target) {
+        target.xp = (target.xp || 0) + 600;
+        target.coins = (target.coins || 0) + 350;
+        target.bowlingBadge = true;
+        this._levelUpIfNeeded(target);
+        this._trackDailyProgress(target, 'bowling_survived', 1);
+      }
+      const gangPart = bb.gangTag ? `[${bb.gangTag}] ` : '';
+      this.events.push({
+        type: 'bowling_ball_survived',
+        birdId: bb.birdId,
+        birdName: bb.birdName,
+        gangTag: bb.gangTag || null,
+        msg: `🎳 ${gangPart}${bb.birdName} SURVIVED AS THE BOWLING BALL! +600 XP +350c — the city couldn't pop them!`,
+      });
+      // Small consolation for the rest
+      for (const b of this.birds.values()) {
+        if (b.id !== bb.birdId) {
+          b.coins = (b.coins || 0) + 15;
+          this.events.push({ type: 'bowling_consolation', targetId: b.id, coins: 15 });
+        }
+      }
+    } else if (reason === 'popped') {
+      // City popped the bowling ball — reward contributors
+      const totalHits = Array.from(bb.contributors.values()).reduce((s, c) => s + c.hits, 0) || 1;
+      const totalXp = 400, totalCoins = 200;
+      for (const [birdId, contrib] of bb.contributors) {
+        const b = this.birds.get(birdId);
+        if (!b) continue;
+        const share = contrib.hits / totalHits;
+        const xpReward = Math.max(50, Math.floor(totalXp * share));
+        const coinReward = Math.max(20, Math.floor(totalCoins * share));
+        b.xp = (b.xp || 0) + xpReward;
+        b.coins = (b.coins || 0) + coinReward;
+        this._levelUpIfNeeded(b);
+        this.events.push({ type: 'bowling_ball_reward', targetId: birdId, xp: xpReward, coins: coinReward, targetName: b.name });
+      }
+      // Freed bird gets a consolation
+      if (target) {
+        target.xp = (target.xp || 0) + 100;
+        target.coins = (target.coins || 0) + 50;
+        this._levelUpIfNeeded(target);
+      }
+      const gangPart = bb.gangTag ? `[${bb.gangTag}] ` : '';
+      this.events.push({
+        type: 'bowling_ball_popped',
+        birdId: bb.birdId,
+        birdName: bb.birdName,
+        gangTag: bb.gangTag || null,
+        msg: `🎳💥 The city POPPED ${gangPart}${bb.birdName}'s bowling shell! Contributors rewarded!`,
+      });
+    }
+    // 'disconnected' — silent cleanup, no reward
   }
 
 }
