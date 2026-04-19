@@ -179,6 +179,9 @@ const DAILY_CHALLENGE_POOL = [
   // Session 114: Buried Treasure challenges
   { id: 'treasure_hunter', title: 'Treasure Hunter', desc: 'Claim buried treasure by digging at the X mark (scroll + dig site)', target: 1, trackType: 'treasure_found',  reward: { xp: 300, coins: 150 } },
   { id: 'map_thief',       title: 'Map Thief',        desc: 'Steal a Treasure Map from another bird by pooping them 3 times',     target: 1, trackType: 'map_stolen',      reward: { xp: 200, coins: 100 } },
+  // Session 115: Hot Dog Cart challenges
+  { id: 'street_eats',    title: 'Street Eats',      desc: 'Buy a hot dog from Frank\'s cart (press [H] near the cart)',          target: 1, trackType: 'hotdog_bought',    reward: { xp: 120, coins: 60  } },
+  { id: 'frank_regular',  title: 'Roadside Regular', desc: 'Buy hot dogs from Frank\'s cart 3 times',                             target: 3, trackType: 'hotdog_bought',    reward: { xp: 200, coins: 100 } },
 ];
 
 // ============================================================
@@ -497,6 +500,14 @@ class GameEngine {
       [{ x: 1670, y: -100 }, { x: 1670, y: 870 }, { x: 3100, y: 870 }],
       [{ x: -100, y: 870 }, { x: 770, y: 870 }, { x: 770, y: 1570 }, { x: 770, y: 2310 }, { x: -100, y: 2310 }],
     ];
+
+    // === HOT DOG CART — Session 115 ===
+    // Frank the rat runs a red umbrella hot dog cart along city roads every 5-8 minutes.
+    // Press [H] within 100px to buy: 60c -> +100 food, 20s speed x1.4, 5-hit XP boost x1.3.
+    // Heatwave discount: 30c (summer deal). Blizzard: also grants 30s warmth like hot cocoa.
+    // Crime Wave + Wanted Level >= 2: free theft (no cost, +10 heat added).
+    this.hotDogCart = null; // null | { x, y, vx, vy, angle, waypointIdx, waypoints, spawnedAt, expiresAt }
+    this._hotDogCartTimer = Date.now() + this._randomRange(5 * 60000, 8 * 60000);
 
     // === BIRD CITY ELECTIONS — Session 103 ===
     // Every 35-45 minutes, City Hall puts 3 random policies to a city-wide vote (45s).
@@ -1277,6 +1288,9 @@ class GameEngine {
       warmUntil: 0,         // timestamp: hot cocoa warmth (blizzard — negates cold drag + speed bonus)
       // === RACE POWER-UPS ===
       raceBoostUntil: 0,    // timestamp when race boost gate speed buff wears off
+      // === HOT DOG CART — Session 115 ===
+      hotdogSpeedUntil: 0,  // timestamp when Frank's speed boost wears off
+      hotdogXpBoostHits: 0, // remaining hits with 1.3× XP (Frank's special sauce)
       // === GOLDEN EGG SCRAMBLE ===
       carryingEggId: null,         // id of the golden egg this bird is carrying, or null
       eggTackleImmunityUntil: 0,   // timestamp until tackle immunity (after being robbed)
@@ -1884,6 +1898,11 @@ class GameEngine {
     if (action.type === 'coupe_carjack') {
       this._handleCoupeCarjack(bird, now);
     }
+
+    // === Hot Dog Cart ===
+    if (action.type === 'hotdog_buy') {
+      this._handleHotDogBuy(bird, now);
+    }
     }
   }
 
@@ -2131,6 +2150,9 @@ class GameEngine {
 
     // === Buried Treasure ===
     this._updateTreasureMap(dt, now);
+
+    // === Hot Dog Cart ===
+    this._updateHotDogCart(dt, now);
   }
 
   // ============================================================
@@ -3071,6 +3093,11 @@ class GameEngine {
     // Puddle boost: cooled and refreshed, +20% speed
     if (bird.puddleBoostUntil > now) {
       maxSpeed *= 1.2;
+    }
+
+    // Hot Dog Cart: Frank's sausage gives a kick — 1.4× speed for 20s
+    if (bird.hotdogSpeedUntil > now) {
+      maxSpeed *= 1.4;
     }
 
     // Blizzard: cold drag slows all birds — unless warmed by hot cocoa OR huddled at gang nest firepit
@@ -4534,6 +4561,11 @@ class GameEngine {
       }
       // Skill Tree Mastery: permanent +5% XP bonus for unlocking all 12 skills
       if (bird.skillTreeMaster) xpGain = Math.floor(xpGain * 1.05);
+      // Hot Dog Cart: Frank's special sauce gives 1.3× XP on next 5 hits
+      if (bird.hotdogXpBoostHits > 0) {
+        xpGain = Math.floor(xpGain * 1.3);
+        bird.hotdogXpBoostHits--;
+      }
       bird.xp += xpGain;
 
       // === WING SURGE CHARGE — fills on every valid hit (not miss), auto-fires at 100 ===
@@ -7621,6 +7653,16 @@ class GameEngine {
         myHits: (this.motorcade.contributors.get(bird.id) || { hits: 0 }).hits,
         escorts: this.motorcade.escorts.map(e => ({ id: e.id, x: e.x, y: e.y, angle: e.angle, stunned: e.stunned })),
       } : null,
+      hotDogCart: this.hotDogCart ? {
+        x: this.hotDogCart.x,
+        y: this.hotDogCart.y,
+        angle: this.hotDogCart.angle,
+        expiresAt: this.hotDogCart.expiresAt,
+        nearMe: (() => {
+          const dx = bird.x - this.hotDogCart.x, dy = bird.y - this.hotDogCart.y;
+          return Math.sqrt(dx * dx + dy * dy) < 100;
+        })(),
+      } : null,
       raccoons: nearbyRaccoons,
       drunkPigeons: nearbyDrunkPigeons,
       cops: nearbyCops,
@@ -7867,6 +7909,9 @@ class GameEngine {
         warmUntil: bird.warmUntil,
         // Race boost gate
         raceBoostUntil: bird.raceBoostUntil,
+        // Hot Dog Cart — Session 115
+        hotdogSpeedUntil: bird.hotdogSpeedUntil || 0,
+        hotdogXpBoostHits: bird.hotdogXpBoostHits || 0,
         // Golden Egg Scramble
         carryingEggId: bird.carryingEggId,
         eggTackleImmunityUntil: bird.eggTackleImmunityUntil,
@@ -25553,6 +25598,153 @@ class GameEngine {
 
     this.treasureMap = null;
     this._treasureMapTimer = now + this._randomRange(20 * 60000, 30 * 60000);
+  }
+
+  // ============================================================
+  // HOT DOG CART — Session 115
+  // Frank's rolling red umbrella cart ambles through city roads.
+  // Press [H] within 100px to buy: 60c -> +100 food, 20s 1.4× speed, 5-hit 1.3× XP.
+  // Cross-system synergies: heatwave discount, blizzard warmth, crime wave free theft.
+  // ============================================================
+
+  _spawnHotDogCart(now) {
+    const world = require('./world');
+    const roads = world.ROADS;
+    const road = roads[Math.floor(Math.random() * roads.length)];
+    // Pick a point inside the road rect
+    const x = road.x + Math.random() * road.w;
+    const y = road.y + Math.random() * road.h;
+
+    // Build a simple waypoint route: start pos → a few random road points
+    const waypoints = [{ x, y }];
+    for (let i = 0; i < 4; i++) {
+      const r2 = roads[Math.floor(Math.random() * roads.length)];
+      waypoints.push({ x: r2.x + Math.random() * r2.w, y: r2.y + Math.random() * r2.h });
+    }
+
+    this.hotDogCart = {
+      x, y,
+      vx: 0, vy: 0,
+      angle: 0,
+      waypoints,
+      waypointIdx: 1,
+      spawnedAt: now,
+      expiresAt: now + this._randomRange(10 * 60000, 14 * 60000),
+    };
+
+    this.events.push({
+      type: 'hotdog_cart_spawned',
+      x: this.hotDogCart.x,
+      y: this.hotDogCart.y,
+      msg: `🌭 FRANK'S HOT DOGS are rolling through Bird City! Find the cart to buy a snack!`,
+    });
+  }
+
+  _updateHotDogCart(dt, now) {
+    // Spawn timer
+    if (!this.hotDogCart && now >= this._hotDogCartTimer) {
+      if (this.birds.size > 0) {
+        this._spawnHotDogCart(now);
+      }
+      return;
+    }
+    if (!this.hotDogCart) return;
+
+    // Despawn after lifetime
+    if (now >= this.hotDogCart.expiresAt) {
+      this.hotDogCart = null;
+      this._hotDogCartTimer = now + this._randomRange(5 * 60000, 8 * 60000);
+      this.events.push({ type: 'hotdog_cart_despawned', msg: `🌭 Frank packed up his hot dog cart and rolled away.` });
+      return;
+    }
+
+    // Move toward current waypoint
+    const cart = this.hotDogCart;
+    const SPEED = 45; // px/s — slow amble
+    const wp = cart.waypoints[cart.waypointIdx];
+    const dx = wp.x - cart.x;
+    const dy = wp.y - cart.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    if (dist < 8) {
+      // Reached waypoint, advance
+      cart.waypointIdx = (cart.waypointIdx + 1) % cart.waypoints.length;
+    } else {
+      const nx = dx / dist, ny = dy / dist;
+      cart.vx = nx * SPEED;
+      cart.vy = ny * SPEED;
+      cart.angle = Math.atan2(dy, dx);
+      cart.x += cart.vx * dt;
+      cart.y += cart.vy * dt;
+    }
+  }
+
+  _handleHotDogBuy(bird, now) {
+    if (!this.hotDogCart) {
+      this.events.push({ type: 'hotdog_fail', targetId: bird.id, reason: 'No cart nearby', msg: `🌭 Frank's cart isn't here right now!` });
+      return;
+    }
+    const dx = bird.x - this.hotDogCart.x, dy = bird.y - this.hotDogCart.y;
+    if (Math.sqrt(dx * dx + dy * dy) > 100) {
+      this.events.push({ type: 'hotdog_fail', targetId: bird.id, reason: 'Too far', msg: `🌭 Get closer to Frank's cart first!` });
+      return;
+    }
+
+    // Determine price and any crime wave theft
+    const isCrimeWave = this.crimeWave && this.crimeWave.endsAt > now;
+    const isHeatwave = this.weather && this.weather.type === 'heatwave';
+    const isBlizzard = this.weather && this.weather.type === 'blizzard';
+    const wantedLevel = this._getWantedLevel(bird.id);
+    const isTheft = isCrimeWave && wantedLevel >= 2;
+
+    let price = 60;
+    if (isTheft) {
+      price = 0;
+    } else if (isHeatwave) {
+      price = 30; // summer discount
+    }
+
+    if (!isTheft && bird.coins < price) {
+      this.events.push({ type: 'hotdog_fail', targetId: bird.id, reason: 'No coins', msg: `🌭 You don't have enough coins! (${price}c needed)` });
+      return;
+    }
+
+    // Deduct coins
+    bird.coins -= price;
+
+    // Apply effects
+    bird.food = Math.min(bird.food + 100, 200);
+    bird.hotdogSpeedUntil = now + 20000; // 20s speed boost
+    bird.hotdogXpBoostHits = 5;          // next 5 poop hits get 1.3× XP
+
+    if (isBlizzard) {
+      // Also grant cocoa warmth — same effect as hot_cocoa
+      bird.heatQuenchedUntil = now + 30000;
+      bird.puddleBoostUntil = now + 30000;
+    }
+
+    if (isTheft) {
+      // Add heat for stealing
+      this._addHeat(bird.id, 10);
+    }
+
+    // Daily challenge
+    this._trackDailyProgress(bird, 'hotdog_bought', 1);
+
+    const emoji = isTheft ? '🌭😈' : isHeatwave ? '🌭🌡️' : isBlizzard ? '🌭❄️' : '🌭';
+    const priceStr = isTheft ? 'FREE (stolen!)' : `${price}c`;
+
+    this.events.push({
+      type: 'hotdog_bought',
+      targetId: bird.id,
+      birdName: bird.name,
+      gangTag: bird.gangTag || null,
+      price,
+      isTheft,
+      isHeatwave,
+      isBlizzard,
+      msg: `${emoji} ${bird.gangTag ? `[${bird.gangTag}] ` : ''}${bird.name} bought a hot dog from Frank! (${priceStr}) +100 food, 20s 1.4× speed, 5-hit 1.3× XP boost!${isBlizzard ? ' ☕ WARM for 30s!' : ''}`,
+    });
   }
 }
 

@@ -3967,6 +3967,37 @@ Bird City's first pure DISCOVERY mechanic. Every 20–30 minutes, a 📜 treasur
 
 **Creative intent**: Bird City had 113 sessions of systems that reward DOING — pooping, fighting, racing, heisting. The Buried Treasure is the first system that rewards pure EXPLORATION and AWARENESS. Discovering that a scroll appeared, racing to pick it up before another bird, then holding your dig position for 3 tense seconds while watching the steal progress counter climb on your HUD — that's a completely different flavor of tension from anything else in the game. The private dig site (only YOU see the X) creates genuine information asymmetry: the city knows you have a map, but nobody knows where you're going. A paranoid holder flying in the WRONG direction to mislead pursuers before doubling back is emergent clever play. Pure DISCOVERY + CARNAGE energy — the city just hid something worth fighting for beneath its streets.
 
+**Session 115 — 2026-04-19: Frank's Hot Dog Cart — Street Food Economy**
+Frank the Rat runs a red umbrella hot dog cart along city roads every 5–8 minutes. Fly within 100px and press [H] to buy — he packs up and rolls away after 90 seconds.
+
+**What you get (60c):**
+- +100 food instantly — the biggest single food injection in the game
+- +1.4× max speed for 20 seconds — stacks with all other speed bonuses
+- Next 5 poop hits deal 1.3× XP — a small combo-extender that rewards buying before a rampage
+
+**Three weather/crime cross-system interactions:**
+- 🌡️ **Heatwave discount**: 30c instead of 60c — Frank runs a summer sale; same full effect
+- ❄️ **Blizzard bonus**: full price (60c), but also grants 30 seconds of cocoa warmth (+25% speed, quenched) on top of the normal effects — buying in a blizzard gives the best value in the game
+- 🚨 **Crime Wave theft (Wanted ≥ 2)**: free! No coins deducted, but adds +10 heat — you robbed Frank. City-wide event feed calls it out.
+
+**Custom sprite (`sprites.js`):**
+- `drawHotDogCart()`: bright red rounded-rect cart body with white trim, striped umbrella canopy in red/white diagonal segments, Frank the rat vendor in a chef hat wielding animated tongs, a golden hot dog in his other hand, wheels with hub caps, animated steam wisps rising from the cart
+
+**Client features (`public/js/main.js`):**
+- Proximity prompt at bottom-center (above Donut Cop prompt) — context-sensitive label showing current price and any weather bonus
+- Off-screen 🌭 orange direction arrow when cart is off-screen
+- Minimap: pulsing orange 🌭 dot tracking Frank's real-time position
+- Active buffs HUD: orange speed pill (with kingpinGlow pulse) + XP boost pill showing hits remaining
+- Event handlers: spawn announcement, buy callout (personal + city-wide), cart departure, fail messages
+
+**Two new daily challenges:**
+- 🌭 **Street Eats**: Buy a hot dog from Frank's cart (120 XP, 60c)
+- 🌭 **Roadside Regular**: Buy hot dogs from Frank's cart 3 times (200 XP, 100c)
+
+**[H] key context-switch**: Near the cart → buy hot dog. Not near → original Bird Home toggle behavior preserved.
+
+**Creative intent**: Every food system in Bird City so far has been passive (items on the ground) or event-driven (festivals, worms, pond fish). Frank's cart is the first VENDOR — a moving NPC you have to hunt down on the roads, spending coins for an immediate food+speed+XP triple hit. The heatwave discount creates seasonal synergy: when food is hardest to keep (thirst drain) the cart becomes the cheapest. The blizzard warmth combo makes buying in a snowstorm the most valuable food purchase in the game. Stealing from Frank during a Crime Wave is a classic GTA moment — rounding a corner, seeing the cart, grabbing a free hot dog while cops flood the streets. Pure DISCOVERY + CARNAGE + PROGRESSION energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)

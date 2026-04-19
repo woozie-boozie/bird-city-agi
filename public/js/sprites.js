@@ -8039,4 +8039,161 @@ window.Sprites = {
 
     ctx.restore();
   },
+
+  // ============================================================
+  // HOT DOG CART — Session 115
+  // Frank's rolling red umbrella cart: rat vendor, jaunty umbrella, sausage tray
+  // ============================================================
+  drawHotDogCart(ctx, x, y, angle, now) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle + Math.PI / 2); // face direction of travel
+
+    const t = now / 1000;
+
+    // === CART BODY ===
+    // Main cart body — deep red
+    ctx.fillStyle = '#cc2200';
+    ctx.strokeStyle = '#881100';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(-18, -10, 36, 20, 4);
+    ctx.fill();
+    ctx.stroke();
+
+    // Tray surface — stainless steel grey
+    ctx.fillStyle = '#c0c0c0';
+    ctx.beginPath();
+    ctx.roundRect(-16, -12, 32, 6, 2);
+    ctx.fill();
+
+    // Hot dogs on tray (3 sausages)
+    for (let i = 0; i < 3; i++) {
+      const sx = -10 + i * 10;
+      ctx.fillStyle = '#b05020';
+      ctx.beginPath();
+      ctx.ellipse(sx, -9, 3.5, 1.5, 0.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // === UMBRELLA POLE ===
+    ctx.strokeStyle = '#888';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, -12);
+    ctx.lineTo(0, -38);
+    ctx.stroke();
+
+    // Umbrella canopy — bright red and white stripes
+    const uY = -38;
+    ctx.save();
+    ctx.translate(0, uY);
+    for (let i = 0; i < 8; i++) {
+      const startAngle = (i / 8) * Math.PI * 2;
+      const endAngle = ((i + 1) / 8) * Math.PI * 2;
+      ctx.fillStyle = i % 2 === 0 ? '#ee2200' : '#ffffff';
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.arc(0, 0, 22, startAngle, endAngle);
+      ctx.closePath();
+      ctx.fill();
+    }
+    // Umbrella border ring
+    ctx.strokeStyle = '#cc1100';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(0, 0, 22, 0, Math.PI * 2);
+    ctx.stroke();
+    // Umbrella tip
+    ctx.fillStyle = '#cc1100';
+    ctx.beginPath();
+    ctx.arc(0, -3, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // === RAT VENDOR ===
+    // Rat body behind the cart
+    ctx.fillStyle = '#887766';
+    ctx.beginPath();
+    ctx.ellipse(0, 8, 7, 9, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Rat head with chef hat
+    ctx.fillStyle = '#998877';
+    ctx.beginPath();
+    ctx.arc(0, -2, 6, 0, Math.PI * 2);
+    ctx.fill();
+    // Chef hat
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.rect(-5, -10, 10, 3);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(0, -12, 4, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Rat eyes
+    ctx.fillStyle = '#ff3333';
+    ctx.beginPath();
+    ctx.arc(-2, -3, 1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(2, -3, 1, 0, Math.PI * 2);
+    ctx.fill();
+    // Rat tongs (animated holding)
+    const tongAngle = Math.sin(t * 3) * 0.2;
+    ctx.strokeStyle = '#aaaaaa';
+    ctx.lineWidth = 1.5;
+    ctx.save();
+    ctx.translate(-4, -7);
+    ctx.rotate(-0.3 + tongAngle);
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(8, -5);
+    ctx.stroke();
+    ctx.restore();
+    ctx.save();
+    ctx.translate(4, -7);
+    ctx.rotate(0.3 - tongAngle);
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(-8, -5);
+    ctx.stroke();
+    ctx.restore();
+
+    // === WHEELS ===
+    ctx.fillStyle = '#333';
+    ctx.strokeStyle = '#666';
+    ctx.lineWidth = 1.5;
+    for (const wx of [-14, 14]) {
+      ctx.beginPath();
+      ctx.arc(wx, 12, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      // Spoke
+      ctx.strokeStyle = '#888';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(wx - 5, 12);
+      ctx.lineTo(wx + 5, 12);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(wx, 7);
+      ctx.lineTo(wx, 17);
+      ctx.stroke();
+    }
+
+    // === STEAM ===
+    // A little steam puff rising from the tray
+    for (let s = 0; s < 3; s++) {
+      const sPhase = (t * 0.7 + s * 0.4) % 1;
+      const sy = -12 - sPhase * 14;
+      const sx = (s - 1) * 7;
+      const alpha = (1 - sPhase) * 0.35;
+      ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+      ctx.beginPath();
+      ctx.arc(sx, sy, 2 + sPhase * 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+  },
 };

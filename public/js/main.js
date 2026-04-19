@@ -5077,6 +5077,32 @@
       window._skyPirateDir = null;
     }
 
+    // === HOT DOG CART — Frank's Cart (Session 115) ===
+    if (ev.type === 'hotdog_cart_spawned') {
+      showAnnouncement(`🌭 FRANK'S HOT DOG CART is open! Fly within 100px and press [H]!`, '#ff8800', 5000);
+      addEventMessage(`🌭 Frank the Rat has set up his hot dog cart! Find him on the roads.`, '#ffaa44');
+    }
+    if (ev.type === 'hotdog_bought') {
+      if (ev.targetId === myId) {
+        const stolen = ev.isTheft;
+        const extra = ev.isBlizzard ? ' ☕+warmth!' : ev.isHeatwave ? ' 🌡️discount!' : '';
+        const msg = stolen
+          ? `🌭 STOLE A HOT DOG from Frank! +100 food +speed +XP boost! (+10 heat)`
+          : `🌭 FRANK'S HOT DOG! +100 food +1.4× speed 20s +5-hit ×1.3 XP${extra}`;
+        showAnnouncement(msg, stolen ? '#ff4422' : '#ff8800', 3500);
+        const now2 = performance.now();
+        effects.push({ type: 'xp', x: myX || 1500, y: (myY || 1500) - 20, time: now2, duration: 1200, text: stolen ? '🌭 YOINK!' : '🌭 +100 food!', color: '#ff8800' });
+      } else {
+        addEventMessage(`🌭 ${ev.birdName} ${ev.isTheft ? 'STOLE a hot dog from Frank!' : 'bought a hot dog from Frank!'}`, '#ffaa44');
+      }
+    }
+    if (ev.type === 'hotdog_cart_despawned') {
+      addEventMessage(`🌭 Frank has packed up the cart and rolled away.`, '#888888');
+    }
+    if (ev.type === 'hotdog_fail' && ev.targetId === myId) {
+      showAnnouncement(ev.msg || `🌭 Can't buy right now!`, '#aa5500', 2000);
+    }
+
     // === WING SURGE (Session 113) ===
     if (ev.type === 'wing_surge_activated') {
       const isMe = ev.birdId === myId;
@@ -5301,9 +5327,13 @@
       }
     }
 
-    // Bird Home toggle
+    // [H] — Hot Dog Cart buy (if near cart) or Bird Home toggle
     if (e.key.toLowerCase() === 'h') {
-      toggleBirdHome();
+      if (gameState && gameState.hotDogCart && gameState.hotDogCart.nearMe) {
+        socket.emit('action', { type: 'hotdog_buy' });
+      } else {
+        toggleBirdHome();
+      }
       return;
     }
 
@@ -6677,6 +6707,34 @@
         }
       } else {
         vendingMachinePrompt.style.display = 'none';
+      }
+    }
+
+    // Hot Dog Cart proximity prompt
+    const hotDogCartPrompt = document.getElementById('hotDogCartPrompt');
+    if (hotDogCartPrompt) {
+      if (gameState.hotDogCart && gameState.hotDogCart.nearMe) {
+        const hdc = gameState.hotDogCart;
+        const isCrimeWave = gameState.crimeWave && gameState.crimeWave.active;
+        const wantedLevel = (s && s.wantedLevel) || 0;
+        const isBlizzard = gameState.weather && gameState.weather.type === 'blizzard';
+        const isHeatwave = gameState.weather && gameState.weather.type === 'heatwave';
+        let cost = 60;
+        let label = '';
+        if (isCrimeWave && wantedLevel >= 2) {
+          label = '🌭 [H] STEAL THE HOT DOG (Crime Wave — FREE! +10 heat)';
+        } else if (isHeatwave) {
+          cost = 30;
+          label = `🌭 [H] Buy Hot Dog — ${cost}c 🌡️ Heatwave discount! (+100 food, speed 1.4×, +XP)`;
+        } else if (isBlizzard) {
+          label = `🌭 [H] Buy Hot Dog — ${cost}c ❄️ Blizzard bonus: warmth included! (+100 food, speed 1.4×, +XP)`;
+        } else {
+          label = `🌭 [H] Buy Hot Dog from Frank — ${cost}c (+100 food, 1.4× speed 20s, 5-hit XP ×1.3)`;
+        }
+        hotDogCartPrompt.textContent = label;
+        hotDogCartPrompt.style.display = 'block';
+      } else {
+        hotDogCartPrompt.style.display = 'none';
       }
     }
 
@@ -9396,6 +9454,16 @@
             y: e.y - camera.y + camera.screenH / 2,
           })),
         }, now);
+      }
+    }
+
+    // Hot Dog Cart — Session 115
+    if (gameState.hotDogCart) {
+      const hdc = gameState.hotDogCart;
+      const hdcsx = hdc.x - camera.x + camera.screenW / 2;
+      const hdcsy = hdc.y - camera.y + camera.screenH / 2;
+      if (hdcsx > -margin - 60 && hdcsx < camera.screenW + margin + 60 && hdcsy > -margin - 60 && hdcsy < camera.screenH + margin + 60) {
+        Sprites.drawHotDogCart(ctx, hdcsx, hdcsy, hdc.angle || 0, now);
       }
     }
 
@@ -12682,6 +12750,41 @@
       }
     }
 
+    // === HOT DOG CART — off-screen direction arrow ===
+    if (gameState.hotDogCart) {
+      const hdc = gameState.hotDogCart;
+      const hdcsx = hdc.x - camera.x + camera.screenW / 2;
+      const hdcsy = hdc.y - camera.y + camera.screenH / 2;
+      const hdcOnScreen = hdcsx > 50 && hdcsx < camera.screenW - 50 && hdcsy > 50 && hdcsy < camera.screenH - 50;
+      if (!hdcOnScreen) {
+        const hdcAngle = Math.atan2(hdcsy - camera.screenH / 2, hdcsx - camera.screenW / 2);
+        const hdcArrDist = Math.min(camera.screenW, camera.screenH) / 2 - 60;
+        const hdcAx = camera.screenW / 2 + Math.cos(hdcAngle) * hdcArrDist;
+        const hdcAy = camera.screenH / 2 + Math.sin(hdcAngle) * hdcArrDist;
+        const hdcPulse = 0.7 + 0.3 * Math.sin(now * 0.007);
+        ctx.save();
+        ctx.translate(hdcAx, hdcAy);
+        ctx.rotate(hdcAngle);
+        ctx.globalAlpha = 0.9 * hdcPulse;
+        ctx.fillStyle = '#ff8800';
+        ctx.shadowColor = '#ff8800';
+        ctx.shadowBlur = 10;
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(22, 0); ctx.lineTo(-10, -10); ctx.lineTo(-5, 0); ctx.lineTo(-10, 10);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.font = 'bold 11px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('🌭', 4, 0);
+        ctx.restore();
+      }
+    }
+
     // === GOLDEN PERCH — off-screen direction arrow ===
     const _gpData = gameState.self && gameState.self.goldenPerch;
     if (_gpData && window._goldenPerchDir) {
@@ -13227,6 +13330,28 @@
       minimapCtx.textAlign = 'center';
       minimapCtx.textBaseline = 'alphabetic';
       minimapCtx.fillText('📬', cpmx, cpmy - 5);
+      minimapCtx.restore();
+    }
+
+    // === HOT DOG CART — pulsing orange 🌭 dot on minimap ===
+    if (gameState.hotDogCart && worldData) {
+      const mw = minimapCtx.canvas.width;
+      const mh = minimapCtx.canvas.height;
+      const hdcPulse = 0.5 + 0.5 * Math.sin(now * 0.008);
+      const hdcmx = gameState.hotDogCart.x * mw / worldData.width;
+      const hdcmy = gameState.hotDogCart.y * mh / worldData.height;
+      minimapCtx.save();
+      minimapCtx.shadowColor = '#ff8800';
+      minimapCtx.shadowBlur = 8 + 4 * hdcPulse;
+      minimapCtx.fillStyle = `rgba(255,136,0,${0.8 + 0.2 * hdcPulse})`;
+      minimapCtx.beginPath();
+      minimapCtx.arc(hdcmx, hdcmy, 3.5 + hdcPulse, 0, Math.PI * 2);
+      minimapCtx.fill();
+      minimapCtx.shadowBlur = 0;
+      minimapCtx.font = '8px sans-serif';
+      minimapCtx.textAlign = 'center';
+      minimapCtx.textBaseline = 'alphabetic';
+      minimapCtx.fillText('🌭', hdcmx, hdcmy - 5);
       minimapCtx.restore();
     }
 
@@ -15603,6 +15728,15 @@
       const chargePct = Math.floor(s.wingCharge);
       const chargeColor = chargePct >= 75 ? '#ffee00' : chargePct >= 50 ? '#ffcc33' : '#cc9900';
       html += `<div class="bm-buff-pill" style="background:rgba(60,45,0,0.75);border-color:${chargeColor};color:${chargeColor};">🪶 Wing Charge: ${chargePct}% — Poop more to SURGE!</div>`;
+    }
+
+    // === HOT DOG CART buffs (Session 115) ===
+    if (s.hotdogSpeedUntil && s.hotdogSpeedUntil > now) {
+      const hdSecs = Math.ceil((s.hotdogSpeedUntil - now) / 1000);
+      html += `<div class="bm-buff-pill" style="background:rgba(130,50,0,0.88);border-color:#ff8800;color:#ffcc44;animation:kingpinGlow 0.7s ease-in-out infinite alternate;font-weight:bold;">🌭 FRANK'S HOT DOG — ×1.4 SPD — ${hdSecs}s</div>`;
+    }
+    if (s.hotdogXpBoostHits && s.hotdogXpBoostHits > 0) {
+      html += `<div class="bm-buff-pill" style="background:rgba(100,60,0,0.85);border-color:#ffaa44;color:#ffcc88;font-weight:bold;">🌭 HOT DOG XP BOOST ×1.3 — ${s.hotdogXpBoostHits} hits left!</div>`;
     }
 
     el.innerHTML = html;
