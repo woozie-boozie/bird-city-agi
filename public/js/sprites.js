@@ -8196,4 +8196,147 @@ window.Sprites = {
 
     ctx.restore();
   },
+
+  // ============================================================
+  // RIVAL BIRD — "Ace" from Feather City (Session 116)
+  // Crimson body, golden aviator goggles, flowing scarf
+  // ============================================================
+  drawRivalBird(ctx, x, y, angle, hp, maxHp, now) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle + Math.PI / 2); // orient along flight direction
+
+    const t = now / 1000;
+
+    // Red menace glow aura behind body
+    const glow = ctx.createRadialGradient(0, 0, 2, 0, 0, 22);
+    glow.addColorStop(0, 'rgba(220,30,30,0.55)');
+    glow.addColorStop(1, 'rgba(220,30,30,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 22, 22, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Wing left
+    ctx.save();
+    ctx.rotate(-0.3 + Math.sin(t * 5.5) * 0.2);
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.bezierCurveTo(-14, -6, -18, 2, -12, 8);
+    ctx.bezierCurveTo(-8, 10, -2, 6, 0, 0);
+    ctx.fillStyle = '#a01010';
+    ctx.fill();
+    ctx.restore();
+
+    // Wing right
+    ctx.save();
+    ctx.rotate(0.3 - Math.sin(t * 5.5) * 0.2);
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.bezierCurveTo(14, -6, 18, 2, 12, 8);
+    ctx.bezierCurveTo(8, 10, 2, 6, 0, 0);
+    ctx.fillStyle = '#a01010';
+    ctx.fill();
+    ctx.restore();
+
+    // Body (crimson teardrop)
+    ctx.beginPath();
+    ctx.ellipse(0, 2, 7, 10, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#cc1a1a';
+    ctx.fill();
+    ctx.strokeStyle = '#8b0000';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Chest highlight
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 3, 5, 0, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,100,100,0.3)';
+    ctx.fill();
+
+    // Head
+    ctx.beginPath();
+    ctx.arc(0, -8, 5, 0, Math.PI * 2);
+    ctx.fillStyle = '#cc1a1a';
+    ctx.fill();
+    ctx.strokeStyle = '#8b0000';
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+
+    // Beak
+    ctx.beginPath();
+    ctx.moveTo(0, -12);
+    ctx.lineTo(-1.5, -11);
+    ctx.lineTo(1.5, -11);
+    ctx.closePath();
+    ctx.fillStyle = '#f0c040';
+    ctx.fill();
+
+    // Golden aviator goggles
+    ctx.strokeStyle = '#ffd700';
+    ctx.lineWidth = 1.2;
+    // Left goggle
+    ctx.beginPath();
+    ctx.arc(-2.5, -8.5, 2, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(100,200,255,0.4)';
+    ctx.fill();
+    ctx.strokeStyle = '#ffd700';
+    ctx.stroke();
+    // Right goggle
+    ctx.beginPath();
+    ctx.arc(2.5, -8.5, 2, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(100,200,255,0.4)';
+    ctx.fill();
+    ctx.stroke();
+    // Bridge
+    ctx.beginPath();
+    ctx.moveTo(-0.5, -8.5);
+    ctx.lineTo(0.5, -8.5);
+    ctx.strokeStyle = '#ffd700';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Flowing scarf — animates with wind
+    const scarfPhase = Math.sin(t * 4) * 0.3;
+    ctx.save();
+    ctx.translate(0, -5);
+    ctx.rotate(scarfPhase);
+    ctx.beginPath();
+    ctx.moveTo(-2, 0);
+    ctx.bezierCurveTo(-6, 4, -4, 12, -8 + Math.sin(t * 3) * 3, 18);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#ff6600';
+    ctx.lineCap = 'round';
+    ctx.stroke();
+    // second tail of scarf
+    ctx.beginPath();
+    ctx.moveTo(2, 0);
+    ctx.bezierCurveTo(5, 6, 3, 14, 6 + Math.sin(t * 3.5 + 1) * 2, 20);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#ff8800';
+    ctx.stroke();
+    ctx.restore();
+
+    ctx.restore();
+
+    // HP bar (shown only when damaged, in world space)
+    if (hp < maxHp) {
+      ctx.save();
+      ctx.translate(x - 20, y - 22);
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(0, 0, 40, 5);
+      const hpFrac = hp / maxHp;
+      ctx.fillStyle = hpFrac > 0.5 ? '#4caf50' : hpFrac > 0.25 ? '#ff9800' : '#f44336';
+      ctx.fillRect(0, 0, 40 * hpFrac, 5);
+      ctx.strokeStyle = '#333';
+      ctx.lineWidth = 0.5;
+      ctx.strokeRect(0, 0, 40, 5);
+
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 7px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${hp}/${maxHp}`, 20, -2);
+      ctx.restore();
+    }
+  },
 };

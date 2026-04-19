@@ -182,6 +182,9 @@ const DAILY_CHALLENGE_POOL = [
   // Session 115: Hot Dog Cart challenges
   { id: 'street_eats',    title: 'Street Eats',      desc: 'Buy a hot dog from Frank\'s cart (press [H] near the cart)',          target: 1, trackType: 'hotdog_bought',    reward: { xp: 120, coins: 60  } },
   { id: 'frank_regular',  title: 'Roadside Regular', desc: 'Buy hot dogs from Frank\'s cart 3 times',                             target: 3, trackType: 'hotdog_bought',    reward: { xp: 200, coins: 100 } },
+  // Session 116: Rival Bird challenges
+  { id: 'city_pride',    title: 'City Pride',       desc: 'Land 5 hits on the Rival Bird from Feather City',                     target: 5, trackType: 'rival_bird_hit',   reward: { xp: 180, coins: 85  } },
+  { id: 'home_turf',     title: 'Home Turf Defender', desc: 'Help bring down the Rival Bird (deal the killing blow or contribute)', target: 1, trackType: 'rival_bird_killed', reward: { xp: 250, coins: 125 } },
 ];
 
 // ============================================================
@@ -508,6 +511,14 @@ class GameEngine {
     // Crime Wave + Wanted Level >= 2: free theft (no cost, +10 heat added).
     this.hotDogCart = null; // null | { x, y, vx, vy, angle, waypointIdx, waypoints, spawnedAt, expiresAt }
     this._hotDogCartTimer = Date.now() + this._randomRange(5 * 60000, 8 * 60000);
+
+    // === THE RIVAL BIRD — Session 116 ===
+    // "Ace" from Feather City — a fast crimson aerial NPC with golden goggles and a scarf.
+    // Spawns every 25-35 minutes, targets a player-owned territory zone, and drains its
+    // capture progress while taunting the city. 10 HP — requires coordinated poop to bring down.
+    // Escapes after 90 seconds if not defeated, dealing a territory setback.
+    this.rivalBird = null; // null | { x, y, vx, vy, angle, hp, maxHp, state, targetZone, contributors, spawnedAt, expiresAt, dirChangeAt, tauntAt }
+    this._rivalBirdTimer = Date.now() + this._randomRange(25 * 60000, 35 * 60000);
 
     // === BIRD CITY ELECTIONS — Session 103 ===
     // Every 35-45 minutes, City Hall puts 3 random policies to a city-wide vote (45s).
@@ -2153,6 +2164,9 @@ class GameEngine {
 
     // === Hot Dog Cart ===
     this._updateHotDogCart(dt, now);
+
+    // === Rival Bird ===
+    this._updateRivalBird(dt, now);
   }
 
   // ============================================================
@@ -4022,6 +4036,22 @@ class GameEngine {
             this.events.push({ type: 'motorcade_escort_stunned', hitterId: bird.id, hitterName: bird.name, escortId: escort.id, x: escort.x, y: escort.y });
           }
         }
+      } else if (hit.target === 'rival_bird' && this.rivalBird && this.rivalBird.state !== 'escaping') {
+        // "Ace" from Feather City takes a hit!
+        const rb = this.rivalBird;
+        const dmg = isMegaPoop ? 3 : 1;
+        rb.hp = Math.max(0, rb.hp - dmg);
+        // Track contributor (cap at 3 per bird so one player can't solo-kill)
+        const rbContrib = rb.contributors.get(bird.id) || 0;
+        rb.contributors.set(bird.id, rbContrib + dmg);
+        // Immediate reward
+        xpGain = isMegaPoop ? 40 : 14;
+        bird.coins += isMegaPoop ? 12 : 4;
+        this._trackDailyProgress(bird, 'rival_bird_hit', dmg);
+        this.events.push({ type: 'rival_bird_hit', hitterId: bird.id, hitterName: bird.name, hitterGang: bird.gangTag || null, dmg, hp: rb.hp, maxHp: rb.maxHp, x: rb.x, y: rb.y });
+        if (rb.hp <= 0) {
+          this._endRivalBird('killed', bird, now);
+        }
       } else if (hit.target === 'bowling_bird' && this.bowlingBall && this.bowlingBall.hp > 0) {
         // Poop hit the Bowling Bird! Chip away at the shell to free the bird inside.
         const bb = this.bowlingBall;
@@ -5679,6 +5709,17 @@ class GameEngine {
           if (!isMegaPoop) return { target: 'motorcade_escort', escortId: escort.id };
           allHits.push({ target: 'motorcade_escort', escortId: escort.id });
         }
+      }
+    }
+
+    // Check Rival Bird — fast aerial NPC from Feather City. Small hitbox (9px) — actually hard to hit!
+    if (this.rivalBird && this.rivalBird.state !== 'escaping') {
+      const rb = this.rivalBird;
+      const rdx = poop.x - rb.x;
+      const rdy = poop.y - rb.y;
+      if (Math.sqrt(rdx * rdx + rdy * rdy) < hitRadius + 9) {
+        if (!isMegaPoop) return { target: 'rival_bird' };
+        allHits.push({ target: 'rival_bird' });
       }
     }
 
@@ -7662,6 +7703,17 @@ class GameEngine {
           const dx = bird.x - this.hotDogCart.x, dy = bird.y - this.hotDogCart.y;
           return Math.sqrt(dx * dx + dy * dy) < 100;
         })(),
+      } : null,
+      rivalBird: this.rivalBird ? {
+        x: this.rivalBird.x,
+        y: this.rivalBird.y,
+        angle: this.rivalBird.angle,
+        hp: this.rivalBird.hp,
+        maxHp: this.rivalBird.maxHp,
+        state: this.rivalBird.state,
+        expiresAt: this.rivalBird.expiresAt,
+        myHits: (this.rivalBird.contributors.get(bird.id) || 0),
+        targetZoneName: this.rivalBird.targetZone ? this.rivalBird.targetZone.name : null,
       } : null,
       raccoons: nearbyRaccoons,
       drunkPigeons: nearbyDrunkPigeons,
@@ -16574,6 +16626,7 @@ class GameEngine {
       motorcadeAttacked:    false, // someone attacked the motorcade
       perchWins:            [],   // [{ name, gangTag, locationName }] — golden perch champions this cycle
       treasureFinds:        [],   // [{ name, gangTag, coins }] — buried treasure claims this cycle
+      rivalBirdKilled:      0,   // rival bird kill count this cycle
     };
   }
 
@@ -25745,6 +25798,204 @@ class GameEngine {
       isBlizzard,
       msg: `${emoji} ${bird.gangTag ? `[${bird.gangTag}] ` : ''}${bird.name} bought a hot dog from Frank! (${priceStr}) +100 food, 20s 1.4× speed, 5-hit 1.3× XP boost!${isBlizzard ? ' ☕ WARM for 30s!' : ''}`,
     });
+  }
+
+  // ============================================================
+  // RIVAL BIRD SYSTEM — Session 116
+  // ============================================================
+
+  _spawnRivalBird(now) {
+    // Pick a player-owned territory zone as the target (if any)
+    const ownedZones = Array.from(this.territories.values()).filter(z => z.ownerTeamId);
+    const targetZone = ownedZones.length > 0
+      ? ownedZones[Math.floor(Math.random() * ownedZones.length)]
+      : null;
+
+    // Spawn at a random map edge
+    const edge = Math.floor(Math.random() * 4);
+    let sx, sy;
+    if (edge === 0) { sx = Math.random() * 3000; sy = -60; }        // top
+    else if (edge === 1) { sx = 3060; sy = Math.random() * 3000; }   // right
+    else if (edge === 2) { sx = Math.random() * 3000; sy = 3060; }   // bottom
+    else { sx = -60; sy = Math.random() * 3000; }                    // left
+
+    // Initial heading toward target zone center (or city center)
+    const tx = targetZone ? ((targetZone.x1 + targetZone.x2) / 2) : 1500;
+    const ty = targetZone ? ((targetZone.y1 + targetZone.y2) / 2) : 1500;
+    const angle = Math.atan2(ty - sy, tx - sx);
+    const speed = 175;
+
+    this.rivalBird = {
+      x: sx, y: sy,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      angle,
+      hp: 10, maxHp: 10,
+      state: 'raiding',  // 'raiding' | 'escaping'
+      targetZone,
+      contributors: new Map(),
+      spawnedAt: now,
+      expiresAt: now + 90000,
+      dirChangeAt: now + this._randomRange(500, 1500),
+      tauntAt: now + 15000,
+    };
+
+    const zoneName = targetZone ? targetZone.name : 'Bird City';
+    const taunts = [
+      `✈️ "ACE" FROM FEATHER CITY has arrived! "${zoneName}" is MINE now!`,
+      `🔴 RIVAL BIRD INCOMING! Ace targets ${zoneName} — defend your turf!`,
+      `🏆 Ace from Feather City is here to STEAL ${zoneName}! Poop him out!`,
+    ];
+    const msg = taunts[Math.floor(Math.random() * taunts.length)];
+    this.events.push({ type: 'rival_bird_spawn', x: sx, y: sy, targetZoneName: zoneName, msg });
+  }
+
+  _updateRivalBird(dt, now) {
+    // Spawn timer
+    if (!this.rivalBird && now >= this._rivalBirdTimer && this.birds.size > 0) {
+      this._spawnRivalBird(now);
+      this._rivalBirdTimer = now + this._randomRange(25 * 60000, 35 * 60000);
+      return;
+    }
+    if (!this.rivalBird) return;
+
+    const rb = this.rivalBird;
+    const dtSec = dt / 1000;
+
+    // Expiry → escape
+    if (now >= rb.expiresAt && rb.state === 'raiding') {
+      this._endRivalBird('escaped', null, now);
+      return;
+    }
+
+    // State: raiding
+    if (rb.state === 'raiding') {
+      // Erratic direction changes
+      if (now >= rb.dirChangeAt) {
+        // Steer toward target zone with random deviation
+        let baseAngle;
+        if (rb.targetZone) {
+          const tx = (rb.targetZone.x1 + rb.targetZone.x2) / 2;
+          const ty = (rb.targetZone.y1 + rb.targetZone.y2) / 2;
+          baseAngle = Math.atan2(ty - rb.y, tx - rb.x);
+        } else {
+          baseAngle = rb.angle;
+        }
+        const jitter = (Math.random() - 0.5) * Math.PI * 0.9;
+        rb.angle = baseAngle + jitter;
+        const speed = 175;
+        rb.vx = Math.cos(rb.angle) * speed;
+        rb.vy = Math.sin(rb.angle) * speed;
+        rb.dirChangeAt = now + this._randomRange(500, 1500);
+      }
+
+      // Move
+      rb.x += rb.vx * dtSec;
+      rb.y += rb.vy * dtSec;
+
+      // Bounce off world edges
+      if (rb.x < 0)    { rb.x = 0;    rb.vx = Math.abs(rb.vx); }
+      if (rb.x > 3000) { rb.x = 3000; rb.vx = -Math.abs(rb.vx); }
+      if (rb.y < 0)    { rb.y = 0;    rb.vy = Math.abs(rb.vy); }
+      if (rb.y > 3000) { rb.y = 3000; rb.vy = -Math.abs(rb.vy); }
+
+      // Drain target zone capture progress
+      if (rb.targetZone) {
+        const zone = this.territories.get(rb.targetZone.id);
+        if (zone) {
+          const distToZoneCenter = Math.hypot(
+            rb.x - (rb.targetZone.x1 + rb.targetZone.x2) / 2,
+            rb.y - (rb.targetZone.y1 + rb.targetZone.y2) / 2
+          );
+          const zoneRadius = Math.hypot(rb.targetZone.x2 - rb.targetZone.x1, rb.targetZone.y2 - rb.targetZone.y1) / 2;
+          if (distToZoneCenter < zoneRadius * 0.8 && zone.captureProgress > 0) {
+            zone.captureProgress = Math.max(0, zone.captureProgress - 0.004 * dtSec * 60);
+            if (zone.captureProgress === 0) {
+              zone.ownerTeamId = null;
+              zone.ownerName = null;
+              zone.ownerColor = null;
+              this.events.push({ type: 'rival_bird_zone_drained', zoneName: zone.name });
+            }
+          }
+        }
+      }
+
+      // Periodic taunts
+      if (now >= rb.tauntAt) {
+        const zoneName = rb.targetZone ? rb.targetZone.name : 'Bird City';
+        const taunts = [
+          `🔴 Ace from Feather City: "Your ${zoneName} smells like FEATHERS — MINE!"`,
+          `🔴 Ace: "Still can't hit me? Feather City birds are SO much better!"`,
+          `🔴 Ace: "Is that all you've got? I've seen better aim from baby pigeons!"`,
+          `🔴 Ace: "Your ${zoneName} will look GREAT in red! My red!"`,
+        ];
+        const taunt = taunts[Math.floor(Math.random() * taunts.length)];
+        this.events.push({ type: 'rival_bird_taunt', msg: taunt, x: rb.x, y: rb.y });
+        rb.tauntAt = now + 20000;
+      }
+    }
+
+    // State: escaping — fly toward nearest edge fast
+    if (rb.state === 'escaping') {
+      rb.x += rb.vx * dtSec;
+      rb.y += rb.vy * dtSec;
+      // Despawn when off-screen
+      if (rb.x < -100 || rb.x > 3100 || rb.y < -100 || rb.y > 3100) {
+        this.rivalBird = null;
+      }
+    }
+  }
+
+  _endRivalBird(reason, killerBird, now) {
+    const rb = this.rivalBird;
+    if (!rb) return;
+
+    if (reason === 'killed') {
+      // Proportional rewards to all contributors
+      const totalDmg = Array.from(rb.contributors.values()).reduce((a, b) => a + b, 0);
+      for (const [birdId, dmg] of rb.contributors.entries()) {
+        const b = this.birds.get(birdId);
+        if (!b) continue;
+        const share = totalDmg > 0 ? dmg / totalDmg : 1;
+        const xp = Math.floor(share * 400 + 60);
+        const coins = Math.floor(share * 200 + 30);
+        b.xp += xp;
+        b.coins += coins;
+        this._trackDailyProgress(b, 'rival_bird_killed', 1);
+        this.events.push({ type: 'rival_bird_reward', targetId: birdId, xp, coins, share: Math.round(share * 100) });
+      }
+      const killerName = killerBird ? killerBird.name : 'a brave bird';
+      this.events.push({
+        type: 'rival_bird_killed',
+        killerName,
+        killerGang: killerBird ? (killerBird.gangTag || null) : null,
+        msg: `🏆 ACE FROM FEATHER CITY IS DOWN! ${killerName} delivered the killing blow! Feather City retreats!`,
+        x: rb.x, y: rb.y,
+      });
+      if (rb.targetZone) this.gazetteStats.rivalBirdKilled = (this.gazetteStats.rivalBirdKilled || 0) + 1;
+    } else {
+      // Escaped — deal territory setback
+      let setbackMsg = '';
+      if (rb.targetZone) {
+        const zone = this.territories.get(rb.targetZone.id);
+        if (zone && zone.captureProgress > 0) {
+          zone.captureProgress = Math.max(0, zone.captureProgress - 0.25);
+          setbackMsg = ` ${rb.targetZone.name} lost 25% capture progress!`;
+        }
+      }
+      this.events.push({
+        type: 'rival_bird_escaped',
+        msg: `🔴 Ace from Feather City escaped! "See you next time, LOSERS!"${setbackMsg}`,
+        x: rb.x, y: rb.y,
+      });
+    }
+
+    // Enter escaping state briefly so the sprite fades out, then set null
+    rb.state = 'escaping';
+    const escapeAngle = Math.atan2(rb.y > 1500 ? 1 : -1, rb.x > 1500 ? 1 : -1);
+    rb.vx = Math.cos(escapeAngle) * 250;
+    rb.vy = Math.sin(escapeAngle) * 250;
+    // Will be cleaned up in _updateRivalBird when off-screen
   }
 }
 

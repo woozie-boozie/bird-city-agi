@@ -5099,6 +5099,36 @@
     if (ev.type === 'hotdog_cart_despawned') {
       addEventMessage(`🌭 Frank has packed up the cart and rolled away.`, '#888888');
     }
+
+    // === RIVAL BIRD — "Ace" from Feather City (Session 116) ===
+    if (ev.type === 'rival_bird_spawn') {
+      screenShake(8, 500);
+      showAnnouncement(ev.msg || `🔴 ACE FROM FEATHER CITY ARRIVES!`, '#cc1a1a', 5000);
+      addEventMessage(`✈️ Rival Bird "Ace" targets ${ev.targetZoneName || 'Bird City'}! 10 HP — poop together!`, '#ff4444');
+    }
+    if (ev.type === 'rival_bird_hit') {
+      const isMine = ev.hitterId === myId;
+      effects.push({ type: 'float_text', x: ev.x, y: ev.y - 20, time: now, duration: 900, text: `🔴 -${ev.dmg}HP (${ev.hp}/${ev.maxHp})`, color: '#ff6666' });
+      if (isMine) addEventMessage(`🔴 You hit Ace! ${ev.hp}/${ev.maxHp} HP left`, '#ff4444');
+    }
+    if (ev.type === 'rival_bird_taunt') {
+      addEventMessage(ev.msg, '#ff6644');
+    }
+    if (ev.type === 'rival_bird_killed') {
+      screenShake(12, 700);
+      showAnnouncement(ev.msg || `🏆 ACE DEFEATED!`, '#ffd700', 6000);
+      effects.push({ type: 'screen_flash', color: 'rgba(255,215,0,0.3)', duration: 400, time: now });
+    }
+    if (ev.type === 'rival_bird_reward' && ev.targetId === myId) {
+      showAnnouncement(`🏆 FEATHER CITY DEFENDER! +${ev.xp} XP +${ev.coins}c (${ev.share}% contribution)`, '#ffd700', 4000);
+    }
+    if (ev.type === 'rival_bird_escaped') {
+      showAnnouncement(ev.msg || `🔴 Ace ESCAPED! The city failed to defend!`, '#cc1a1a', 5000);
+      addEventMessage(`🔴 Ace from Feather City escaped and mocked the city on his way out!`, '#ff6644');
+    }
+    if (ev.type === 'rival_bird_zone_drained') {
+      addEventMessage(`🔴 Ace drained ${ev.zoneName || 'a territory'}! Zone capture progress reset!`, '#ff4444');
+    }
     if (ev.type === 'hotdog_fail' && ev.targetId === myId) {
       showAnnouncement(ev.msg || `🌭 Can't buy right now!`, '#aa5500', 2000);
     }
@@ -9467,6 +9497,27 @@
       }
     }
 
+    // Rival Bird — "Ace" from Feather City (Session 116)
+    if (gameState.rivalBird) {
+      const rb = gameState.rivalBird;
+      const rbsx = rb.x - camera.x + camera.screenW / 2;
+      const rbsy = rb.y - camera.y + camera.screenH / 2;
+      if (rbsx > -margin - 40 && rbsx < camera.screenW + margin + 40 && rbsy > -margin - 40 && rbsy < camera.screenH + margin + 40) {
+        Sprites.drawRivalBird(ctx, rbsx, rbsy, rb.angle || 0, rb.hp, rb.maxHp, now);
+        // Label
+        ctx.save();
+        ctx.font = 'bold 8px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#ff4444';
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 2;
+        const label = `🔴 ACE (${rb.myHits || 0} hits)`;
+        ctx.strokeText(label, rbsx, rbsy - 30);
+        ctx.fillText(label, rbsx, rbsy - 30);
+        ctx.restore();
+      }
+    }
+
     // Courier Pigeon (Session 107)
     if (gameState.courierPigeon) {
       const cp = gameState.courierPigeon;
@@ -12785,6 +12836,41 @@
       }
     }
 
+    // === RIVAL BIRD — off-screen direction arrow ===
+    if (gameState.rivalBird) {
+      const rb = gameState.rivalBird;
+      const rbsx = rb.x - camera.x + camera.screenW / 2;
+      const rbsy = rb.y - camera.y + camera.screenH / 2;
+      const rbOnScreen = rbsx > 50 && rbsx < camera.screenW - 50 && rbsy > 50 && rbsy < camera.screenH - 50;
+      if (!rbOnScreen) {
+        const rbAngle = Math.atan2(rbsy - camera.screenH / 2, rbsx - camera.screenW / 2);
+        const rbArrDist = Math.min(camera.screenW, camera.screenH) / 2 - 60;
+        const rbAx = camera.screenW / 2 + Math.cos(rbAngle) * rbArrDist;
+        const rbAy = camera.screenH / 2 + Math.sin(rbAngle) * rbArrDist;
+        const rbPulse = 0.7 + 0.3 * Math.sin(now * 0.009);
+        ctx.save();
+        ctx.translate(rbAx, rbAy);
+        ctx.rotate(rbAngle);
+        ctx.globalAlpha = 0.9 * rbPulse;
+        ctx.fillStyle = '#cc1a1a';
+        ctx.shadowColor = '#ff4444';
+        ctx.shadowBlur = 10;
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(22, 0); ctx.lineTo(-10, -10); ctx.lineTo(-5, 0); ctx.lineTo(-10, 10);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.font = 'bold 11px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('🔴', 4, 0);
+        ctx.restore();
+      }
+    }
+
     // === GOLDEN PERCH — off-screen direction arrow ===
     const _gpData = gameState.self && gameState.self.goldenPerch;
     if (_gpData && window._goldenPerchDir) {
@@ -13308,6 +13394,28 @@
       minimapCtx.textAlign = 'center';
       minimapCtx.textBaseline = 'alphabetic';
       minimapCtx.fillText('🚐', bvmx, bvmy - 5);
+      minimapCtx.restore();
+    }
+
+    // === RIVAL BIRD — pulsing red 🔴 dot on minimap ===
+    if (gameState.rivalBird && worldData) {
+      const mw = minimapCtx.canvas.width;
+      const mh = minimapCtx.canvas.height;
+      const rbPulse = 0.5 + 0.5 * Math.sin(now * 0.01);
+      const rbmx = gameState.rivalBird.x * mw / worldData.width;
+      const rbmy = gameState.rivalBird.y * mh / worldData.height;
+      minimapCtx.save();
+      minimapCtx.shadowColor = '#ff2222';
+      minimapCtx.shadowBlur = 8 + 5 * rbPulse;
+      minimapCtx.fillStyle = '#cc1a1a';
+      minimapCtx.beginPath();
+      minimapCtx.arc(rbmx, rbmy, 4 + 2 * rbPulse, 0, Math.PI * 2);
+      minimapCtx.fill();
+      minimapCtx.shadowBlur = 0;
+      minimapCtx.font = '8px sans-serif';
+      minimapCtx.textAlign = 'center';
+      minimapCtx.textBaseline = 'alphabetic';
+      minimapCtx.fillText('🔴', rbmx, rbmy - 5);
       minimapCtx.restore();
     }
 
@@ -15737,6 +15845,14 @@
     }
     if (s.hotdogXpBoostHits && s.hotdogXpBoostHits > 0) {
       html += `<div class="bm-buff-pill" style="background:rgba(100,60,0,0.85);border-color:#ffaa44;color:#ffcc88;font-weight:bold;">🌭 HOT DOG XP BOOST ×1.3 — ${s.hotdogXpBoostHits} hits left!</div>`;
+    }
+
+    // Rival Bird active warning (anyone, not just self)
+    if (gameState.rivalBird && gameState.rivalBird.state === 'raiding') {
+      const rb = gameState.rivalBird;
+      const secsLeft = Math.ceil(Math.max(0, rb.expiresAt - now) / 1000);
+      const myHits = rb.myHits || 0;
+      html += `<div class="bm-buff-pill" style="background:rgba(80,0,0,0.9);border-color:#cc1a1a;color:#ff6666;animation:pulseRed 0.8s ease-in-out infinite alternate;font-weight:bold;">🔴 RIVAL BIRD — ${rb.hp}/${rb.maxHp} HP · ${secsLeft}s · MY HITS: ${myHits} · POOP ACE!</div>`;
     }
 
     el.innerHTML = html;

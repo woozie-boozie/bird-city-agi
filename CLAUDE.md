@@ -3998,6 +3998,36 @@ Frank the Rat runs a red umbrella hot dog cart along city roads every 5–8 minu
 
 **Creative intent**: Every food system in Bird City so far has been passive (items on the ground) or event-driven (festivals, worms, pond fish). Frank's cart is the first VENDOR — a moving NPC you have to hunt down on the roads, spending coins for an immediate food+speed+XP triple hit. The heatwave discount creates seasonal synergy: when food is hardest to keep (thirst drain) the cart becomes the cheapest. The blizzard warmth combo makes buying in a snowstorm the most valuable food purchase in the game. Stealing from Frank during a Crime Wave is a classic GTA moment — rounding a corner, seeing the cart, grabbing a free hot dog while cops flood the streets. Pure DISCOVERY + CARNAGE + PROGRESSION energy.
 
+**Session 116 — 2026-04-19: The Rival Bird — "Ace" from Feather City**
+Bird City just got its first inter-city rivalry. A fast crimson aerial NPC with golden aviator goggles and a trailing scarf swoops into the city every 25-35 minutes from Feather City, targeting a player-owned territory zone and taunting the locals while draining its capture progress. The whole city must cooperate to bring him down — 10 HP, erratic movement at 175px/s, and a 90-second escape timer.
+
+**The Rival Bird mechanics (`server/game.js`):**
+- Spawns every 25-35 minutes at a random map edge, beelining for the richest player-owned territory zone
+- **Erratic aerial movement**: direction changes every 0.5-1.5 seconds with ±80° random deviation from the target heading — genuinely hard to track and hit
+- **Territory drain**: while within the zone, drains capture progress at 0.004/s per tick — if the zone hits 0, it goes neutral with a city-wide announcement
+- **Periodic taunts**: fires city-wide mockery messages every 20 seconds ("Your zone smells like FEATHERS — MINE!")
+- **10 HP to defeat**: normal poop = 1 HP, mega poop = 3 HP. Per-hit rewards: +14 XP +4c (mega: +40 XP +12c). Daily challenge tracking on every hit
+- **Proportional kill rewards**: all contributors split 400 XP + 200 coins scaled by damage dealt. Top contributor wins the lion's share.
+- **Escape after 90 seconds**: fires a "see you next time LOSERS!" taunt and deals −25% capture progress to the target zone as a parting shot before fleeing at 250px/s toward the nearest map corner
+- **Escape state**: enters a fast flight-off-screen phase instead of instant despawn — gives the city one last chance to see him run
+
+**Visual system (`public/js/sprites.js`):**
+- Custom `drawRivalBird()`: crimson body with layered wing animations, golden aviator goggles with tinted cyan lenses, animated flowing scarf in orange/flame colors that streams behind the flight direction with bezier curves, red glow aura behind the body
+- HP bar shown above sprite when damaged (green→orange→red with HP numbers)
+- **Minimap**: pulsing red 🔴 dot tracking real-time position — trackable from anywhere on the map
+- **Off-screen direction arrow**: red 🔴 pulsing arrow pointing toward Ace when off-screen
+
+**HUD & events (`public/js/main.js`):**
+- Active buffs HUD pill: "🔴 RIVAL BIRD — X/10 HP · Xs · MY HITS: N · POOP ACE!" in red pulse for all players while Ace is raiding
+- World-space label shows "🔴 ACE (N hits)" above the sprite, visible to all nearby players
+- Event handlers for: `rival_bird_spawn` (screen shake + big announcement), `rival_bird_hit` (floating damage text), `rival_bird_taunt` (event feed), `rival_bird_killed` (gold screen flash + city-wide celebration), `rival_bird_reward` (personal XP/coin popup), `rival_bird_escaped` (shame announcement), `rival_bird_zone_drained` (territory alert)
+
+**Two new daily challenges:**
+- 🔴 **City Pride**: Land 5 hits on the Rival Bird from Feather City (180 XP, 85c)
+- 🔴 **Home Turf Defender**: Help bring down the Rival Bird (deal the killing blow or contribute) (250 XP, 125c)
+
+**Creative intent**: The Rival Bird adds Bird City's first EXTERNAL threat — not a random NPC or generic boss, but a CHARACTER from another city who specifically comes to disrespect your turf. The territory drain makes ignoring him costly: your gang's hard-earned zone slowly evaporates while Ace taunts you. The erratic 175px/s movement with random direction changes makes him genuinely difficult to hit solo — you need multiple birds firing simultaneously. A gang defending their territory zone from Ace while he swoops and dodges is exactly the kind of emergent cooperative moment the SOCIAL pillar was built for. And the city-wide taunts make him feel alive — "Your Downtown smells like FEATHERS — MINE!" is the kind of trash talk that makes players drop what they're doing to join the hunt. Pure SOCIAL + CARNAGE + DISCOVERY energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
