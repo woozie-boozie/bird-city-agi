@@ -4028,6 +4028,40 @@ Bird City just got its first inter-city rivalry. A fast crimson aerial NPC with 
 
 **Creative intent**: The Rival Bird adds Bird City's first EXTERNAL threat — not a random NPC or generic boss, but a CHARACTER from another city who specifically comes to disrespect your turf. The territory drain makes ignoring him costly: your gang's hard-earned zone slowly evaporates while Ace taunts you. The erratic 175px/s movement with random direction changes makes him genuinely difficult to hit solo — you need multiple birds firing simultaneously. A gang defending their territory zone from Ace while he swoops and dodges is exactly the kind of emergent cooperative moment the SOCIAL pillar was built for. And the city-wide taunts make him feel alive — "Your Downtown smells like FEATHERS — MINE!" is the kind of trash talk that makes players drop what they're doing to join the hunt. Pure SOCIAL + CARNAGE + DISCOVERY energy.
 
+**Session 117 — 2026-04-19: The Mole — Double Agent Infiltration Event**
+Bird City's first asymmetric information event. Every 25-35 minutes, one random bird is secretly selected as THE MOLE — only they know their identity. Their mission: covertly tag 3 target birds by landing a poop hit on each (before anyone notices) within 75 seconds. At the 60-second mark, the mole is REVEALED regardless of mission success, and a 15-second MOLE ALERT window opens — every bird online gets to hunt them down for big XP and coins.
+
+**The Mole mechanics (`server/game.js`):**
+- Requires ≥2 active birds. Picks a random bird as the mole; shuffles remaining birds and selects 3 as targets.
+- Mission window: 75 seconds total. Reveal fires at 60 seconds (15s remaining), ending the stealth phase.
+- **Tag mechanic**: the mole's poops check against their assigned targets first — a hit on any target counts as a "tag hit" (secret, no public poop animation). Each tag: +25 XP +8c for the mole immediately.
+- **Success (all 3 tagged)**: +600 XP +350c for the mole, `moleBadge` session flag set, city-wide announcement, immediate reveal + 15s revenge window via `setTimeout`.
+- **Fail (time expires)**: shame broadcast, mission ends. Mole still gets revealed if they tagged some but not all.
+- **MOLE ALERT (15s window)**: after reveal, any bird can poop the mole for +80 XP +40c per hit. Mole identity is broadcast city-wide with pulsing 🕵️ badge on their sprite.
+- State sanitized per-bird: mole sees `{ isMole: true, targets, targetNames, tagged, secsLeft, revealed }`. Others see only `{ isMole: false, revealed: false }` until MOLE ALERT fires (`revealed: true, moleId, moleName, revengeEndsAt`).
+- Two new daily challenges: **The Mole** (complete the infiltration mission, 300 XP/150c) and **Mole Hunter** (poop the revealed mole during MOLE ALERT, 200 XP/100c).
+
+**Visual system (`public/js/sprites.js`):**
+- `drawMoleBadge(ctx, sx, sy, now)`: spinning dashed ring, purple/magenta radial glow aura, floating 🕵️ emoji with shadow glow, pulsing "MOLE!" label — drawn on the revealed mole's bird sprite, visible to all nearby players.
+- `drawMoleTargetIndicator(ctx, sx, sy, tagged, now)`: drawn only for the mole player's POV. Tagged targets show a green check ring + ✅ emoji. Untagged targets show an orange crosshair (circle + four cross lines) + "TARGET" label.
+
+**HUD & minimap (`public/js/main.js`):**
+- Active buffs HUD pill for the mole: shows mission status, tagged count, time left, per-target checkmarks. Switches to "EXPOSED — SURVIVE!" red pill after reveal.
+- Active buffs HUD pill for all others during MOLE ALERT: "🕵️ MOLE ALERT — poop [name] · Xs · MY HITS: N" in purple.
+- Off-screen direction arrow: pulsing purple/magenta 🕵️ arrow pointing toward the revealed mole during MOLE ALERT.
+- Minimap: pulsing purple 🕵️ dot at mole's real-time position during MOLE ALERT — trackable from anywhere on the map.
+
+**Events & announcements:**
+- `mole_assigned` (mole only): personal mission briefing with target names.
+- `mole_mission_start` (city-wide): vague "a mole has infiltrated Bird City…" hint — no identity.
+- `mole_tag_success` (mole only): private floating text showing tag count.
+- `mole_alert` (city-wide): REVEAL + screen shake + purple flash + hunt prompt.
+- `mole_revenge_hit` (city-wide): floating hit counter, reward announcement.
+- `mole_success` (city-wide): "MISSION COMPLETE" with reward callouts.
+- `mole_failed` (personal): quiet shame message.
+
+**Creative intent**: The Mole is Bird City's first asymmetric information event — one player has secret knowledge (their targets, their identity) while everyone else has zero information. The tension is pure SOCIAL: the mole tries to casually fly near their targets and poop them without anyone noticing a pattern. But if you see the same bird suspiciously hovering near three people in a row… you start to wonder. The 60-second reveal creates a guaranteed payoff for everyone: even if the mole fails their mission, the MOLE ALERT gives the whole city a 15-second hunt. A mole who successfully tags all 3 targets and then survives 15 seconds of city-wide pursuit is a genuine legend. The session badge and daily challenges give it replay value. Pure SOCIAL + DISCOVERY + CARNAGE energy — the city now has a spy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)

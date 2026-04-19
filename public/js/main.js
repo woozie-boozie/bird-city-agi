@@ -5129,6 +5129,60 @@
     if (ev.type === 'rival_bird_zone_drained') {
       addEventMessage(`🔴 Ace drained ${ev.zoneName || 'a territory'}! Zone capture progress reset!`, '#ff4444');
     }
+
+    // === THE MOLE (Session 117) ===
+    if (ev.type === 'mole_assigned' && ev.targetId === myId) {
+      // Only the mole sees this
+      const names = (ev.targetNames || []).join(', ');
+      showAnnouncement(`🕵️ YOU ARE THE MOLE! Tag: ${names}\n(stay hidden for 60s, then revealed!)`, '#8800cc', 7000);
+      addEventMessage(`🕵️ SECRET MISSION: Tag ${ev.targetNames.length} targets — you have 75 seconds!`, '#cc44ff');
+    }
+    if (ev.type === 'mole_mission_start') {
+      // City-wide hint — no mole identity revealed yet
+      addEventMessage(`🕵️ A mole has infiltrated Bird City… watch who's lurking near you!`, '#884488');
+    }
+    if (ev.type === 'mole_tag_success' && ev.moleId === myId) {
+      // Only the mole sees this
+      effects.push({ type: 'float_text', x: ev.x || camera.x, y: (ev.y || camera.y) - 20, time: now, duration: 1100, text: `🕵️ TAGGED! ${ev.taggedCount}/${ev.totalTargets}`, color: '#cc44ff' });
+      addEventMessage(`🕵️ Tagged ${ev.targetName}! ${ev.taggedCount}/${ev.totalTargets} done!`, '#cc44ff');
+    }
+    if (ev.type === 'mole_alert') {
+      screenShake(10, 600);
+      showAnnouncement(`🕵️ MOLE ALERT! ${ev.moleName} was the mole! Tagged ${ev.taggedCount}/${ev.totalTargets} — POOP THEM for ${ev.taggedCount >= ev.totalTargets ? '600 XP!' : '80 XP!'}`, '#cc00ff', 6000);
+      effects.push({ type: 'screen_flash', color: 'rgba(136,0,204,0.25)', duration: 500, time: now });
+      addEventMessage(`🕵️ MOLE ALERT — ${ev.moleName} REVEALED! ${ev.taggedCount}/${ev.totalTargets} targets tagged. Poop them for bonus XP!`, '#cc44ff');
+    }
+    if (ev.type === 'mole_revenge_hit') {
+      const isMe = ev.hitterId === myId;
+      const isMole = gameState.self && gameState.self.mole && gameState.self.mole.isMole;
+      if (isMe) {
+        effects.push({ type: 'float_text', x: ev.x || camera.x, y: (ev.y || camera.y) - 20, time: now, duration: 900, text: `🕵️ HIT! ${ev.hitNum}`, color: '#cc44ff' });
+        addEventMessage(`🕵️ You hit the Mole (${ev.hitNum})! +80 XP +40c!`, '#cc44ff');
+      } else if (isMole) {
+        effects.push({ type: 'float_text', x: ev.x || camera.x, y: (ev.y || camera.y) - 20, time: now, duration: 900, text: `💥 HIT ${ev.hitNum}`, color: '#ff4444' });
+      } else {
+        addEventMessage(`🕵️ ${ev.hitterName} hunts the Mole! (${ev.hitNum} hit)`, '#884488');
+      }
+    }
+    if (ev.type === 'mole_success') {
+      const isMe = ev.moleId === myId;
+      screenShake(10, 600);
+      if (isMe) {
+        showAnnouncement(`🕵️ MISSION COMPLETE! You tagged all ${ev.totalTargets} targets! +600 XP +350c — now SURVIVE the MOLE ALERT!`, '#cc00ff', 7000);
+        effects.push({ type: 'screen_flash', color: 'rgba(136,0,204,0.3)', duration: 600, time: now });
+      } else {
+        showAnnouncement(`🕵️ ${ev.moleName} completed the MOLE MISSION! +600 XP +350c — MOLE ALERT incoming!`, '#8800cc', 5000);
+      }
+      addEventMessage(`🕵️ ${ev.moleName} ${ev.moleGang ? `[${ev.moleGang}]` : ''} tagged ALL ${ev.totalTargets} targets! Master spy! MOLE ALERT starts now!`, '#cc44ff');
+    }
+    if (ev.type === 'mole_failed') {
+      const isMe = ev.moleId === myId;
+      if (isMe) {
+        showAnnouncement(`🕵️ MISSION FAILED — only tagged ${ev.taggedCount}/${ev.totalTargets} targets.`, '#884488', 4000);
+      }
+      addEventMessage(`🕵️ The mole's cover is blown. Mission failed — only ${ev.taggedCount}/${ev.totalTargets} tagged.`, '#664466');
+    }
+
     if (ev.type === 'hotdog_fail' && ev.targetId === myId) {
       showAnnouncement(ev.msg || `🌭 Can't buy right now!`, '#aa5500', 2000);
     }
@@ -10551,6 +10605,20 @@
             const timeLeft = bb.endsAt - now;
             Sprites.drawBowlingBirdEffects(ctx, sx, sy, b.rotation, bb.hp, bb.maxHp, timeLeft, now);
           }
+
+          // === THE MOLE (Session 117) ===
+          const moleData = gameState.self && gameState.self.mole;
+          if (moleData) {
+            if (moleData.revealed && b.id === moleData.moleId) {
+              // Draw the revealed-mole badge on this bird
+              Sprites.drawMoleBadge(ctx, sx, sy, now);
+            }
+            if (moleData.isMole && moleData.targets && moleData.targets.includes(b.id)) {
+              // Only the mole player sees target indicators
+              const tagged = moleData.tagged && moleData.tagged.includes(b.id);
+              Sprites.drawMoleTargetIndicator(ctx, sx, sy, tagged, now);
+            }
+          }
         }
       }
     }
@@ -12871,6 +12939,44 @@
       }
     }
 
+    // === THE MOLE — off-screen arrow pointing at the revealed mole during MOLE ALERT ===
+    const _moleAlertData = gameState.self && gameState.self.mole;
+    if (_moleAlertData && _moleAlertData.revealed && _moleAlertData.moleId && gameState.birds) {
+      const moleBirdPos = gameState.birds.find(b => b.id === _moleAlertData.moleId);
+      if (moleBirdPos) {
+        const msx = moleBirdPos.x - camera.x + camera.screenW / 2;
+        const msy = moleBirdPos.y - camera.y + camera.screenH / 2;
+        const mOnScreen = msx > 50 && msx < camera.screenW - 50 && msy > 50 && msy < camera.screenH - 50;
+        if (!mOnScreen) {
+          const mAngle = Math.atan2(msy - camera.screenH / 2, msx - camera.screenW / 2);
+          const mArrDist = Math.min(camera.screenW, camera.screenH) / 2 - 60;
+          const mAx = camera.screenW / 2 + Math.cos(mAngle) * mArrDist;
+          const mAy = camera.screenH / 2 + Math.sin(mAngle) * mArrDist;
+          const mPulse = 0.7 + 0.3 * Math.sin(now * 0.009);
+          ctx.save();
+          ctx.translate(mAx, mAy);
+          ctx.rotate(mAngle);
+          ctx.globalAlpha = 0.9 * mPulse;
+          ctx.fillStyle = '#8800cc';
+          ctx.shadowColor = '#cc44ff';
+          ctx.shadowBlur = 10;
+          ctx.strokeStyle = '#000';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(22, 0); ctx.lineTo(-10, -10); ctx.lineTo(-5, 0); ctx.lineTo(-10, 10);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+          ctx.font = 'bold 11px Arial';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('🕵️', 4, 0);
+          ctx.restore();
+        }
+      }
+    }
+
     // === GOLDEN PERCH — off-screen direction arrow ===
     const _gpData = gameState.self && gameState.self.goldenPerch;
     if (_gpData && window._goldenPerchDir) {
@@ -13417,6 +13523,34 @@
       minimapCtx.textBaseline = 'alphabetic';
       minimapCtx.fillText('🔴', rbmx, rbmy - 5);
       minimapCtx.restore();
+    }
+
+    // === THE MOLE — pulsing purple 🕵️ dot on minimap (MOLE ALERT only) ===
+    {
+      const _mMapData = gameState.self && gameState.self.mole;
+      if (_mMapData && _mMapData.revealed && _mMapData.moleId && gameState.birds && worldData) {
+        const mBird = gameState.birds.find(b => b.id === _mMapData.moleId);
+        if (mBird) {
+          const mw = minimapCtx.canvas.width;
+          const mh = minimapCtx.canvas.height;
+          const molePulse = 0.5 + 0.5 * Math.sin(now * 0.011);
+          const molemx = mBird.x * mw / worldData.width;
+          const molemy = mBird.y * mh / worldData.height;
+          minimapCtx.save();
+          minimapCtx.shadowColor = '#cc44ff';
+          minimapCtx.shadowBlur = 8 + 5 * molePulse;
+          minimapCtx.fillStyle = `rgba(136,0,204,${0.8 + 0.2 * molePulse})`;
+          minimapCtx.beginPath();
+          minimapCtx.arc(molemx, molemy, 5 + 2 * molePulse, 0, Math.PI * 2);
+          minimapCtx.fill();
+          minimapCtx.shadowBlur = 0;
+          minimapCtx.font = '8px sans-serif';
+          minimapCtx.textAlign = 'center';
+          minimapCtx.textBaseline = 'alphabetic';
+          minimapCtx.fillText('🕵️', molemx, molemy - 5);
+          minimapCtx.restore();
+        }
+      }
     }
 
     // === COURIER PIGEON — pulsing warm-gold 📬 dot on minimap ===
@@ -15845,6 +15979,34 @@
     }
     if (s.hotdogXpBoostHits && s.hotdogXpBoostHits > 0) {
       html += `<div class="bm-buff-pill" style="background:rgba(100,60,0,0.85);border-color:#ffaa44;color:#ffcc88;font-weight:bold;">🌭 HOT DOG XP BOOST ×1.3 — ${s.hotdogXpBoostHits} hits left!</div>`;
+    }
+
+    // === THE MOLE active buffs (Session 117) ===
+    const _moleHudData = s.mole;
+    if (_moleHudData) {
+      if (_moleHudData.isMole && !_moleHudData.revealed) {
+        const tagged = (_moleHudData.tagged || []).length;
+        const total = (_moleHudData.targets || []).length;
+        const secsLeft = _moleHudData.secsLeft || 0;
+        const labelParts = [];
+        for (let i = 0; i < total; i++) {
+          const name = (_moleHudData.targetNames || [])[i] || '???';
+          const done = (_moleHudData.tagged || []).includes((_moleHudData.targets || [])[i]);
+          labelParts.push(done ? `✅ ${name}` : `🎯 ${name}`);
+        }
+        html += `<div class="bm-buff-pill" style="background:rgba(60,0,100,0.92);border-color:#8800cc;color:#dd88ff;animation:pulseRed 0.7s ease-in-out infinite alternate;font-weight:bold;">🕵️ MOLE MISSION — ${tagged}/${total} tagged · ${secsLeft}s · STAY HIDDEN!<br><span style="font-size:9px;font-weight:normal;">${labelParts.join(' · ')}</span></div>`;
+      }
+      if (_moleHudData.revealed && _moleHudData.moleId) {
+        const revengeLeft = _moleHudData.revengeEndsAt ? Math.max(0, Math.ceil((_moleHudData.revengeEndsAt - now) / 1000)) : 0;
+        if (revengeLeft > 0) {
+          if (_moleHudData.isMole) {
+            html += `<div class="bm-buff-pill" style="background:rgba(100,0,30,0.92);border-color:#cc0044;color:#ff8888;animation:pulseRed 1s ease-in-out infinite alternate;font-weight:bold;">🕵️💀 MOLE REVEALED — SURVIVE ${revengeLeft}s! You're exposed!</div>`;
+          } else {
+            const myHits = _moleHudData.revengeHitsOnMe || 0;
+            html += `<div class="bm-buff-pill" style="background:rgba(60,0,100,0.92);border-color:#8800cc;color:#dd88ff;animation:kingpinGlow 0.9s ease-in-out infinite alternate;font-weight:bold;">🕵️ MOLE ALERT! ${_moleHudData.moleName || '???'} · POOP THEM · ${revengeLeft}s · MY HITS: ${myHits}</div>`;
+          }
+        }
+      }
     }
 
     // Rival Bird active warning (anyone, not just self)

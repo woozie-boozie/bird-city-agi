@@ -185,6 +185,9 @@ const DAILY_CHALLENGE_POOL = [
   // Session 116: Rival Bird challenges
   { id: 'city_pride',    title: 'City Pride',       desc: 'Land 5 hits on the Rival Bird from Feather City',                     target: 5, trackType: 'rival_bird_hit',   reward: { xp: 180, coins: 85  } },
   { id: 'home_turf',     title: 'Home Turf Defender', desc: 'Help bring down the Rival Bird (deal the killing blow or contribute)', target: 1, trackType: 'rival_bird_killed', reward: { xp: 250, coins: 125 } },
+  // Session 117: The Mole
+  { id: 'mole_success',  title: 'The Mole',          desc: 'Complete a secret infiltration mission: tag all 3 targets as the Mole', target: 1, trackType: 'mole_success',    reward: { xp: 300, coins: 150 } },
+  { id: 'mole_hunter',   title: 'Mole Hunter',        desc: 'Poop the revealed Mole during the MOLE ALERT window',                  target: 1, trackType: 'mole_hunter',     reward: { xp: 200, coins: 100 } },
 ];
 
 // ============================================================
@@ -519,6 +522,14 @@ class GameEngine {
     // Escapes after 90 seconds if not defeated, dealing a territory setback.
     this.rivalBird = null; // null | { x, y, vx, vy, angle, hp, maxHp, state, targetZone, contributors, spawnedAt, expiresAt, dirChangeAt, tauntAt }
     this._rivalBirdTimer = Date.now() + this._randomRange(25 * 60000, 35 * 60000);
+
+    // === THE MOLE — Session 117 ===
+    // Every 25-35 minutes, one random active bird gets a secret infiltration mission:
+    // poop 3 specific named birds within 75 seconds. Appear normal to others.
+    // Succeed = massive rewards + 🕵️ MOLE badge. At 15s remaining: MOLE ALERT!
+    // reveals them city-wide — other birds can poop for revenge bounty.
+    this.mole = null; // null | { birdId, birdName, targets:[id,...], targetNames:[name,...], targetGangs:[gang,...], tagged: Set<id>, startedAt, endsAt, revealed, revealAt, revengeEndsAt }
+    this._moleTimer = Date.now() + this._randomRange(25 * 60000, 35 * 60000);
 
     // === BIRD CITY ELECTIONS — Session 103 ===
     // Every 35-45 minutes, City Hall puts 3 random policies to a city-wide vote (45s).
@@ -2167,6 +2178,9 @@ class GameEngine {
 
     // === Rival Bird ===
     this._updateRivalBird(dt, now);
+
+    // === The Mole ===
+    this._updateMole(dt, now);
   }
 
   // ============================================================
@@ -4052,6 +4066,27 @@ class GameEngine {
         if (rb.hp <= 0) {
           this._endRivalBird('killed', bird, now);
         }
+      } else if (hit.target === 'mole_tag_hit' && this.mole && !this.mole.revealed && hit.targetBird) {
+        // The Mole successfully tagged one of their targets!
+        const m = this.mole;
+        m.tagged.add(hit.targetId);
+        xpGain = 25; // small immediate reward per tag
+        bird.coins += 8;
+        this.events.push({ type: 'mole_tag_success', moleId: bird.id, targetId: hit.targetId, targetName: hit.targetBird.name, taggedCount: m.tagged.size, totalTargets: m.targets.length });
+        if (m.tagged.size >= m.targets.length) {
+          // All targets tagged — mission complete!
+          this._endMole('success', bird, now);
+        }
+      } else if (hit.target === 'mole_revenge_hit' && this.mole && this.mole.revealed && hit.moleBird) {
+        // Revenge hit on the revealed Mole!
+        const m = this.mole;
+        m.revengeHits = m.revengeHits || new Map();
+        const rh = (m.revengeHits.get(bird.id) || 0) + 1;
+        m.revengeHits.set(bird.id, rh);
+        xpGain = 80;
+        bird.coins += 40;
+        this._trackDailyProgress(bird, 'mole_hunter', 1);
+        this.events.push({ type: 'mole_revenge_hit', hitterId: bird.id, hitterName: bird.name, hitterGang: bird.gangTag || null, moleId: m.birdId, moleName: m.birdName, hitNum: rh, x: hit.moleBird.x, y: hit.moleBird.y });
       } else if (hit.target === 'bowling_bird' && this.bowlingBall && this.bowlingBall.hp > 0) {
         // Poop hit the Bowling Bird! Chip away at the shell to free the bird inside.
         const bb = this.bowlingBall;
@@ -5768,6 +5803,34 @@ class GameEngine {
         const dy = poop.y - targetBird.y;
         if (Math.sqrt(dx * dx + dy * dy) < hitRadius + 14) {
           return { target: 'hit_target', hitContract, targetBird };
+        }
+      }
+    }
+
+    // Mole offensive check: if the shooter IS the mole, check if a target is in range
+    if (this.mole && this.mole.birdId === poop.birdId && !this.mole.revealed) {
+      for (const targetId of this.mole.targets) {
+        if (this.mole.tagged.has(targetId)) continue; // already tagged
+        const targetBird = this.birds.get(targetId);
+        if (!targetBird) continue;
+        const dx = poop.x - targetBird.x;
+        const dy = poop.y - targetBird.y;
+        if (Math.sqrt(dx * dx + dy * dy) < hitRadius + 14) {
+          return { target: 'mole_tag_hit', targetId, targetBird };
+        }
+      }
+    }
+
+    // Mole revenge check: mole is revealed — any bird can poop the mole for revenge reward
+    if (this.mole && this.mole.revealed && this.mole.revengeEndsAt && now < this.mole.revengeEndsAt) {
+      if (poop.birdId !== this.mole.birdId) {
+        const moleBird = this.birds.get(this.mole.birdId);
+        if (moleBird) {
+          const dx = poop.x - moleBird.x;
+          const dy = poop.y - moleBird.y;
+          if (Math.sqrt(dx * dx + dy * dy) < hitRadius + 14) {
+            return { target: 'mole_revenge_hit', moleBird };
+          }
         }
       }
     }
@@ -7715,6 +7778,36 @@ class GameEngine {
         myHits: (this.rivalBird.contributors.get(bird.id) || 0),
         targetZoneName: this.rivalBird.targetZone ? this.rivalBird.targetZone.name : null,
       } : null,
+      // The Mole snapshot — sanitized: mole only sees their own targets; others see only revealed state
+      mole: this.mole ? (() => {
+        const m = this.mole;
+        const isMole = (m.birdId === bird.id);
+        const secsLeft = Math.max(0, Math.ceil((m.endsAt - now) / 1000));
+        if (isMole) {
+          return {
+            isMole: true,
+            targets: m.targets,
+            targetNames: m.targetNames,
+            targetGangs: m.targetGangs,
+            tagged: [...m.tagged],
+            secsLeft,
+            revealed: m.revealed,
+            revengeEndsAt: m.revengeEndsAt || null,
+          };
+        } else if (m.revealed) {
+          return {
+            isMole: false,
+            revealed: true,
+            moleId: m.birdId,
+            moleName: m.birdName,
+            moleGang: m.birdGang || null,
+            revengeEndsAt: m.revengeEndsAt || null,
+            revengeHitsOnMe: m.revengeHits.get(bird.id) || 0,
+          };
+        } else {
+          return { isMole: false, revealed: false };
+        }
+      })() : null,
       raccoons: nearbyRaccoons,
       drunkPigeons: nearbyDrunkPigeons,
       cops: nearbyCops,
@@ -16627,6 +16720,7 @@ class GameEngine {
       perchWins:            [],   // [{ name, gangTag, locationName }] — golden perch champions this cycle
       treasureFinds:        [],   // [{ name, gangTag, coins }] — buried treasure claims this cycle
       rivalBirdKilled:      0,   // rival bird kill count this cycle
+      moleSuccesses:        [],  // [{ moleName, moleGang }] — successful infiltrations this cycle
     };
   }
 
@@ -25996,6 +26090,157 @@ class GameEngine {
     rb.vx = Math.cos(escapeAngle) * 250;
     rb.vy = Math.sin(escapeAngle) * 250;
     // Will be cleaned up in _updateRivalBird when off-screen
+  }
+
+  // ============================================================
+  // THE MOLE — Session 117
+  // ============================================================
+
+  _startMole(now) {
+    // Pick a random active bird (biased toward those with some XP)
+    const candidates = [...this.birds.values()].filter(b => b.xp > 0 && b.level >= 1);
+    if (candidates.length < 2) {
+      // Not enough players for meaningful mission — delay
+      this._moleTimer = now + this._randomRange(8 * 60000, 12 * 60000);
+      return;
+    }
+    // Pick the mole
+    const moleIdx = Math.floor(Math.random() * candidates.length);
+    const moleBird = candidates[moleIdx];
+
+    // Pick 3 unique targets (not the mole itself)
+    const otherBirds = candidates.filter(b => b.id !== moleBird.id);
+    if (otherBirds.length < 3) {
+      this._moleTimer = now + this._randomRange(8 * 60000, 12 * 60000);
+      return;
+    }
+    // Shuffle and take first 3
+    const shuffled = otherBirds.sort(() => Math.random() - 0.5);
+    const targets = shuffled.slice(0, 3);
+
+    this.mole = {
+      birdId:      moleBird.id,
+      birdName:    moleBird.name,
+      birdGang:    moleBird.gangTag || null,
+      targets:     targets.map(b => b.id),
+      targetNames: targets.map(b => b.name),
+      targetGangs: targets.map(b => b.gangTag || null),
+      tagged:      new Set(),
+      startedAt:   now,
+      endsAt:      now + 75000,    // 75 seconds to complete mission
+      revealAt:    now + 60000,    // reveal at 15s remaining
+      revealed:    false,
+      revengeEndsAt: null,
+      revengeHits: new Map(),
+    };
+
+    // Tell the mole their secret mission (targeted event, not broadcast)
+    this.events.push({
+      type:        'mole_assigned',
+      targetId:    moleBird.id,           // only this bird should see it
+      moleId:      moleBird.id,
+      targets:     targets.map(b => b.id),
+      targetNames: targets.map(b => b.name),
+      targetGangs: targets.map(b => b.gangTag || null),
+      endsAt:      this.mole.endsAt,
+    });
+
+    // Everyone else: subtle city-wide hint (no name revealed)
+    this.events.push({
+      type: 'mole_mission_start',
+      msg:  '🕵️ A secret infiltration mission has begun. Someone among you is THE MOLE. Trust no one.',
+    });
+  }
+
+  _updateMole(dt, now) {
+    // Spawn timer
+    if (!this.mole && now >= this._moleTimer && this.birds.size >= 2) {
+      this._moleTimer = now + this._randomRange(25 * 60000, 35 * 60000);
+      this._startMole(now);
+      return;
+    }
+    if (!this.mole) return;
+
+    const m = this.mole;
+
+    // Reveal phase — MOLE ALERT at revealAt
+    if (!m.revealed && now >= m.revealAt) {
+      m.revealed = true;
+      m.revengeEndsAt = m.endsAt; // revenge window lasts until original expiry
+      this.events.push({
+        type:      'mole_alert',
+        moleId:    m.birdId,
+        moleName:  m.birdName,
+        moleGang:  m.birdGang,
+        tagged:    [...m.tagged],
+        targetNames: m.targetNames,
+        msg:       `🕵️ MOLE ALERT! ${m.birdName} is THE MOLE! They tagged ${m.tagged.size}/${m.targets.length} targets. Poop them for REVENGE! (+80 XP +40c)`,
+      });
+    }
+
+    // Mission/revenge window expiry
+    if (now >= m.endsAt) {
+      if (!m.revealed || m.tagged.size < m.targets.length) {
+        // Mission failed (never succeeded)
+        this._endMole('fail', null, now);
+      } else {
+        // Already succeeded — just clear the mole state
+        this.mole = null;
+      }
+    }
+  }
+
+  _endMole(reason, successBird, now) {
+    const m = this.mole;
+    if (!m) return;
+
+    if (reason === 'success') {
+      // Big reward for the mole
+      const moleBird = this.birds.get(m.birdId);
+      if (moleBird) {
+        const xpReward  = 600;
+        const coinReward = 350;
+        moleBird.xp    += xpReward;
+        moleBird.coins += coinReward;
+        this._checkLevelUp(moleBird);
+        moleBird.moleBadge = true; // session badge
+        this._trackDailyProgress(moleBird, 'mole_success', 1);
+        this.gazetteStats.moleSuccesses.push({ moleName: m.birdName, moleGang: m.birdGang });
+      }
+
+      // Reveal the mole on success too (so the city sees the aftermath)
+      if (!m.revealed) {
+        m.revealed = true;
+        m.revengeEndsAt = now + 15000; // short 15s revenge window even on success
+      }
+
+      this.events.push({
+        type:     'mole_success',
+        moleId:   m.birdId,
+        moleName: m.birdName,
+        moleGang: m.birdGang,
+        tagged:   [...m.tagged],
+        targetNames: m.targetNames,
+        xp:       600,
+        coins:    350,
+        msg:      `🕵️ MISSION COMPLETE! ${m.birdName} was THE MOLE — tagged all 3 targets! +600 XP +350c 🎖 MOLE BADGE earned!`,
+      });
+
+      // Short revenge window after success reveal
+      setTimeout(() => { this.mole = null; }, 15000);
+    } else {
+      // Failed — shame broadcast
+      this.events.push({
+        type:     'mole_failed',
+        moleId:   m.birdId,
+        moleName: m.birdName,
+        moleGang: m.birdGang,
+        tagged:   [...m.tagged],
+        targetNames: m.targetNames,
+        msg:      `🕵️ The Mole's cover was blown! ${m.birdName} only tagged ${m.tagged.size}/3 targets. Mission FAILED.`,
+      });
+      this.mole = null;
+    }
   }
 }
 

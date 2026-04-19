@@ -8339,4 +8339,99 @@ window.Sprites = {
       ctx.restore();
     }
   },
+
+  // ============================================================
+  // THE MOLE — Session 117
+  // ============================================================
+
+  // drawMoleBadge: glowing spy-aura drawn ON TOP of a bird sprite during MOLE ALERT phase.
+  // Called for the revealed mole bird from main.js world rendering.
+  drawMoleBadge(ctx, sx, sy, now) {
+    const t = now * 0.001;
+    const pulse = 0.5 + 0.5 * Math.sin(t * 4.5);
+
+    // Outer spy aura — dark purple/magenta glow
+    const aura = ctx.createRadialGradient(sx, sy, 6, sx, sy, 28 + pulse * 6);
+    aura.addColorStop(0, `rgba(160, 30, 200, ${0.25 + pulse * 0.2})`);
+    aura.addColorStop(1, 'rgba(100, 0, 140, 0)');
+    ctx.fillStyle = aura;
+    ctx.beginPath();
+    ctx.arc(sx, sy, 34, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Spinning dashed ring — the "exposure" effect
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(t * 1.8);
+    ctx.strokeStyle = `rgba(220, 60, 255, ${0.5 + pulse * 0.4})`;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.arc(0, 0, 22 + pulse * 3, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+
+    // 🕵️ emoji floats above the bird
+    ctx.save();
+    ctx.font = `${14 + pulse * 2}px Arial`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    // shadow glow
+    ctx.shadowColor = 'rgba(200, 0, 255, 0.8)';
+    ctx.shadowBlur = 8;
+    ctx.fillText('🕵️', sx, sy - 30 - pulse * 3);
+    ctx.shadowBlur = 0;
+    ctx.restore();
+
+    // "MOLE!" pulsing red label
+    ctx.save();
+    ctx.font = `bold ${10 + pulse * 2}px Arial`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = `rgba(255, 50, 200, ${0.8 + pulse * 0.2})`;
+    ctx.fillText('MOLE!', sx, sy + 18);
+    ctx.restore();
+  },
+
+  // drawMoleTargetIndicator: draw a subtle crosshair on the mole's targets (only shown to the mole player)
+  drawMoleTargetIndicator(ctx, sx, sy, tagged, now) {
+    const t = now * 0.001;
+    const pulse = 0.5 + 0.5 * Math.sin(t * 5);
+
+    if (tagged) {
+      // Tagged — green check ring
+      ctx.strokeStyle = `rgba(60, 255, 60, ${0.7 + pulse * 0.3})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(sx, sy, 18, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.font = '12px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('✅', sx, sy - 24);
+    } else {
+      // Target — orange crosshair
+      ctx.strokeStyle = `rgba(255, 140, 0, ${0.6 + pulse * 0.4})`;
+      ctx.lineWidth = 1.5;
+      const r = 16 + pulse * 2;
+      // Circle
+      ctx.beginPath();
+      ctx.arc(sx, sy, r, 0, Math.PI * 2);
+      ctx.stroke();
+      // Cross lines
+      ctx.beginPath();
+      ctx.moveTo(sx - r - 4, sy);
+      ctx.lineTo(sx + r + 4, sy);
+      ctx.moveTo(sx, sy - r - 4);
+      ctx.lineTo(sx, sy + r + 4);
+      ctx.stroke();
+      // 🎯 label
+      ctx.font = '11px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = `rgba(255, 180, 0, ${0.8 + pulse * 0.2})`;
+      ctx.fillText('TARGET', sx, sy - 26);
+    }
+  },
 };
