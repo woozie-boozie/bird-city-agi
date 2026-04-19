@@ -176,6 +176,9 @@ const DAILY_CHALLENGE_POOL = [
   // Session 113: Wing Surge challenges
   { id: 'wing_warrior',   title: 'Wing Warrior',     desc: 'Activate the Wing Surge 3 times in one session',            target: 3,  trackType: 'wing_surge_activated', reward: { xp: 180, coins: 90 } },
   { id: 'surge_master',   title: 'Surge Master',     desc: 'Activate Wing Surge while on a 10+ combo streak',           target: 1,  trackType: 'wing_surge_combo10',   reward: { xp: 250, coins: 125} },
+  // Session 114: Buried Treasure challenges
+  { id: 'treasure_hunter', title: 'Treasure Hunter', desc: 'Claim buried treasure by digging at the X mark (scroll + dig site)', target: 1, trackType: 'treasure_found',  reward: { xp: 300, coins: 150 } },
+  { id: 'map_thief',       title: 'Map Thief',        desc: 'Steal a Treasure Map from another bird by pooping them 3 times',     target: 1, trackType: 'map_stolen',      reward: { xp: 200, coins: 100 } },
 ];
 
 // ============================================================
@@ -216,6 +219,32 @@ const FLASH_MOB_LOCATIONS = [
 // ============================================================
 // GOLDEN PERCH LOCATIONS — 8 iconic king-of-the-hill spots
 // ============================================================
+// Session 114: Buried Treasure System
+// A 📜 treasure scroll spawns on city roads every 20-30 min. First bird to fly over picks it up.
+// Holder receives private clue text + secret dig site coordinates via self-snapshot (NOT broadcast).
+// Reach the dig site and hold position 3 seconds to claim reward (250-550c + 300-500 XP + 15% crate item).
+// Any rival can poop the holder 3 times within a 15-second rolling window to STEAL the map.
+// If holder disconnects: scroll drops at their last position (world-visible, reclaimable by others).
+const TREASURE_DIG_SITES = [
+  { x: 180,  y: 180,  clue: 'Northwest corner where the city ends — beneath forgotten cobblestones' },
+  { x: 1500, y: 60,   clue: 'Along the northern city limit, where cold winds sweep from the open sky' },
+  { x: 2870, y: 130,  clue: 'Far northeast, in the hawk\'s shadow — dangerous grounds for the brave' },
+  { x: 60,   y: 1500, clue: 'Pressed against the western wall, at the city\'s middle edge' },
+  { x: 700,  y: 1050, clue: 'Near the old residential row, behind houses where pigeons once roosted' },
+  { x: 1050, y: 1050, clue: 'By the Sacred Pond, where the water glows and monks once meditated' },
+  { x: 2950, y: 1300, clue: 'At the eastern edge where morning light first touches Bird City' },
+  { x: 2870, y: 2870, clue: 'Deep southeast, past the industrial quarter — where few birds dare venture' },
+  { x: 1500, y: 2950, clue: 'At the southern boundary, beyond the docks and the screaming gulls' },
+  { x: 100,  y: 2870, clue: 'In the southwest marshlands, where fog clings to the ground at dawn' },
+  { x: 1350, y: 2400, clue: 'Behind the city docks where old cargo lay forgotten' },
+  { x: 2650, y: 320,  clue: 'North of the mall, in shadow of the old clock tower ruins' },
+];
+const TREASURE_SCROLL_SPOTS = [
+  { x: 800,  y: 870  }, { x: 1670, y: 870  }, { x: 1200, y: 1570 },
+  { x: 2100, y: 1570 }, { x: 800,  y: 1570 }, { x: 1670, y: 2310 },
+  { x: 800,  y: 2310 }, { x: 2540, y: 870  }, { x: 400,  y: 1200 }, { x: 2540, y: 1570 },
+];
+
 const GOLDEN_PERCH_LOCATIONS = [
   { name: 'Park Fountain',         x: 1200, y: 1100 },
   { name: 'City Hall Roof',        x: 1780, y: 980  },
@@ -429,6 +458,13 @@ class GameEngine {
     // If van escapes: captive loses 20% coins, respawns at city center.
     this.birdnapperVan = null;
     this._birdnapperVanTimer = Date.now() + this._randomRange(25 * 60000, 35 * 60000);
+
+    // === BURIED TREASURE SYSTEM — Session 114 ===
+    // treasureScroll: the unclaimed scroll sitting in the world (visible to all, collectible on contact)
+    // treasureMap: an active map being held by a specific bird (dig site revealed only to holder)
+    this.treasureScroll = null; // null | { id, x, y, expiresAt }
+    this.treasureMap = null;    // null | { holderId, holderName, holderGangTag, digSite:{x,y,clue}, stealHits: Map<birdId, {count, lastHitAt}>, pickedUpAt, droppedAt, digProgress }
+    this._treasureMapTimer = Date.now() + this._randomRange(20 * 60000, 30 * 60000);
 
     // === THE BOWLING BIRD — Session 109 ===
     // Every 22-32 minutes, one random bird gets turned into a giant 3× scale bowling ball.
@@ -2092,6 +2128,9 @@ class GameEngine {
 
     // === Golden Perch ===
     this._updateGoldenPerch(dt, now);
+
+    // === Buried Treasure ===
+    this._updateTreasureMap(dt, now);
   }
 
   // ============================================================
@@ -4703,6 +4742,37 @@ class GameEngine {
             });
             if (bird.grudge.hitsDealt >= 3) {
               this._completeGrudge(bird, now);
+            }
+          }
+        }
+      }
+
+      // === TREASURE MAP STEAL — poop the holder to steal the map ===
+      if (this.treasureMap && this.treasureMap.holderId !== bird.id) {
+        const holder = this.birds.get(this.treasureMap.holderId);
+        if (holder && !holder.inSewer) {
+          const tdx = poop.x - holder.x;
+          const tdy = poop.y - holder.y;
+          const tRadius = isMegaPoop ? 60 : 30;
+          if (Math.sqrt(tdx * tdx + tdy * tdy) < tRadius) {
+            const tm = this.treasureMap;
+            if (!tm.stealHits.has(bird.id)) tm.stealHits.set(bird.id, { count: 0, lastHitAt: 0 });
+            const stealInfo = tm.stealHits.get(bird.id);
+            // rolling 15-second window
+            if (now - stealInfo.lastHitAt > 15000) stealInfo.count = 0;
+            stealInfo.count++;
+            stealInfo.lastHitAt = now;
+            this.events.push({
+              type: 'treasure_steal_hit',
+              targetId: bird.id,
+              stealerName: bird.name,
+              holderName: holder.name,
+              count: stealInfo.count,
+              needed: 3,
+            });
+            if (stealInfo.count >= 3) {
+              // STEAL!
+              this._transferTreasureMap(bird, holder, now);
             }
           }
         }
@@ -7901,6 +7971,10 @@ class GameEngine {
         wingCharge: bird.wingCharge || 0,
         wingSurgeUntil: bird.wingSurgeUntil || 0,
         wingCooldownUntil: bird.wingCooldownUntil || 0,
+        // Buried Treasure — only the holder sees the dig site coordinates
+        myTreasureDigSite: (this.treasureMap && this.treasureMap.holderId === bird.id)
+          ? { x: this.treasureMap.digSite.x, y: this.treasureMap.digSite.y, clue: this.treasureMap.digSite.clue }
+          : null,
         // Duel Betting — spectators see open betting windows
         duelBetting: (() => {
           if (bird.streetDuelId) return null; // duelers don't see betting panel
@@ -8624,6 +8698,29 @@ class GameEngine {
           return entry ? Math.min(1, (now - entry.startedAt) / 8000) : 0;
         })(),
         isClaiming: this.goldenThrone.claimants.has(bird.id),
+      } : null,
+      // Buried Treasure System — scroll visible to all; holder identity visible to all; dig site coords private (in self)
+      treasureScroll: this.treasureScroll ? {
+        x: this.treasureScroll.x,
+        y: this.treasureScroll.y,
+        expiresAt: this.treasureScroll.expiresAt,
+      } : null,
+      treasureMap: this.treasureMap ? {
+        holderId: this.treasureMap.holderId,
+        holderName: this.treasureMap.holderName,
+        holderGangTag: this.treasureMap.holderGangTag || null,
+        holderX: (() => { const hb = this.birds.get(this.treasureMap.holderId); return hb ? hb.x : null; })(),
+        holderY: (() => { const hb = this.birds.get(this.treasureMap.holderId); return hb ? hb.y : null; })(),
+        digProgress: this.treasureMap.digProgress || 0,
+        stealHitsOnMe: this.treasureMap.holderId === bird.id
+          ? Math.max(0, ...Array.from(this.treasureMap.stealHits.values()).map(s => now - s.lastHitAt < 15000 ? s.count : 0), 0)
+          : 0,
+        stealHitsIveDealt: (() => {
+          if (this.treasureMap.holderId === bird.id) return 0;
+          const s = this.treasureMap.stealHits.get(bird.id);
+          if (!s || now - s.lastHitAt > 15000) return 0;
+          return s.count;
+        })(),
       } : null,
       // Bird Royale
       birdRoyale: this.birdRoyale ? {
@@ -16431,6 +16528,7 @@ class GameEngine {
       auctionResults:       [],   // [{ itemName, itemEmoji, winnerName, winnerGangTag, finalBid }]
       motorcadeAttacked:    false, // someone attacked the motorcade
       perchWins:            [],   // [{ name, gangTag, locationName }] — golden perch champions this cycle
+      treasureFinds:        [],   // [{ name, gangTag, coins }] — buried treasure claims this cycle
     };
   }
 
@@ -16875,6 +16973,17 @@ class GameEngine {
         icon: '🏅',
         headline: `KING OF THE HILL: ${tag}${champ.name} CLAIMS THE GOLDEN PERCH AT ${champ.locationName.toUpperCase()}`,
         subline: `${champ.name} held the legendary roost for a full 90 uninterrupted seconds. Challengers failed. Tribute was paid. The city bows.`,
+      });
+    }
+
+    // Buried Treasure headline
+    if (stats.treasureFinds && stats.treasureFinds.length > 0) {
+      const find = stats.treasureFinds[0];
+      const tag = find.gangTag ? `[${find.gangTag}] ` : '';
+      headlines.push({
+        icon: '💰',
+        headline: `BURIED TREASURE UNEARTHED: ${tag}${find.name} DISCOVERS ANCIENT RICHES — ${find.coins}c LOOT`,
+        subline: `Armed with a mysterious scroll and an eye for clues, ${find.name} followed the map to glory. Property developers furious.`,
       });
     }
 
@@ -25236,6 +25345,214 @@ class GameEngine {
 
     // Cross-system: Gang War double kills inside the zone
     // (handled in _resolveStreetDuel / gang war poop — checked via bird.inGoldenPerchZone + active gang war)
+  }
+
+  // ============================================================
+  // BURIED TREASURE SYSTEM — Session 114
+  // ============================================================
+  _updateTreasureMap(dt, now) {
+    // 1. Spawn scroll if none exists and timer has fired
+    if (!this.treasureScroll && !this.treasureMap && now >= this._treasureMapTimer && this.birds.size > 0) {
+      const spot = TREASURE_SCROLL_SPOTS[Math.floor(Math.random() * TREASURE_SCROLL_SPOTS.length)];
+      const scrollId = `scroll_${now}`;
+      this.treasureScroll = {
+        id: scrollId,
+        x: spot.x,
+        y: spot.y,
+        expiresAt: now + 5 * 60000, // 5 min to pick up before it vanishes
+      };
+      this.events.push({
+        type: 'treasure_scroll_spawned',
+        x: spot.x,
+        y: spot.y,
+        msg: '📜 A TREASURE SCROLL has appeared somewhere in the city! Find it and claim the riches!',
+      });
+    }
+
+    // 2. Check if any bird picks up the scroll (flies within 45px)
+    if (this.treasureScroll) {
+      if (now > this.treasureScroll.expiresAt) {
+        this.treasureScroll = null;
+        this._treasureMapTimer = now + this._randomRange(20 * 60000, 30 * 60000);
+        this.events.push({ type: 'treasure_scroll_expired', msg: '📜 The treasure scroll faded away... unclaimed.' });
+        return;
+      }
+      for (const [, bird] of this.birds) {
+        if (bird.inSewer) continue;
+        const dx = bird.x - this.treasureScroll.x;
+        const dy = bird.y - this.treasureScroll.y;
+        if (Math.sqrt(dx * dx + dy * dy) < 45) {
+          this._pickUpTreasureScroll(bird, now);
+          break;
+        }
+      }
+    }
+
+    // 3. If treasure map is held: check if holder is at dig site (3-second hold), handle drop on disconnect
+    if (this.treasureMap) {
+      const holder = this.birds.get(this.treasureMap.holderId);
+      if (!holder) {
+        // Holder disconnected — drop scroll at last known position (map remembers it)
+        this.treasureScroll = {
+          id: `scroll_drop_${now}`,
+          x: this.treasureMap.droppedX || 1500,
+          y: this.treasureMap.droppedY || 1500,
+          expiresAt: now + 3 * 60000, // 3 min to reclaim dropped scroll
+        };
+        this.events.push({
+          type: 'treasure_scroll_dropped',
+          x: this.treasureScroll.x,
+          y: this.treasureScroll.y,
+          holderName: this.treasureMap.holderName,
+          msg: `📜 ${this.treasureMap.holderName} dropped the Treasure Map! It's somewhere on the ground...`,
+        });
+        this.treasureMap = null;
+        return;
+      }
+
+      // Track holder position for drop
+      this.treasureMap.droppedX = holder.x;
+      this.treasureMap.droppedY = holder.y;
+
+      // Check if holder is at dig site
+      const digDx = holder.x - this.treasureMap.digSite.x;
+      const digDy = holder.y - this.treasureMap.digSite.y;
+      const atDigSite = Math.sqrt(digDx * digDx + digDy * digDy) < 55;
+
+      if (atDigSite) {
+        this.treasureMap.digProgress = (this.treasureMap.digProgress || 0) + dt / 3000; // 3 seconds to dig
+        if (this.treasureMap.digProgress >= 1.0) {
+          this._claimBuriedTreasure(holder, now);
+        }
+      } else {
+        // Reset dig progress if they wander off the site
+        if (this.treasureMap.digProgress > 0) {
+          this.treasureMap.digProgress = Math.max(0, this.treasureMap.digProgress - dt / 1500);
+        }
+      }
+
+      // Map expires after 5 minutes if never claimed
+      if (now - this.treasureMap.pickedUpAt > 5 * 60000) {
+        this.events.push({
+          type: 'treasure_map_expired',
+          targetId: this.treasureMap.holderId,
+          holderName: this.treasureMap.holderName,
+          msg: `📜 The Treasure Map in ${this.treasureMap.holderName}'s talons crumbled to dust... the treasure is lost.`,
+        });
+        this.treasureMap = null;
+        this._treasureMapTimer = now + this._randomRange(20 * 60000, 30 * 60000);
+      }
+    }
+  }
+
+  _pickUpTreasureScroll(bird, now) {
+    const digSite = TREASURE_DIG_SITES[Math.floor(Math.random() * TREASURE_DIG_SITES.length)];
+    this.treasureScroll = null;
+    this.treasureMap = {
+      holderId: bird.id,
+      holderName: bird.name,
+      holderGangTag: bird.gangTag || null,
+      digSite,
+      stealHits: new Map(),
+      pickedUpAt: now,
+      droppedX: bird.x,
+      droppedY: bird.y,
+      digProgress: 0,
+    };
+    this.events.push({
+      type: 'treasure_scroll_picked_up',
+      targetId: bird.id,
+      holderName: bird.name,
+      holderGangTag: bird.gangTag || null,
+      clue: digSite.clue,
+      msg: `📜 ${bird.name} grabbed the Treasure Map! Clue: "${digSite.clue}" — Poop them 3× to steal it!`,
+    });
+  }
+
+  _transferTreasureMap(thief, victim, now) {
+    if (!this.treasureMap) return;
+    const oldHolderName = this.treasureMap.holderName;
+    this.treasureMap.holderId = thief.id;
+    this.treasureMap.holderName = thief.name;
+    this.treasureMap.holderGangTag = thief.gangTag || null;
+    this.treasureMap.stealHits = new Map(); // reset steal attempts for new holder
+    this.treasureMap.digProgress = 0;
+
+    // Reward the thief
+    thief.xp = (thief.xp || 0) + 120;
+    thief.coins = (thief.coins || 0) + 40;
+    this._trackDailyProgress(thief, 'map_stolen', 1);
+
+    this.events.push({
+      type: 'treasure_map_stolen',
+      thiefId: thief.id,
+      thiefName: thief.name,
+      thiefGangTag: thief.gangTag || null,
+      victimId: victim.id,
+      victimName: victim.name,
+      clue: this.treasureMap.digSite.clue,
+      msg: `💀 ${thief.name} STOLE the Treasure Map from ${oldHolderName}! New clue delivered — the hunt continues!`,
+    });
+  }
+
+  _claimBuriedTreasure(holder, now) {
+    if (!this.treasureMap) return;
+
+    const baseCoins = 250 + Math.floor(Math.random() * 301); // 250-550
+    const baseXp = 300 + Math.floor(Math.random() * 201); // 300-500
+    const gotCrate = Math.random() < 0.15;
+
+    holder.coins = (holder.coins || 0) + baseCoins;
+    holder.xp = (holder.xp || 0) + baseXp;
+    this._trackDailyProgress(holder, 'treasure_found', 1);
+    this._trackDailyProgress(holder, 'coins_earned', baseCoins);
+    if (!this.gazetteStats.treasureFinds) this.gazetteStats.treasureFinds = [];
+    this.gazetteStats.treasureFinds.push({ name: holder.name, gangTag: holder.gangTag || null, coins: baseCoins });
+
+    let crateItem = null;
+    if (gotCrate) {
+      // Roll a mystery crate item inline (same weighted pool as _claimMysteryCrate)
+      let roll = Math.random() * this.MYSTERY_CRATE_TOTAL_WEIGHT;
+      crateItem = this.MYSTERY_CRATE_ITEMS[this.MYSTERY_CRATE_ITEMS.length - 1];
+      for (const candidate of this.MYSTERY_CRATE_ITEMS) {
+        if (roll < candidate.weight) { crateItem = candidate; break; }
+        roll -= candidate.weight;
+      }
+      // Apply the item (simplified — major effects only)
+      switch (crateItem.id) {
+        case 'jet_wings':   holder.mcJetWingsUntil = now + 15000; break;
+        case 'riot_shield': holder.mcRiotShieldUntil = now + 12000; break;
+        case 'ghost_mode':  holder.mcGhostModeUntil = now + 15000; break;
+        case 'coin_magnet': holder.mcMagnetUntil = now + 10000; holder.mcMagnetLastPull = 0; break;
+        case 'lightning_rod': holder.mcLightningRodUntil = now + 20000; break;
+        case 'nuke_poop':   holder.mcNukePoop = true; break;
+        case 'diamond_poop': holder.mcDiamondPoopUntil = now + 20000; break;
+        case 'coin_cache': {
+          const bonus = 250 + Math.floor(Math.random() * 200);
+          holder.coins += bonus;
+          crateItem = { ...crateItem, coinsAwarded: bonus };
+          break;
+        }
+        default: break; // broken_crate / twister_bomb / etc — skipped in treasure chest context
+      }
+    }
+
+    this.events.push({
+      type: 'treasure_claimed',
+      targetId: holder.id,
+      holderName: holder.name,
+      holderGangTag: holder.gangTag || null,
+      coins: baseCoins,
+      xp: baseXp,
+      gotCrate,
+      crateItem: crateItem ? { id: crateItem.id, emoji: crateItem.emoji, name: crateItem.name } : null,
+      digX: this.treasureMap.digSite.x,
+      digY: this.treasureMap.digSite.y,
+      msg: `💰 ${holder.gangTag ? `[${holder.gangTag}] ` : ''}${holder.name} DUG UP THE TREASURE! +${baseXp} XP +${baseCoins}c${gotCrate && crateItem ? ` + 📦 ${crateItem.emoji} ${crateItem.name}` : ''}! RICHES BEYOND MEASURE!`,
+    });
+
+    this.treasureMap = null;
+    this._treasureMapTimer = now + this._randomRange(20 * 60000, 30 * 60000);
   }
 }
 

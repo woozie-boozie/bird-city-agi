@@ -3927,6 +3927,46 @@ Every poop hit charges a Wing Surge meter from 0–100%. Hit 100% and the surge 
 
 **Creative intent**: The Wing Surge turns poop accuracy into a power economy. You're not just spamming hits — you're managing a charge meter, making decisions about when to fight hard vs conserve for the next surge window. A bird at 90% charge who gets arrested mid-combo loses their streak AND delays the surge, which amplifies the cost of every failed escape from cops. The charge glow visible to all nearby players creates social awareness: "that bird is almost surged — either get out of their way or rush them before it fires." The 5-second window feels exactly long enough to feel heroic without being abusable. Pure CARNAGE + PROGRESSION energy.
 
+**Session 114 — 2026-04-19: Buried Treasure System — Ancient Riches Hide Beneath the City**
+Bird City's first pure DISCOVERY mechanic. Every 20–30 minutes, a 📜 treasure scroll materialises on one of 10 road positions across the city. The first bird to fly within 45px picks it up — and the hunt begins.
+
+**The Hunt Flow (`server/game.js`):**
+- Scroll spawns at a road waypoint, visible to ALL birds on the world canvas and minimap. 5-minute pickup window.
+- Pick-up: `_pickUpTreasureScroll()` — scroll vanishes, holder receives a PRIVATE clue + secret dig site coordinates (`myTreasureDigSite` in self-snapshot only — nobody else can see the X mark)
+- 12 handpicked dig sites with atmospheric clue text: "Northwest corner where the city ends — beneath forgotten cobblestones", "The park's oldest tree, hidden in deep grass at the south edge", "East docks, beneath rusted shipping containers near the waterline", etc.
+- Fly to the dig site and hold position for 3 continuous seconds → CLAIMED! Progress resets if holder wanders off (decays at 2× rate).
+- **Steal mechanic**: any rival can poop the holder 3 times within a rolling 15-second window to STEAL the map. Each hit fires a `treasure_steal_hit` event with progress shown to all players. On steal: thief becomes the new holder, receives the clue privately, progress resets.
+- Map expires after 5 minutes if never claimed (holder ran out of time or couldn't find the X). On holder disconnect: scroll re-drops at last known position as a world-visible 3-minute reclaim window.
+
+**Rewards (`_claimBuriedTreasure`):**
+- 250–550c + 300–500 XP on dig completion
+- 15% chance to also roll a full Mystery Crate-tier item (same 10-item weighted pool, applied inline)
+- Map thief bonus: +120 XP +40c on successful steal + `map_stolen` daily challenge progress
+- `treasure_found` daily challenge tracked on claim
+
+**Two new daily challenges (in `DAILY_CHALLENGE_POOL`):**
+- 📜 **Treasure Hunter**: Claim buried treasure by digging at the X mark (300 XP, 150c)
+- 🗺️ **Map Thief**: Steal a Treasure Map from another bird by pooping them 3 times (200 XP, 100c)
+
+**Visual system (`public/js/main.js`):**
+- **World-space scroll**: pulsing gold radial aura + 📜 emoji at 18–20px + "TREASURE SCROLL" label — visible to all birds when unclaimed
+- **Dig site X marker** (only for map holder): bold gold ✕ in world space, pulsing dash ring at 55px radius, dig progress arc (green → orange → gold), "DIG HERE" and clue text labels — completely invisible to rivals
+- **Off-screen compass arrow**: when dig site is off-screen, a gold 🗺️ directional arrow projects to the screen edge pointing toward the X — impossible to miss
+- **Minimap**: pulsing 📜 gold dot for unclaimed scroll; pulsing 🗺️ orange dot for holder's live position (not the dig site — that stays private)
+- **Active buffs HUD**: holder sees dig progress pill with % complete + steal warning at 1-2/3 hits; attacker sees their steal hit counter
+
+**Events & announcements:**
+- `treasure_scroll_spawned`: city-wide "📜 A TREASURE SCROLL appeared!" with event feed
+- `treasure_scroll_picked_up`: personal announcement with the clue; city-wide feed naming the holder
+- `treasure_steal_hit`: personal "STEAL ATTEMPT! X/3" warning; city-wide progress callout
+- `treasure_map_stolen`: personal alerts for both thief and victim; city-wide drama callout; thief gets private clue
+- `treasure_claimed`: personal XP/coin/crate-item popup with screen shake + gold flash; city-wide "BURIED TREASURE UNEARTHED!" callout
+- `treasure_map_expired`: personal expiry message; quiet city-wide note
+
+**Gazette integration:** "💰 BURIED TREASURE UNEARTHED: [TAG] Name DISCOVERS ANCIENT RICHES — Xc LOOT" headline with satirical subline about property developers being furious.
+
+**Creative intent**: Bird City had 113 sessions of systems that reward DOING — pooping, fighting, racing, heisting. The Buried Treasure is the first system that rewards pure EXPLORATION and AWARENESS. Discovering that a scroll appeared, racing to pick it up before another bird, then holding your dig position for 3 tense seconds while watching the steal progress counter climb on your HUD — that's a completely different flavor of tension from anything else in the game. The private dig site (only YOU see the X) creates genuine information asymmetry: the city knows you have a map, but nobody knows where you're going. A paranoid holder flying in the WRONG direction to mislead pursuers before doubling back is emergent clever play. Pure DISCOVERY + CARNAGE energy — the city just hid something worth fighting for beneath its streets.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)

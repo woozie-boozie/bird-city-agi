@@ -5097,6 +5097,64 @@
         addEventMessage(`⚡ ${tag}${ev.birdName} ACTIVATES WING SURGE — +80% speed for 5s!${hyperStr}`, '#ffcc33');
       }
     }
+
+    // === BURIED TREASURE SYSTEM (Session 114) ===
+    if (ev.type === 'treasure_scroll_spawned') {
+      showAnnouncement(`📜 A TREASURE SCROLL appeared somewhere in Bird City!\nFind it first to claim the ancient map!`, '#f4c542', 5000);
+      addEventMessage(`📜 Treasure Scroll spotted on a city road — first bird wins the map!`, '#f4c542');
+    }
+    if (ev.type === 'treasure_scroll_picked_up') {
+      if (ev.targetId === myId) {
+        showAnnouncement(`📜 YOU FOUND THE TREASURE MAP!\n"${ev.clue}"\nFly to the X to dig — rivals will try to steal it!`, '#f4c542', 9000);
+        addEventMessage(`📜 You hold the Treasure Map! Poop rivals poop you 3× to steal it.`, '#f4c542');
+      } else {
+        const tag = ev.holderGangTag ? `[${ev.holderGangTag}] ` : '';
+        addEventMessage(`📜 ${tag}${ev.holderName} grabbed the Treasure Map! Poop them 3× to steal it!`, '#f4c542');
+      }
+    }
+    if (ev.type === 'treasure_scroll_dropped') {
+      addEventMessage(`📜 Treasure Map dropped at ${ev.holderName}'s last position — grab it quick!`, '#f4c542');
+    }
+    if (ev.type === 'treasure_scroll_expired') {
+      addEventMessage(`📜 The Treasure Scroll crumbled to dust. Whoever held it waited too long.`, '#888');
+    }
+    if (ev.type === 'treasure_steal_hit') {
+      if (ev.targetId === myId) {
+        showAnnouncement(`💀 STEAL ATTEMPT! ${ev.stealerName} hit you ${ev.count}/${ev.needed} — KEEP MOVING!`, '#ff4444', 3000);
+      } else {
+        addEventMessage(`📜 ${ev.stealerName} hits ${ev.holderName} ${ev.count}/${ev.needed} for the map steal!`, '#f4c542');
+      }
+    }
+    if (ev.type === 'treasure_map_stolen') {
+      if (ev.thiefId === myId) {
+        showAnnouncement(`📜 YOU STOLE THE TREASURE MAP!\n"${ev.clue}"\nNow FLY to the X before they steal it back!`, '#f4c542', 8000);
+        effects.push({ type: 'screen_shake', intensity: 6, duration: 400, time: now });
+      } else if (ev.victimId === myId) {
+        showAnnouncement(`💀 YOUR MAP WAS STOLEN by ${ev.thiefName}!\nYou lose the treasure...`, '#ff4444', 5000);
+      } else {
+        const tag = ev.thiefGangTag ? `[${ev.thiefGangTag}] ` : '';
+        addEventMessage(`📜 ${tag}${ev.thiefName} STOLE the map from ${ev.victimName}! Race is on!`, '#f4c542');
+      }
+    }
+    if (ev.type === 'treasure_claimed') {
+      if (ev.targetId === myId) {
+        effects.push({ type: 'screen_shake', intensity: 10, duration: 600, time: now });
+        effects.push({ type: 'screen_flash', color: 'rgba(244,197,66,0.5)', duration: 500, time: now });
+        let msg = `💰 BURIED TREASURE CLAIMED! +${ev.xp} XP +${ev.coins}c`;
+        if (ev.gotCrate && ev.crateItem) msg += `\n📦 BONUS: ${ev.crateItem.emoji} ${ev.crateItem.name}!`;
+        showAnnouncement(msg, '#f4c542', 7000);
+      } else {
+        const tag = ev.holderGangTag ? `[${ev.holderGangTag}] ` : '';
+        addEventMessage(`💰 ${tag}${ev.holderName} unearthed BURIED TREASURE! +${ev.xp} XP +${ev.coins}c`, '#f4c542');
+      }
+    }
+    if (ev.type === 'treasure_map_expired') {
+      if (ev.targetId === myId) {
+        showAnnouncement(`📜 Your Treasure Map expired — you ran out of time!`, '#888', 4000);
+      } else {
+        addEventMessage(`📜 The Treasure Map expired. ${ev.holderName} never found the X.`, '#888');
+      }
+    }
   }
 
   function showAnnouncement(text, color, duration) {
@@ -9768,6 +9826,128 @@
       Renderer.drawGoldenPerch(ctx, gp, camera.x, camera.y, camera.zoom, now);
     }
 
+    // === BURIED TREASURE SYSTEM (Session 114) — world-space scroll and dig site X ===
+    // Draw scroll in world space (visible to all when unclaimed)
+    if (gameState.treasureScroll) {
+      const ts = gameState.treasureScroll;
+      const ssx = ts.x - camera.x + camera.screenW / 2;
+      const ssy = ts.y - camera.y + camera.screenH / 2;
+      if (ssx > -60 && ssx < camera.screenW + 60 && ssy > -60 && ssy < camera.screenH + 60) {
+        const tsPulse = 0.6 + 0.4 * Math.sin(now * 0.006);
+        ctx.save();
+        // Glow aura
+        const tsGrd = ctx.createRadialGradient(ssx, ssy, 4, ssx, ssy, 26);
+        tsGrd.addColorStop(0, `rgba(244,197,66,${0.55 * tsPulse})`);
+        tsGrd.addColorStop(1, 'rgba(244,197,66,0)');
+        ctx.fillStyle = tsGrd;
+        ctx.beginPath();
+        ctx.arc(ssx, ssy, 26, 0, Math.PI * 2);
+        ctx.fill();
+        // Scroll emoji
+        ctx.font = `${18 + 2 * tsPulse}px serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.globalAlpha = 0.85 + 0.15 * tsPulse;
+        ctx.fillText('📜', ssx, ssy);
+        // Label
+        ctx.globalAlpha = 0.9;
+        ctx.font = 'bold 10px Arial';
+        ctx.fillStyle = '#f4c542';
+        ctx.shadowColor = '#000';
+        ctx.shadowBlur = 4;
+        ctx.fillText('TREASURE SCROLL', ssx, ssy - 18);
+        ctx.shadowBlur = 0;
+        ctx.restore();
+      }
+    }
+    // Draw dig site X marker (only visible to the map holder)
+    if (gameState.self && gameState.self.myTreasureDigSite) {
+      const ds = gameState.self.myTreasureDigSite;
+      const dsx = ds.x - camera.x + camera.screenW / 2;
+      const dsy = ds.y - camera.y + camera.screenH / 2;
+      if (dsx > -80 && dsx < camera.screenW + 80 && dsy > -80 && dsy < camera.screenH + 80) {
+        const digProg = gameState.treasureMap ? (gameState.treasureMap.digProgress || 0) : 0;
+        const dsPulse = 0.5 + 0.5 * Math.sin(now * 0.008);
+        ctx.save();
+        // Glow ring around dig site
+        const dsGrd = ctx.createRadialGradient(dsx, dsy, 8, dsx, dsy, 55);
+        dsGrd.addColorStop(0, `rgba(244,197,66,${0.35 * dsPulse})`);
+        dsGrd.addColorStop(1, 'rgba(244,197,66,0)');
+        ctx.fillStyle = dsGrd;
+        ctx.beginPath();
+        ctx.arc(dsx, dsy, 55, 0, Math.PI * 2);
+        ctx.fill();
+        // X mark (bold yellow X with dark stroke)
+        ctx.font = `bold ${32 + 4 * dsPulse}px Arial`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.strokeStyle = '#5a3a00';
+        ctx.lineWidth = 5;
+        ctx.strokeText('✕', dsx, dsy);
+        ctx.fillStyle = '#f4c542';
+        ctx.fillText('✕', dsx, dsy);
+        // Dig progress arc
+        if (digProg > 0) {
+          ctx.beginPath();
+          ctx.arc(dsx, dsy, 30, -Math.PI / 2, -Math.PI / 2 + digProg * 2 * Math.PI);
+          ctx.strokeStyle = '#ffdd55';
+          ctx.lineWidth = 4;
+          ctx.stroke();
+        }
+        // Dashed zone ring showing 55px claim radius
+        ctx.setLineDash([6, 4]);
+        ctx.strokeStyle = `rgba(244,197,66,${0.5 + 0.3 * dsPulse})`;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(dsx, dsy, 55, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        // Label
+        ctx.font = 'bold 9px Arial';
+        ctx.fillStyle = '#ffd966';
+        ctx.shadowColor = '#000';
+        ctx.shadowBlur = 5;
+        ctx.fillText('HOLD 3s TO DIG', dsx, dsy + 28);
+        if (digProg > 0) {
+          ctx.fillText(`${Math.floor(digProg * 100)}%`, dsx, dsy - 28);
+        }
+        ctx.shadowBlur = 0;
+        ctx.restore();
+      }
+      // Off-screen direction arrow pointing to dig site
+      const isOnScreen = (dsx > 60 && dsx < camera.screenW - 60 && dsy > 60 && dsy < camera.screenH - 60);
+      if (!isOnScreen) {
+        // Draw a compass arrow pointing toward the dig site
+        const angle = Math.atan2(ds.y - (camera.y), ds.x - (camera.x));
+        const edgeX = camera.screenW / 2 + Math.cos(angle) * (Math.min(camera.screenW, camera.screenH) / 2 - 55);
+        const edgeY = camera.screenH / 2 + Math.sin(angle) * (Math.min(camera.screenW, camera.screenH) / 2 - 55);
+        ctx.save();
+        ctx.translate(edgeX, edgeY);
+        ctx.rotate(angle);
+        ctx.fillStyle = '#f4c542';
+        ctx.strokeStyle = '#5a3a00';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(18, 0);
+        ctx.lineTo(-10, -9);
+        ctx.lineTo(-6, 0);
+        ctx.lineTo(-10, 9);
+        ctx.closePath();
+        ctx.stroke();
+        ctx.fill();
+        ctx.restore();
+        // Label near the arrow
+        ctx.font = 'bold 10px Arial';
+        ctx.fillStyle = '#f4c542';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.shadowColor = '#000';
+        ctx.shadowBlur = 5;
+        ctx.fillText('🗺️ X', edgeX + Math.cos(angle + Math.PI) * 28, edgeY + Math.sin(angle + Math.PI) * 28);
+        ctx.shadowBlur = 0;
+      }
+    }
+
     // Birds
     if (gameState.birds) {
       for (const bird of gameState.birds) {
@@ -13123,6 +13303,51 @@
       }
     }
 
+    // === BURIED TREASURE SYSTEM — minimap dots ===
+    if (worldData) {
+      const mw = minimapCtx.canvas.width;
+      const mh = minimapCtx.canvas.height;
+      const tPulse = 0.5 + 0.5 * Math.sin(now * 0.007);
+      // Treasure scroll (visible to all)
+      if (gameState.treasureScroll) {
+        const ts = gameState.treasureScroll;
+        const tsmx = ts.x * mw / worldData.width;
+        const tsmy = ts.y * mh / worldData.height;
+        minimapCtx.save();
+        minimapCtx.shadowColor = '#f4c542';
+        minimapCtx.shadowBlur = 8 + 4 * tPulse;
+        minimapCtx.fillStyle = `rgba(244,197,66,${0.8 + 0.2 * tPulse})`;
+        minimapCtx.beginPath();
+        minimapCtx.arc(tsmx, tsmy, 4 + tPulse, 0, Math.PI * 2);
+        minimapCtx.fill();
+        minimapCtx.shadowBlur = 0;
+        minimapCtx.font = '8px sans-serif';
+        minimapCtx.textAlign = 'center';
+        minimapCtx.textBaseline = 'alphabetic';
+        minimapCtx.fillText('📜', tsmx, tsmy - 5);
+        minimapCtx.restore();
+      }
+      // Treasure map holder (visible to all — the holder's position is public)
+      if (gameState.treasureMap && gameState.treasureMap.holderX !== null) {
+        const tm = gameState.treasureMap;
+        const tmmx = tm.holderX * mw / worldData.width;
+        const tmmy = tm.holderY * mh / worldData.height;
+        minimapCtx.save();
+        minimapCtx.shadowColor = '#ff9900';
+        minimapCtx.shadowBlur = 10 + 5 * tPulse;
+        minimapCtx.fillStyle = `rgba(255,153,0,${0.85 + 0.15 * tPulse})`;
+        minimapCtx.beginPath();
+        minimapCtx.arc(tmmx, tmmy, 4.5 + tPulse * 1.2, 0, Math.PI * 2);
+        minimapCtx.fill();
+        minimapCtx.shadowBlur = 0;
+        minimapCtx.font = '8px sans-serif';
+        minimapCtx.textAlign = 'center';
+        minimapCtx.textBaseline = 'alphabetic';
+        minimapCtx.fillText('🗺️', tmmx, tmmy - 5);
+        minimapCtx.restore();
+      }
+    }
+
     // Bird Royale safe zone ring on minimap
     if (gameState.birdRoyale && gameState.birdRoyale.state === 'active' && worldData) {
       Renderer.drawBirdRoyaleOnMinimap(minimapCtx, worldData, gameState.birdRoyale, now);
@@ -15344,6 +15569,25 @@
         const hitsLeft = cp.maxHits - cp.hitsDealt;
         html += `<div class="bm-buff-pill" style="background:rgba(40,30,0,0.85);border-color:#c8a060;color:#ffe070;">📬 COURIER PIGEON flying ${cp.srcName}→${cp.destName} — ESCORT (+reward) or INTERCEPT ${hitsLeft > 0 ? `(${cp.hitsDealt}/${cp.maxHits} hits)` : ''}! ${cpSecsLeft}s left</div>`;
       }
+    }
+
+    // === BURIED TREASURE SYSTEM (Session 114) ===
+    if (gameState.treasureMap && gameState.treasureMap.holderId === (s.id || myId)) {
+      const digPct = Math.floor((gameState.treasureMap.digProgress || 0) * 100);
+      const stealsOnMe = gameState.treasureMap.stealHitsOnMe || 0;
+      let treasurePillLabel = `🗺️ TREASURE MAP — Fly to the X and hold 3s to dig! (${digPct}%)`;
+      if (stealsOnMe > 0) {
+        treasurePillLabel += ` ⚠️ STEAL: ${stealsOnMe}/3!`;
+      }
+      html += `<div class="bm-buff-pill" style="background:rgba(80,55,0,0.95);border-color:#f4c542;color:#ffd966;animation:${stealsOnMe > 0 ? 'rpKingpin 0.3s ease-in-out infinite alternate' : 'slowPulse 2s ease-in-out infinite'};">${treasurePillLabel}</div>`;
+    } else if (gameState.treasureMap && gameState.treasureMap.holderId !== (s.id || myId)) {
+      const stealsDealt = gameState.treasureMap.stealHitsIveDealt || 0;
+      if (stealsDealt > 0) {
+        html += `<div class="bm-buff-pill" style="background:rgba(60,30,0,0.8);border-color:#ff9900;color:#ffcc44;">📜 STEAL ATTEMPT — ${stealsDealt}/3 hits on the map holder! Keep going!</div>`;
+      }
+    }
+    if (gameState.self && gameState.self.myTreasureDigSite) {
+      // Show dig site reminder even if not currently near the X
     }
 
     // === WING SURGE SYSTEM (Session 113) ===
