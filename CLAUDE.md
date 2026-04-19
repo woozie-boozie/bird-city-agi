@@ -3854,6 +3854,47 @@ The most GTA1 moment yet. A black stretch limo flanked by 2 motorcycle cops roll
 
 **Creative intent**: The motorcade is pure GTA1 energy — a dignitary convoy rolling through the city that players can choose to ignore OR coordinate to attack. The two-phase design (stun escorts first, then hit limo) creates natural teamwork: one bird peels off to handle an escort while another waits for the opening. The OUTRAGE mechanic at 5 hits is the killer feature: the moment the Mayor calls the cops, everyone who was lurking nearby suddenly has heat — causing chaotic scrambles to the Black Market or sewer. A motorcade rolling through downtown during a Crime Wave, escorts stunned by two rival gang birds who weren't even cooperating, followed by a limo poop-frenzy while 3 cops close in — that's peak CARNAGE CITY emergent chaos. Pure CARNAGE + SOCIAL + SPECTACLE energy.
 
+**Session 112 — 2026-04-19: The Golden Perch — King-of-the-Hill Roost**
+A glowing golden roost materializes at one of 9 iconic city landmarks every 8-12 minutes. First bird to fly within 40px and hold uninterrupted for 90 seconds wins 700 XP + 450 coins + the 🏅 PERCH CHAMPION session badge. Pure king-of-the-hill tension, fully integrated with the city's most chaotic systems.
+
+**Core mechanics (`server/game.js`):**
+- `GOLDEN_PERCH_LOCATIONS`: 9 high-traffic spots — Park Center, Downtown Plaza, Mall Atrium, Cafe Corner, Radio Tower Base, Arena, City Hall Steps, Hall of Legends, Sacred Pond Clearing
+- 40px claim radius (hold) / 80px zone radius (+3× XP bonus for any poop hit in the zone)
+- Nearest bird in claim radius wins — rivals constantly displace each other, no passive camping
+- Any stun (`arrestedUntil > now`) instantly resets the hold — cops, predators, lightning all interrupt
+- +10 coin passive tribute every 8 seconds while holding (rewarding persistence)
+- 30-second hold milestone fires daily challenge progress (`perch_held_30s`)
+- 5-minute spawn window; expires quietly if nobody claims it
+- `bird.inGoldenPerchZone` flag set each tick, used in `_checkPoopHit()` XP chain (3×) and gang war kill handler
+
+**Cross-system synergies:**
+- **Gang War × Golden Perch**: kills inside the 80px zone count as 2 gang war hits + 1.2× kill XP — the roost becomes the war's flashpoint. Two gangs at war who both want the perch creates the most contested spot in the city simultaneously.
+- **Kingpin win bonus**: if the perch winner is Kingpin at time of claiming, they immediately get +1 Royal Decree for their current tenure — the perch rewards the crown's strongest
+
+**Visual system (`public/js/renderer.js`):**
+- Pulsing gold radial aura (55px), animated dashed zone ring (80px, scrolling dash offset for "active" feel)
+- Solid claim ring (40px) with gold glow — the precise target zone is visually clear
+- Hold progress arc: green when you're the holder, orange when a rival holds
+- 🏅 emoji at center, location name below, holder name below that, "Xs to win" countdown
+- 6 orbiting sparkle particles at varying radii and speeds
+- Minimap: pulsing gold dot with glow shadow, trackable from anywhere on the map
+
+**HUD pills (`public/js/main.js`):**
+- **Holder**: green fast-pulse "🏅 HOLDING [location] — Xsec held / 90s to win · +10c every 8s · 3× XP in zone!"
+- **In zone, not holder**: orange pulse "🏅 [Holder] holds the Perch — [N]s! · You're in the 3× XP zone"
+- **Out of zone, perch active**: gold "🏅 GOLDEN PERCH at [location] · [M]m [S]s until it fades"
+- **Won**: special announcement + badge pill
+
+**Nametag badge:** 🏅 PERCH CHAMPION — dark gold background, gold border glow, renders in badge stack (session-only like Royale Champion/Dome Champion)
+
+**Daily challenges (added to pool):**
+- 🏅 **Hold Court**: Hold the Golden Perch for 30+ continuous seconds (200 XP, 100c)
+- 🏅 **Perch King**: Claim and win the full Golden Perch (90s hold) for the 700 XP + 450c jackpot (350 XP, 175c for the challenge itself)
+
+**Gazette headline:** "🏅 KING OF THE HILL: [name] CLAIMS THE GOLDEN PERCH AT [LOCATION]" with satirical subline
+
+**Creative intent**: The city needed a physical focal point that creates pure king-of-the-hill drama without any lobby or entry fee. The Golden Perch appears, and every bird in range immediately understands: get there, hold it, don't get hit. The 40px claim radius is small enough that rivals can dispute it just by flying near you — you can't safely hold the perch AND fight back simultaneously. The 3× XP zone incentivizes even non-holders to orbit the perch, creating a swirling combat cloud. The Gang War synergy is the killer feature: when two gangs are at war AND the perch appears near their contested territory, the roost becomes the war's objective — both sides want it for the XP and the symbolic dominance. A bird on a 15× combo holding the Golden Perch during an active aurora while two rival gang members circle trying to displace them is Bird City at its richest. Pure CARNAGE + SOCIAL + PROGRESSION energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
