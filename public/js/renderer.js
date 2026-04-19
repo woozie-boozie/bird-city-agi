@@ -5643,4 +5643,123 @@ window.Renderer = {
 
     minimapCtx.restore();
   },
+
+  // ============================================================
+  // GOLDEN PERCH
+  // ============================================================
+  drawGoldenPerch(ctx, perch, cameraX, cameraY, zoom, now) {
+    if (!perch) return;
+    const sx = (perch.x - cameraX) * zoom;
+    const sy = (perch.y - cameraY) * zoom;
+    const pulse = 0.7 + 0.3 * Math.sin(now * 0.003);
+
+    ctx.save();
+    ctx.translate(sx, sy);
+
+    // Outer glow aura
+    const aura = ctx.createRadialGradient(0, 0, 10, 0, 0, 55 * zoom);
+    aura.addColorStop(0, `rgba(255,215,0,${0.18 * pulse})`);
+    aura.addColorStop(1, 'rgba(255,215,0,0)');
+    ctx.beginPath();
+    ctx.arc(0, 0, 55 * zoom, 0, Math.PI * 2);
+    ctx.fillStyle = aura;
+    ctx.fill();
+
+    // Zone ring (80px combat radius) — dashed gold
+    ctx.save();
+    ctx.setLineDash([6 * zoom, 4 * zoom]);
+    ctx.lineDashOffset = -(now * 0.04) % 10;
+    ctx.strokeStyle = `rgba(255,200,0,${0.35 * pulse})`;
+    ctx.lineWidth = 1.5 * zoom;
+    ctx.beginPath();
+    ctx.arc(0, 0, 80 * zoom, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+
+    // Inner claim ring (40px)
+    ctx.strokeStyle = `rgba(255,230,0,${0.7 * pulse})`;
+    ctx.lineWidth = 2.5 * zoom;
+    ctx.shadowColor = '#ffd700';
+    ctx.shadowBlur = 12 * pulse;
+    ctx.beginPath();
+    ctx.arc(0, 0, 40 * zoom, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // Hold progress arc (if someone is holding)
+    if (perch.holderId && perch.holdTimeMs > 0) {
+      const progress = Math.min(perch.holdTimeMs / perch.holdRequiredMs, 1);
+      ctx.save();
+      ctx.strokeStyle = perch.amHolder ? '#00ff88' : '#ff8800';
+      ctx.lineWidth = 4 * zoom;
+      ctx.shadowColor = perch.amHolder ? '#00ff88' : '#ff8800';
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.arc(0, 0, 40 * zoom, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    }
+
+    // 🏅 perch emoji / crown icon
+    ctx.font = `${Math.floor(18 * zoom)}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('🏅', 0, 0);
+
+    // Label: location name
+    ctx.font = `bold ${Math.floor(10 * zoom)}px sans-serif`;
+    ctx.fillStyle = '#ffd700';
+    ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+    ctx.lineWidth = 2;
+    ctx.textBaseline = 'top';
+    const label = perch.holderId ? `👑 ${perch.holderName}` : `GOLDEN PERCH`;
+    ctx.strokeText(label, 0, 28 * zoom);
+    ctx.fillText(label, 0, 28 * zoom);
+
+    // Hold time label
+    if (perch.holderId) {
+      const secsLeft = Math.max(0, Math.ceil((perch.holdRequiredMs - perch.holdTimeMs) / 1000));
+      ctx.font = `${Math.floor(9 * zoom)}px sans-serif`;
+      ctx.fillStyle = '#fffaaa';
+      ctx.strokeText(`${secsLeft}s to win`, 0, 40 * zoom);
+      ctx.fillText(`${secsLeft}s to win`, 0, 40 * zoom);
+    }
+
+    // Orbiting sparkles
+    for (let i = 0; i < 6; i++) {
+      const angle = (now * 0.0015) + (i * Math.PI / 3);
+      const r = 30 * zoom;
+      const sx2 = Math.cos(angle) * r;
+      const sy2 = Math.sin(angle) * r;
+      ctx.fillStyle = `rgba(255,230,100,${0.4 + 0.3 * Math.sin(now * 0.004 + i)})`;
+      ctx.beginPath();
+      ctx.arc(sx2, sy2, 2.5 * zoom, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+  },
+
+  drawGoldenPerchOnMinimap(minimapCtx, perch, mmW, mmH, worldW, worldH, now) {
+    if (!perch) return;
+    minimapCtx.save();
+    const cx = (perch.x / worldW) * mmW;
+    const cy = (perch.y / worldH) * mmH;
+    const pulse = 0.7 + 0.3 * Math.sin(now * 0.003);
+
+    minimapCtx.shadowBlur = 10 * pulse;
+    minimapCtx.shadowColor = '#ffd700';
+    minimapCtx.fillStyle = '#ffd700';
+    minimapCtx.beginPath();
+    minimapCtx.arc(cx, cy, 3.5 + pulse * 1.5, 0, Math.PI * 2);
+    minimapCtx.fill();
+    minimapCtx.shadowBlur = 0;
+
+    minimapCtx.font = '9px sans-serif';
+    minimapCtx.textAlign = 'center';
+    minimapCtx.textBaseline = 'middle';
+    minimapCtx.fillText('🏅', cx, cy);
+    minimapCtx.restore();
+  },
 };

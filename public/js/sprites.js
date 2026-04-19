@@ -106,7 +106,7 @@ window.Sprites = {
   },
 
   // === NAME TAG ===
-  drawNameTag(ctx, x, y, name, level, type, isPlayer, mafiaTitle, gangTag, gangColor, tattoosEquipped, prestige, eagleFeather, idolBadge, royaleChampBadge, skillTreeMaster, fightingChampBadge, constellationBadge, courtTitle, hanamiLanternBadge, domeChampBadge, alphaFeather, arenaLegend, goldenBirdBadge, constellations, stampedeBadge, throneChampBadge) {
+  drawNameTag(ctx, x, y, name, level, type, isPlayer, mafiaTitle, gangTag, gangColor, tattoosEquipped, prestige, eagleFeather, idolBadge, royaleChampBadge, skillTreeMaster, fightingChampBadge, constellationBadge, courtTitle, hanamiLanternBadge, domeChampBadge, alphaFeather, arenaLegend, goldenBirdBadge, constellations, stampedeBadge, throneChampBadge, perchChampBadge) {
     const text = `${name} [Lv.${level}]`;
     ctx.font = 'bold 11px Courier New';
     ctx.textAlign = 'center';
@@ -300,6 +300,25 @@ window.Sprites = {
       ctx.shadowBlur = 11;
       ctx.fillStyle = '#ffe566';
       ctx.fillText(tcStr, x, y - 41 - offsetY);
+      ctx.shadowBlur = 0;
+      ctx.font = 'bold 11px Courier New';
+      offsetY += 14;
+    }
+
+    // 🏅 PERCH CHAMPION Badge — session badge, earned by holding the Golden Perch for 90s
+    if (perchChampBadge) {
+      ctx.font = '10px serif';
+      const pcStr = '🏅 PERCH CHAMPION';
+      const pcw = ctx.measureText(pcStr).width + 10;
+      ctx.fillStyle = 'rgba(40,30,0,0.95)';
+      ctx.fillRect(x - pcw / 2, y - 52 - offsetY, pcw, 14);
+      ctx.strokeStyle = '#ffd700';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(x - pcw / 2, y - 52 - offsetY, pcw, 14);
+      ctx.shadowColor = '#ffd700';
+      ctx.shadowBlur = 11;
+      ctx.fillStyle = '#ffe566';
+      ctx.fillText(pcStr, x, y - 41 - offsetY);
       ctx.shadowBlur = 0;
       ctx.font = 'bold 11px Courier New';
       offsetY += 14;

@@ -170,6 +170,9 @@ const DAILY_CHALLENGE_POOL = [
   // Session 111: Mayor's Motorcade challenges
   { id: 'motorcade_hit',     title: 'Road Rage',         desc: "Poop the Mayor's limo at least once",                    target: 1,  trackType: 'motorcade_hit',     reward: { xp: 190, coins:  95 } },
   { id: 'motorcade_outrage', title: 'Motorcade Crasher', desc: "Trigger the Mayor's Outrage (contribute limo hits)",     target: 1,  trackType: 'motorcade_outrage', reward: { xp: 250, coins: 125 } },
+  // Session 112: Golden Perch challenges
+  { id: 'perch_holder',   title: 'King of the Hill', desc: 'Hold the Golden Perch for 30+ continuous seconds',         target: 1,  trackType: 'perch_held_30s',   reward: { xp: 220, coins: 110 } },
+  { id: 'perch_champion', title: 'Perch Champion',   desc: 'Win the Golden Perch (hold unbroken for 90 seconds)',       target: 1,  trackType: 'perch_won',        reward: { xp: 400, coins: 200 } },
 ];
 
 // ============================================================
@@ -205,6 +208,20 @@ const FLASH_MOB_LOCATIONS = [
   { name: 'City Docks',           x: 1200, y: 2500 },
   { name: 'City Hall Steps',      x: 1780, y: 1050 },
   { name: 'Hall of Legends',      x: 1050, y: 640  },
+];
+
+// ============================================================
+// GOLDEN PERCH LOCATIONS — 8 iconic king-of-the-hill spots
+// ============================================================
+const GOLDEN_PERCH_LOCATIONS = [
+  { name: 'Park Fountain',         x: 1200, y: 1100 },
+  { name: 'City Hall Roof',        x: 1780, y: 980  },
+  { name: 'Radio Tower Peak',      x: 1200, y: 410  },
+  { name: 'Mall Rooftop',          x: 2350, y: 630  },
+  { name: 'Downtown Crossroads',   x: 2100, y: 1320 },
+  { name: 'Cafe District Corner',  x: 580,  y: 1820 },
+  { name: 'Hall of Legends Steps', x: 1050, y: 710  },
+  { name: 'Arena Pinnacle',        x: 2750, y: 1120 },
 ];
 
 class GameEngine {
@@ -891,6 +908,19 @@ class GameEngine {
     // 6+ birds = MEGA MOB — city-wide bonus for everyone.
     this.flashMob = null; // null | { x, y, locationName, state, startsAt, endsAt, participants: Set, peakCount, lastTickAt }
     this._flashMobTimer = Date.now() + this._randomRange(12 * 60000, 18 * 60000);
+
+    // === GOLDEN PERCH ===
+    // Every 8-12 minutes a glowing golden roost materializes at one of 8 iconic city spots.
+    // Any bird can fly within 40px to claim it. The FIRST uninterrupted 90 seconds wins:
+    //   - 700 XP + 450 coins + city-wide announcement + 🏅 PERCH CHAMPION session badge
+    // While holding the perch: +10 coins every 8 seconds (passive tribute).
+    // All birds within 80px earn 3× XP on every poop hit (fighting over the perch pays).
+    // Being stunned (cop arrest, predator, lightning, etc.) resets your hold timer — defend yourself!
+    // Perch expires after 5 minutes if nobody wins (wrong, boring). Timer shown to all.
+    // Cross-system: if the Kingpin wins, they earn +2 Royal Decree next tenure.
+    //               during an active Gang War, poop kills inside 80px radius count as 2 war hits.
+    this.goldenPerch = null; // null | { x, y, locationName, spawnedAt, expiresAt, holderId, holderName, holderGangTag, holdStartedAt, passiveTick, contestedBy, perch_held_30sGiven }
+    this._goldenPerchTimer = Date.now() + this._randomRange(8 * 60000, 12 * 60000);
 
     // === COURIER PIGEON ===
     // Every 15-20 minutes, a messenger pigeon flies across the city carrying a parcel.
@@ -2052,6 +2082,9 @@ class GameEngine {
 
     // === Mayor's Motorcade ===
     this._updateMotorcade(dt, now);
+
+    // === Golden Perch ===
+    this._updateGoldenPerch(dt, now);
   }
 
   // ============================================================
@@ -4434,6 +4467,8 @@ class GameEngine {
         xpGain = Math.floor(xpGain * 4);
         if (coinGain > 0) coinGain = Math.floor(coinGain * 2.5);
       }
+      // Golden Perch zone: all birds within 80px of the active perch earn 3× XP (fight for it!)
+      if (bird.inGoldenPerchZone) xpGain = Math.floor(xpGain * 3);
       // Idol: track performance hits for contestants during open phase
       if (this.birdIdol && this.birdIdol.state === 'open' && this.birdIdol.contestants.has(poop.birdId) && hit.target !== 'miss') {
         this.birdIdol.contestants.get(poop.birdId).performanceHits++;
@@ -6961,6 +6996,8 @@ class GameEngine {
           // Session 109: Bowling Ball — giant rolling bird visible to all
           isBowlingBird: !!(this.bowlingBall && this.bowlingBall.birdId === b.id && this.bowlingBall.hp > 0),
           bowlingBadge: b.bowlingBadge || false,
+          // Session 112: Golden Perch champion badge
+          perchChampBadge: b.perchChampBadge || false,
           // Session 105: Grudge — show nearby birds if they have a grudge targeting the viewer (so viewer knows)
           hasGrudgeOnMe: !!(b.grudge && b.grudge.targetId === bird.id),
         });
@@ -7416,6 +7453,21 @@ class GameEngine {
         endsAt: this.flashMob.endsAt,
         participantCount: this.flashMob.participants.size,
       } : null,
+      goldenPerch: this.goldenPerch ? {
+        x: this.goldenPerch.x,
+        y: this.goldenPerch.y,
+        locationName: this.goldenPerch.locationName,
+        spawnedAt: this.goldenPerch.spawnedAt,
+        expiresAt: this.goldenPerch.expiresAt,
+        holderId: this.goldenPerch.holderId,
+        holderName: this.goldenPerch.holderName,
+        holderGangTag: this.goldenPerch.holderGangTag,
+        holdStartedAt: this.goldenPerch.holdStartedAt,
+        holdTimeMs: this.goldenPerch.holderId ? (now - this.goldenPerch.holdStartedAt) : 0,
+        holdRequiredMs: 90000,
+        amHolder: this.goldenPerch.holderId === bird.id,
+        inZone: bird.inGoldenPerchZone,
+      } : null,
       auction: this.auction ? {
         state: this.auction.state,
         lots: this.auction.lots,
@@ -7683,6 +7735,8 @@ class GameEngine {
         // Session 109: Bowling Ball
         isBowlingBird: !!(this.bowlingBall && this.bowlingBall.birdId === bird.id && this.bowlingBall.hp > 0),
         bowlingBadge: bird.bowlingBadge || false,
+        // Session 112: Golden Perch champion badge
+        perchChampBadge: bird.perchChampBadge || false,
         nearNightMarket: (() => {
           if (!this.nightMarket) return false;
           const dx = bird.x - this.nightMarket.x;
@@ -9746,6 +9800,14 @@ class GameEngine {
       if (decreeWarBonus) killXp = Math.floor(killXp * 1.5);
       // Thunder Dome × Gang War: +50% kill XP when inside the dome (the cage is a killing field)
       if (domeBonus) killXp = Math.floor(killXp * 1.5);
+      // Golden Perch × Gang War: kills inside the 80px perch zone count as 2 gang war hits (double kill credit)
+      const perchWarBonus = this.goldenPerch && attacker.inGoldenPerchZone;
+      if (perchWarBonus) {
+        // Award an extra war kill to the attacker's gang
+        const myGangEarly = this.gangs.get(attacker.gangId);
+        if (myGangEarly) myGangEarly.warKills = (myGangEarly.warKills || 0) + 1;
+        killXp = Math.floor(killXp * 1.2);
+      }
       attacker.xp += killXp;
       target.comboCount = 0;
       target.stunnedUntil = now + 2000;
@@ -16294,6 +16356,7 @@ class GameEngine {
       flashMobs:            [],   // [{ location, count, isMega }] — flash mobs this cycle
       auctionResults:       [],   // [{ itemName, itemEmoji, winnerName, winnerGangTag, finalBid }]
       motorcadeAttacked:    false, // someone attacked the motorcade
+      perchWins:            [],   // [{ name, gangTag, locationName }] — golden perch champions this cycle
     };
   }
 
@@ -16727,6 +16790,17 @@ class GameEngine {
         icon: '🎳',
         headline: `BOWLING BIRD MAYHEM — ${stats.bowlingBallEvents} BIRD${stats.bowlingBallEvents > 1 ? 'S' : ''} TRANSFORMED INTO GIANT BOWLING BALLS`,
         subline: `City birds scattered like pins. Police baffled. Chiropractors booked solid for weeks.`,
+      });
+    }
+
+    // Golden Perch headline
+    if (stats.perchWins && stats.perchWins.length > 0) {
+      const champ = stats.perchWins[0];
+      const tag = champ.gangTag ? `[${champ.gangTag}] ` : '';
+      headlines.push({
+        icon: '🏅',
+        headline: `KING OF THE HILL: ${tag}${champ.name} CLAIMS THE GOLDEN PERCH AT ${champ.locationName.toUpperCase()}`,
+        subline: `${champ.name} held the legendary roost for a full 90 uninterrupted seconds. Challengers failed. Tribute was paid. The city bows.`,
       });
     }
 
@@ -24863,6 +24937,231 @@ class GameEngine {
       topName,
       msg: `🚗 The Mayor's Motorcade flees the city! Top attacker: ${topName}. Contributors rewarded!`,
     });
+  }
+
+  // ============================================================
+  // GOLDEN PERCH SYSTEM
+  // ============================================================
+  _spawnGoldenPerch(now) {
+    const loc = GOLDEN_PERCH_LOCATIONS[Math.floor(Math.random() * GOLDEN_PERCH_LOCATIONS.length)];
+    this.goldenPerch = {
+      x: loc.x,
+      y: loc.y,
+      locationName: loc.name,
+      spawnedAt: now,
+      expiresAt: now + 5 * 60000, // 5-minute timeout if nobody wins
+      holderId: null,
+      holderName: null,
+      holderGangTag: null,
+      holdStartedAt: null,
+      passiveTick: null,
+      perch_held_30sGiven: false,
+    };
+    this.events.push({
+      type: 'golden_perch_spawned',
+      x: loc.x,
+      y: loc.y,
+      locationName: loc.name,
+      msg: `🏅 THE GOLDEN PERCH APPEARS at ${loc.name}! Fly within 40px and hold it for 90 unbroken seconds to win 700 XP + 450c!`,
+    });
+  }
+
+  _updateGoldenPerch(dt, now) {
+    // Spawn timer
+    if (!this.goldenPerch && now >= this._goldenPerchTimer && this.birds.size > 0) {
+      this._spawnGoldenPerch(now);
+      this._goldenPerchTimer = now + this._randomRange(8 * 60000, 12 * 60000);
+      return;
+    }
+    if (!this.goldenPerch) return;
+
+    // Expire if nobody wins in 5 minutes
+    if (now >= this.goldenPerch.expiresAt) {
+      this.events.push({
+        type: 'golden_perch_expired',
+        locationName: this.goldenPerch.locationName,
+        msg: `🏅 The Golden Perch at ${this.goldenPerch.locationName} fades away unclaimed...`,
+      });
+      this.goldenPerch = null;
+      return;
+    }
+
+    const gp = this.goldenPerch;
+    const CLAIM_RADIUS   = 40;  // px — must be within to hold
+    const ZONE_RADIUS    = 80;  // px — 3× XP bonus zone (fighting over it pays)
+    const HOLD_WIN_MS    = 90000;
+    const PASSIVE_TICK   = 8000; // ms between passive coin ticks for holder
+    const PASSIVE_COINS  = 10;
+
+    // Find who is currently within the claim radius
+    let nearest = null;
+    let nearestDist = Infinity;
+    for (const [, bird] of this.birds) {
+      const dx = bird.x - gp.x;
+      const dy = bird.y - gp.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      // Track zone membership for 3× XP
+      bird.inGoldenPerchZone = dist <= ZONE_RADIUS;
+      if (dist <= CLAIM_RADIUS) {
+        if (dist < nearestDist) {
+          nearestDist = dist;
+          nearest = bird;
+        }
+      }
+    }
+    // Clear zone flag for birds not in zone
+    for (const [, bird] of this.birds) {
+      if (bird.x === undefined) continue; // skip stale
+      const dx = bird.x - gp.x;
+      const dy = bird.y - gp.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      bird.inGoldenPerchZone = dist <= ZONE_RADIUS;
+    }
+
+    // Detect if current holder is stunned (arrestedUntil set in future)
+    if (gp.holderId) {
+      const holder = this.birds.get(gp.holderId);
+      const stunned = holder && holder.arrestedUntil > now;
+      const notInRange = !holder || nearestDist > CLAIM_RADIUS || (nearest && nearest.id !== gp.holderId);
+
+      if (stunned || !holder) {
+        // Holder was stunned or disconnected — reset hold
+        this.events.push({
+          type: 'golden_perch_knocked_off',
+          holderId: gp.holderId,
+          holderName: gp.holderName,
+          locationName: gp.locationName,
+          msg: `🏅 ${gp.holderName} lost the Golden Perch! The roost is up for grabs at ${gp.locationName}!`,
+        });
+        gp.holderId = null;
+        gp.holderName = null;
+        gp.holderGangTag = null;
+        gp.holdStartedAt = null;
+        gp.passiveTick = null;
+        gp.perch_held_30sGiven = false;
+        return;
+      }
+
+      // Rival swoops in — closest bird preempts holder if it's a different bird
+      if (nearest && nearest.id !== gp.holderId) {
+        this.events.push({
+          type: 'golden_perch_contested',
+          holderId: gp.holderId,
+          holderName: gp.holderName,
+          challengerId: nearest.id,
+          challengerName: nearest.name,
+          locationName: gp.locationName,
+          msg: `🏅 ${nearest.name} challenges ${gp.holderName} for the Golden Perch at ${gp.locationName}!`,
+        });
+        gp.holderId = nearest.id;
+        gp.holderName = nearest.name;
+        gp.holderGangTag = nearest.gangId ? (this.gangs.get(nearest.gangId)?.tag || null) : null;
+        gp.holdStartedAt = now;
+        gp.passiveTick = now + PASSIVE_TICK;
+        gp.perch_held_30sGiven = false;
+        return;
+      }
+    } else {
+      // No current holder — if nearest bird is in range, they claim it
+      if (nearest) {
+        gp.holderId = nearest.id;
+        gp.holderName = nearest.name;
+        gp.holderGangTag = nearest.gangId ? (this.gangs.get(nearest.gangId)?.tag || null) : null;
+        gp.holdStartedAt = now;
+        gp.passiveTick = now + PASSIVE_TICK;
+        gp.perch_held_30sGiven = false;
+        this.events.push({
+          type: 'golden_perch_claimed',
+          holderId: nearest.id,
+          holderName: nearest.name,
+          locationName: gp.locationName,
+          msg: `🏅 ${nearest.name} claims the Golden Perch at ${gp.locationName}! Hold for 90 seconds to win!`,
+        });
+        return;
+      }
+    }
+
+    if (!gp.holderId) return;
+
+    const holdMs = now - gp.holdStartedAt;
+
+    // Passive coin income every 8 seconds
+    if (now >= gp.passiveTick) {
+      const holder = this.birds.get(gp.holderId);
+      if (holder) {
+        holder.coins = (holder.coins || 0) + PASSIVE_COINS;
+        this.events.push({
+          type: 'golden_perch_passive',
+          targetId: gp.holderId,
+          coins: PASSIVE_COINS,
+          msg: `🏅 +${PASSIVE_COINS}c tribute flows to ${gp.holderName} for holding the perch!`,
+        });
+      }
+      gp.passiveTick = now + PASSIVE_TICK;
+    }
+
+    // 30-second milestone — daily challenge progress
+    if (!gp.perch_held_30sGiven && holdMs >= 30000) {
+      gp.perch_held_30sGiven = true;
+      const holder = this.birds.get(gp.holderId);
+      if (holder) {
+        this._trackDailyProgress(holder, 'perch_held_30s');
+        this.events.push({
+          type: 'golden_perch_milestone',
+          targetId: gp.holderId,
+          holdMs,
+          msg: `🏅 ${gp.holderName} has held the Golden Perch for 30 seconds! 60 more to win!`,
+        });
+      }
+    }
+
+    // 90-second WIN condition
+    if (holdMs >= HOLD_WIN_MS) {
+      const winner = this.birds.get(gp.holderId);
+      if (winner) {
+        const xpReward = 700;
+        const coinReward = 450;
+        winner.xp = (winner.xp || 0) + xpReward;
+        winner.coins = (winner.coins || 0) + coinReward;
+        winner.perchChampBadge = true;
+        this._trackDailyProgress(winner, 'perch_won');
+        this._checkLevelUp(winner);
+
+        // Cross-system: Kingpin bonus decree
+        if (this.kingpin && this.kingpin.birdId === gp.holderId) {
+          this.kingpin.decreesAvailable = (this.kingpin.decreesAvailable || 0) + 1;
+          this.events.push({
+            type: 'golden_perch_kingpin_bonus',
+            targetId: gp.holderId,
+            msg: `👑🏅 The KINGPIN wins the Golden Perch! Bonus Royal Decree awarded!`,
+          });
+        }
+
+        // Gazette
+        if (this.gazetteStats.perchWins) {
+          this.gazetteStats.perchWins.push({
+            name: winner.name,
+            gangTag: gp.holderGangTag,
+            locationName: gp.locationName,
+          });
+        }
+
+        this.events.push({
+          type: 'golden_perch_won',
+          winnerId: gp.holderId,
+          winnerName: gp.holderName,
+          winnerGangTag: gp.holderGangTag,
+          locationName: gp.locationName,
+          xp: xpReward,
+          coins: coinReward,
+          msg: `🏅 ${gp.holderGangTag ? `[${gp.holderGangTag}] ` : ''}${gp.holderName} WINS THE GOLDEN PERCH at ${gp.locationName}! +${xpReward} XP +${coinReward}c — KING OF THE HILL!`,
+        });
+      }
+      this.goldenPerch = null;
+    }
+
+    // Cross-system: Gang War double kills inside the zone
+    // (handled in _resolveStreetDuel / gang war poop — checked via bird.inGoldenPerchZone + active gang war)
   }
 }
 

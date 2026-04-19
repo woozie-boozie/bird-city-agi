@@ -4969,6 +4969,50 @@
       effects.push({ type: 'xp', x: myX || 1500, y: myY ? myY - 30 : 1500, time: now2, duration: 1800, text: `🚗 +${ev.xp} XP +${ev.coins}c`, color: '#ffd700' });
     }
 
+    // === GOLDEN PERCH (Session 112) ===
+    if (ev.type === 'golden_perch_spawned') {
+      showAnnouncement(`🏅 GOLDEN PERCH at ${ev.locationName}! Hold for 90s to win 700 XP + 450c!`, '#ffd700', 6000);
+      addEventMessage(`🏅 The Golden Perch materializes at ${ev.locationName}! First to hold it wins!`, '#ffd700');
+      triggerScreenShake(6, 300);
+      window._goldenPerchDir = { x: ev.x, y: ev.y };
+    }
+    if (ev.type === 'golden_perch_claimed') {
+      addEventMessage(`🏅 ${ev.holderName} claims the Golden Perch at ${ev.locationName}!`, '#ffd700');
+      if (ev.holderId === myId) showAnnouncement(`🏅 YOU HOLD THE GOLDEN PERCH! Stay 90s to win!`, '#00ff88', 4000);
+    }
+    if (ev.type === 'golden_perch_contested') {
+      addEventMessage(`🏅 ${ev.challengerName} fights for the Perch vs ${ev.holderName}!`, '#ff9900');
+      if (ev.challengerId === myId) showAnnouncement(`🏅 YOU SEIZED THE GOLDEN PERCH!`, '#ffd700', 3000);
+      if (ev.holderId === myId)     showAnnouncement(`🏅 PERCH STOLEN — TAKE IT BACK!`, '#ff4400', 3000);
+    }
+    if (ev.type === 'golden_perch_knocked_off') {
+      addEventMessage(`🏅 ${ev.holderName} was knocked off the Perch at ${ev.locationName}!`, '#ff6600');
+      if (ev.holderId === myId) showAnnouncement(`🏅 YOU LOST THE PERCH — RECLAIM IT!`, '#ff4400', 3000);
+    }
+    if (ev.type === 'golden_perch_milestone') {
+      addEventMessage(`🏅 ${ev.holderName} has held the Perch for 30 seconds! 60 more to win!`, '#ffd700');
+      if (ev.targetId === myId) showAnnouncement(`🏅 30s MILESTONE! 60 more seconds to WIN!`, '#ffd700', 3000);
+    }
+    if (ev.type === 'golden_perch_passive' && ev.targetId === myId) {
+      const now2 = performance.now();
+      effects.push({ type: 'xp', x: myX || 1500, y: myY ? myY - 20 : 1500, time: now2, duration: 1200, text: `🏅 +${ev.coins}c tribute`, color: '#ffd700' });
+    }
+    if (ev.type === 'golden_perch_won') {
+      showAnnouncement(`🏅 ${ev.winnerGangTag ? '[' + ev.winnerGangTag + '] ' : ''}${ev.winnerName} WINS THE GOLDEN PERCH!`, '#ffd700', 7000);
+      addEventMessage(`🏅 KING OF THE HILL: ${ev.winnerName} claims the Golden Perch at ${ev.locationName}!`, '#ffd700');
+      triggerScreenShake(12, 600);
+      if (ev.winnerId === myId) showAnnouncement(`🏅 YOU WIN! +${ev.xp} XP +${ev.coins}c — KING OF THE HILL!`, '#00ff88', 8000);
+      window._goldenPerchDir = null;
+    }
+    if (ev.type === 'golden_perch_expired') {
+      addEventMessage(`🏅 The Golden Perch at ${ev.locationName} faded away unclaimed.`, '#888888');
+      window._goldenPerchDir = null;
+    }
+    if (ev.type === 'golden_perch_kingpin_bonus') {
+      showAnnouncement(`👑🏅 KINGPIN WINS THE PERCH — Bonus Royal Decree granted!`, '#ffd700', 5000);
+      addEventMessage(`👑🏅 The Kingpin claimed the Golden Perch! Bonus Decree awarded!`, '#ffd700');
+    }
+
     // === SKY PIRATE AIRSHIP (Session 110) ===
     if (ev.type === 'sky_pirate_ship_spawn') {
       showAnnouncement(`☠️ SKY PIRATES! Airship inbound — poop it 20 times!`, '#dd4422', 5000);
@@ -9697,6 +9741,12 @@
       Renderer.drawGoldenThrone(ctx, camera, gameState.self.goldenThrone, now);
     }
 
+    // Golden Perch — king-of-the-hill roost (drawn before birds)
+    if (gameState.self && gameState.self.goldenPerch) {
+      const gp = gameState.self.goldenPerch;
+      Renderer.drawGoldenPerch(ctx, gp, camera.x, camera.y, camera.zoom, now);
+    }
+
     // Birds
     if (gameState.birds) {
       for (const bird of gameState.birds) {
@@ -9895,7 +9945,7 @@
 
           Sprites.drawBird(ctx, sx, sy, b.rotation, b.type, b.wingPhase, isPlayer, b.birdColor || null);
           ctx.globalAlpha = 1; // Always reset after bird draw
-          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0, b.eagleFeather || false, b.idolBadge || false, b.royaleChampBadge || false, b.skillTreeMaster || false, b.fightingChampBadge || false, b.constellationBadge || false, b.courtTitle || null, b.hanamiLanternBadge || false, b.domeChampBadge || false, b.alphaFeather || false, b.arenaLegend || false, b.goldenBirdBadge || false, b.constellations || [], b.stampedeBadge || false, b.throneChampBadge || false);
+          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0, b.eagleFeather || false, b.idolBadge || false, b.royaleChampBadge || false, b.skillTreeMaster || false, b.fightingChampBadge || false, b.constellationBadge || false, b.courtTitle || null, b.hanamiLanternBadge || false, b.domeChampBadge || false, b.alphaFeather || false, b.arenaLegend || false, b.goldenBirdBadge || false, b.constellations || [], b.stampedeBadge || false, b.throneChampBadge || false, b.perchChampBadge || false);
 
           // Bird Flu: sneezing emoji indicator above infected birds
           if (b.isFlu) {
@@ -12355,6 +12405,44 @@
       }
     }
 
+    // === GOLDEN PERCH — off-screen direction arrow ===
+    const _gpData = gameState.self && gameState.self.goldenPerch;
+    if (_gpData && window._goldenPerchDir) {
+      const gpsx = _gpData.x - camera.x + camera.screenW / 2;
+      const gpsy = _gpData.y - camera.y + camera.screenH / 2;
+      const gpOnScreen = gpsx > 50 && gpsx < camera.screenW - 50 && gpsy > 50 && gpsy < camera.screenH - 50;
+      if (!gpOnScreen) {
+        const gpAngle = Math.atan2(gpsy - camera.screenH / 2, gpsx - camera.screenW / 2);
+        const gpArrDist = Math.min(camera.screenW, camera.screenH) / 2 - 60;
+        const gpAx = camera.screenW / 2 + Math.cos(gpAngle) * gpArrDist;
+        const gpAy = camera.screenH / 2 + Math.sin(gpAngle) * gpArrDist;
+        const gpPulse = 0.7 + 0.3 * Math.sin(now * 0.005);
+        ctx.save();
+        ctx.translate(gpAx, gpAy);
+        ctx.rotate(gpAngle);
+        ctx.globalAlpha = 0.9 * gpPulse;
+        ctx.fillStyle = '#ffd700';
+        ctx.shadowColor = '#ffd700';
+        ctx.shadowBlur = 14;
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(22, 0);
+        ctx.lineTo(-10, -10);
+        ctx.lineTo(-5, 0);
+        ctx.lineTo(-10, 10);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.font = 'bold 11px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('🏅', 4, 0);
+        ctx.restore();
+      }
+    }
+
     // Announcements (screen-space)
     drawAnnouncements(ctx, now);
 
@@ -13349,6 +13437,11 @@
     // Flash Mob — pulsing party dot on minimap
     if (gameState.flashMob && worldData) {
       Renderer.drawFlashMobOnMinimap(minimapCtx, { worldW: worldData.width, worldH: worldData.height, mmW: minimapCanvas.width, mmH: minimapCanvas.height }, gameState.flashMob, now);
+    }
+
+    // Golden Perch — pulsing gold 🏅 dot when active
+    if (gameState.self && gameState.self.goldenPerch && worldData) {
+      Renderer.drawGoldenPerchOnMinimap(minimapCtx, gameState.self.goldenPerch, minimapCanvas.width, minimapCanvas.height, worldData.width, worldData.height, now);
     }
 
     // Auction House — permanent gold dot, pulses brighter when auction active
@@ -15061,6 +15154,26 @@
     }
     if (s && s.throneChampBadge) {
       html += `<div class="bm-buff-pill" style="background:rgba(50,35,0,0.9);border-color:#ffd700;color:#ffe566;">👑 THRONE CHAMPION — You seized the Golden Throne this session!</div>`;
+    }
+    if (s && s.perchChampBadge) {
+      html += `<div class="bm-buff-pill" style="background:rgba(50,40,0,0.9);border-color:#ffd700;color:#ffe566;">🏅 PERCH CHAMPION — King of the Hill!</div>`;
+    }
+
+    // Golden Perch: holding pill
+    const _gpSelf = s && s.goldenPerch;
+    if (_gpSelf) {
+      if (_gpSelf.amHolder) {
+        const _gpHoldSecs = Math.floor((_gpSelf.holdTimeMs || 0) / 1000);
+        const _gpWinSecs = Math.ceil((_gpSelf.holdRequiredMs - (_gpSelf.holdTimeMs || 0)) / 1000);
+        html += `<div class="bm-buff-pill" style="background:rgba(50,40,0,0.95);border-color:#ffd700;color:#00ff88;animation:kingpinGlow 0.5s ease-in-out infinite alternate;font-weight:bold;">🏅 HOLDING THE PERCH — ${_gpHoldSecs}s held · ${Math.max(0,_gpWinSecs)}s to WIN! +10c every 8s · 3× XP zone!</div>`;
+      } else if (_gpSelf.inZone) {
+        const _gpHolderName = _gpSelf.holderName || 'nobody';
+        html += `<div class="bm-buff-pill" style="background:rgba(50,35,0,0.88);border-color:#ffa500;color:#ffd700;">🏅 IN PERCH ZONE — ${_gpSelf.holderId ? `${_gpHolderName} is holding (${Math.floor((_gpSelf.holdTimeMs||0)/1000)}s/${Math.floor(_gpSelf.holdRequiredMs/1000)}s)` : 'Unclaimed!'} · 3× XP on poop hits!</div>`;
+      } else {
+        // Perch exists but you're not in zone — passive awareness
+        const _gpSecsLeft = Math.max(0, Math.ceil((_gpSelf.expiresAt - now) / 1000));
+        html += `<div class="bm-buff-pill" style="background:rgba(40,30,0,0.82);border-color:#aa8800;color:#ccaa44;">🏅 GOLDEN PERCH at ${_gpSelf.locationName} · ${_gpSecsLeft}s · Fly there!</div>`;
+      }
     }
 
     // Pigeon Coupe: driving pill
