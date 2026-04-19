@@ -173,6 +173,9 @@ const DAILY_CHALLENGE_POOL = [
   // Session 112: Golden Perch challenges
   { id: 'perch_holder',   title: 'King of the Hill', desc: 'Hold the Golden Perch for 30+ continuous seconds',         target: 1,  trackType: 'perch_held_30s',   reward: { xp: 220, coins: 110 } },
   { id: 'perch_champion', title: 'Perch Champion',   desc: 'Win the Golden Perch (hold unbroken for 90 seconds)',       target: 1,  trackType: 'perch_won',        reward: { xp: 400, coins: 200 } },
+  // Session 113: Wing Surge challenges
+  { id: 'wing_warrior',   title: 'Wing Warrior',     desc: 'Activate the Wing Surge 3 times in one session',            target: 3,  trackType: 'wing_surge_activated', reward: { xp: 180, coins: 90 } },
+  { id: 'surge_master',   title: 'Surge Master',     desc: 'Activate Wing Surge while on a 10+ combo streak',           target: 1,  trackType: 'wing_surge_combo10',   reward: { xp: 250, coins: 125} },
 ];
 
 // ============================================================
@@ -1337,6 +1340,10 @@ class GameEngine {
       _coupeJoyRiderTracked: false, // whether the 10-second joy-ride daily challenge has been counted
       // === GRUDGE SYSTEM (session-only) ===
       grudge: null, // null | { targetId, targetName, reason, reasonDesc, hitsDealt, rewardXp, rewardCoins, setAt }
+      // === WING SURGE SYSTEM (Session 113) ===
+      wingCharge: 0,          // 0-100: fills as you land poop hits on valid targets
+      wingSurgeUntil: 0,      // timestamp: active speed/power burst expires at this time
+      wingCooldownUntil: 0,   // timestamp: can't charge again until this passes
     };
 
     // Determine bird type from XP
@@ -3079,6 +3086,11 @@ class GameEngine {
       maxSpeed = Math.max(maxSpeed, 220);
     }
 
+    // Wing Surge: earned speed burst from charging up poop hits — 1.80× for 5 seconds
+    if (bird.wingSurgeUntil > now) {
+      maxSpeed *= 1.80;
+    }
+
     // Pigeon Coupe: the driver rides in style at a flat 220px/s minimum (sports car speed!)
     if (bird.drivingCoupeId && this.pigeonCoupe && this.pigeonCoupe.driverId === bird.id) {
       maxSpeed = Math.max(maxSpeed, 220);
@@ -4467,6 +4479,10 @@ class GameEngine {
         xpGain = Math.floor(xpGain * 4);
         if (coinGain > 0) coinGain = Math.floor(coinGain * 2.5);
       }
+      // Wing Surge: active burst — double XP on every hit. Hyper mode (+10× combo) adds another 50%.
+      if (bird.wingSurgeUntil > now) {
+        xpGain = Math.floor(xpGain * (bird.wingSurgeHyperXp ? 3.0 : 2.0));
+      }
       // Golden Perch zone: all birds within 80px of the active perch earn 3× XP (fight for it!)
       if (bird.inGoldenPerchZone) xpGain = Math.floor(xpGain * 3);
       // Idol: track performance hits for contestants during open phase
@@ -4480,6 +4496,25 @@ class GameEngine {
       // Skill Tree Mastery: permanent +5% XP bonus for unlocking all 12 skills
       if (bird.skillTreeMaster) xpGain = Math.floor(xpGain * 1.05);
       bird.xp += xpGain;
+
+      // === WING SURGE CHARGE — fills on every valid hit (not miss), auto-fires at 100 ===
+      if (hit.target !== 'miss' && bird.wingCooldownUntil <= now && bird.wingSurgeUntil <= now) {
+        // Base charge per hit: 10%. Combo tier bonus: +3% per tier above x1.
+        // Combo tiers: x1 (0pts), x1.5 (1pt), x2 (2pts), x2.5 (3pts), x3 (4pts), x4 (5pts)
+        const comboBonus = bird.comboCount >= 15 ? 5 :
+                           bird.comboCount >= 10 ? 4 :
+                           bird.comboCount >= 7  ? 3 :
+                           bird.comboCount >= 5  ? 2 :
+                           bird.comboCount >= 3  ? 1 : 0;
+        // Crime Wave: 1.5× charge rate (crime energy fills the wings faster)
+        const crimeWaveMult = (this.crimeWave && this.crimeWave.endsAt > now) ? 1.5 : 1.0;
+        const chargeGain = Math.ceil((10 + comboBonus * 3) * crimeWaveMult);
+        bird.wingCharge = Math.min(100, (bird.wingCharge || 0) + chargeGain);
+
+        if (bird.wingCharge >= 100) {
+          this._activateWingSurge(bird, now);
+        }
+      }
 
       // Skill Tree: Double Tap — 20% chance to fire a bonus poop on any hit
       if (bird.skillTreeUnlocked && bird.skillTreeUnlocked.includes('double_tap') && hit.target !== 'miss' && Math.random() < 0.20) {
@@ -6998,6 +7033,9 @@ class GameEngine {
           bowlingBadge: b.bowlingBadge || false,
           // Session 112: Golden Perch champion badge
           perchChampBadge: b.perchChampBadge || false,
+          // Session 113: Wing Surge — visible charge glow and active surge aura for all nearby birds
+          wingSurgeUntil: b.wingSurgeUntil || 0,
+          wingCharge: b.wingCharge || 0,
           // Session 105: Grudge — show nearby birds if they have a grudge targeting the viewer (so viewer knows)
           hasGrudgeOnMe: !!(b.grudge && b.grudge.targetId === bird.id),
         });
@@ -7859,6 +7897,10 @@ class GameEngine {
           rewardXp: bird.grudge.rewardXp,
           rewardCoins: bird.grudge.rewardCoins,
         } : null,
+        // Wing Surge System
+        wingCharge: bird.wingCharge || 0,
+        wingSurgeUntil: bird.wingSurgeUntil || 0,
+        wingCooldownUntil: bird.wingCooldownUntil || 0,
         // Duel Betting — spectators see open betting windows
         duelBetting: (() => {
           if (bird.streetDuelId) return null; // duelers don't see betting panel
@@ -9756,6 +9798,38 @@ class GameEngine {
       type: 'gang_treasury_distributed',
       gangTag: gang.tag, gangName: gang.name,
       perMember, memberCount: onlineMembers.length, total: totalPaid,
+    });
+  }
+
+  // === WING SURGE ACTIVATION (Session 113) ===
+  // Called when wingCharge hits 100. Fires a 5-second burst of speed + double XP + cop immunity.
+  _activateWingSurge(bird, now) {
+    bird.wingCharge = 0;
+    bird.wingSurgeUntil = now + 5000;     // 5-second speed burst
+    bird.wingCooldownUntil = now + 40000; // 40-second cooldown (P3: 32s, P5: 25s)
+    // Prestige reduces cooldown: P3 → 32s, P5 → 25s
+    if (bird.prestige >= 5) bird.wingCooldownUntil = now + 25000;
+    else if (bird.prestige >= 3) bird.wingCooldownUntil = now + 32000;
+
+    // Track for daily challenges
+    this._trackDailyProgress(bird, 'wing_surge_activated', 1);
+    // "Surge Master": surging while on a 10+ combo
+    if (bird.comboCount >= 10) {
+      this._trackDailyProgress(bird, 'wing_surge_combo10', 1);
+      // Combo hypercharge bonus: +50% XP for 5 seconds while surging at 10+ combo
+      bird.wingSurgeHyperXp = true;
+    } else {
+      bird.wingSurgeHyperXp = false;
+    }
+
+    this.events.push({
+      type: 'wing_surge_activated',
+      birdId: bird.id,
+      birdName: bird.name,
+      gangTag: bird.gangTag || null,
+      comboCount: bird.comboCount,
+      hyper: !!bird.wingSurgeHyperXp,
+      x: bird.x, y: bird.y,
     });
   }
 
@@ -11761,7 +11835,7 @@ class GameEngine {
       // Arrest: cop catches wanted bird (within 18px, bird not already stunned)
       // Mystery Crate: Riot Shield blocks arrest entirely
       // Session 93: Possessed birds are immune to arrest — the feral spirit repels the law!
-      if (dist < 18 && wanted.stunnedUntil <= now && !(wanted.mcRiotShieldUntil > now) && !(wanted.possessedUntil > now) && !(this.goldenRampage && this.goldenRampage.birdId === wanted.id)) {
+      if (dist < 18 && wanted.stunnedUntil <= now && !(wanted.mcRiotShieldUntil > now) && !(wanted.possessedUntil > now) && !(this.goldenRampage && this.goldenRampage.birdId === wanted.id) && !(wanted.wingSurgeUntil > now)) {
         // Skill Tree: Ghost Walk — 18% chance to fully evade a cop arrest
         if (wanted.skillTreeUnlocked && wanted.skillTreeUnlocked.includes('ghost_walk') && Math.random() < 0.18) {
           this.events.push({ type: 'ghost_walk_evade', birdId: wanted.id, birdName: wanted.name, x: cop.x, y: cop.y });

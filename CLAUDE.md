@@ -3895,6 +3895,38 @@ A glowing golden roost materializes at one of 9 iconic city landmarks every 8-12
 
 **Creative intent**: The city needed a physical focal point that creates pure king-of-the-hill drama without any lobby or entry fee. The Golden Perch appears, and every bird in range immediately understands: get there, hold it, don't get hit. The 40px claim radius is small enough that rivals can dispute it just by flying near you — you can't safely hold the perch AND fight back simultaneously. The 3× XP zone incentivizes even non-holders to orbit the perch, creating a swirling combat cloud. The Gang War synergy is the killer feature: when two gangs are at war AND the perch appears near their contested territory, the roost becomes the war's objective — both sides want it for the XP and the symbolic dominance. A bird on a 15× combo holding the Golden Perch during an active aurora while two rival gang members circle trying to displace them is Bird City at its richest. Pure CARNAGE + SOCIAL + PROGRESSION energy.
 
+**Session 113 — 2026-04-19: Wing Surge System — Charge-Based Super-Move**
+Every poop hit charges a Wing Surge meter from 0–100%. Hit 100% and the surge fires automatically: 5 seconds of 1.8× speed, double XP on every hit, and full cop arrest immunity. Building your combo charges it faster — and activating while on a 10+ combo streak unlocks HYPER MODE for 3× XP instead. The 40-second cooldown (reduced to 32s at Prestige 3, 25s at Prestige 5) makes each activation feel earned.
+
+**Charge mechanics (`server/game.js`):**
+- Base charge per hit: 10 points. Combo bonus: +3% per combo tier (3+, 5+, 7+, 10+, 15+) — up to +15 per hit at max combo
+- Crime Wave active: charge fills 1.5× faster — the city's most dangerous moment makes you charge faster too
+- `wingCharge`, `wingSurgeUntil`, `wingCooldownUntil` fields on each bird; auto-activates at 100%
+- Cop arrest immunity: `wingSurgeUntil > now` check added to the arrest block — cops can't stop you mid-surge
+- XP doubling: applied in `_checkPoopHit()` before all other multipliers — stacks with Lucky Charm, Signal Boost, Prestige, combo, aurora
+
+**Hyper Mode:**
+- Activating surge at 10+ combo: `wingSurgeHyperXp = true` → 3× XP instead of 2×, city-wide HYPER MODE callout
+- Daily challenge: "Surge Master" (activate Wing Surge while on a 10+ combo, 250 XP/125c)
+- Second daily challenge: "Wing Warrior" (activate Wing Surge 3 times in one session, 180 XP/90c)
+
+**Visual system:**
+- **Charge glow** (drawn before bird sprite in `main.js`): gold ellipse aura from 30% charge upward, intensifies with charge % — three dynamic tiers (subtle at 30%, moderate at 60%, pulsing bright at 90%)
+- **Active surge aura**: full bright golden radial gradient + fast spinning ring around the bird — visible to ALL nearby players
+- **Golden shockwave ring**: on activation, an expanding double-ring burst radiates outward from the bird's world position (600ms, same pattern as champion shield flash)
+- **Buff pills** (three states in `updateActiveBuffsHud()`): active surge (gold animated, shows hyper flag), cooldown (dimmed, shows countdown), charging (color-scaled to charge % with three color tiers: `#cc9900` / `#ffcc33` / `#ffee00`)
+- `wing_surge_activated` event handler: golden screen flash + shake + big announcement for self; event feed callout for others
+
+**Other-birds snapshot:** `wingSurgeUntil` and `wingCharge` added to the per-client birds array so charge glow and active surge aura are visible to nearby players in real-time.
+
+**Stacking interactions (emergent combos):**
+- Crime Wave + high combo → fastest charge fill in the game
+- Surge + Lucky Charm + Signal Boost + Aurora + P5 Prestige = peak XP-per-hit moment
+- Surge + Crime Wave + Disco Fever CRIME DISCO = highest burst window in Bird City
+- Surge + Golden Perch zone (3× XP) = extraordinary XP density for the 5-second window
+
+**Creative intent**: The Wing Surge turns poop accuracy into a power economy. You're not just spamming hits — you're managing a charge meter, making decisions about when to fight hard vs conserve for the next surge window. A bird at 90% charge who gets arrested mid-combo loses their streak AND delays the surge, which amplifies the cost of every failed escape from cops. The charge glow visible to all nearby players creates social awareness: "that bird is almost surged — either get out of their way or rush them before it fires." The 5-second window feels exactly long enough to feel heroic without being abusable. Pure CARNAGE + PROGRESSION energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)

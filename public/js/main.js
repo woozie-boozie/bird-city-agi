@@ -5076,6 +5076,27 @@
       }
       window._skyPirateDir = null;
     }
+
+    // === WING SURGE (Session 113) ===
+    if (ev.type === 'wing_surge_activated') {
+      const isMe = ev.birdId === myId;
+      // World-space golden shockwave ring for everyone
+      if (ev.x !== undefined && ev.y !== undefined) {
+        window._wingSurgeFlash = { x: ev.x, y: ev.y, startTime: now, duration: 600 };
+      }
+      if (isMe) {
+        // Golden screen flash
+        effects.push({ type: 'screen_flash', color: 'rgba(255,220,0,0.45)', duration: 350, time: now });
+        effects.push({ type: 'screen_shake', intensity: 6, duration: 400, time: now });
+        const hyperText = ev.hyper ? ' ×3 XP — HYPER MODE!' : ' ×2 XP!';
+        showAnnouncement(`⚡ WING SURGE! ×1.8 SPEED${hyperText}\nCops can't arrest you — RAMPAGE!`, '#ffdd00', 4000);
+      } else {
+        // City-wide callout for others
+        const tag = ev.gangTag ? `[${ev.gangTag}] ` : '';
+        const hyperStr = ev.hyper ? ' 🔥 HYPER MODE!' : '';
+        addEventMessage(`⚡ ${tag}${ev.birdName} ACTIVATES WING SURGE — +80% speed for 5s!${hyperStr}`, '#ffcc33');
+      }
+    }
   }
 
   function showAnnouncement(text, color, duration) {
@@ -9943,6 +9964,48 @@
             ctx.restore();
           }
 
+          // === WING SURGE glow (Session 113) — drawn before bird sprite ===
+          if (b.wingSurgeUntil && b.wingSurgeUntil > now) {
+            // Active surge: bright gold pulsing aura
+            const surgePulse = 0.4 + 0.4 * Math.sin(now * 0.018);
+            ctx.save();
+            const surgeGrd = ctx.createRadialGradient(sx, sy, 4, sx, sy, 32);
+            surgeGrd.addColorStop(0, `rgba(255,220,0,${0.7 + 0.2 * surgePulse})`);
+            surgeGrd.addColorStop(0.45, `rgba(255,160,0,${0.35 + 0.15 * surgePulse})`);
+            surgeGrd.addColorStop(1, 'rgba(255,80,0,0)');
+            ctx.fillStyle = surgeGrd;
+            ctx.beginPath();
+            ctx.ellipse(sx, sy, 32, 28, b.rotation, 0, Math.PI * 2);
+            ctx.fill();
+            // Fast spinning ring
+            ctx.strokeStyle = `rgba(255,230,80,${0.6 + 0.3 * surgePulse})`;
+            ctx.lineWidth = 1.8;
+            ctx.shadowColor = '#ffd700';
+            ctx.shadowBlur = 10;
+            ctx.beginPath();
+            ctx.ellipse(sx, sy, 22 + surgePulse * 5, 16 + surgePulse * 3, b.rotation + now * 0.004, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+            ctx.restore();
+          } else if (b.wingCharge && b.wingCharge >= 30) {
+            // Charging: subtle gold glow that intensifies with charge
+            const chargePct = b.wingCharge / 100;
+            const chargeAlpha = 0.15 + chargePct * 0.35;
+            const chargePulse = chargePct >= 0.9 ? 0.5 + 0.5 * Math.sin(now * 0.015) : chargePct >= 0.6 ? 0.5 + 0.3 * Math.sin(now * 0.008) : 0.5;
+            ctx.save();
+            ctx.globalAlpha = chargeAlpha * chargePulse;
+            const chargeGrd = ctx.createRadialGradient(sx, sy, 3, sx, sy, 22 + chargePct * 10);
+            chargeGrd.addColorStop(0, 'rgba(255,210,0,0.8)');
+            chargeGrd.addColorStop(0.5, 'rgba(220,140,0,0.4)');
+            chargeGrd.addColorStop(1, 'rgba(160,80,0,0)');
+            ctx.fillStyle = chargeGrd;
+            ctx.beginPath();
+            ctx.ellipse(sx, sy, 22 + chargePct * 10, 16 + chargePct * 7, b.rotation, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = 1;
+            ctx.restore();
+          }
+
           Sprites.drawBird(ctx, sx, sy, b.rotation, b.type, b.wingPhase, isPlayer, b.birdColor || null);
           ctx.globalAlpha = 1; // Always reset after bird draw
           Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0, b.eagleFeather || false, b.idolBadge || false, b.royaleChampBadge || false, b.skillTreeMaster || false, b.fightingChampBadge || false, b.constellationBadge || false, b.courtTitle || null, b.hanamiLanternBadge || false, b.domeChampBadge || false, b.alphaFeather || false, b.arenaLegend || false, b.goldenBirdBadge || false, b.constellations || [], b.stampedeBadge || false, b.throneChampBadge || false, b.perchChampBadge || false);
@@ -10378,6 +10441,40 @@
         ctx.restore();
       } else {
         window._champShieldFlash = null;
+      }
+    }
+
+    // === WING SURGE shockwave ring (Session 113) — world-space expanding ring on activation ===
+    if (window._wingSurgeFlash) {
+      const wsf = window._wingSurgeFlash;
+      const elapsed = now - wsf.startTime;
+      if (elapsed < wsf.duration) {
+        const t = elapsed / wsf.duration; // 0→1
+        const sfx = (wsf.x - camera.x) * camera.zoom + camera.screenW / 2;
+        const sfy = (wsf.y - camera.y) * camera.zoom + camera.screenH / 2;
+        const maxR = 70 * camera.zoom;
+        const r = t * maxR;
+        const alpha = (1 - t) * 0.9;
+        ctx.save();
+        ctx.strokeStyle = `rgba(255, 230, 0, ${alpha})`;
+        ctx.lineWidth = (1 - t) * 7 + 1;
+        ctx.shadowColor = '#ffdd00';
+        ctx.shadowBlur = 16;
+        ctx.beginPath();
+        ctx.arc(sfx, sfy, r, 0, Math.PI * 2);
+        ctx.stroke();
+        // Second inner ring (faster fade)
+        const r2 = t * maxR * 0.55;
+        ctx.strokeStyle = `rgba(255, 255, 140, ${(1 - t) * 0.55})`;
+        ctx.lineWidth = (1 - t) * 3.5;
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.arc(sfx, sfy, r2, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.restore();
+      } else {
+        window._wingSurgeFlash = null;
       }
     }
 
@@ -15247,6 +15344,21 @@
         const hitsLeft = cp.maxHits - cp.hitsDealt;
         html += `<div class="bm-buff-pill" style="background:rgba(40,30,0,0.85);border-color:#c8a060;color:#ffe070;">📬 COURIER PIGEON flying ${cp.srcName}→${cp.destName} — ESCORT (+reward) or INTERCEPT ${hitsLeft > 0 ? `(${cp.hitsDealt}/${cp.maxHits} hits)` : ''}! ${cpSecsLeft}s left</div>`;
       }
+    }
+
+    // === WING SURGE SYSTEM (Session 113) ===
+    if (s.wingSurgeUntil && s.wingSurgeUntil > now) {
+      const secs = Math.ceil((s.wingSurgeUntil - now) / 1000);
+      const isHyper = !!s.wingSurgeHyperXp;
+      const surgeLabel = isHyper ? '⚡ WING SURGE! ×1.8 SPD · 3× XP — HYPER!' : '⚡ WING SURGE! ×1.8 SPD · 2× XP —';
+      html += `<div class="bm-buff-pill" style="background:rgba(120,80,0,0.95);border-color:#ffdd00;color:#ffee88;animation:kingpinGlow 0.3s ease-in-out infinite alternate;font-weight:bold;">${surgeLabel} ${secs}s · COPS CAN'T ARREST!</div>`;
+    } else if (s.wingCooldownUntil && s.wingCooldownUntil > now) {
+      const secs = Math.ceil((s.wingCooldownUntil - now) / 1000);
+      html += `<div class="bm-buff-pill" style="background:rgba(40,30,0,0.7);border-color:#888844;color:#aaa866;">🪶 Wing Surge cooldown — ${secs}s</div>`;
+    } else if (s.wingCharge && s.wingCharge > 0) {
+      const chargePct = Math.floor(s.wingCharge);
+      const chargeColor = chargePct >= 75 ? '#ffee00' : chargePct >= 50 ? '#ffcc33' : '#cc9900';
+      html += `<div class="bm-buff-pill" style="background:rgba(60,45,0,0.75);border-color:${chargeColor};color:${chargeColor};">🪶 Wing Charge: ${chargePct}% — Poop more to SURGE!</div>`;
     }
 
     el.innerHTML = html;
