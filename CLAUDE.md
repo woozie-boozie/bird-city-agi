@@ -4062,6 +4062,36 @@ Bird City's first asymmetric information event. Every 25-35 minutes, one random 
 
 **Creative intent**: The Mole is Bird City's first asymmetric information event — one player has secret knowledge (their targets, their identity) while everyone else has zero information. The tension is pure SOCIAL: the mole tries to casually fly near their targets and poop them without anyone noticing a pattern. But if you see the same bird suspiciously hovering near three people in a row… you start to wonder. The 60-second reveal creates a guaranteed payoff for everyone: even if the mole fails their mission, the MOLE ALERT gives the whole city a 15-second hunt. A mole who successfully tags all 3 targets and then survives 15 seconds of city-wide pursuit is a genuine legend. The session badge and daily challenges give it replay value. Pure SOCIAL + DISCOVERY + CARNAGE energy — the city now has a spy.
 
+**Session 118 — 2026-04-20: The Vigilante Marshal — City Calls on a Hero**
+When the Most Wanted criminal holds Wanted Level 5 for 20 continuous seconds, the city issues an emergency call. Any bird can press [H] to accept and become the **Vigilante Marshal** — a lone hunter deputised by the city itself.
+
+**The Marshal System (`server/game.js`):**
+- 20-second Level 5 hold triggers the call — `vigilanteCall` opens for 20 seconds, broadcast city-wide with screen shake
+- Any bird (except the criminal) can press [H] to accept — instantly becomes the Marshal
+- Marshal gets: **+35% max speed**, **⭐ MARSHAL nametag badge**, 2-minute pursuit window
+- **Arrest mechanic**: stay within 55px of the criminal for 4 continuous seconds → ARREST fires
+  - Criminal loses 30% of coins (max 500c) — transferred to Marshal + 100c bonus
+  - Criminal's heat completely cleared, all cops targeting them despawn, Bounty Hunter dismissed
+  - Marshal earns +500 XP city-wide announcement
+- **Counter-play — Criminal fights back**: poop the Marshal 4 times within a 10-second rolling window → **Marshal STUNNED** for 8 seconds (can't move toward arrest)
+  - Per-hit feedback: floating "⭐ HIT! X/4" over the Marshal
+  - 3 stuns = **Marshal DEFEATED** → Criminal earns +300 XP +200 coins + "OUTLAW WINS" city-wide announcement
+- Clean resolution guaranteed: arrest in <4 seconds of contact OR criminal wins in 3×(4 poop sprint) — never lasts more than ~2 minutes
+- Marshal disconnects → vigilante ends quietly (no penalty)
+- `level5HeldSince` resets after call fires preventing immediate re-trigger
+
+**New daily challenges:**
+- ⭐ **Law Bringer**: Arrest the most-wanted criminal as the Vigilante Marshal (300 XP, 150c)
+- 🔥 **Outlaw**: Stun the Vigilante Marshal 3 times and defeat them (250 XP, 125c)
+
+**Visual & HUD:**
+- Active buffs HUD: Marshal sees "⭐ MARSHAL — Hunt [name]! · Stay within 55px for 4s · arrest progress%" pill; criminal sees "⭐ MARSHAL HUNTING YOU! · Poop them 4× to stun!" pulsing red pill
+- Vigilante call pill: "⭐ VIGILANTE CALL — Press [H] to hunt [name]!" gold pulse when call is open
+- Minimap: ⭐ emoji at Marshal's real-time position; red pulsing glow dot at criminal's position (distinct from normal white dot)
+- City-wide announcements for: call open, marshal accepted, each stun, arrest, defeat, expiry
+
+**Creative intent**: The wanted system had great VERTICAL escalation (cops → SWAT → Bounty Hunter → Helicopter → National Guard). The Vigilante Marshal adds a SOCIAL escalation — when the city's worst criminal has held Level 5 for 20 seconds, the server invites any online bird to personally answer the call. The moment a bird presses [H], the dynamic changes completely: now it's a 1v1 between a self-appointed hero and the Most Wanted. The criminal has a real fight response (4-poop stun is achievable but requires skill) rather than passively running. The arrest clears all heat — the Marshal doesn't just hurt the criminal, they RESET them, creating a second-chance narrative. A high-combo Most Wanted bird who defeats the Marshal earns 300 XP + 200c and the city-wide "OUTLAW WINS" call — the ultimate criminal vindication. Pure SOCIAL + CARNAGE + SPECTACLE energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
