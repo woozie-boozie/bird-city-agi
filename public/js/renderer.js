@@ -5639,6 +5639,113 @@ window.Renderer = {
   },
 
   // ============================================================
+  // FEATHER FACTORY — Session 122
+  // ============================================================
+  drawFeatherFactory(ctx, camera, pos, isNear, now) {
+    const sx = (pos.x - camera.x) * camera.zoom + ctx.canvas.width / 2;
+    const sy = (pos.y - camera.y) * camera.zoom + ctx.canvas.height / 2;
+    const sc = camera.zoom;
+    if (sx < -200 * sc || sx > ctx.canvas.width + 200 * sc) return;
+
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.scale(sc, sc);
+
+    // Building shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.18)';
+    ctx.fillRect(-52, -28, 104, 64);
+
+    // Main building body — warm teal/teal-green
+    ctx.fillStyle = '#1a7a7a';
+    ctx.fillRect(-48, -32, 96, 60);
+
+    // Roof accent
+    ctx.fillStyle = '#0f5555';
+    ctx.fillRect(-52, -36, 104, 12);
+
+    // Decorative feather swatches on facade
+    const swatches = ['#cc2233','#2266cc','#226633','#7722cc','#cc9900','#cc4477','#222244'];
+    swatches.forEach((c, i) => {
+      ctx.fillStyle = c;
+      ctx.beginPath();
+      ctx.ellipse(-28 + i * 9, -20, 3.5, 5.5, -0.3, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    // Door
+    ctx.fillStyle = '#0a3333';
+    ctx.fillRect(-10, 8, 20, 22);
+    ctx.strokeStyle = '#cc9900'; ctx.lineWidth = 1.5;
+    ctx.strokeRect(-10, 8, 20, 22);
+
+    // Window left
+    ctx.fillStyle = '#88dddd';
+    ctx.fillRect(-40, -6, 18, 14);
+    ctx.strokeStyle = '#0f5555'; ctx.lineWidth = 1;
+    ctx.strokeRect(-40, -6, 18, 14);
+    ctx.beginPath(); ctx.moveTo(-31, -6); ctx.lineTo(-31, 8); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-40, 1); ctx.lineTo(-22, 1); ctx.stroke();
+
+    // Window right
+    ctx.fillStyle = '#88dddd';
+    ctx.fillRect(22, -6, 18, 14);
+    ctx.strokeStyle = '#0f5555'; ctx.lineWidth = 1;
+    ctx.strokeRect(22, -6, 18, 14);
+    ctx.beginPath(); ctx.moveTo(31, -6); ctx.lineTo(31, 8); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(22, 1); ctx.lineTo(40, 1); ctx.stroke();
+
+    // Sign — neon teal "FEATHER FACTORY"
+    const pulse = 0.75 + 0.25 * Math.abs(Math.sin(now * 0.002));
+    ctx.fillStyle = `rgba(0, 220, 200, ${pulse})`;
+    ctx.font = 'bold 7px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = '#00ddcc';
+    ctx.shadowBlur = 8 * pulse;
+    ctx.fillText('✂ FEATHER FACTORY', 0, -44);
+    ctx.shadowBlur = 0;
+
+    // Scissors + feather icon on sign board
+    ctx.fillStyle = '#004444';
+    ctx.fillRect(-30, -54, 60, 12);
+    ctx.strokeStyle = '#00bbaa'; ctx.lineWidth = 1; ctx.strokeRect(-30, -54, 60, 12);
+    ctx.fillStyle = `rgba(0, 220, 200, ${pulse})`;
+    ctx.font = '8px sans-serif';
+    ctx.fillText('CUSTOMIZE YOUR LOOK', 0, -48);
+
+    // Proximity prompt
+    if (isNear) {
+      ctx.fillStyle = 'rgba(0,0,0,0.75)';
+      const promptW = 140, promptH = 16;
+      ctx.fillRect(-promptW / 2, 42, promptW, promptH);
+      ctx.strokeStyle = '#00ddcc'; ctx.lineWidth = 1;
+      ctx.strokeRect(-promptW / 2, 42, promptW, promptH);
+      ctx.fillStyle = '#00ffee';
+      ctx.font = '9px Courier New';
+      ctx.fillText('[S] Open Feather Factory', 0, 53);
+    }
+
+    ctx.restore();
+  },
+
+  drawFeatherFactoryOnMinimap(minimapCtx, pos, worldData, now) {
+    const { worldW, worldH, mmW, mmH } = worldData;
+    const cx = (pos.x / worldW) * mmW;
+    const cy = (pos.y / worldH) * mmH;
+    const pulse = 0.6 + 0.4 * Math.abs(Math.sin(now * 0.003));
+    minimapCtx.save();
+    minimapCtx.beginPath();
+    minimapCtx.arc(cx, cy, 4, 0, Math.PI * 2);
+    minimapCtx.fillStyle = `rgba(0, 200, 180, ${0.8 + 0.2 * pulse})`;
+    minimapCtx.shadowColor = '#00ddcc'; minimapCtx.shadowBlur = 5;
+    minimapCtx.fill();
+    minimapCtx.shadowBlur = 0;
+    minimapCtx.font = '9px sans-serif'; minimapCtx.textAlign = 'center'; minimapCtx.textBaseline = 'middle';
+    minimapCtx.fillText('✂', cx, cy);
+    minimapCtx.restore();
+  },
+
+  // ============================================================
   // MAYOR'S MOTORCADE — Session 111
   // ============================================================
   drawMotorcade(ctx, motorcade, now) {

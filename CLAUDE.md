@@ -4184,6 +4184,34 @@ A mysterious robed figure materializes somewhere in Bird City every 12–18 minu
 
 **Creative intent**: The Chaos Oracle fills the DISCOVERY pillar's last gap — a mysterious stranger who materializes and vanishes unpredictably across the city. Every consult is a gamble: you need to find the Oracle (a race in itself when the minimap dot appears), then press [Q] hoping for a blessing rather than a curse. The Poop Drought is deviously timed — landing right before a crime spree destroys your rhythm. The 10-second Confusion reversal is the funniest debuff in Bird City: suddenly flying into a wall while trying to escape cops. The Jackpot (5% chance) is the rarest single moment in the game — all three blessed buffs at once creates an astronomical XP window. And the Oracle vanishing 5-8 minutes after appearing means every appearance is a city-wide race — "🔮 THE CHAOS ORACLE HAS ARRIVED!" fires and every bird checks their minimap simultaneously. Pure DISCOVERY + CARNAGE + SPECTACLE energy.
 
+**Session 122 — 2026-04-20: The Feather Factory — Cosmetic Dye & Hat Shop**
+Bird City's first dedicated cosmetic customization shop. A teal-signed factory sits at the west side of the city (x:850, y:1580). Fly within 100px and press [S] to open the shop and spend coins on permanent feather dyes and stylish hats — visible to every player in the city.
+
+**10 Feather Dyes:**
+- Natural (free, default look), Crimson (50c), Ocean Blue (50c), Forest Green (50c), Royal Purple (60c), Gold (60c), Rose Pink (50c), Midnight Navy (40c), Arctic Blue (55c), Ember Orange (55c)
+
+**7 Hat Types:**
+- None (free), 🧢 Cap (40c), 🎩 Fedora (60c), 🎩 Top Hat (80c), 🪖 Bandana (35c), 🎉 Party Hat (45c), 👑 Crown Hat (120c)
+
+**Implementation details:**
+- `featherColor` field: completely separate from legacy `birdColor` (which is used for gang coloring etc.). Render priority: `featherColor || birdColor || null` — won't break any existing color systems
+- `hatType` field: drawn at the bird's head position in `drawBird()`, scales with bird sprite size
+- 6 hat shapes: cap (rounded brim), fedora (wide brim + indent), tophat (tall cylinder), bandana (wrapped cloth), partyhat (cone + string), crown (3 points)
+- Purchases are permanent and persisted to Firestore (`feather_color`, `hat_type` fields)
+- [S] key is context-sensitive — only opens the shop when `nearFeatherFactory` is true; otherwise preserved for other uses (Bird Home toggle)
+- ESC closes the factory overlay first before checking other ESC behaviors
+- Overlay auto-closes when the player flies away from the factory
+- Server validates proximity and coin balance before applying any purchase
+
+**Visual:**
+- Teal pastel factory building with 5 colored dye swatches on the facade (crimson, ocean, forest, royal, gold), animated "FEATHER FACTORY" neon sign, "✂ COLOR YOUR LOOK" sub-sign
+- Dye grid: colored circle swatches with name + price, green glow when selected, "OWNED" indicator for current dye
+- Hat grid: emoji + name + price, same active/owned indicators
+- [S] to close or click the LEAVE button
+- Minimap: permanent ✂ teal dot at factory position
+
+**Creative intent**: Bird City has 121 sessions of mechanical systems but almost no personal identity expression beyond tattoos and prestige badges. The Feather Factory is pure DISCOVERY + PROGRESSION: fly around the city and suddenly you see a crimson bird with a fedora and a 👑 GOLDEN BIRD badge and think "wait, I can look like THAT?" The dye system is intentionally cheap enough that new players can afford Midnight (40c) quickly, while the Crown Hat (120c) is an aspirational purchase for richer birds. Most importantly: your look is persistent and visible to everyone — flying over Downtown as a gold-feathered bird in a Top Hat while listed on the Hall of Legends is the ultimate status flex. Pure PROGRESSION + DISCOVERY + SPECTACLE energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)

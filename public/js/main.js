@@ -109,6 +109,10 @@
   let tattooOverlayVisible = false;
   let lastNearTattooParlor = false;
 
+  // === FEATHER FACTORY ===
+  let featherFactoryVisible = false;
+  let lastNearFeatherFactory = false;
+
   // === DONUT COP ===
   const donutCopPrompt = document.getElementById('donutCopPrompt');
   let lastNearDonutCop = false;
@@ -2969,6 +2973,27 @@
       effects.push({ type: 'screen_shake', intensity: 25, duration: 1500, time: performance.now() });
     }
 
+    // === FEATHER FACTORY EVENTS ===
+    if (ev.type === 'feather_factory_bought') {
+      if (ev.birdId === myId) {
+        const msg = ev.item === 'dye'
+          ? `✂ NEW DYE: ${ev.name}! (-${ev.cost}c)`
+          : `🎩 NEW HAT: ${ev.name}! (-${ev.cost}c)`;
+        showAnnouncement(msg, '#44ffee', 3000);
+        addEventMessage(`✂ ${msg}`, '#44ffee');
+        const msgEl = document.getElementById('ffMsg');
+        if (msgEl) { msgEl.textContent = '✅ ' + msg; msgEl.style.color = '#44ffee'; }
+        if (featherFactoryVisible) renderFeatherFactory();
+      }
+    }
+    if (ev.type === 'feather_factory_fail') {
+      if (ev.birdId === myId) {
+        addEventMessage('❌ ' + ev.msg, '#ff4444');
+        const msgEl = document.getElementById('ffMsg');
+        if (msgEl) { msgEl.textContent = '❌ ' + ev.msg; msgEl.style.color = '#ff4444'; }
+      }
+    }
+
     // === BIRD TATTOO PARLOR EVENTS ===
     if (ev.type === 'tattoo_bought') {
       if (ev.birdId === myId) {
@@ -5624,6 +5649,7 @@
     if (e.key === 'Escape') {
       const go = document.getElementById('gazetteOverlay');
       if (go && go.style.display !== 'none') { closeGazette(); return; }
+      if (featherFactoryVisible) { closeFeatherFactory(); return; }
       // Decline incoming duel challenge
       if (gameState && gameState.self && gameState.self.incomingChallenge) {
         socket.emit('action', { type: 'decline_duel' });
@@ -5762,6 +5788,14 @@
         hideTattooOverlay();
       } else if (gameState && lastNearTattooParlor) {
         showTattooOverlay();
+      }
+    }
+    // Feather Factory toggle [S]
+    if (e.key.toLowerCase() === 's') {
+      if (featherFactoryVisible) {
+        closeFeatherFactory();
+      } else if (gameState && gameState.self && gameState.self.nearFeatherFactory) {
+        openFeatherFactory();
       }
     }
     // Bounty Board / City Hall toggle
@@ -6872,6 +6906,14 @@
     }
     lastNearTattooParlor = nearTat;
     if (tattooOverlayVisible) renderTattooOverlay();
+
+    // Feather Factory proximity
+    const nearFF = !!(gameState.self && gameState.self.nearFeatherFactory);
+    if (nearFF !== lastNearFeatherFactory) {
+      if (!nearFF && featherFactoryVisible) closeFeatherFactory();
+    }
+    lastNearFeatherFactory = nearFF;
+    if (featherFactoryVisible) renderFeatherFactory();
 
     // City Hall / Bounty Board proximity
     const nearCH = !!gameState.nearCityHall;
@@ -10228,6 +10270,9 @@
       Renderer.drawAuctionHouse(ctx, camera, worldData.auctionHousePos, gameState.auction || null, !!gameState.self?.nearAuctionHouse, now);
     }
 
+    // Feather Factory (Session 122)
+    Renderer.drawFeatherFactory(ctx, camera, { x: 850, y: 1580 }, !!(gameState.self && gameState.self.nearFeatherFactory), now);
+
     // Flash Mob — social congregation event (drawn before birds)
     if (gameState.flashMob) {
       Renderer.drawFlashMob(ctx, camera, gameState.flashMob, now);
@@ -10610,7 +10655,7 @@
             ctx.restore();
           }
 
-          Sprites.drawBird(ctx, sx, sy, b.rotation, b.type, b.wingPhase, isPlayer, b.birdColor || null);
+          Sprites.drawBird(ctx, sx, sy, b.rotation, b.type, b.wingPhase, isPlayer, b.featherColor || b.birdColor || null, b.hatType || null);
           ctx.globalAlpha = 1; // Always reset after bird draw
           Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0, b.eagleFeather || false, b.idolBadge || false, b.royaleChampBadge || false, b.skillTreeMaster || false, b.fightingChampBadge || false, b.constellationBadge || false, b.courtTitle || null, b.hanamiLanternBadge || false, b.domeChampBadge || false, b.alphaFeather || false, b.arenaLegend || false, b.goldenBirdBadge || false, b.constellations || [], b.stampedeBadge || false, b.throneChampBadge || false, b.perchChampBadge || false, b.marshalBadge || false);
 
@@ -14492,6 +14537,9 @@
       Renderer.drawAuctionHouseOnMinimap(minimapCtx, worldData.auctionHousePos, { worldW: worldData.width, worldH: worldData.height, mmW: minimapCanvas.width, mmH: minimapCanvas.height }, gameState.auction || null, now);
     }
 
+    // Feather Factory — permanent teal dot
+    Renderer.drawFeatherFactoryOnMinimap(minimapCtx, { x: 850, y: 1580 }, { worldW: worldData.width, worldH: worldData.height, mmW: minimapCanvas.width, mmH: minimapCanvas.height }, now);
+
     // Thunder Dome — pulsing electric-blue ring on minimap
     const _domeForMinimap = gameState.thunderDome || window._thunderDomeData;
     if (_domeForMinimap && worldData) {
@@ -17277,6 +17325,137 @@
   function hideTattooOverlay() {
     tattooOverlayVisible = false;
     tattooOverlay.style.display = 'none';
+  }
+
+  // ============================================================
+  // FEATHER FACTORY — OVERLAY
+  // ============================================================
+  const FF_DYES = [
+    { id: 'none',     name: 'Default',  color: null,      cost: 0  },
+    { id: 'crimson',  name: 'Crimson',  color: '#cc2233', cost: 50 },
+    { id: 'ocean',    name: 'Ocean',    color: '#2266cc', cost: 50 },
+    { id: 'forest',   name: 'Forest',   color: '#226633', cost: 50 },
+    { id: 'royal',    name: 'Royal',    color: '#7722cc', cost: 60 },
+    { id: 'gold',     name: 'Gold',     color: '#cc9900', cost: 60 },
+    { id: 'rose',     name: 'Rose',     color: '#cc4477', cost: 50 },
+    { id: 'midnight', name: 'Midnight', color: '#222244', cost: 40 },
+    { id: 'arctic',   name: 'Arctic',   color: '#88ccee', cost: 55 },
+    { id: 'ember',    name: 'Ember',    color: '#dd5511', cost: 55 },
+  ];
+  const FF_HATS = [
+    { id: 'none',     name: 'None',       emoji: '🚫', cost: 0   },
+    { id: 'cap',      name: 'Cap',        emoji: '🧢', cost: 40  },
+    { id: 'fedora',   name: 'Fedora',     emoji: '🎩', cost: 60  },
+    { id: 'tophat',   name: 'Top Hat',    emoji: '🎩', cost: 80  },
+    { id: 'bandana',  name: 'Bandana',    emoji: '🪖', cost: 35  },
+    { id: 'partyhat', name: 'Party Hat',  emoji: '🎉', cost: 45  },
+    { id: 'crown',    name: 'Crown',      emoji: '👑', cost: 120 },
+  ];
+
+  function openFeatherFactory() {
+    featherFactoryVisible = true;
+    const ov = document.getElementById('featherFactoryOverlay');
+    if (ov) ov.style.display = 'block';
+    for (const k in keys) keys[k] = false;
+    syncInput();
+    renderFeatherFactory();
+  }
+
+  function closeFeatherFactory() {
+    featherFactoryVisible = false;
+    const ov = document.getElementById('featherFactoryOverlay');
+    if (ov) ov.style.display = 'none';
+  }
+  window._closeFeatherFactory = closeFeatherFactory;
+
+  function renderFeatherFactory() {
+    if (!gameState || !gameState.self) return;
+    const coins = gameState.self.coins || 0;
+    const currentDye = gameState.self.featherColor || null;
+    const currentHat = gameState.self.hatType || null;
+
+    const coinEl = document.getElementById('ffCoinVal');
+    if (coinEl) coinEl.textContent = coins;
+    const msgEl = document.getElementById('ffMsg');
+    if (msgEl) msgEl.textContent = '';
+
+    // Dye grid
+    const dyeGrid = document.getElementById('ffDyeGrid');
+    if (dyeGrid) {
+      dyeGrid.innerHTML = '';
+      for (const dye of FF_DYES) {
+        const isActive = (dye.id === 'none' ? !currentDye : currentDye === dye.color);
+        const canAfford = coins >= dye.cost;
+        const card = document.createElement('div');
+        card.style.cssText = `display:inline-flex;flex-direction:column;align-items:center;padding:6px 8px;
+          border-radius:8px;cursor:${isActive || (dye.id !== 'none' && !canAfford) ? 'default' : 'pointer'};
+          border:2px solid ${isActive ? '#44ffee' : 'rgba(0,200,180,0.3)'};
+          background:${isActive ? 'rgba(0,80,74,0.7)' : 'rgba(0,30,28,0.6)'};
+          opacity:${dye.id !== 'none' && !canAfford && !isActive ? '0.5' : '1'};
+          min-width:62px;`;
+        const swatch = document.createElement('div');
+        swatch.style.cssText = `width:28px;height:28px;border-radius:50%;margin-bottom:3px;
+          background:${dye.color || '#a0a0a0'};border:2px solid rgba(255,255,255,0.2);`;
+        const label = document.createElement('div');
+        label.style.cssText = 'font-size:9px;color:#88ddcc;text-align:center;';
+        label.textContent = dye.name;
+        const price = document.createElement('div');
+        price.style.cssText = `font-size:9px;color:${isActive ? '#44ffee' : (canAfford ? '#ffd700' : '#885555')};`;
+        price.textContent = isActive ? '✓ ACTIVE' : (dye.cost === 0 ? 'FREE' : `${dye.cost}c`);
+        card.appendChild(swatch);
+        card.appendChild(label);
+        card.appendChild(price);
+        if (!isActive) {
+          card.onclick = () => {
+            if (dye.id !== 'none' && !canAfford) {
+              if (msgEl) { msgEl.textContent = '❌ Not enough coins!'; msgEl.style.color = '#ff4444'; }
+              return;
+            }
+            socket.emit('action', { type: 'feather_factory_buy', item: 'dye', id: dye.id });
+          };
+        }
+        dyeGrid.appendChild(card);
+      }
+    }
+
+    // Hat grid
+    const hatGrid = document.getElementById('ffHatGrid');
+    if (hatGrid) {
+      hatGrid.innerHTML = '';
+      for (const hat of FF_HATS) {
+        const isActive = hat.id === (currentHat || 'none');
+        const canAfford = coins >= hat.cost;
+        const card = document.createElement('div');
+        card.style.cssText = `display:inline-flex;flex-direction:column;align-items:center;padding:6px 10px;
+          border-radius:8px;cursor:${isActive || (hat.id !== 'none' && !canAfford) ? 'default' : 'pointer'};
+          border:2px solid ${isActive ? '#44ffee' : 'rgba(0,200,180,0.3)'};
+          background:${isActive ? 'rgba(0,80,74,0.7)' : 'rgba(0,30,28,0.6)'};
+          opacity:${hat.id !== 'none' && !canAfford && !isActive ? '0.5' : '1'};
+          min-width:62px;`;
+        const emojiEl = document.createElement('div');
+        emojiEl.style.cssText = 'font-size:22px;margin-bottom:2px;';
+        emojiEl.textContent = hat.emoji;
+        const label = document.createElement('div');
+        label.style.cssText = 'font-size:9px;color:#88ddcc;text-align:center;';
+        label.textContent = hat.name;
+        const price = document.createElement('div');
+        price.style.cssText = `font-size:9px;color:${isActive ? '#44ffee' : (canAfford ? '#ffd700' : '#885555')};`;
+        price.textContent = isActive ? '✓ ACTIVE' : (hat.cost === 0 ? 'FREE' : `${hat.cost}c`);
+        card.appendChild(emojiEl);
+        card.appendChild(label);
+        card.appendChild(price);
+        if (!isActive) {
+          card.onclick = () => {
+            if (hat.id !== 'none' && !canAfford) {
+              if (msgEl) { msgEl.textContent = '❌ Not enough coins!'; msgEl.style.color = '#ff4444'; }
+              return;
+            }
+            socket.emit('action', { type: 'feather_factory_buy', item: 'hat', id: hat.id });
+          };
+        }
+        hatGrid.appendChild(card);
+      }
+    }
   }
 
   function renderTattooOverlay() {

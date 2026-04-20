@@ -781,6 +781,7 @@ class GameEngine {
     this.auction = null;
     this._auctionTimer = Date.now() + this._randomRange(20 * 60000, 30 * 60000);
     this.AUCTION_HOUSE_POS = world.AUCTION_HOUSE_POS;
+    this.FEATHER_FACTORY_POS = { x: 850, y: 1580, radius: 100 };
 
     // === BIRD FLU OUTBREAK ===
     // Every 25-40 minutes, Patient Zero is infected and flu spreads between nearby birds.
@@ -1331,6 +1332,8 @@ class GameEngine {
       ownedSkills: saved ? JSON.parse(saved.owned_skills || '["poop_barrage"]') : ['poop_barrage'],
       equippedSkills: saved ? JSON.parse(saved.equipped_skills || '["poop_barrage"]') : ['poop_barrage'],
       birdColor: saved ? (saved.bird_color || null) : null,
+      featherColor: saved ? (saved.feather_color || null) : null,
+      hatType: saved ? (saved.hat_type || null) : null,
       skillCooldowns: {},
       // Flock
       flockId: null,
@@ -1867,6 +1870,10 @@ class GameEngine {
     // === Auction House ===
     if (action.type === 'place_auction_bid') {
       this._handleAuctionBid(bird, action.amount, now);
+    }
+
+    if (action.type === 'feather_factory_buy') {
+      this._handleFeatherFactoryBuy(bird, action, now);
     }
 
     // === Graffiti Tagging ===
@@ -7389,6 +7396,8 @@ class GameEngine {
           inNest: b.inNest,
           flockId: b.flockId,
           birdColor: b.birdColor,
+          featherColor: b.featherColor || null,
+          hatType: b.hatType || null,
           carryingEggId: b.carryingEggId || null,
           mafiaTitle: this._getMafiaTitle(b.mafiaRep || 0),
           prestige: b.prestige || 0,
@@ -7947,6 +7956,11 @@ class GameEngine {
         const adx = bird.x - ap.x, ady = bird.y - ap.y;
         return Math.sqrt(adx * adx + ady * ady) < ap.radius;
       })(),
+      nearFeatherFactory: (() => {
+        const fp = this.FEATHER_FACTORY_POS;
+        const fdx = bird.x - fp.x, fdy = bird.y - fp.y;
+        return Math.sqrt(fdx * fdx + fdy * fdy) < fp.radius;
+      })(),
       courierPigeon: this.courierPigeon ? {
         x: this.courierPigeon.x,
         y: this.courierPigeon.y,
@@ -8227,6 +8241,8 @@ class GameEngine {
         ownedSkills: bird.ownedSkills,
         equippedSkills: bird.equippedSkills,
         birdColor: bird.birdColor,
+        featherColor: bird.featherColor || null,
+        hatType: bird.hatType || null,
         skillSlots,
         skillCooldowns: skillCooldownsState,
         // Skill Tree — Feather Points system
@@ -9402,6 +9418,8 @@ class GameEngine {
       owned_skills: JSON.stringify(bird.ownedSkills || ['poop_barrage']),
       equipped_skills: JSON.stringify(bird.equippedSkills || ['poop_barrage']),
       bird_color: bird.birdColor || null,
+      feather_color: bird.featherColor || null,
+      hat_type: bird.hatType || null,
       mafia_rep: bird.mafiaRep || 0,
       daily_date: bird.dailyDate || '',
       daily_progress: JSON.stringify(bird.dailyProgress || {}),
@@ -24978,6 +24996,67 @@ class GameEngine {
         this._trackDailyProgress(bird, 'xp_earned', 400);
         this.events.push({ type: 'auction_item_applied', birdId: bird.id, item: lot, value: 400 });
         break;
+    }
+  }
+
+  _handleFeatherFactoryBuy(bird, action, now) {
+    const fp = this.FEATHER_FACTORY_POS;
+    const dx = bird.x - fp.x, dy = bird.y - fp.y;
+    if (Math.sqrt(dx * dx + dy * dy) > fp.radius) {
+      this.events.push({ type: 'feather_factory_fail', birdId: bird.id, reason: 'too_far' });
+      return;
+    }
+
+    const DYES = {
+      'none':        { cost: 0,   color: null,      name: 'Default' },
+      'crimson':     { cost: 50,  color: '#cc2233', name: 'Crimson Red' },
+      'ocean':       { cost: 50,  color: '#2266cc', name: 'Ocean Blue' },
+      'forest':      { cost: 50,  color: '#226633', name: 'Forest Green' },
+      'royal':       { cost: 60,  color: '#7722cc', name: 'Royal Purple' },
+      'gold':        { cost: 60,  color: '#cc9900', name: 'Sunset Gold' },
+      'rose':        { cost: 50,  color: '#cc4477', name: 'Rose Pink' },
+      'midnight':    { cost: 40,  color: '#222244', name: 'Midnight Black' },
+      'arctic':      { cost: 55,  color: '#88ccee', name: 'Arctic Ice' },
+      'ember':       { cost: 55,  color: '#dd5511', name: 'Ember Orange' },
+    };
+    const HATS = {
+      'none':        { cost: 0,  name: 'No Hat' },
+      'cap':         { cost: 40, name: 'Baseball Cap' },
+      'fedora':      { cost: 60, name: 'Fedora' },
+      'tophat':      { cost: 80, name: 'Top Hat' },
+      'bandana':     { cost: 35, name: 'Bandana' },
+      'partyhat':    { cost: 45, name: 'Party Hat' },
+      'crown':       { cost: 120, name: 'Mini Crown' },
+    };
+
+    if (action.item === 'dye' && action.dyeId !== undefined) {
+      const dye = DYES[action.dyeId];
+      if (!dye) {
+        this.events.push({ type: 'feather_factory_fail', birdId: bird.id, reason: 'invalid_item' });
+        return;
+      }
+      if (bird.coins < dye.cost) {
+        this.events.push({ type: 'feather_factory_fail', birdId: bird.id, reason: 'no_coins', need: dye.cost, have: bird.coins });
+        return;
+      }
+      bird.coins -= dye.cost;
+      bird.featherColor = dye.color;
+      this.events.push({ type: 'feather_factory_bought', birdId: bird.id, item: 'dye', dyeId: action.dyeId, dyeName: dye.name, cost: dye.cost, coins: bird.coins });
+    } else if (action.item === 'hat' && action.hatId !== undefined) {
+      const hat = HATS[action.hatId];
+      if (!hat) {
+        this.events.push({ type: 'feather_factory_fail', birdId: bird.id, reason: 'invalid_item' });
+        return;
+      }
+      if (bird.coins < hat.cost) {
+        this.events.push({ type: 'feather_factory_fail', birdId: bird.id, reason: 'no_coins', need: hat.cost, have: bird.coins });
+        return;
+      }
+      bird.coins -= hat.cost;
+      bird.hatType = action.hatId === 'none' ? null : action.hatId;
+      this.events.push({ type: 'feather_factory_bought', birdId: bird.id, item: 'hat', hatId: action.hatId, hatName: hat.name, cost: hat.cost, coins: bird.coins });
+    } else {
+      this.events.push({ type: 'feather_factory_fail', birdId: bird.id, reason: 'invalid_item' });
     }
   }
 

@@ -14,7 +14,7 @@ window.Sprites = {
   },
 
   // === BIRD (top-down view) ===
-  drawBird(ctx, x, y, rotation, type, wingPhase, isPlayer, colorOverride) {
+  drawBird(ctx, x, y, rotation, type, wingPhase, isPlayer, colorOverride, hatType) {
     const types = {
       pigeon:  { body: '#888', wing: '#666', beak: '#e8a020', size: 12, eye: '#000' },
       seagull: { body: '#eee', wing: '#bbb', beak: '#e87020', size: 14, eye: '#222' },
@@ -100,6 +100,67 @@ window.Sprites = {
       ctx.beginPath();
       ctx.arc(0, 0, s + 6, 0, Math.PI * 2);
       ctx.stroke();
+    }
+
+    // Hat (drawn on top of the bird, at the head position)
+    if (hatType && hatType !== 'none') {
+      const hx = s * 0.35, hy = 0; // head position in local coords
+      ctx.save();
+      ctx.translate(hx, hy);
+      if (hatType === 'cap') {
+        // Baseball cap: curved brim + dome
+        ctx.fillStyle = '#cc3300';
+        ctx.beginPath(); ctx.ellipse(0, 0, s * 0.38, s * 0.22, 0, Math.PI, 0); ctx.fill();
+        ctx.fillStyle = '#992200';
+        ctx.fillRect(-s * 0.1, -s * 0.22, s * 0.45, s * 0.08);
+      } else if (hatType === 'fedora') {
+        // Fedora: wide brim + pinched top
+        ctx.fillStyle = '#8B6914';
+        ctx.beginPath(); ctx.ellipse(0, 0, s * 0.5, s * 0.12, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#6B4F10';
+        ctx.beginPath(); ctx.ellipse(0, -s * 0.18, s * 0.3, s * 0.2, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#cc9900'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.ellipse(0, -s * 0.18, s * 0.3, s * 0.2, 0, 0, Math.PI * 2); ctx.stroke();
+      } else if (hatType === 'tophat') {
+        // Top hat: tall cylinder + wide brim
+        ctx.fillStyle = '#111';
+        ctx.fillRect(-s * 0.22, -s * 0.45, s * 0.44, s * 0.42);
+        ctx.beginPath(); ctx.ellipse(0, 0, s * 0.5, s * 0.13, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#444'; ctx.lineWidth = 0.5;
+        ctx.strokeRect(-s * 0.22, -s * 0.45, s * 0.44, s * 0.42);
+      } else if (hatType === 'bandana') {
+        // Bandana: tied cloth wrapping the head
+        ctx.fillStyle = '#dd2244';
+        ctx.beginPath(); ctx.ellipse(0, 0, s * 0.4, s * 0.22, 0, Math.PI, 0); ctx.fill();
+        ctx.fillStyle = '#bb1133';
+        ctx.beginPath(); ctx.moveTo(-s * 0.15, 0); ctx.lineTo(-s * 0.28, s * 0.18); ctx.lineTo(s * 0.02, s * 0.08); ctx.closePath(); ctx.fill();
+      } else if (hatType === 'partyhat') {
+        // Party hat: pointy cone with stripe
+        ctx.fillStyle = '#ff66cc';
+        ctx.beginPath();
+        ctx.moveTo(-s * 0.22, 0); ctx.lineTo(s * 0.22, 0); ctx.lineTo(0, -s * 0.55); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = '#ffff00'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(-s * 0.22, 0); ctx.lineTo(0, -s * 0.55); ctx.stroke();
+        ctx.fillStyle = '#ffff00';
+        ctx.beginPath(); ctx.arc(0, -s * 0.55, s * 0.06, 0, Math.PI * 2); ctx.fill();
+      } else if (hatType === 'crown') {
+        // Mini crown: gold zigzag
+        ctx.fillStyle = '#ffd700';
+        ctx.beginPath();
+        ctx.moveTo(-s * 0.28, s * 0.04);
+        ctx.lineTo(-s * 0.28, -s * 0.2);
+        ctx.lineTo(-s * 0.1, -s * 0.04);
+        ctx.lineTo(0, -s * 0.28);
+        ctx.lineTo(s * 0.1, -s * 0.04);
+        ctx.lineTo(s * 0.28, -s * 0.2);
+        ctx.lineTo(s * 0.28, s * 0.04);
+        ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = '#cc9900'; ctx.lineWidth = 0.5; ctx.stroke();
+        // Gems
+        ctx.fillStyle = '#ff3355';
+        ctx.beginPath(); ctx.arc(0, -s * 0.18, s * 0.06, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
     }
 
     ctx.restore();

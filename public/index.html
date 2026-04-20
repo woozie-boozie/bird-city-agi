@@ -430,6 +430,39 @@
     </button>
   </div>
 
+  <!-- Feather Factory Overlay — cosmetic shop for feather dyes and hats -->
+  <div id="featherFactoryOverlay" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+    background:linear-gradient(160deg,rgba(0,20,22,0.98),rgba(0,38,40,0.98));
+    color:#44ffee;font:bold 13px 'Courier New',monospace;
+    padding:18px 22px;border-radius:16px;border:2px solid #00ccbb;z-index:110;
+    min-width:340px;max-width:480px;max-height:85vh;overflow-y:auto;
+    box-shadow:0 0 40px rgba(0,200,180,0.5),0 0 80px rgba(0,200,180,0.2);text-align:center;">
+    <div style="font-size:18px;letter-spacing:1px;margin-bottom:2px">✂ FEATHER FACTORY</div>
+    <div style="font-size:10px;color:#33bbaa;margin-bottom:10px;">Customize your look — visible to all birds</div>
+    <div style="font-size:11px;color:#88ddcc;margin-bottom:14px;">
+      💰 Coins: <span id="ffCoinVal">0</span>c
+    </div>
+
+    <!-- Feather Dyes section -->
+    <div style="font-size:12px;color:#44ffee;margin-bottom:8px;letter-spacing:1px;text-align:left;border-bottom:1px solid rgba(0,200,180,0.3);padding-bottom:4px;">
+      🎨 FEATHER DYES
+    </div>
+    <div id="ffDyeGrid" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px;justify-content:center;"></div>
+
+    <!-- Hats section -->
+    <div style="font-size:12px;color:#44ffee;margin-bottom:8px;letter-spacing:1px;text-align:left;border-bottom:1px solid rgba(0,200,180,0.3);padding-bottom:4px;">
+      🎩 HATS
+    </div>
+    <div id="ffHatGrid" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;justify-content:center;"></div>
+
+    <div id="ffMsg" style="font-size:11px;color:#44ffee;min-height:16px;margin-bottom:8px;"></div>
+
+    <button onclick="window._closeFeatherFactory()"
+      style="background:rgba(0,60,56,0.6);color:#33bbaa;border:1px solid #00887a;border-radius:8px;padding:5px 18px;font:11px monospace;cursor:pointer">
+      Close [S]
+    </button>
+  </div>
+
   <!-- Royale Spectator Cheer Panel — appears during Bird Royale for eliminated/spectator birds -->
   <div id="royaleCheerPanel" style="display:none;position:fixed;top:140px;right:14px;
     background:rgba(4,20,4,0.97);color:#88ff88;font:bold 12px 'Courier New',monospace;

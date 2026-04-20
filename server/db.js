@@ -90,6 +90,8 @@ const db = {
       count_tenures:  data.count_tenures  || 0,
       constellations:   data.constellations   || '[]',
       lifetime_dailies: data.lifetime_dailies || 0,
+      feather_color: data.feather_color || null,
+      hat_type: data.hat_type || null,
       last_seen: Math.floor(Date.now() / 1000),
     };
     await birdsCol.doc(id).set(docData, { merge: true });
