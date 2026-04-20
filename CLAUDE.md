@@ -4092,6 +4092,36 @@ When the Most Wanted criminal holds Wanted Level 5 for 20 continuous seconds, th
 
 **Creative intent**: The wanted system had great VERTICAL escalation (cops → SWAT → Bounty Hunter → Helicopter → National Guard). The Vigilante Marshal adds a SOCIAL escalation — when the city's worst criminal has held Level 5 for 20 seconds, the server invites any online bird to personally answer the call. The moment a bird presses [H], the dynamic changes completely: now it's a 1v1 between a self-appointed hero and the Most Wanted. The criminal has a real fight response (4-poop stun is achievable but requires skill) rather than passively running. The arrest clears all heat — the Marshal doesn't just hurt the criminal, they RESET them, creating a second-chance narrative. A high-combo Most Wanted bird who defeats the Marshal earns 300 XP + 200c and the city-wide "OUTLAW WINS" call — the ultimate criminal vindication. Pure SOCIAL + CARNAGE + SPECTACLE energy.
 
+**Session 119 — 2026-04-20: Trash Day — The Garbage Truck**
+A slow dark-green armored garbage truck rolls west→east along the main city road (y≈855) every 20-28 minutes. The whole city benefits just by following it — it drops loot automatically along the route.
+
+**Three ways to earn:**
+- **Periodic Loot Drops**: every 12-20 seconds while driving, 2-3 food items scatter around the truck's current position (valuable pizza/sandwich/cake every 3rd drop). Auto-collect by flying within range.
+- **Hopper Skill Shot**: poop aimed at the truck's open rear hopper hits a special target zone — +40 XP +15c immediate reward + daily challenge progress. Requires precision aim at a moving target.
+- **Grand Dump**: after crossing the city (~50px/s), the truck reaches the east end and DUMPS its entire load — 10-14 food items explode outward across the dump site. Nearby birds get proportional XP/coin bonus based on proximity.
+
+**Mechanic details (`server/game.js`):**
+- `_spawnGarbageTruck(now)`: spawns at west edge (x:80, y:855), target dump site at x:2850
+- `_dropGarbageLoot(gt, now)`: scatters 2-3 food items with `isGarbageLoot: true` flag around current position
+- `_doGarbageDump(gt, now)`: 10-14 items scattered with 80-160px radius, bonus XP/coins to all birds within 280px proportional to proximity, `bonusRecipients` array broadcast to all clients
+- Hopper hit detection in `_checkPoopHit()`: poop landing within 28px of truck center + within rear 70° arc = `skillShot: true` → 40 XP + 15c, daily progress
+- Daily challenge tracking: `isGarbageLoot` flag checked on food pickup, fires `_trackDailyProgress(bird, 'garbage_loot_collected', 1)`
+- After dump: truck drives off east at `gt.speed`, despawns past world edge + 20-28 min respawn timer
+
+**Visual system:**
+- `drawGarbageTruck()` in `sprites.js`: dark olive-green rounded body, cab section with windshield, rear hopper with opening, yellow warning stripes, 4 wheels with hubs, exhaust puffs when driving, flashing orange/red warning lights + hopper-open indicator when dumping
+- "TRASH DAY" overhead label (green) switches to "💥 DUMP SITE" (orange) after dump
+- Off-screen direction arrow: dark green 🚛 pulsing arrow pointing toward truck
+- Minimap: pulsing green 🚛 dot tracking real-time truck position
+- Active buffs HUD pill: context-sensitive — pre-dump shows "follow for loot drops + hopper skill shot hint"; post-dump shows urgency "DUMP SITE ACTIVE — collect loot!"
+- Full event handlers: `garbage_truck_arrived`, `garbage_loot_drop`, `garbage_skill_shot`, `garbage_truck_hit`, `garbage_truck_dump`, `garbage_truck_gone`
+
+**Two new daily challenges:**
+- 🚛 **Dumpster Diver**: Collect 3 food items from the garbage truck loot drops (160 XP, 80c)
+- 🚛 **Trash Shot**: Score a hopper skill shot by pooping into the truck's open hopper (220 XP, 110c)
+
+**Creative intent**: The city already had moving targets (vault truck, mayor's motorcade, birdnapper van, pigeon coupe, hot dog cart) but they all required active combat or button presses. The garbage truck is different — it rewards just FOLLOWING it. Low-level birds who can't fight cops can still benefit: trail the truck, collect the loot drops, earn steady food and coins. The skill shot is a genuine precision challenge: landing a poop in a small moving target at 55px/s while avoiding the cab section. And the Grand Dump creates a city-wide sprint moment — "IT'S DUMPING!" and every bird races to the east end to grab the scatter. A bird who follows the truck the entire route AND lands the skill shot AND arrives at the dump site earns the most food/coins of any single 4-minute window in the game. Pure DISCOVERY + CARNAGE + PROGRESSION energy — even the trash is valuable in Bird City.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
