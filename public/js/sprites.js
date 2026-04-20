@@ -8217,6 +8217,158 @@ window.Sprites = {
   },
 
   // ============================================================
+  // GARBAGE TRUCK — Trash Day event (Session 119)
+  // Green sanitation truck with open hopper at the rear
+  // ============================================================
+  drawGarbageTruck(ctx, x, y, angle, dumped, now) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle + Math.PI / 2);
+
+    const t = now / 1000;
+
+    // === TRUCK CAB (front) ===
+    ctx.fillStyle = '#2d7a2d';
+    ctx.strokeStyle = '#1a5c1a';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.roundRect(-14, -36, 28, 20, 3);
+    ctx.fill();
+    ctx.stroke();
+
+    // Windshield
+    ctx.fillStyle = '#88ccff';
+    ctx.strokeStyle = '#55aadd';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(-10, -34, 20, 10, 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Headlights
+    ctx.fillStyle = '#ffffaa';
+    for (const lx of [-11, 11]) {
+      ctx.beginPath();
+      ctx.arc(lx, -26, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // === TRUCK BODY (cargo area) ===
+    ctx.fillStyle = '#1e6b1e';
+    ctx.strokeStyle = '#1a5c1a';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.roundRect(-14, -16, 28, 38, 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Side panels / ribs
+    ctx.strokeStyle = '#2a7a2a';
+    ctx.lineWidth = 1;
+    for (const ry of [-8, 0, 8, 16]) {
+      ctx.beginPath();
+      ctx.moveTo(-14, ry);
+      ctx.lineTo(14, ry);
+      ctx.stroke();
+    }
+
+    // === HOPPER (back, open when not dumped) ===
+    const hopperY = 22;
+    if (!dumped) {
+      // Open hopper — dark interior visible
+      ctx.fillStyle = '#111';
+      ctx.beginPath();
+      ctx.roundRect(-12, hopperY, 24, 14, 2);
+      ctx.fill();
+
+      // Hopper walls
+      ctx.fillStyle = '#2d7a2d';
+      ctx.strokeStyle = '#1a5c1a';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(-13, hopperY);
+      ctx.lineTo(-13, hopperY + 14);
+      ctx.lineTo(13, hopperY + 14);
+      ctx.lineTo(13, hopperY);
+      ctx.stroke();
+
+      // Trash items peeking out of hopper — animated junk
+      const junkPhase = (t * 0.4) % 1;
+      ctx.fillStyle = '#886644';
+      ctx.beginPath();
+      ctx.roundRect(-7 + Math.sin(t) * 2, hopperY + 2, 5, 4, 1);
+      ctx.fill();
+      ctx.fillStyle = '#cc8822';
+      ctx.beginPath();
+      ctx.arc(4, hopperY + 4, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#558844';
+      ctx.beginPath();
+      ctx.roundRect(-2, hopperY + 1, 4, 6, 1);
+      ctx.fill();
+
+      // "OPEN HOPPER" hint — small arrow target
+      ctx.fillStyle = 'rgba(255,220,0,0.7)';
+      ctx.font = 'bold 6px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('▼', 0, hopperY - 3);
+    } else {
+      // Dumped — flap open, mostly empty
+      ctx.fillStyle = '#333';
+      ctx.beginPath();
+      ctx.roundRect(-12, hopperY, 24, 14, 2);
+      ctx.fill();
+      ctx.strokeStyle = '#555';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(-13, hopperY);
+      ctx.lineTo(-13, hopperY + 14);
+      ctx.lineTo(13, hopperY + 14);
+      ctx.lineTo(13, hopperY);
+      ctx.stroke();
+    }
+
+    // === WHEELS ===
+    ctx.fillStyle = '#222';
+    ctx.strokeStyle = '#555';
+    ctx.lineWidth = 1.5;
+    for (const wx of [-13, 13]) {
+      for (const wy of [-24, 10]) {
+        ctx.beginPath();
+        ctx.arc(wx, wy, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        // Hub
+        ctx.fillStyle = '#888';
+        ctx.beginPath();
+        ctx.arc(wx, wy, 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#222';
+      }
+    }
+
+    // === EXHAUST PUFF ===
+    for (let e = 0; e < 2; e++) {
+      const ePhase = ((t * 0.9 + e * 0.5) % 1);
+      const ex = -12;
+      const ey = -36 - ePhase * 12;
+      const alpha = (1 - ePhase) * 0.4;
+      ctx.fillStyle = `rgba(180,180,180,${alpha})`;
+      ctx.beginPath();
+      ctx.arc(ex, ey, 2 + ePhase * 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // === CITY SANITATION LOGO ===
+    ctx.fillStyle = '#ffffcc';
+    ctx.font = 'bold 5px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('🗑️', 0, 6);
+
+    ctx.restore();
+  },
+
+  // ============================================================
   // RIVAL BIRD — "Ace" from Feather City (Session 116)
   // Crimson body, golden aviator goggles, flowing scarf
   // ============================================================
@@ -8452,5 +8604,147 @@ window.Sprites = {
       ctx.fillStyle = `rgba(255, 180, 0, ${0.8 + pulse * 0.2})`;
       ctx.fillText('TARGET', sx, sy - 26);
     }
+  },
+
+  // === GARBAGE TRUCK (Session 119 — Trash Day event) ===
+  drawGarbageTruck(ctx, x, y, angle, dumped, now) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle + Math.PI / 2);
+
+    const t = now / 1000;
+
+    // === TRUCK BODY ===
+    // Main body — dark olive green
+    ctx.fillStyle = '#3a6b2a';
+    ctx.strokeStyle = '#1a3a10';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.roundRect(-18, -34, 36, 56, 4);
+    ctx.fill();
+    ctx.stroke();
+
+    // Cab roof (front)
+    ctx.fillStyle = '#4a8035';
+    ctx.beginPath();
+    ctx.roundRect(-14, -34, 28, 22, 3);
+    ctx.fill();
+    ctx.stroke();
+
+    // Hopper (rear bin) — slightly darker
+    ctx.fillStyle = '#2d5a20';
+    ctx.beginPath();
+    ctx.roundRect(-16, -10, 32, 28, 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Hopper opening (top of bin)
+    ctx.fillStyle = '#1a3a10';
+    ctx.beginPath();
+    ctx.roundRect(-13, -9, 26, 8, 2);
+    ctx.fill();
+
+    // === WINDSHIELD ===
+    ctx.fillStyle = 'rgba(150,210,255,0.6)';
+    ctx.beginPath();
+    ctx.roundRect(-10, -32, 20, 10, 2);
+    ctx.fill();
+    // Wipers
+    ctx.strokeStyle = '#888';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(-7, -26); ctx.lineTo(-2, -23);
+    ctx.moveTo(7, -26); ctx.lineTo(2, -23);
+    ctx.stroke();
+
+    // === SIDE DETAIL STRIPES ===
+    ctx.strokeStyle = '#ffcc00';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-18, 4); ctx.lineTo(18, 4);
+    ctx.stroke();
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(-18, 7); ctx.lineTo(18, 7);
+    ctx.stroke();
+
+    // === WHEELS (4 wheels) ===
+    const wheelPositions = [[-14, -18], [14, -18], [-14, 14], [14, 14]];
+    for (const [wx, wy] of wheelPositions) {
+      ctx.fillStyle = '#222';
+      ctx.strokeStyle = '#555';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.ellipse(wx, wy, 6, 5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      // Hub
+      ctx.fillStyle = '#888';
+      ctx.beginPath();
+      ctx.arc(wx, wy, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // === EXHAUST PUFFS (when not dumped — driving) ===
+    if (!dumped) {
+      const puffPhase = (t * 2.5) % 1;
+      ctx.globalAlpha = (1 - puffPhase) * 0.5;
+      ctx.fillStyle = '#888';
+      ctx.beginPath();
+      ctx.arc(12 + puffPhase * 8, 22 + puffPhase * 4, 3 + puffPhase * 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    // === DUMP MODE — spill animation ===
+    if (dumped) {
+      // Flashing warning lights
+      const flashOn = Math.sin(t * 8) > 0;
+      ctx.fillStyle = flashOn ? '#ff4400' : '#ff8800';
+      ctx.beginPath(); ctx.arc(-12, -2, 4, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = flashOn ? '#ff8800' : '#ff4400';
+      ctx.beginPath(); ctx.arc(12, -2, 4, 0, Math.PI * 2); ctx.fill();
+
+      // Hopper open / raised indicator
+      ctx.strokeStyle = '#ffcc00';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([3, 2]);
+      ctx.beginPath();
+      ctx.moveTo(-13, -10); ctx.lineTo(-13, -20);
+      ctx.moveTo(13, -10); ctx.lineTo(13, -20);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // "DUMPING" label
+      ctx.font = 'bold 7px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#ffcc00';
+      ctx.fillText('DUMP!', 0, -24);
+    } else {
+      // "TRASH DAY" side label
+      ctx.font = 'bold 6px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#ffdd44';
+      ctx.fillText('TRASH', 0, 4);
+    }
+
+    ctx.restore();
+
+    // === OVERHEAD LABEL (screen-space, after restore) ===
+    ctx.save();
+    ctx.font = 'bold 11px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    const labelAlpha = dumped ? (0.7 + 0.3 * Math.sin(t * 4)) : 0.9;
+    ctx.globalAlpha = labelAlpha;
+    ctx.fillStyle = dumped ? '#ff8800' : '#66dd33';
+    ctx.shadowColor = '#000';
+    ctx.shadowBlur = 4;
+    ctx.fillText(dumped ? '💥 DUMP SITE' : '🚛 TRASH DAY', x, y - 38);
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
+    ctx.restore();
   },
 };

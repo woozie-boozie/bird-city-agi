@@ -191,6 +191,9 @@ const DAILY_CHALLENGE_POOL = [
   // Session 118: Vigilante Marshal challenges
   { id: 'law_bringer',    title: 'Law Bringer',  desc: 'Arrest the most-wanted criminal as the Vigilante Marshal', target: 1, trackType: 'vigilante_arrest',  reward: { xp: 300, coins: 150 } },
   { id: 'outlaw',         title: 'Outlaw',        desc: 'Stun the Vigilante Marshal 3 times and defeat them',       target: 1, trackType: 'vigilante_defeated', reward: { xp: 250, coins: 125 } },
+  // Session 119: Garbage Truck challenges
+  { id: 'trash_collector', title: 'Dumpster Diver', desc: 'Collect 5 garbage loot drops from the Trash Day truck',   target: 5, trackType: 'garbage_loot_collected', reward: { xp: 160, coins: 80  } },
+  { id: 'trash_shot',     title: 'Trash Shot!',    desc: 'Land a poop in the garbage truck\'s open hopper (skill shot!)', target: 1, trackType: 'trash_shot_scored', reward: { xp: 200, coins: 100 } },
 ];
 
 // ============================================================
@@ -382,6 +385,13 @@ class GameEngine {
     this.vaultTruck = null;
     this._vaultTruckTimer = Date.now() + this._randomRange(30 * 60000, 35 * 60000);
     this._vaultTruckCopsStage = 0; // 0=none, 1=first (at 75 HP), 2=second (at 50 HP), 3=swat (at 25 HP)
+
+    // === GARBAGE TRUCK (Trash Day event) ===
+    // Drives west→east along the main road (y≈855) every 20-28 min.
+    // Drops trash loot items every 12-18s; skill shot bonus for hitting the open hopper.
+    // Dumps everything at the east end for a big reward scramble.
+    this.garbageTruck = null;
+    this._garbageTruckTimer = Date.now() + this._randomRange(20 * 60000, 28 * 60000);
 
     // === NPC REVENGE ===
     this.areaChaos = [0, 0, 0, 0];   // 4 quadrants: TL, TR, BL, BR
@@ -2201,6 +2211,9 @@ class GameEngine {
 
     // === The Mole ===
     this._updateMole(dt, now);
+
+    // === Garbage Truck (Trash Day) ===
+    this._updateGarbageTruck(dt, now);
   }
 
   // ============================================================
@@ -3927,6 +3940,22 @@ class GameEngine {
         if (vt.hp <= 0) {
           this._crackVaultTruck(vt, now);
         }
+      } else if (hit.target === 'garbage_truck' && this.garbageTruck && !this.garbageTruck.gone) {
+        const gt = this.garbageTruck;
+        if (hit.skillShot) {
+          // TRASH SHOT — poop landed in the open hopper! Bonus reward.
+          xpGain = 40;
+          bird.coins += 15;
+          this._trackDailyProgress(bird, 'trash_shot_scored', 1);
+          this.events.push({ type: 'garbage_skill_shot', birdId: bird.id, birdName: bird.name, gangTag: bird.gangTag || null, x: gt.x, y: gt.y });
+        } else {
+          // Regular hit — small immediate reward, speeds up the next loot drop slightly
+          xpGain = isMegaPoop ? 12 : 4;
+          bird.coins += isMegaPoop ? 5 : 2;
+          // Accelerate the next loot drop (hitting the truck shakes stuff loose)
+          if (gt.nextDropAt > now + 4000) gt.nextDropAt -= 2000;
+          this.events.push({ type: 'garbage_truck_hit', birdId: bird.id, birdName: bird.name, x: gt.x, y: gt.y });
+        }
       } else if (hit.target === 'birdnapper_van' && this.birdnapperVan && this.birdnapperVan.captiveId) {
         // Poop hit the Birdnapper Van! Rescue the captive!
         const van = this.birdnapperVan;
@@ -5166,6 +5195,11 @@ class GameEngine {
           bird.activeMission.progress++;
         }
 
+        // Garbage Truck loot daily challenge tracking (Session 119)
+        if (closest.isGarbageLoot) {
+          this._trackDailyProgress(bird, 'garbage_loot_collected', 1);
+        }
+
         this.events.push({
           type: 'steal',
           birdId: bird.id,
@@ -5667,6 +5701,30 @@ class GameEngine {
       if (Math.sqrt(vtdx * vtdx + vtdy * vtdy) < hitRadius + 30) {
         if (!isMegaPoop) return { target: 'vault_truck' };
         allHits.push({ target: 'vault_truck' });
+      }
+    }
+
+    // Check Garbage Truck — normal poop hit + skill shot bonus for hitting the hopper
+    if (this.garbageTruck && !this.garbageTruck.dumped && !this.garbageTruck.gone) {
+      const gt = this.garbageTruck;
+      const gtdx = poop.x - gt.x;
+      const gtdy = poop.y - gt.y;
+      const gtDist = Math.sqrt(gtdx * gtdx + gtdy * gtdy);
+      if (gtDist < hitRadius + 26) {
+        // Skill shot: does the poop land near the open hopper at the truck's BACK?
+        // Hopper is 28px behind the truck in the direction opposite to travel (truck goes east so hopper is west end)
+        const hopperX = gt.x - Math.cos(gt.angle) * 28;
+        const hopperY = gt.y - Math.sin(gt.angle) * 28;
+        const hdx = poop.x - hopperX;
+        const hdy = poop.y - hopperY;
+        const hopperDist = Math.sqrt(hdx * hdx + hdy * hdy);
+        if (hopperDist < 35) {
+          if (!isMegaPoop) return { target: 'garbage_truck', skillShot: true };
+          allHits.push({ target: 'garbage_truck', skillShot: true });
+        } else {
+          if (!isMegaPoop) return { target: 'garbage_truck', skillShot: false };
+          allHits.push({ target: 'garbage_truck', skillShot: false });
+        }
       }
     }
 
@@ -7701,6 +7759,16 @@ class GameEngine {
         cracked: this.vaultTruck.cracked || false,
         escaped: this.vaultTruck.escaped || false,
         myHits: (this.vaultTruck.contributors.get(bird.id) || { hits: 0 }).hits,
+      } : null,
+      garbageTruck: this.garbageTruck && !this.garbageTruck.gone ? {
+        x: this.garbageTruck.x,
+        y: this.garbageTruck.y,
+        angle: this.garbageTruck.angle,
+        dumped: this.garbageTruck.dumped || false,
+        dumpX: this.garbageTruck.dumpX,
+        dumpY: this.garbageTruck.dumpY,
+        expiresAt: this.garbageTruck.expiresAt,
+        nextDropAt: this.garbageTruck.nextDropAt,
       } : null,
       pigeonCoupe: this.pigeonCoupe ? {
         x: this.pigeonCoupe.x,
@@ -22622,6 +22690,186 @@ class GameEngine {
     }
     this._addChaos(60);
     console.log('[GameEngine] City Vault Truck CRACKED! Jackpot distributed.');
+  }
+
+  // ============================================================
+  // GARBAGE TRUCK — Trash Day Event
+  // ============================================================
+
+  _updateGarbageTruck(dt, now) {
+    // Spawn check
+    if (!this.garbageTruck && now >= this._garbageTruckTimer && this.birds.size > 0) {
+      this._spawnGarbageTruck(now);
+    }
+    if (!this.garbageTruck) return;
+    const gt = this.garbageTruck;
+
+    // Already gone — clear it
+    if (gt.gone) {
+      this.garbageTruck = null;
+      return;
+    }
+
+    // After dumping, slowly drive off the east edge and despawn
+    if (gt.dumped) {
+      gt.x += gt.speed * dt;
+      if (gt.x > world.WORLD_WIDTH + 200) {
+        gt.gone = true;
+        this.garbageTruck = null;
+        this._garbageTruckTimer = now + this._randomRange(20 * 60000, 28 * 60000);
+        this.events.push({ type: 'garbage_truck_gone', message: '🚛 The garbage truck finished its route and drove off.' });
+      }
+      return;
+    }
+
+    // Move west → east along y≈855 at a slow crawl
+    const targetX = gt.dumpX;
+    const targetY = gt.dumpY;
+    const dx = targetX - gt.x;
+    const dy = targetY - gt.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    if (dist > 8) {
+      const spd = gt.speed * dt;
+      gt.x += (dx / dist) * spd;
+      gt.y += (dy / dist) * spd;
+      gt.angle = Math.atan2(dy, dx);
+    } else {
+      // Reached the dump site — trigger the dump!
+      gt.x = targetX;
+      gt.y = targetY;
+      gt.dumped = true;
+      this._doGarbageDump(gt, now);
+    }
+
+    // Periodic loot drops while driving
+    if (now >= gt.nextDropAt) {
+      this._dropGarbageLoot(gt, now);
+      const isValueable = gt.dropCount % 3 === 2; // every 3rd drop is the good stuff
+      gt.nextDropAt = now + this._randomRange(isValueable ? 15000 : 12000, isValueable ? 20000 : 18000);
+      gt.dropCount = (gt.dropCount || 0) + 1;
+    }
+
+    // Expire if somehow still alive past 8 minutes (safety valve)
+    if (now > gt.expiresAt) {
+      gt.gone = true;
+      this.garbageTruck = null;
+      this._garbageTruckTimer = now + this._randomRange(20 * 60000, 28 * 60000);
+      this.events.push({ type: 'garbage_truck_gone', message: '🚛 The garbage truck finished its route.' });
+    }
+  }
+
+  _spawnGarbageTruck(now) {
+    // Always drives west→east along the main horizontal road (y=855)
+    const startX = 80;
+    const roadY = 855;
+    const dumpX = 2850; // east edge near Hawk territory (interesting geography)
+    const dumpY = roadY;
+
+    this.garbageTruck = {
+      x: startX, y: roadY,
+      angle: 0, // facing east
+      speed: 55,
+      dumpX, dumpY,
+      dumped: false, gone: false,
+      dropCount: 0,
+      nextDropAt: now + this._randomRange(14000, 20000), // first loot drop 14-20s in
+      expiresAt: now + 8 * 60000, // 8-minute safety valve
+    };
+
+    this.events.push({
+      type: 'garbage_truck_arrived',
+      x: startX, y: roadY,
+      message: `🚛 TRASH DAY! The garbage truck is rolling through the city — follow it for LOOT drops and try to poop in the HOPPER for a skill shot bonus!`,
+    });
+    console.log('[GameEngine] Garbage Truck spawned at west end of main road.');
+  }
+
+  _dropGarbageLoot(gt, now) {
+    // Scatter 2-3 food items around the truck's current position
+    const isValuable = (gt.dropCount || 0) % 3 === 2;
+    const numItems = isValuable ? 3 : this._randomRange(2, 3);
+    const types = isValuable
+      ? ['pizza', 'sandwich', 'cake']
+      : ['bread', 'bagel', 'pretzel', 'taco'];
+
+    const droppedPositions = [];
+    for (let i = 0; i < numItems; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 30 + Math.random() * 60;
+      const fx = Math.max(50, Math.min(world.WORLD_WIDTH - 50, gt.x + Math.cos(angle) * dist));
+      const fy = Math.max(50, Math.min(world.WORLD_HEIGHT - 50, gt.y + Math.sin(angle) * dist));
+      const ftype = types[Math.floor(Math.random() * types.length)];
+      const fid = 'garbage_loot_' + uid();
+      const foodVal = isValuable ? (15 + Math.floor(Math.random() * 15)) : (6 + Math.floor(Math.random() * 8));
+      this.foods.set(fid, {
+        id: fid, type: ftype,
+        x: fx, y: fy,
+        active: true,
+        respawnAt: 0,
+        value: foodVal,
+        isGarbageLoot: true,
+      });
+      droppedPositions.push({ x: fx, y: fy });
+    }
+
+    this.events.push({
+      type: 'garbage_loot_drop',
+      x: gt.x, y: gt.y,
+      isValuable,
+      count: numItems,
+      message: isValuable
+        ? `🚛✨ VALUABLE TRASH dropped near the garbage truck! Fly there fast!`
+        : `🚛 Garbage loot dropped from the truck! Fly over to collect.`,
+    });
+  }
+
+  _doGarbageDump(gt, now) {
+    // Big finale dump: 12-16 food items scatter from the dump site
+    const numItems = 12 + Math.floor(Math.random() * 5);
+    const types = ['pizza', 'sandwich', 'cake', 'donut', 'taco', 'bread', 'bagel', 'pretzel'];
+    for (let i = 0; i < numItems; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 30 + Math.random() * 160;
+      const fx = Math.max(50, Math.min(world.WORLD_WIDTH - 50, gt.x + Math.cos(angle) * dist));
+      const fy = Math.max(50, Math.min(world.WORLD_HEIGHT - 50, gt.y + Math.sin(angle) * dist));
+      const ftype = types[Math.floor(Math.random() * types.length)];
+      const fid = 'garbage_dump_' + uid();
+      this.foods.set(fid, {
+        id: fid, type: ftype,
+        x: fx, y: fy,
+        active: true,
+        respawnAt: 0,
+        value: 20 + Math.floor(Math.random() * 20),
+        isGarbageLoot: true,
+      });
+    }
+
+    // Bonus XP/coins for all birds within 300px of the dump site
+    const bonusRecipients = [];
+    for (const b of this.birds.values()) {
+      const bdx = b.x - gt.x;
+      const bdy = b.y - gt.y;
+      if (Math.sqrt(bdx * bdx + bdy * bdy) < 300) {
+        const dumpXp = 60 + Math.floor(Math.random() * 40);
+        const dumpCoins = 20 + Math.floor(Math.random() * 20);
+        b.xp += dumpXp;
+        b.coins += dumpCoins;
+        this._trackDailyProgress(b, 'coins_earned', dumpCoins);
+        bonusRecipients.push({ birdId: b.id, name: b.name, xp: dumpXp, coins: dumpCoins });
+      }
+    }
+
+    this.events.push({
+      type: 'garbage_truck_dump',
+      x: gt.x, y: gt.y,
+      numItems,
+      bonusRecipients,
+      message: `🚛💥 GARBAGE DUMP! ${numItems} loot items scattered near the dump site! Birds nearby earn a bonus!`,
+    });
+
+    this._addChaos(30);
+    console.log('[GameEngine] Garbage Truck DUMP! Items scattered at east end.');
   }
 
   // ============================================================

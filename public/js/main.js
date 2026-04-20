@@ -5359,6 +5359,45 @@
         addEventMessage(`📜 The Treasure Map expired. ${ev.holderName} never found the X.`, '#888');
       }
     }
+
+    // === GARBAGE TRUCK — Trash Day event (Session 119) ===
+    if (ev.type === 'garbage_truck_arrived') {
+      showAnnouncement(`🚛 TRASH DAY! The garbage truck is rolling through the city!\nFollow it for LOOT drops — and try to poop in the HOPPER for a SKILL SHOT bonus!`, '#44aa22', 6000);
+      addEventMessage(`🚛 The garbage truck is on its route! Follow it for free loot drops. Skill shot: poop in the open hopper!`, '#66cc33');
+    }
+    if (ev.type === 'garbage_loot_drop') {
+      if (ev.isValuable) {
+        effects.push({ type: 'float_text', x: ev.x, y: ev.y - 20, time: now, duration: 1200, text: `⭐ RARE LOOT DROP!`, color: '#ffdd00' });
+        addEventMessage(`🚛⭐ The garbage truck dropped RARE loot! Rush to collect it!`, '#ffdd00');
+      } else {
+        effects.push({ type: 'float_text', x: ev.x, y: ev.y - 20, time: now, duration: 900, text: `🗑️ loot!`, color: '#88cc44' });
+      }
+    }
+    if (ev.type === 'garbage_skill_shot') {
+      const isMine = ev.birdId === myId;
+      if (isMine) {
+        effects.push({ type: 'screen_flash', color: 'rgba(80,200,40,0.4)', duration: 350, time: now });
+        showAnnouncement(`🎯 TRASH SHOT! You pooped in the hopper! +40 XP +15c`, '#44ff22', 4000);
+      }
+      const tag = ev.gangTag ? `[${ev.gangTag}] ` : '';
+      addEventMessage(`🎯 ${tag}${ev.birdName} landed a TRASH SHOT — poop in the hopper! +40 XP`, '#66ee33');
+      effects.push({ type: 'float_text', x: ev.x, y: ev.y - 28, time: now, duration: 1400, text: `🎯 TRASH SHOT!`, color: '#44ff22' });
+    }
+    if (ev.type === 'garbage_truck_hit') {
+      effects.push({ type: 'float_text', x: ev.x, y: ev.y - 18, time: now, duration: 700, text: `💩 HIT`, color: '#88bb44' });
+    }
+    if (ev.type === 'garbage_truck_dump') {
+      screenShake(12, 600);
+      effects.push({ type: 'screen_flash', color: 'rgba(80,180,40,0.35)', duration: 400, time: now });
+      const dumpCount = ev.numItems || ev.itemCount || '?';
+      const bonusMe = (ev.bonusRecipients || []).find(r => r.birdId === myId);
+      const bonusLine = bonusMe ? ` You were nearby: +${bonusMe.xp} XP +${bonusMe.coins}c!` : '';
+      showAnnouncement(`🚛💥 GARBAGE DUMP! ${dumpCount} loot items scattered around the dump site!${bonusLine}`, '#44cc22', 6000);
+      addEventMessage(`🚛 The garbage truck DUMPED its load — ${dumpCount} items scattered! Rush to the dump site!`, '#66cc33');
+    }
+    if (ev.type === 'garbage_truck_gone') {
+      addEventMessage(`🚛 The garbage truck has finished its route and driven off.`, '#668844');
+    }
   }
 
   function showAnnouncement(text, color, duration) {
@@ -9652,6 +9691,16 @@
       }
     }
 
+    // Garbage Truck — Trash Day event (Session 119)
+    if (gameState.garbageTruck) {
+      const gt = gameState.garbageTruck;
+      const gtsx = gt.x - camera.x + camera.screenW / 2;
+      const gtsy = gt.y - camera.y + camera.screenH / 2;
+      if (gtsx > -margin - 80 && gtsx < camera.screenW + margin + 80 && gtsy > -margin - 80 && gtsy < camera.screenH + margin + 80) {
+        Sprites.drawGarbageTruck(ctx, gtsx, gtsy, gt.angle || 0, gt.dumped, now);
+      }
+    }
+
     // Rival Bird — "Ace" from Feather City (Session 116)
     if (gameState.rivalBird) {
       const rb = gameState.rivalBird;
@@ -13005,6 +13054,41 @@
       }
     }
 
+    // === GARBAGE TRUCK — off-screen direction arrow ===
+    if (gameState.garbageTruck) {
+      const gt = gameState.garbageTruck;
+      const gtsx = gt.x - camera.x + camera.screenW / 2;
+      const gtsy = gt.y - camera.y + camera.screenH / 2;
+      const gtOnScreen = gtsx > 50 && gtsx < camera.screenW - 50 && gtsy > 50 && gtsy < camera.screenH - 50;
+      if (!gtOnScreen) {
+        const gtAngle = Math.atan2(gtsy - camera.screenH / 2, gtsx - camera.screenW / 2);
+        const gtArrDist = Math.min(camera.screenW, camera.screenH) / 2 - 60;
+        const gtAx = camera.screenW / 2 + Math.cos(gtAngle) * gtArrDist;
+        const gtAy = camera.screenH / 2 + Math.sin(gtAngle) * gtArrDist;
+        const gtPulse = 0.7 + 0.3 * Math.sin(now * 0.007);
+        ctx.save();
+        ctx.translate(gtAx, gtAy);
+        ctx.rotate(gtAngle);
+        ctx.globalAlpha = 0.9 * gtPulse;
+        ctx.fillStyle = '#2d7a2d';
+        ctx.shadowColor = '#44cc22';
+        ctx.shadowBlur = 10;
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(22, 0); ctx.lineTo(-10, -10); ctx.lineTo(-5, 0); ctx.lineTo(-10, 10);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.font = 'bold 11px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('🚛', 4, 0);
+        ctx.restore();
+      }
+    }
+
     // === RIVAL BIRD — off-screen direction arrow ===
     if (gameState.rivalBird) {
       const rb = gameState.rivalBird;
@@ -13695,6 +13779,28 @@
       minimapCtx.textAlign = 'center';
       minimapCtx.textBaseline = 'alphabetic';
       minimapCtx.fillText('🌭', hdcmx, hdcmy - 5);
+      minimapCtx.restore();
+    }
+
+    // === GARBAGE TRUCK — pulsing green 🚛 dot on minimap ===
+    if (gameState.garbageTruck && worldData) {
+      const mw = minimapCtx.canvas.width;
+      const mh = minimapCtx.canvas.height;
+      const gtPulse = 0.5 + 0.5 * Math.sin(now * 0.008);
+      const gtmmx = gameState.garbageTruck.x * mw / worldData.width;
+      const gtmmy = gameState.garbageTruck.y * mh / worldData.height;
+      minimapCtx.save();
+      minimapCtx.shadowColor = '#44cc22';
+      minimapCtx.shadowBlur = 8 + 4 * gtPulse;
+      minimapCtx.fillStyle = `rgba(45,122,45,${0.8 + 0.2 * gtPulse})`;
+      minimapCtx.beginPath();
+      minimapCtx.arc(gtmmx, gtmmy, 3.5 + gtPulse, 0, Math.PI * 2);
+      minimapCtx.fill();
+      minimapCtx.shadowBlur = 0;
+      minimapCtx.font = '8px sans-serif';
+      minimapCtx.textAlign = 'center';
+      minimapCtx.textBaseline = 'alphabetic';
+      minimapCtx.fillText('🚛', gtmmx, gtmmy - 5);
       minimapCtx.restore();
     }
 
@@ -16110,6 +16216,14 @@
     }
     if (s.hotdogXpBoostHits && s.hotdogXpBoostHits > 0) {
       html += `<div class="bm-buff-pill" style="background:rgba(100,60,0,0.85);border-color:#ffaa44;color:#ffcc88;font-weight:bold;">🌭 HOT DOG XP BOOST ×1.3 — ${s.hotdogXpBoostHits} hits left!</div>`;
+    }
+
+    // === GARBAGE TRUCK — active awareness pill (Session 119) ===
+    if (gameState.garbageTruck) {
+      const gt = gameState.garbageTruck;
+      const secLeft = gt.expiresAt ? Math.max(0, Math.ceil((gt.expiresAt - now) / 1000)) : 0;
+      const dumpDesc = gt.dumped ? '💥 DUMP SITE ACTIVE — collect loot!' : `Follow it for loot drops — poop in the HOPPER for skill shot bonus!`;
+      html += `<div class="bm-buff-pill" style="background:rgba(20,80,20,0.92);border-color:#44cc22;color:#88ff55;animation:kingpinGlow 0.9s ease-in-out infinite alternate;font-weight:bold;">🚛 TRASH DAY! ${dumpDesc}${secLeft > 0 ? ` · ${secLeft}s left` : ''}</div>`;
     }
 
     // === THE MOLE active buffs (Session 117) ===
