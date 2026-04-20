@@ -4686,6 +4686,100 @@
       }
     }
 
+    // === VIGILANTE MARSHAL (Session 109) ===
+    if (ev.type === 'vigilante_call_opened') {
+      const tag = ev.targetGangTag ? `[${ev.targetGangTag}] ` : '';
+      showAnnouncement(
+        `⭐ VIGILANTE CALL!\n${tag}${ev.targetName} is MOST WANTED!\nPress [H] to become the Marshal!\n+500 XP · steal 30% coins · clear their heat`,
+        '#ffe566', 8000
+      );
+      addEventMessage(`⭐ VIGILANTE CALL for ${tag}${ev.targetName} — press [H] to hunt them! (20s)`, '#ffe566');
+      effects.push({ type: 'screen_shake', intensity: 6, duration: 400, time: now });
+    }
+    if (ev.type === 'vigilante_accepted') {
+      const tag = ev.marshalGangTag ? `[${ev.marshalGangTag}] ` : '';
+      if (ev.marshalId === myId) {
+        showAnnouncement(
+          `⭐ YOU ARE THE MARSHAL!\nHunt ${ev.targetName}!\nStay within 55px for 4s to ARREST them.\nThey can poop you 4× to stun you!`,
+          '#ffe566', 7000
+        );
+        addEventMessage(`⭐ YOU accepted the Vigilante Call! Hunt ${ev.targetName}!`, '#ffe566');
+        effects.push({ type: 'screen_shake', intensity: 7, duration: 500, time: now });
+      } else if (ev.targetId === myId) {
+        showAnnouncement(
+          `⭐ A MARSHAL IS HUNTING YOU!\n${tag}${ev.marshalName} accepted the call!\nPoop them 4× to stun — 3 stuns = VICTORY!`,
+          '#ff4444', 7000
+        );
+        addEventMessage(`⚠️ ${tag}${ev.marshalName} is the Vigilante Marshal — they're hunting YOU!`, '#ff4444');
+        effects.push({ type: 'screen_shake', intensity: 8, duration: 600, time: now });
+      } else {
+        addEventMessage(`⭐ ${tag}${ev.marshalName} accepted the Vigilante Call to hunt ${ev.targetName}!`, '#ffe566');
+      }
+    }
+    if (ev.type === 'vigilante_closing_in') {
+      if (ev.targetId === myId) {
+        showAnnouncement(`⭐ MARSHAL CLOSING IN!\nPoop them NOW! (${ev.dist}px away)`, '#ff4444', 2500);
+        effects.push({ type: 'screen_shake', intensity: 5, duration: 300, time: now });
+      }
+    }
+    if (ev.type === 'vigilante_counter_hit') {
+      if (ev.criminalId === myId) {
+        effects.push({ type: 'float_text', text: `⭐ HIT! ${ev.hitsDealt}/4`, x: (gameState.self && gameState.self.x) || 1500, y: ((gameState.self && gameState.self.y) || 1500) - 40, color: '#ffe566', duration: 1200, time: now });
+      }
+    }
+    if (ev.type === 'vigilante_stunned') {
+      const tag = ev.marshalGangTag ? `[${ev.marshalGangTag}] ` : '';
+      if (ev.marshalId === myId) {
+        showAnnouncement(`💫 MARSHAL STUNNED!\n${ev.criminalName} hit you — stunned for 8s!\n(${ev.stunCount}/3 stuns)`, '#ff8800', 4000);
+        effects.push({ type: 'screen_shake', intensity: 10, duration: 700, time: now });
+      } else if (ev.criminalId === myId) {
+        showAnnouncement(`💥 STUN ${ev.stunCount}/3! Marshal is down for 8s!\nKeep going to WIN!`, '#ff8800', 3000);
+      } else {
+        addEventMessage(`💫 ${tag}${ev.marshalName} was STUNNED (${ev.stunCount}/3) by ${ev.criminalName}!`, '#ff8800');
+      }
+    }
+    if (ev.type === 'vigilante_caught') {
+      const tag = ev.marshalGangTag ? `[${ev.marshalGangTag}] ` : '';
+      if (ev.marshalId === myId) {
+        showAnnouncement(
+          `⭐ ARREST MADE!\nYou caught ${ev.criminalName}!\n+500 XP +${ev.coins}c stolen!`,
+          '#ffe566', 6000
+        );
+        effects.push({ type: 'screen_shake', intensity: 12, duration: 800, time: now });
+      } else if (ev.criminalId === myId) {
+        showAnnouncement(
+          `🚔 ARRESTED BY THE MARSHAL!\n${tag}${ev.marshalName} caught you!\n−${ev.stolen}c stolen — heat cleared`,
+          '#ff4444', 6000
+        );
+        effects.push({ type: 'screen_shake', intensity: 12, duration: 800, time: now });
+      } else {
+        showAnnouncement(`⭐ ${tag}${ev.marshalName} ARRESTED ${ev.criminalName}! +500 XP`, '#ffe566', 5000);
+        addEventMessage(`⭐ ARREST! ${tag}${ev.marshalName} caught ${ev.criminalName} — stole ${ev.stolen}c`, '#ffe566');
+        effects.push({ type: 'screen_shake', intensity: 8, duration: 500, time: now });
+      }
+    }
+    if (ev.type === 'vigilante_defeated') {
+      const tag = ev.marshalGangTag ? `[${ev.marshalGangTag}] ` : '';
+      if (ev.criminalId === myId) {
+        showAnnouncement(
+          `🔥 MARSHAL DEFEATED!\nYou outlasted the law!\n+300 XP +200c!`,
+          '#ff8800', 6000
+        );
+        effects.push({ type: 'screen_shake', intensity: 10, duration: 700, time: now });
+      } else if (ev.marshalId === myId) {
+        showAnnouncement(`💀 YOU WERE DEFEATED\n${ev.criminalName} outlasted you…\nBetter luck next call!`, '#888888', 5000);
+      } else {
+        showAnnouncement(`🔥 ${ev.criminalName} DEFEATED the Marshal ${tag}${ev.marshalName}!`, '#ff8800', 5000);
+        addEventMessage(`🔥 OUTLAW WINS! ${ev.criminalName} defeated ${tag}${ev.marshalName}! +300 XP +200c`, '#ff8800');
+        effects.push({ type: 'screen_shake', intensity: 7, duration: 500, time: now });
+      }
+    }
+    if (ev.type === 'vigilante_ended') {
+      if (ev.reason === 'expired') {
+        addEventMessage(`⭐ Vigilante call expired — ${ev.targetName} evaded the law!`, '#888888');
+      }
+    }
+
     // === FLASH MOB (Session 106) ===
     if (ev.type === 'flash_mob_warning') {
       // Draw direction arrow so players can find the mob location
@@ -5591,6 +5685,13 @@
             showTemporaryPrompt('⚔️ No birds nearby to challenge!', 'streetDuelPrompt', 2000);
           }
         }
+      }
+    }
+
+    // Vigilante Marshal — [H] to accept the call and become the Marshal
+    if (e.key.toLowerCase() === 'h') {
+      if (gameState && gameState.vigilanteCall) {
+        socket.emit('action', { type: 'accept_vigilante' });
       }
     }
 
@@ -10361,7 +10462,7 @@
 
           Sprites.drawBird(ctx, sx, sy, b.rotation, b.type, b.wingPhase, isPlayer, b.birdColor || null);
           ctx.globalAlpha = 1; // Always reset after bird draw
-          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0, b.eagleFeather || false, b.idolBadge || false, b.royaleChampBadge || false, b.skillTreeMaster || false, b.fightingChampBadge || false, b.constellationBadge || false, b.courtTitle || null, b.hanamiLanternBadge || false, b.domeChampBadge || false, b.alphaFeather || false, b.arenaLegend || false, b.goldenBirdBadge || false, b.constellations || [], b.stampedeBadge || false, b.throneChampBadge || false, b.perchChampBadge || false);
+          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0, b.eagleFeather || false, b.idolBadge || false, b.royaleChampBadge || false, b.skillTreeMaster || false, b.fightingChampBadge || false, b.constellationBadge || false, b.courtTitle || null, b.hanamiLanternBadge || false, b.domeChampBadge || false, b.alphaFeather || false, b.arenaLegend || false, b.goldenBirdBadge || false, b.constellations || [], b.stampedeBadge || false, b.throneChampBadge || false, b.perchChampBadge || false, b.marshalBadge || false);
 
           // Bird Flu: sneezing emoji indicator above infected birds
           if (b.isFlu) {
@@ -15921,6 +16022,36 @@
         const gDist = Math.sqrt(gdx * gdx + gdy * gdy);
         if (gDist < 300) {
           html += `<div class="bm-buff-pill" style="background:rgba(80,20,0,0.85);border-color:#ff4400;color:#ffaa66;">😤 ${grudgeHunter.name} has a GRUDGE on YOU — they're hunting you!</div>`;
+        }
+      }
+    }
+
+    // === VIGILANTE MARSHAL pills (Session 109) ===
+    if (gameState.vigilanteCall && gameState.vigilanteCall.openUntil > now) {
+      const secsLeft = Math.ceil((gameState.vigilanteCall.openUntil - now) / 1000);
+      const tName = gameState.vigilanteCall.targetName || 'criminal';
+      html += `<div class="bm-buff-pill" style="background:rgba(60,50,0,0.95);border-color:#ffe566;color:#fff7a0;font-weight:bold;animation:kingpinGlow 0.5s ease-in-out infinite alternate;">⭐ VIGILANTE CALL — Press [H] to hunt ${tName}! (${secsLeft}s) · +500 XP · steal 30% coins</div>`;
+    }
+    if (gameState.vigilante) {
+      const v = gameState.vigilante;
+      const secsLeft = Math.max(0, Math.ceil((v.endsAt - now) / 1000));
+      const isStunned = v.stunUntil && v.stunUntil > now;
+      const stunSecsLeft = isStunned ? Math.ceil((v.stunUntil - now) / 1000) : 0;
+      if (v.iAmMarshal) {
+        if (isStunned) {
+          html += `<div class="bm-buff-pill" style="background:rgba(80,30,0,0.95);border-color:#ff8800;color:#ffcc88;font-weight:bold;animation:pulseRed 0.4s infinite alternate;">💫 MARSHAL STUNNED — ${stunSecsLeft}s · Recover then continue!</div>`;
+        } else {
+          const catchPct = Math.round((v.catchProgress || 0) * 100);
+          const catchMsg = catchPct > 0 ? ` · ARRESTING: ${catchPct}%` : ' · Stay within 55px for 4s to ARREST';
+          html += `<div class="bm-buff-pill" style="background:rgba(50,40,0,0.95);border-color:#ffe566;color:#fff7a0;font-weight:bold;animation:kingpinGlow 0.6s ease-in-out infinite alternate;">⭐ MARSHAL — Hunt ${v.targetName}! (${secsLeft}s)${catchMsg} · Stuns: ${v.stunCount}/3</div>`;
+        }
+      } else if (v.iAmTarget) {
+        if (isStunned) {
+          html += `<div class="bm-buff-pill" style="background:rgba(0,50,0,0.85);border-color:#44ff88;color:#aaffcc;">💫 MARSHAL STUNNED ${stunSecsLeft}s — RUN!</div>`;
+        } else {
+          const catchPct = Math.round((v.catchProgress || 0) * 100);
+          const catchMsg = catchPct > 30 ? ` · ⚠️ ARREST IN PROGRESS: ${catchPct}%` : ' · Poop them 4× to stun!';
+          html += `<div class="bm-buff-pill" style="background:rgba(100,10,0,0.95);border-color:#ff4444;color:#ffaaaa;font-weight:bold;animation:pulseRed 0.5s infinite alternate;">⭐ MARSHAL HUNTING YOU! ${v.name} · (${secsLeft}s)${catchMsg} · Stuns: ${v.stunCount}/3</div>`;
         }
       }
     }

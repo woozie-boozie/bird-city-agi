@@ -106,7 +106,7 @@ window.Sprites = {
   },
 
   // === NAME TAG ===
-  drawNameTag(ctx, x, y, name, level, type, isPlayer, mafiaTitle, gangTag, gangColor, tattoosEquipped, prestige, eagleFeather, idolBadge, royaleChampBadge, skillTreeMaster, fightingChampBadge, constellationBadge, courtTitle, hanamiLanternBadge, domeChampBadge, alphaFeather, arenaLegend, goldenBirdBadge, constellations, stampedeBadge, throneChampBadge, perchChampBadge) {
+  drawNameTag(ctx, x, y, name, level, type, isPlayer, mafiaTitle, gangTag, gangColor, tattoosEquipped, prestige, eagleFeather, idolBadge, royaleChampBadge, skillTreeMaster, fightingChampBadge, constellationBadge, courtTitle, hanamiLanternBadge, domeChampBadge, alphaFeather, arenaLegend, goldenBirdBadge, constellations, stampedeBadge, throneChampBadge, perchChampBadge, marshalBadge) {
     const text = `${name} [Lv.${level}]`;
     ctx.font = 'bold 11px Courier New';
     ctx.textAlign = 'center';
@@ -319,6 +319,25 @@ window.Sprites = {
       ctx.shadowBlur = 11;
       ctx.fillStyle = '#ffe566';
       ctx.fillText(pcStr, x, y - 41 - offsetY);
+      ctx.shadowBlur = 0;
+      ctx.font = 'bold 11px Courier New';
+      offsetY += 14;
+    }
+
+    // ⭐ MARSHAL Badge — session badge: earned by arresting the Most Wanted criminal as the Vigilante Marshal
+    if (marshalBadge) {
+      ctx.font = '10px serif';
+      const mStr = '⭐ MARSHAL';
+      const mw = ctx.measureText(mStr).width + 10;
+      ctx.fillStyle = 'rgba(30,20,0,0.95)';
+      ctx.fillRect(x - mw / 2, y - 52 - offsetY, mw, 14);
+      ctx.strokeStyle = '#ffd700';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(x - mw / 2, y - 52 - offsetY, mw, 14);
+      ctx.shadowColor = '#ffe566';
+      ctx.shadowBlur = 10;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(mStr, x, y - 41 - offsetY);
       ctx.shadowBlur = 0;
       ctx.font = 'bold 11px Courier New';
       offsetY += 14;

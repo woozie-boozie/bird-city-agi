@@ -188,6 +188,9 @@ const DAILY_CHALLENGE_POOL = [
   // Session 117: The Mole
   { id: 'mole_success',  title: 'The Mole',          desc: 'Complete a secret infiltration mission: tag all 3 targets as the Mole', target: 1, trackType: 'mole_success',    reward: { xp: 300, coins: 150 } },
   { id: 'mole_hunter',   title: 'Mole Hunter',        desc: 'Poop the revealed Mole during the MOLE ALERT window',                  target: 1, trackType: 'mole_hunter',     reward: { xp: 200, coins: 100 } },
+  // Session 118: Vigilante Marshal challenges
+  { id: 'law_bringer',    title: 'Law Bringer',  desc: 'Arrest the most-wanted criminal as the Vigilante Marshal', target: 1, trackType: 'vigilante_arrest',  reward: { xp: 300, coins: 150 } },
+  { id: 'outlaw',         title: 'Outlaw',        desc: 'Stun the Vigilante Marshal 3 times and defeat them',       target: 1, trackType: 'vigilante_defeated', reward: { xp: 250, coins: 125 } },
 ];
 
 // ============================================================
@@ -933,6 +936,17 @@ class GameEngine {
     // the spotlight is active. Takes 6 poop hits to bring down (mega=2). On crash: city-wide reward.
     this.policeHelicopter = null; // null | { id, x, y, rotation, targetId, targetName, state, poopHits, poopHitResetAt, lastCatchAt, stunUntil, hoverX, hoverY, lastKnownX, lastKnownY, spawnedAt }
     this.helicopterLevel5Timer = 0; // ms bird has been at level 5 continuously
+
+    // === VIGILANTE MARSHAL (Session 109) ===
+    // When the most-wanted bird holds Level 5 for 20+ continuous seconds, a city-wide call opens
+    // for 20 seconds. Any bird (except the criminal) can press [H] to become the Vigilante Marshal.
+    // Marshal: +35% speed boost, ⭐ MARSHAL nametag badge, visible on minimap as a gold star.
+    // ARREST mechanic: close within 35px of criminal and hold for 1.5s = CAUGHT (+500 XP + 30% coins).
+    // Criminal counter-play: 4 rapid poop hits within 10s stuns Marshal for 8s. 3 stuns = defeated.
+    // Criminal defeat reward: +300 XP + 200 coins for outsmarting the law.
+    this.vigilante = null; // null | { birdId, name, targetId, targetName, endsAt, catchStartAt, poopHits, poopHitResetAt, stunUntil, stunCount, lastProximityWarning }
+    this.vigilanteCall = null; // null | { targetId, targetName, openUntil }
+    this.level5HeldSince = null; // timestamp when current wantedBirdId first reached level 5
 
     // === SEAGULL INVASION ===
     // Every 25-35 minutes, 8-10 fast seagulls swoop in from the coast to steal food en masse.
@@ -1925,6 +1939,11 @@ class GameEngine {
     if (action.type === 'hotdog_buy') {
       this._handleHotDogBuy(bird, now);
     }
+
+    // === Vigilante Marshal ===
+    if (action.type === 'accept_vigilante') {
+      this._handleAcceptVigilante(bird, now);
+    }
     }
   }
 
@@ -1997,6 +2016,7 @@ class GameEngine {
     this._updatePoliceHelicopter(dt, now);
     this._updateCityLockdown(dt, now);
     this._updateNationalGuard(dt, now);
+    this._updateVigilanteMarshal(dt, now);
 
     // === Food Truck ===
     this._updateFoodTruck(dt, now);
@@ -3183,6 +3203,11 @@ class GameEngine {
     // Wing Surge: earned speed burst from charging up poop hits — 1.80× for 5 seconds
     if (bird.wingSurgeUntil > now) {
       maxSpeed *= 1.80;
+    }
+
+    // Vigilante Marshal: +35% speed to hunt down the criminal (while not stunned)
+    if (this.vigilante && this.vigilante.birdId === bird.id && now > (this.vigilante.stunUntil || 0)) {
+      maxSpeed *= 1.35;
     }
 
     // Pigeon Coupe: the driver rides in style at a flat 220px/s minimum (sports car speed!)
@@ -4871,6 +4896,19 @@ class GameEngine {
               // STEAL!
               this._transferTreasureMap(bird, holder, now);
             }
+          }
+        }
+      }
+
+      // === VIGILANTE MARSHAL: Criminal counter-strike — poop hits on the active marshal ===
+      if (this.vigilante && bird.id === this.vigilante.targetId && now > (this.vigilante.stunUntil || 0)) {
+        const marshalBird = this.birds.get(this.vigilante.birdId);
+        if (marshalBird && !marshalBird.inSewer) {
+          const vdx = poop.x - marshalBird.x;
+          const vdy = poop.y - marshalBird.y;
+          const vRadius = isMegaPoop ? 60 : 28;
+          if (Math.sqrt(vdx * vdx + vdy * vdy) < vRadius) {
+            this._handleMarshalPoopHit(bird, now);
           }
         }
       }
@@ -7244,6 +7282,10 @@ class GameEngine {
           wingCharge: b.wingCharge || 0,
           // Session 105: Grudge — show nearby birds if they have a grudge targeting the viewer (so viewer knows)
           hasGrudgeOnMe: !!(b.grudge && b.grudge.targetId === bird.id),
+          // Session 109: Vigilante Marshal
+          isVigilante: !!(this.vigilante && this.vigilante.birdId === b.id),
+          isVigTarget: !!(this.vigilante && this.vigilante.targetId === b.id),
+          marshalBadge: b.marshalBadge || false,
         });
       }
     }
@@ -9018,6 +9060,28 @@ class GameEngine {
             fightingChampBadge: b.fightingChampBadge || false,
           }));
       })(),
+      // Session 109: Vigilante Marshal
+      vigilante: this.vigilante ? {
+        birdId: this.vigilante.birdId,
+        name: this.vigilante.name,
+        targetId: this.vigilante.targetId,
+        targetName: this.vigilante.targetName,
+        endsAt: this.vigilante.endsAt,
+        stunUntil: this.vigilante.stunUntil,
+        stunCount: this.vigilante.stunCount,
+        catchProgress: (() => {
+          if (!this.vigilante.catchStartAt) return 0;
+          return Math.min(1, (Date.now() - this.vigilante.catchStartAt) / 4000);
+        })(),
+        iAmMarshal: this.vigilante.birdId === bird.id,
+        iAmTarget: this.vigilante.targetId === bird.id,
+      } : null,
+      vigilanteCall: this.vigilanteCall ? {
+        targetId: this.vigilanteCall.targetId,
+        targetName: this.vigilanteCall.targetName,
+        openUntil: this.vigilanteCall.openUntil,
+      } : null,
+      marshalBadge: bird.marshalBadge || false,
     };
   }
 
@@ -11882,6 +11946,32 @@ class GameEngine {
         this._trackDailyProgress(wanted, 'wanted_survival', 1);
         this._trackDailyProgress(wanted, 'coins_earned', wantedLevel * 5);
       }
+    }
+
+    // === Vigilante Marshal: track Level 5 duration ===
+    if (this.wantedBirdId) {
+      const wantedHeat = this.heatScores.get(this.wantedBirdId) || 0;
+      const wantedLevel = this._getWantedLevel(wantedHeat);
+      if (wantedLevel >= 5) {
+        if (!this.level5HeldSince) this.level5HeldSince = now;
+        // After 20 continuous seconds at level 5, open the Vigilante Call (if not already active/marshal active)
+        if (!this.vigilante && !this.vigilanteCall && now - this.level5HeldSince > 20000) {
+          const wanted = this.birds.get(this.wantedBirdId);
+          if (wanted) {
+            this.vigilanteCall = { targetId: this.wantedBirdId, targetName: wanted.name, openUntil: now + 20000 };
+            this.level5HeldSince = now; // reset so we don't re-open immediately after it expires
+            this.events.push({ type: 'vigilante_call_opened', targetId: this.wantedBirdId, targetName: wanted.name, openUntil: this.vigilanteCall.openUntil });
+          }
+        }
+      } else {
+        this.level5HeldSince = null;
+        if (this.vigilanteCall && this.vigilanteCall.targetId === this.wantedBirdId) {
+          this.vigilanteCall = null;
+        }
+      }
+    } else {
+      this.level5HeldSince = null;
+      this.vigilanteCall = null;
     }
   }
 
@@ -26242,6 +26332,253 @@ class GameEngine {
       this.mole = null;
     }
   }
+
+  // =====================================================================
+  // SESSION 118: VIGILANTE MARSHAL SYSTEM
+  // =====================================================================
+
+  _handleAcceptVigilante(bird, now) {
+    if (!this.vigilanteCall) {
+      this.events.push({ type: 'vigilante_fail', birdId: bird.id, reason: 'no_call' });
+      return;
+    }
+    if (now > this.vigilanteCall.openUntil) {
+      this.events.push({ type: 'vigilante_fail', birdId: bird.id, reason: 'expired' });
+      this.vigilanteCall = null;
+      return;
+    }
+    if (this.vigilante) {
+      this.events.push({ type: 'vigilante_fail', birdId: bird.id, reason: 'already_active' });
+      return;
+    }
+    if (bird.id === this.vigilanteCall.targetId) {
+      this.events.push({ type: 'vigilante_fail', birdId: bird.id, reason: 'cannot_target_self' });
+      return;
+    }
+
+    this.vigilante = {
+      birdId: bird.id,
+      name: bird.name,
+      targetId: this.vigilanteCall.targetId,
+      targetName: this.vigilanteCall.targetName,
+      endsAt: now + 120000,           // 2-minute marshal window
+      catchStartAt: null,             // when proximity arrest started
+      poopHits: 0,                    // criminal poop hits on marshal
+      poopHitResetAt: 0,              // rolling 10s window resets if no hit
+      stunUntil: 0,                   // marshal stunned by criminal poop hits
+      stunCount: 0,                   // 3 stuns = marshal defeated
+      lastProximityWarning: 0,
+    };
+    bird.marshalBadge = true;
+    this.vigilanteCall = null;
+
+    this.events.push({
+      type: 'vigilante_accepted',
+      marshalId: bird.id,
+      marshalName: bird.name,
+      targetId: this.vigilante.targetId,
+      targetName: this.vigilante.targetName,
+      endsAt: this.vigilante.endsAt,
+    });
+  }
+
+  _handleMarshalPoopHit(criminal, now) {
+    if (!this.vigilante) return;
+    const v = this.vigilante;
+
+    // Reset 10-second window if too long since last hit
+    if (now - v.poopHitResetAt > 10000) {
+      v.poopHits = 0;
+    }
+    v.poopHits++;
+    v.poopHitResetAt = now;
+
+    this.events.push({
+      type: 'vigilante_counter_hit',
+      criminalId: criminal.id,
+      criminalName: criminal.name,
+      marshalId: v.birdId,
+      marshalName: v.name,
+      hitsDealt: v.poopHits,
+      hitsNeeded: 4,
+    });
+
+    if (v.poopHits >= 4) {
+      // Marshal stunned
+      v.stunUntil = now + 8000;
+      v.poopHits = 0;
+      v.poopHitResetAt = 0;
+      v.stunCount = (v.stunCount || 0) + 1;
+
+      this.events.push({
+        type: 'vigilante_stunned',
+        marshalId: v.birdId,
+        marshalName: v.name,
+        criminalId: criminal.id,
+        criminalName: criminal.name,
+        stunCount: v.stunCount,
+        stunUntil: v.stunUntil,
+      });
+
+      // Give criminal XP/coins for the stun
+      criminal.xp += 80;
+      criminal.coins += 30;
+
+      if (v.stunCount >= 3) {
+        this._defeatVigilante(v, criminal, now);
+      }
+    }
+  }
+
+  _updateVigilanteMarshal(dt, now) {
+    if (!this.vigilante) return;
+    const v = this.vigilante;
+
+    const marshal = this.birds.get(v.birdId);
+    const criminal = this.birds.get(v.targetId);
+
+    // Marshal or criminal disconnected — end quietly
+    if (!marshal || !criminal) {
+      this._endVigilante('disconnected');
+      return;
+    }
+
+    // Marshal 2-minute window expired
+    if (now > v.endsAt) {
+      this._endVigilante('expired');
+      return;
+    }
+
+    // Marshal is stunned — skip arrest logic
+    if (now < (v.stunUntil || 0)) return;
+
+    // Skip if marshal or criminal is underground
+    if (marshal.inSewer || criminal.inSewer) return;
+
+    // Proximity arrest: marshal must stay within 55px of criminal for 4 continuous seconds
+    const dx = marshal.x - criminal.x;
+    const dy = marshal.y - criminal.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    if (dist < 55) {
+      if (!v.catchStartAt) v.catchStartAt = now;
+
+      // Proximity warning every 2 seconds
+      if (now - (v.lastProximityWarning || 0) > 2000) {
+        v.lastProximityWarning = now;
+        const progress = Math.min(1, (now - v.catchStartAt) / 4000);
+        this.events.push({
+          type: 'vigilante_closing_in',
+          marshalId: v.birdId,
+          marshalName: v.name,
+          targetId: v.targetId,
+          targetName: v.targetName,
+          progress,
+        });
+      }
+
+      if (now - v.catchStartAt >= 4000) {
+        this._arrestVigilante(marshal, criminal, now);
+      }
+    } else {
+      v.catchStartAt = null;
+    }
+  }
+
+  _arrestVigilante(marshal, criminal, now) {
+    if (!this.vigilante) return;
+
+    // Steal 30% of criminal's coins
+    const stolen = Math.min(Math.floor(criminal.coins * 0.30), 500);
+    criminal.coins = Math.max(0, criminal.coins - stolen);
+    marshal.coins += stolen;
+
+    // Award marshal big XP
+    marshal.xp += 500;
+    marshal.coins += 100; // bonus bounty
+
+    // Clear criminal's heat entirely
+    this.heatScores.delete(criminal.id);
+    if (this.wantedBirdId === criminal.id) {
+      this.wantedBirdId = null;
+    }
+    // Despawn all cops targeting this criminal
+    this.copBirds = this.copBirds.filter(c => c.targetId !== criminal.id);
+    // Despawn bounty hunter if targeting criminal
+    if (this.bountyHunter && this.bountyHunter.targetId === criminal.id) {
+      this.bountyHunter = null;
+    }
+
+    // Daily challenge progress
+    this._trackDailyProgress(marshal, 'vigilante_arrest', 1);
+
+    // Gazette tracking
+    if (this.gazetteStats) {
+      this.gazetteStats.vigilanteArrests = (this.gazetteStats.vigilanteArrests || 0) + 1;
+    }
+
+    this.events.push({
+      type: 'vigilante_caught',
+      marshalId: marshal.id,
+      marshalName: marshal.name,
+      criminalId: criminal.id,
+      criminalName: criminal.name,
+      stolen,
+      xpAwarded: 500,
+    });
+
+    this._endVigilante('arrested');
+  }
+
+  _defeatVigilante(v, criminal, now) {
+    const marshal = this.birds.get(v.birdId);
+    if (marshal) {
+      marshal.marshalBadge = false;
+    }
+
+    criminal.xp += 300;
+    criminal.coins += 200;
+
+    // Daily challenge progress for criminal
+    this._trackDailyProgress(criminal, 'vigilante_defeated', 1);
+
+    // Gazette tracking
+    if (this.gazetteStats) {
+      this.gazetteStats.vigilanteDefeated = (this.gazetteStats.vigilanteDefeated || 0) + 1;
+    }
+
+    this.events.push({
+      type: 'vigilante_defeated',
+      marshalId: v.birdId,
+      marshalName: v.name,
+      criminalId: criminal.id,
+      criminalName: criminal.name,
+      xpAwarded: 300,
+      coinsAwarded: 200,
+    });
+
+    this._endVigilante('defeated');
+  }
+
+  _endVigilante(reason) {
+    if (!this.vigilante) return;
+    const v = this.vigilante;
+    const marshal = this.birds.get(v.birdId);
+    if (marshal) marshal.marshalBadge = false;
+
+    this.events.push({
+      type: 'vigilante_ended',
+      marshalId: v.birdId,
+      marshalName: v.name,
+      targetId: v.targetId,
+      targetName: v.targetName,
+      reason,
+    });
+
+    this.vigilante = null;
+    this.level5HeldSince = null;
+  }
+
 }
 
 module.exports = GameEngine;

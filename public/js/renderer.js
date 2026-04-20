@@ -484,7 +484,30 @@ window.Renderer = {
         if (b.id === (selfBird && selfBird.id)) continue;
         // Witness Protection: hidden from other players' minimaps
         if (b.witnessProtectionActive) continue;
-        if (b.hitBounty) {
+        if (b.isVigilante) {
+          // Active Marshal: pulsing gold star dot
+          const pulse = Math.sin(Date.now() * 0.01) * 0.4 + 0.6;
+          minimapCtx.globalAlpha = pulse;
+          minimapCtx.font = '9px serif';
+          minimapCtx.textAlign = 'center';
+          minimapCtx.textBaseline = 'middle';
+          minimapCtx.fillText('⭐', b.x * sx, b.y * sy);
+          minimapCtx.globalAlpha = 1;
+        } else if (b.isVigTarget) {
+          // Vigilante target: pulsing red dot with warning glow
+          const pulse = Math.sin(Date.now() * 0.014) * 0.4 + 0.6;
+          minimapCtx.globalAlpha = pulse * 0.4;
+          minimapCtx.fillStyle = '#ff4444';
+          minimapCtx.beginPath();
+          minimapCtx.arc(b.x * sx, b.y * sy, 5, 0, Math.PI * 2);
+          minimapCtx.fill();
+          minimapCtx.globalAlpha = pulse;
+          minimapCtx.fillStyle = '#ff4444';
+          minimapCtx.beginPath();
+          minimapCtx.arc(b.x * sx, b.y * sy, 3, 0, Math.PI * 2);
+          minimapCtx.fill();
+          minimapCtx.globalAlpha = 1;
+        } else if (b.hitBounty) {
           // Hit contract target: pulsing red dot
           const pulse = Math.sin(Date.now() * 0.012) * 0.4 + 0.6;
           minimapCtx.globalAlpha = pulse;
