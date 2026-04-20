@@ -1777,6 +1777,64 @@
     if (ev.type === 'cursed_coin_dropped') {
       addEventMessage('💀 The Cursed Coin was dropped!', '#ff5500');
     }
+
+    // === Session 120: HOT POOP events ===
+    if (ev.type === 'hot_poop_spawned') {
+      effects.push({ type: 'screen_shake', intensity: 5, duration: 400, time: now });
+      showAnnouncement('🔥 THE HOT POOP HAS LANDED!\nGrab it for +50% XP — but PASS IT BEFORE IT BLOWS!', '#ff6600', 5000);
+      addEventMessage('🔥 A searing Hot Poop appeared in the city! Grab it and pass it like a hot potato!', '#ff6600');
+    }
+    if (ev.type === 'hot_poop_grabbed') {
+      const tag = ev.gangTag ? `[${ev.gangTag}] ` : '';
+      const isMe = ev.birdId === myId;
+      if (isMe) {
+        showAnnouncement('🔥 YOU HAVE THE HOT POOP!\n+50% XP · +20% speed · POOP a rival bird to pass it!', '#ff8800', 4000);
+      } else {
+        addEventMessage(`🔥 ${tag}${ev.birdName} grabbed the Hot Poop! They have 30 seconds to pass it!`, '#ff8800');
+      }
+    }
+    if (ev.type === 'hot_poop_passed') {
+      const isMe = ev.passerId === myId;
+      const passedToMe = ev.recipientId === myId;
+      if (isMe) {
+        showAnnouncement(`🔥 PASSED! +80 XP · ${ev.passes} pass${ev.passes !== 1 ? 'es' : ''} so far`, '#ffaa00', 3000);
+      } else if (passedToMe) {
+        effects.push({ type: 'screen_shake', intensity: 4, duration: 300, time: now });
+        showAnnouncement(`🔥 ${ev.passerName} PASSED THE HOT POOP TO YOU!\nPOOP someone else to pass it on! (${ev.passes} passes)`, '#ff4400', 4000);
+      } else {
+        addEventMessage(`🔥 ${ev.passerName} passed the Hot Poop to ${ev.recipientName}! (${ev.passes} passes)`, '#ff8800');
+      }
+      if (ev.passerId === myId || ev.recipientId === myId) {
+        effects.push({ type: 'text', x: ev.x - (camera ? camera.x - camera.screenW / 2 : 0), y: ev.y - (camera ? camera.y - camera.screenH / 2 : 0), time: now, duration: 1200, text: '🔥 PASSED!', color: '#ff8800', size: 14 });
+      }
+    }
+    if (ev.type === 'hot_poop_warning') {
+      if (ev.holderId === myId) {
+        effects.push({ type: 'screen_shake', intensity: 6, duration: 400, time: now });
+        showAnnouncement('🔥 15 SECONDS! POOP SOMEONE TO PASS THE HOT POOP OR EXPLODE!', '#ff2200', 4000);
+      } else {
+        addEventMessage(`🔥 15 seconds left! ${ev.holderName} is about to EXPLODE!`, '#ff4400');
+      }
+    }
+    if (ev.type === 'hot_poop_exploded') {
+      effects.push({ type: 'screen_shake', intensity: 14, duration: 800, time: now });
+      const tag = ev.holderGangTag ? `[${ev.holderGangTag}] ` : '';
+      const isMe = ev.holderId === myId;
+      if (isMe) {
+        showAnnouncement(`🔥💥 THE HOT POOP EXPLODED!\nYou lost ${ev.lostCoins}c and got stunned 2s!\nPassed through ${ev.totalPasses} birds!`, '#ff0000', 6000);
+      } else {
+        showAnnouncement(`🔥💥 HOT POOP EXPLODES on ${tag}${ev.holderName}!\n${ev.totalPasses} birds handled it! Coin scatter!`, '#ff4400', 5000);
+      }
+      addEventMessage(`🔥💥 HOT POOP EXPLODES on ${tag}${ev.holderName} (−${ev.lostCoins}c) after ${ev.totalPasses} passes!${ev.cityBonus ? ' City-wide +50 XP!' : ''}`, '#ff2200');
+      // Coin shower particles
+      for (let i = 0; i < 16; i++) {
+        effects.push({ type: 'coin_particle', x: camera.screenW / 2 + (Math.random() - 0.5) * 260, y: camera.screenH / 2 + (Math.random() - 0.5) * 200, vx: (Math.random() - 0.5) * 5, vy: (Math.random() - 2.5) * 4, time: now, duration: 1600 });
+      }
+    }
+    if (ev.type === 'hot_poop_dropped') {
+      addEventMessage('🔥 The Hot Poop was dropped!', '#ff6600');
+    }
+
     if (ev.type === 'cursed_coin_explosion') {
       effects.push({ type: 'screen_shake', intensity: 15, duration: 900, time: now });
       const tag = ev.holderGangTag ? `[${ev.holderGangTag}] ` : '';
@@ -10100,6 +10158,11 @@
       Renderer.drawCursedCoin(ctx, camera, gameState.self.cursedCoin, now);
     }
 
+    // Hot Poop (world-state) — Session 120
+    if (gameState.hotPoop && gameState.hotPoop.state === 'world') {
+      Renderer.drawHotPoop(ctx, camera, gameState.hotPoop, now);
+    }
+
     // Bird Royale — safe zone ring + danger zone overlay
     if (gameState.birdRoyale && gameState.birdRoyale.state === 'active') {
       Renderer.drawBirdRoyaleZone(ctx, camera, gameState.birdRoyale, now);
@@ -10550,6 +10613,12 @@
           // Cursed Coin holder indicator
           if (b.hasCursedCoin) {
             Sprites.drawCursedCoinIndicator(ctx, sx, sy, now / 1000, b.cursedCoinIntensity || 0);
+          }
+
+          // Hot Poop carrier indicator — Session 120
+          if (b.isHotPoopCarrier && gameState.hotPoop) {
+            const secsLeft = gameState.hotPoop.timeLeft != null ? gameState.hotPoop.timeLeft / 1000 : 30;
+            Sprites.drawHotPoopCarrierIndicator(ctx, sx, sy, now / 1000, secsLeft);
           }
 
           // Street Duel: red combat aura + hearts above dueling birds
@@ -13482,6 +13551,11 @@
       Renderer.drawCursedCoinOnMinimap(minimapCtx, worldData, gameState.self.cursedCoin, now);
     }
 
+    // Hot Poop on minimap — pulsing orange 🔥 dot (world-state only) — Session 120
+    if (gameState.hotPoop && gameState.hotPoop.state === 'world' && worldData) {
+      Renderer.drawHotPoopOnMinimap(minimapCtx, worldData, gameState.hotPoop, now);
+    }
+
     // Tornado on minimap — pulsing purple 🌪️ dot tracking the vortex position
     if (gameState.weather && gameState.weather.type === 'tornado' &&
         gameState.weather.tornadoX !== undefined && worldData) {
@@ -15624,6 +15698,26 @@
       const pDist = Math.sqrt(pdx * pdx + pdy * pdy);
       if (pDist < 350) {
         html += '<div class="bm-buff-pill" style="background:rgba(60,0,80,0.75);border-color:#cc66ff;color:#ffaaff;">🎵 PIPER NEARBY — POOP HIM AWAY!</div>';
+      }
+    }
+
+    // === HOT POOP carrier buff — Session 120 ===
+    if (s.isHotPoopCarrier && gameState.hotPoop && gameState.hotPoop.timeLeft != null) {
+      const secsLeft = Math.ceil(gameState.hotPoop.timeLeft / 1000);
+      const isCritical = secsLeft <= 5;
+      const isUrgent = secsLeft <= 10;
+      const urgBg = isCritical ? 'rgba(120,0,0,0.95)' : isUrgent ? 'rgba(100,30,0,0.9)' : 'rgba(80,40,0,0.85)';
+      const urgColor = isCritical ? '#ff0000' : isUrgent ? '#ff4400' : '#ff8800';
+      const urgAnim = isCritical ? 'pulseRed 0.3s infinite alternate' : isUrgent ? 'pulseRed 0.5s infinite alternate' : 'kingpinGlow 1s ease-in-out infinite alternate';
+      html += `<div class="bm-buff-pill" style="background:${urgBg};border-color:${urgColor};color:${urgColor};font-weight:bold;animation:${urgAnim};">🔥 HOT POOP — ${secsLeft}s · +50% XP · POOP a rival to PASS IT!</div>`;
+    }
+    // Show direction tip if hot poop is in world and we don't have it
+    if (!s.isHotPoopCarrier && gameState.hotPoop && gameState.hotPoop.state === 'world' && gameState.hotPoop.x != null && s.x != null) {
+      const hdx = gameState.hotPoop.x - s.x;
+      const hdy = gameState.hotPoop.y - s.y;
+      const hDist = Math.sqrt(hdx * hdx + hdy * hdy);
+      if (hDist < 200) {
+        html += `<div class="bm-buff-pill" style="background:rgba(70,30,0,0.8);border-color:#ff8800;color:#ffcc44;">🔥 HOT POOP is right here — grab it for +50% XP!</div>`;
       }
     }
 

@@ -4122,6 +4122,33 @@ A slow dark-green armored garbage truck rolls west→east along the main city ro
 
 **Creative intent**: The city already had moving targets (vault truck, mayor's motorcade, birdnapper van, pigeon coupe, hot dog cart) but they all required active combat or button presses. The garbage truck is different — it rewards just FOLLOWING it. Low-level birds who can't fight cops can still benefit: trail the truck, collect the loot drops, earn steady food and coins. The skill shot is a genuine precision challenge: landing a poop in a small moving target at 55px/s while avoiding the cab section. And the Grand Dump creates a city-wide sprint moment — "IT'S DUMPING!" and every bird races to the east end to grab the scatter. A bird who follows the truck the entire route AND lands the skill shot AND arrives at the dump site earns the most food/coins of any single 4-minute window in the game. Pure DISCOVERY + CARNAGE + PROGRESSION energy — even the trash is valuable in Bird City.
 
+**Session 120 — 2026-04-20: THE HOT POOP — Hot Potato Chaos Item**
+Every 10-14 minutes, a scorching Hot Poop materializes somewhere in Bird City — a searing brown coil wreathed in orange fire that grants power but demands sacrifice. Grab it for +50% XP and +20% speed, but you have 30 seconds to POOP IT AT SOMEONE ELSE or it EXPLODES.
+
+**Core mechanic (`server/game.js`):**
+- Spawns at one of 10 city locations, announced city-wide with screen shake
+- Auto-grabbed: fly within 40px to pick it up
+- While held: +50% XP on all poop hits, +20% speed — the most powerful short-term buff in the game
+- **Pass mechanic**: fire a poop that hits any other bird/NPC within the expanded hit radius — the Hot Poop instantly transfers to that bird. +80 XP +30c for the passer, daily challenge `hot_poop_pass` progress
+- **30-second fuse**: 15-second warning fires personally and city-wide. At 0s: EXPLOSION
+- **Explosion**: holder loses 25% coins (max 200c), 2s stun, combo wipe. Coins scatter to all birds within 200px. If 3+ unique birds held it this round: city-wide +50 XP bonus (the city cheers the long chain)
+- Disconnect while holding: poop drops to world at last position, announced city-wide
+- Respawns 10-14 minutes after explosion
+- Pass chain tracked via `holdersSeen` Set and `passes` counter — gazette integration: "🔥 HOT POOP DETONATES ON [Name] — CITY EXPLODES IN CHAOS" with passes count and satirical subline
+
+**Two new daily challenges:**
+- 🔥 **Hot Potato**: Pass the Hot Poop to another bird before it explodes (160 XP, 80c)
+- 💣 **Blast Zone**: Survive being in the Hot Poop explosion radius (140 XP, 70c)
+
+**Visual system:**
+- `drawHotPoopWorldObject()` in `sprites.js`: fire aura radial gradient, 3-tier brown coil body with sheen highlight, 3 independent flame particles cycling orange/red, "🔥 HOT POOP" bobbing label
+- `drawHotPoopCarrierIndicator()` in `sprites.js`: floating 🔥 emoji above holder's head with urgency-scaling size/glow/bob speed, countdown label at ≤20s remaining, critical ring at ≤5s
+- `drawHotPoop()` + `drawHotPoopOnMinimap()` in `renderer.js`: world draw + pulsing orange 🔥 minimap dot (world-state only)
+- Active buffs HUD: carrier sees "🔥 HOT POOP — Xs · +50% XP · POOP a rival to PASS IT!" in escalating urgency colors (orange→red→critical red pulse)
+- Proximity tip pill when Hot Poop is unclaimed within 200px: "🔥 HOT POOP is right here — grab it for +50% XP!"
+
+**Creative intent**: Every other "cursed item" in Bird City (Cursed Coin, Riot Shield, Ghost Mode) is something you WANT to hold. The Hot Poop is the opposite: it's simultaneously the strongest buff in the game AND a ticking death sentence. The pass mechanic creates a city-wide game of hot potato — you see it appear on the minimap, you sprint toward it for the XP boost, but the moment you grab it you're hunting your next victim to dump it on. A chain of 5+ passes announced in the event feed builds social drama in real time. The explosion's coin scatter means nearby birds WANT the holder to blow up, creating natural shark-circling behavior around the carrier near the 15-second warning. Two birds near each other at 5 seconds left, both desperately trying to be the one who passes — pure CARNAGE CITY chaos. Pure CARNAGE + SOCIAL + SPECTACLE energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)

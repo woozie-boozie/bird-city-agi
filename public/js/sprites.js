@@ -8747,4 +8747,105 @@ window.Sprites = {
     ctx.globalAlpha = 1;
     ctx.restore();
   },
+
+  // === Session 120: HOT POOP — world object ===
+  drawHotPoopWorldObject(ctx, x, y, t) {
+    ctx.save();
+    ctx.translate(x, y);
+    const pulse = 0.5 + 0.5 * Math.sin(t * 5);
+    const bob = Math.sin(t * 3.5) * 2.5;
+    ctx.translate(0, bob);
+
+    // Outer fire aura
+    const aura = ctx.createRadialGradient(0, 0, 4, 0, 0, 22);
+    aura.addColorStop(0, `rgba(255,120,0,${0.45 + 0.2 * pulse})`);
+    aura.addColorStop(0.5, `rgba(255,40,0,${0.25 + 0.1 * pulse})`);
+    aura.addColorStop(1, 'rgba(255,0,0,0)');
+    ctx.fillStyle = aura;
+    ctx.beginPath(); ctx.arc(0, 0, 22, 0, Math.PI * 2); ctx.fill();
+
+    // 3-tier coil body
+    ctx.shadowColor = '#ff4400'; ctx.shadowBlur = 8;
+    // Base coil
+    ctx.fillStyle = '#6b3a1f';
+    ctx.beginPath(); ctx.ellipse(0, 4, 9, 5, 0, 0, Math.PI * 2); ctx.fill();
+    // Mid coil
+    ctx.fillStyle = '#7d4522';
+    ctx.beginPath(); ctx.ellipse(0, 0, 7, 4, 0, 0, Math.PI * 2); ctx.fill();
+    // Top coil
+    ctx.fillStyle = '#8a4e26';
+    ctx.beginPath(); ctx.ellipse(0, -4, 5, 3, 0, 0, Math.PI * 2); ctx.fill();
+    // Tip point
+    ctx.fillStyle = '#8a4e26';
+    ctx.beginPath(); ctx.moveTo(-2, -6); ctx.lineTo(2, -6); ctx.lineTo(0, -10); ctx.closePath(); ctx.fill();
+    // Sheen highlight
+    ctx.fillStyle = 'rgba(255,255,200,0.25)';
+    ctx.beginPath(); ctx.ellipse(-2, -3, 2, 1.2, -0.4, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // 3 flame particles
+    for (let i = 0; i < 3; i++) {
+      const phase = t * 4 + i * 2.1;
+      const fx = Math.sin(phase) * 10;
+      const fy = -12 - Math.abs(Math.cos(phase)) * 8 - i * 3;
+      const h = 15 + i * 4 + Math.sin(t * 6 + i) * 4;
+      const flameColor = i % 2 === 0 ? `rgba(255,140,0,0.85)` : `rgba(255,60,0,0.85)`;
+      ctx.fillStyle = flameColor;
+      ctx.beginPath();
+      ctx.moveTo(fx - 3, fy + h * 0.4);
+      ctx.quadraticCurveTo(fx - 5, fy + h * 0.2, fx, fy);
+      ctx.quadraticCurveTo(fx + 5, fy + h * 0.2, fx + 3, fy + h * 0.4);
+      ctx.closePath(); ctx.fill();
+    }
+
+    // "🔥 HOT POOP" label
+    ctx.font = 'bold 9px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+    ctx.fillStyle = `rgba(255,${Math.floor(180 + 60 * pulse)},0,0.95)`;
+    ctx.shadowColor = '#000'; ctx.shadowBlur = 4;
+    ctx.fillText('🔥 HOT POOP', 0, -16);
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  },
+
+  // === Session 120: HOT POOP — carrier indicator (drawn above bird) ===
+  drawHotPoopCarrierIndicator(ctx, x, y, t, secsLeft) {
+    ctx.save();
+    ctx.translate(x, y);
+    const isUrgent = secsLeft <= 10;
+    const isCritical = secsLeft <= 5;
+
+    // Urgency ring when critical
+    if (isCritical) {
+      const ringPulse = 0.5 + 0.5 * Math.sin(t * 10);
+      ctx.strokeStyle = `rgba(255,0,0,${0.6 + 0.4 * ringPulse})`;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.arc(0, 0, 18 + ringPulse * 4, 0, Math.PI * 2); ctx.stroke();
+    } else if (isUrgent) {
+      ctx.strokeStyle = 'rgba(255,120,0,0.55)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(0, 0, 18, 0, Math.PI * 2); ctx.stroke();
+    }
+
+    // 🔥 emoji above head — size/glow scales with urgency
+    const emojiSize = isCritical ? 14 : (isUrgent ? 12 : 10);
+    const bobY = -28 - Math.abs(Math.sin(t * (isCritical ? 8 : isUrgent ? 5 : 3))) * 4;
+    ctx.font = `${emojiSize}px Arial`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    if (isCritical) { ctx.shadowColor = '#ff0000'; ctx.shadowBlur = 10; }
+    else if (isUrgent) { ctx.shadowColor = '#ff6600'; ctx.shadowBlur = 6; }
+    ctx.fillText('🔥', 0, bobY);
+    ctx.shadowBlur = 0;
+
+    // Countdown label ≤20s
+    if (secsLeft <= 20) {
+      const countColor = isCritical ? '#ff2200' : (isUrgent ? '#ff8800' : '#ffcc00');
+      ctx.font = `bold ${isCritical ? 10 : 9}px Arial`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+      ctx.fillStyle = countColor;
+      ctx.shadowColor = '#000'; ctx.shadowBlur = 4;
+      ctx.fillText(`💣${Math.ceil(secsLeft)}s`, 0, bobY - emojiSize / 2 - 2);
+      ctx.shadowBlur = 0;
+    }
+    ctx.restore();
+  },
 };

@@ -161,6 +161,9 @@ const DAILY_CHALLENGE_POOL = [
   // Session 108: Auction House challenges
   { id: 'auction_winner', title: 'Going Once!', desc: 'Win a lot at the Bird City Auction House', target: 1, trackType: 'auction_win', reward: { xp: 200, coins: 100 } },
   { id: 'auction_bidder', title: 'High Roller',  desc: 'Place a bid of 150c or more at the Auction House', target: 1, trackType: 'auction_big_bid', reward: { xp: 120, coins: 60  } },
+  // Session 120: Hot Poop challenges
+  { id: 'hot_potato', title: 'Hot Potato', desc: 'Pass the Hot Poop to another bird before it explodes', target: 1, trackType: 'hot_poop_pass', reward: { xp: 160, coins: 80 } },
+  { id: 'hot_blast',  title: 'Blast Zone', desc: 'Survive being in the Hot Poop explosion radius',      target: 1, trackType: 'hot_poop_survived', reward: { xp: 140, coins: 70 } },
   // Session 109: Bowling Bird challenges
   { id: 'bowling_striker', title: 'Striker!',    desc: 'Knock 5 birds into the air while you are the Bowling Bird', target: 5,  trackType: 'bowling_knock',  reward: { xp: 200, coins: 100 } },
   { id: 'bowling_buster',  title: 'Ball Buster', desc: 'Land poop hits on the Bowling Bird to help pop it',          target: 1,  trackType: 'bowling_popped', reward: { xp: 250, coins: 125 } },
@@ -855,6 +858,17 @@ class GameEngine {
     this.cursedCoin = null; // null | { state:'world'|'held', x, y, holderId, holderName, heldSince, intensity, lastDrain, stealCooldowns: Map }
     this.cursedCoinTimer = Date.now() + this._randomRange(8 * 60000, 14 * 60000); // first spawn 8-14 min in
 
+    // === HOT POOP — Hot Potato event ===
+    // Every 10-14 minutes, a glowing flaming turd materialises at a random city spot.
+    // Auto-grab by flying within 40px. While holding:
+    //   - +50% XP on all poop hits  - +20% speed boost (panicked energy)
+    //   - 30-second countdown; at 15s a WARNING fires
+    //   - Poop hits another bird while carrying → PASS the Hot Poop to them (+80 XP +30c for passer)
+    //   - At 0s: EXPLOSION — holder loses 25% coins (max 200c), coins scatter to nearby birds, combo wipe
+    //   - If 3+ unique birds have held it before explosion: city-wide +60 XP bonus
+    this.hotPoop = null; // null | { state:'world'|'held', x, y, holderId, holderName, heldSince, holdersSeen: Set, warnedAt15s, passes }
+    this._hotPoopTimer = Date.now() + this._randomRange(10 * 60000, 14 * 60000);
+
     // === CRIME WAVE EVENT ===
     // Every 40-60 minutes, a 2-minute city-wide crime wave erupts:
     // - Heat generation ×2 (every poop escalates wanted level faster)
@@ -1520,6 +1534,15 @@ class GameEngine {
         this.cursedCoin.heldSince = null;
         this.cursedCoin.stealCooldowns = new Map();
         this.events.push({ type: 'cursed_coin_dropped', x: this.cursedCoin.x, y: this.cursedCoin.y, reason: 'disconnect' });
+      }
+      // Drop Hot Poop if holding — falls to current position in world
+      if (this.hotPoop && this.hotPoop.state === 'held' && this.hotPoop.holderId === id) {
+        this.hotPoop.state = 'world';
+        this.hotPoop.holderId = null;
+        this.hotPoop.holderName = null;
+        this.hotPoop.heldSince = null;
+        this.hotPoop.warnedAt15s = false;
+        this.events.push({ type: 'hot_poop_dropped', x: this.hotPoop.x, y: this.hotPoop.y });
       }
       // Cancel any pending duel challenge involving this bird
       this.pendingChallenges.delete(id);
@@ -2187,6 +2210,9 @@ class GameEngine {
 
     // === Flash Mob ===
     this._updateFlashMob(now);
+
+    // === Hot Poop ===
+    this._tickHotPoop(dt, now);
 
     // === Bowling Bird ===
     this._updateBowlingBall(now);
@@ -3195,6 +3221,11 @@ class GameEngine {
 
     // Cursed Coin: holder gets +20% speed (urgent cursed energy)
     if (this.cursedCoin && this.cursedCoin.state === 'held' && this.cursedCoin.holderId === bird.id) {
+      maxSpeed *= 1.20;
+    }
+
+    // Hot Poop: carrier gets +20% speed (pure panic)
+    if (this.hotPoop && this.hotPoop.state === 'held' && this.hotPoop.holderId === bird.id) {
       maxSpeed *= 1.20;
     }
 
@@ -4411,6 +4442,29 @@ class GameEngine {
           this._endMigration('alpha_killed', now, bird.id);
           this._trackDailyProgress(bird, 'alpha_kill', 1);
         }
+      } else if (hit.target === 'hot_poop_pass' && this.hotPoop && this.hotPoop.state === 'held' && this.hotPoop.holderId === bird.id) {
+        // Hot Poop pass: shooter passes the flaming turd to the recipient bird
+        const recipient = hit.recipient;
+        if (recipient) {
+          // Passer gets a small reward
+          xpGain = 80;
+          bird.coins += 30;
+          this._trackDailyProgress(bird, 'hot_poop_pass', 1);
+          // Transfer to recipient
+          this.hotPoop.holderId = recipient.id;
+          this.hotPoop.holderName = recipient.name;
+          this.hotPoop.heldSince = now; // reset countdown for new holder
+          this.hotPoop.holdersSeen.add(recipient.id);
+          this.hotPoop.warnedAt15s = false;
+          this.hotPoop.passes++;
+          this.events.push({
+            type: 'hot_poop_passed',
+            passerId: bird.id, passerName: bird.name,
+            recipientId: recipient.id, recipientName: recipient.name,
+            passes: this.hotPoop.passes,
+            x: recipient.x, y: recipient.y,
+          });
+        }
       } else if (hit.target === 'hit_target' && hit.hitContract) {
         // Bounty hunting — player hit a bird with an active hit contract
         const hitContract = hit.hitContract;
@@ -4680,6 +4734,10 @@ class GameEngine {
       }
       // Skill Tree Mastery: permanent +5% XP bonus for unlocking all 12 skills
       if (bird.skillTreeMaster) xpGain = Math.floor(xpGain * 1.05);
+      // Hot Poop carrier: +50% XP (adrenaline pumping, every hit counts more)
+      if (this.hotPoop && this.hotPoop.state === 'held' && this.hotPoop.holderId === bird.id) {
+        xpGain = Math.floor(xpGain * 1.5);
+      }
       // Hot Dog Cart: Frank's special sauce gives 1.3× XP on next 5 hits
       if (bird.hotdogXpBoostHits > 0) {
         xpGain = Math.floor(xpGain * 1.3);
@@ -5968,6 +6026,19 @@ class GameEngine {
       if (Math.sqrt(cpdx * cpdx + cpdy * cpdy) < hitRadius + 14) {
         if (!isMegaPoop) return { target: 'courier_pigeon' };
         allHits.push({ target: 'courier_pigeon' });
+      }
+    }
+
+    // Hot Poop pass: if the shooter is carrying the Hot Poop and hits another bird, PASS it
+    if (this.hotPoop && this.hotPoop.state === 'held' && this.hotPoop.holderId === poop.birdId) {
+      for (const [otherId, other] of this.birds) {
+        if (otherId === poop.birdId || !other.connected || other.inSewer) continue;
+        if (other.stunnedUntil > Date.now()) continue;
+        const hdx = poop.x - other.x;
+        const hdy = poop.y - other.y;
+        if (Math.sqrt(hdx * hdx + hdy * hdy) < hitRadius + 14) {
+          return { target: 'hot_poop_pass', recipientId: otherId, recipient: other };
+        }
       }
     }
 
@@ -7340,6 +7411,8 @@ class GameEngine {
           wingCharge: b.wingCharge || 0,
           // Session 105: Grudge — show nearby birds if they have a grudge targeting the viewer (so viewer knows)
           hasGrudgeOnMe: !!(b.grudge && b.grudge.targetId === bird.id),
+          // Session 120: Hot Poop carrier — visible to all nearby birds
+          isHotPoopCarrier: !!(this.hotPoop && this.hotPoop.state === 'held' && this.hotPoop.holderId === b.id),
           // Session 109: Vigilante Marshal
           isVigilante: !!(this.vigilante && this.vigilante.birdId === b.id),
           isVigTarget: !!(this.vigilante && this.vigilante.targetId === b.id),
@@ -7918,6 +7991,18 @@ class GameEngine {
           return { isMole: false, revealed: false };
         }
       })() : null,
+      hotPoop: this.hotPoop ? {
+        state: this.hotPoop.state,
+        x: this.hotPoop.x,
+        y: this.hotPoop.y,
+        holderId: this.hotPoop.holderId,
+        holderName: this.hotPoop.holderName,
+        heldSince: this.hotPoop.heldSince,
+        passes: this.hotPoop.passes,
+        warnedAt15s: this.hotPoop.warnedAt15s,
+        holdersSeen: this.hotPoop.holdersSeen.size,
+        timeLeft: this.hotPoop.state === 'held' ? Math.max(0, 30000 - (Date.now() - this.hotPoop.heldSince)) : null,
+      } : null,
       raccoons: nearbyRaccoons,
       drunkPigeons: nearbyDrunkPigeons,
       cops: nearbyCops,
@@ -8170,6 +8255,8 @@ class GameEngine {
         // Golden Egg Scramble
         carryingEggId: bird.carryingEggId,
         eggTackleImmunityUntil: bird.eggTackleImmunityUntil,
+        // Hot Poop carrier flag
+        isHotPoopCarrier: !!(this.hotPoop && this.hotPoop.state === 'held' && this.hotPoop.holderId === bird.id),
         // Pigeon Coupe
         drivingCoupeId: bird.drivingCoupeId || null,
         nearPigeonCoupe: (() => {
@@ -17337,6 +17424,17 @@ class GameEngine {
       });
     }
 
+    // Hot Poop explosion headline
+    if (stats.hotPoopExplosions && stats.hotPoopExplosions.length > 0) {
+      const top = stats.hotPoopExplosions[0];
+      const tag = top.gangTag ? `[${top.gangTag}] ` : '';
+      headlines.push({
+        icon: '🔥',
+        headline: `HOT POOP DETONATES ON ${tag}${top.name.toUpperCase()} — CITY EXPLODES IN CHAOS`,
+        subline: `${top.passes} birds handled the cursed turd before it blew. "I thought it was someone else's problem," says every bird who touched it.`,
+      });
+    }
+
     // Default headline if nothing notable happened
     if (headlines.length === 0) {
       headlines.push({
@@ -25046,6 +25144,171 @@ class GameEngine {
     this.flashMob = null;
     // Schedule next mob 12-18 min from now
     this._flashMobTimer = now + this._randomRange(12 * 60000, 18 * 60000);
+  }
+
+  // ============================================================
+  // Session 120: THE HOT POOP — hot potato event
+  // A glowing flaming turd spawns every 10-14 min; auto-grabbed
+  // by any nearby bird. Carrier gets +20% speed +50% XP but has
+  // 30s before it explodes (losing 25% coins, stun, combo wipe).
+  // Pass it via poop-hit on another bird to reset the countdown.
+  // ============================================================
+  _tickHotPoop(dt, now) {
+    // === Spawn timer ===
+    if (!this.hotPoop && now >= this._hotPoopTimer && this.birds.size > 0) {
+      const spawnPositions = [
+        { x: 1200, y: 1200 }, { x: 800, y: 800 }, { x: 1600, y: 1400 },
+        { x: 500, y: 1800 }, { x: 2200, y: 700 }, { x: 900, y: 2100 },
+        { x: 2100, y: 1800 }, { x: 1500, y: 600 }, { x: 700, y: 1400 },
+        { x: 1800, y: 2200 },
+      ];
+      const pos = spawnPositions[Math.floor(Math.random() * spawnPositions.length)];
+      this.hotPoop = {
+        state: 'world',
+        x: pos.x, y: pos.y,
+        holderId: null, holderName: null,
+        heldSince: null,
+        holdersSeen: new Set(),
+        warnedAt15s: false,
+        passes: 0,
+      };
+      this.events.push({ type: 'hot_poop_spawned', x: pos.x, y: pos.y });
+    }
+
+    if (!this.hotPoop) return;
+    const hp = this.hotPoop;
+
+    // === World state: auto-grab any nearby bird ===
+    if (hp.state === 'world') {
+      for (const [birdId, bird] of this.birds) {
+        if (!bird.connected || bird.inSewer) continue;
+        const dx = bird.x - hp.x;
+        const dy = bird.y - hp.y;
+        if (Math.sqrt(dx * dx + dy * dy) < 40) {
+          hp.state = 'held';
+          hp.holderId = birdId;
+          hp.holderName = bird.name;
+          hp.heldSince = now;
+          hp.holdersSeen.add(birdId);
+          hp.warnedAt15s = false;
+          this.events.push({ type: 'hot_poop_grabbed', birdId, birdName: bird.name, x: bird.x, y: bird.y });
+          break;
+        }
+      }
+      return;
+    }
+
+    // === Held state: countdown to explosion ===
+    if (hp.state === 'held') {
+      const holder = this.birds.get(hp.holderId);
+
+      // If holder disconnected, drop poop in world at last known pos
+      if (!holder || !holder.connected) {
+        hp.state = 'world';
+        hp.holderId = null;
+        hp.holderName = null;
+        hp.heldSince = null;
+        hp.warnedAt15s = false;
+        this.events.push({ type: 'hot_poop_dropped', x: hp.x, y: hp.y });
+        return;
+      }
+
+      // Keep poop position in sync with carrier
+      hp.x = holder.x;
+      hp.y = holder.y;
+
+      const heldFor = now - hp.heldSince;
+
+      // 15-second warning
+      if (!hp.warnedAt15s && heldFor >= 15000) {
+        hp.warnedAt15s = true;
+        this.events.push({ type: 'hot_poop_warning', birdId: hp.holderId, birdName: hp.holderName });
+      }
+
+      // 30-second explosion
+      if (heldFor >= 30000) {
+        this._explodeHotPoop(now);
+        return;
+      }
+    }
+  }
+
+  _explodeHotPoop(now) {
+    const hp = this.hotPoop;
+    if (!hp) return;
+
+    const holder = hp.holderId ? this.birds.get(hp.holderId) : null;
+    let coinScatter = 0;
+    const holdersSeen = hp.holdersSeen.size;
+
+    if (holder) {
+      // Holder loses 25% coins, max 200c
+      const loss = Math.min(Math.floor(holder.coins * 0.25), 200);
+      holder.coins = Math.max(0, holder.coins - loss);
+      coinScatter = loss;
+      // Stun and wipe combo
+      holder.stunnedUntil = now + 2000;
+      holder.comboCount = 0;
+      holder.comboExpiresAt = 0;
+    }
+
+    // Scatter coins to all birds within 200px
+    const nearbyBirds = [];
+    const ex = hp.x, ey = hp.y;
+    for (const [birdId, bird] of this.birds) {
+      if (!bird.connected) continue;
+      const dx = bird.x - ex;
+      const dy = bird.y - ey;
+      if (Math.sqrt(dx * dx + dy * dy) < 200) {
+        nearbyBirds.push(bird);
+      }
+    }
+
+    const scatterAmount = coinScatter > 0 && nearbyBirds.length > 0
+      ? Math.floor(coinScatter / nearbyBirds.length)
+      : 0;
+
+    if (scatterAmount > 0) {
+      for (const bird of nearbyBirds) {
+        if (bird.id === hp.holderId) continue; // holder already lost coins
+        bird.coins += scatterAmount;
+      }
+    }
+
+    // If 3+ unique birds held it, city-wide bonus
+    const cityWideBonus = holdersSeen >= 3;
+    if (cityWideBonus) {
+      for (const [, bird] of this.birds) {
+        if (bird.connected) bird.xp += 50;
+      }
+    }
+
+    // Track daily challenge for survivors in the blast radius (not the holder)
+    for (const bird of nearbyBirds) {
+      if (bird.id !== hp.holderId) {
+        this._trackDailyProgress(bird, 'hot_poop_survived', 1);
+      }
+    }
+
+    this.events.push({
+      type: 'hot_poop_explosion',
+      x: ex, y: ey,
+      holderId: hp.holderId,
+      holderName: hp.holderName,
+      coinLoss: coinScatter,
+      scatterAmount,
+      nearbyCount: nearbyBirds.length,
+      cityWideBonus,
+      holdersSeen,
+    });
+
+    // Gazette tracking
+    if (!this.gazetteStats.hotPoopExplosions) this.gazetteStats.hotPoopExplosions = [];
+    if (holder) this.gazetteStats.hotPoopExplosions.push({ name: holder.name, gangTag: holder.gangTag || null, passes: holdersSeen });
+
+    // Reset hot poop — next spawn in 10-14 min
+    this.hotPoop = null;
+    this._hotPoopTimer = now + this._randomRange(10 * 60000, 14 * 60000);
   }
 
   // ============================================================

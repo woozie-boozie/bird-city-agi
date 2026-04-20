@@ -4018,6 +4018,36 @@ window.Renderer = {
   },
 
   // ============================================================
+  // Session 120: HOT POOP — world object + minimap
+  drawHotPoop(ctx, camera, hotPoop, now) {
+    if (!hotPoop || hotPoop.state !== 'world') return;
+    const sx = hotPoop.x - camera.x + camera.screenW / 2;
+    const sy = hotPoop.y - camera.y + camera.screenH / 2;
+    Sprites.drawHotPoopWorldObject(ctx, sx, sy, now / 1000);
+  },
+
+  drawHotPoopOnMinimap(minimapCtx, worldData, hotPoop, now) {
+    if (!hotPoop || hotPoop.state !== 'world') return;
+    const scale = minimapCtx.canvas.width / worldData.width;
+    const cx = hotPoop.x * scale;
+    const cy = hotPoop.y * scale;
+    const t = now / 1000;
+    const pulse = 0.5 + 0.5 * Math.sin(t * 6);
+    minimapCtx.save();
+    minimapCtx.shadowColor = '#ff6600';
+    minimapCtx.shadowBlur = 6 + 4 * pulse;
+    minimapCtx.fillStyle = `rgba(255, 100, 0, ${0.8 + 0.2 * pulse})`;
+    minimapCtx.beginPath();
+    minimapCtx.arc(cx, cy, 4 + pulse * 1.5, 0, Math.PI * 2);
+    minimapCtx.fill();
+    minimapCtx.shadowBlur = 0;
+    minimapCtx.font = '8px sans-serif';
+    minimapCtx.textAlign = 'center';
+    minimapCtx.fillText('🔥', cx, cy - 5);
+    minimapCtx.restore();
+  },
+
+  // ============================================================
   // BIRD ROYALE — shrinking safe zone
   // ============================================================
 
