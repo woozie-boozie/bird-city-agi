@@ -5815,4 +5815,50 @@ window.Renderer = {
     minimapCtx.fillText('🏅', cx, cy);
     minimapCtx.restore();
   },
+
+  // ============================================================
+  // Session 121: Chaos Oracle
+  // ============================================================
+  drawChaosOracle(ctx, camera, oracle, now) {
+    if (!oracle) return;
+    const sx = oracle.x - camera.x + camera.screenW / 2;
+    const sy = oracle.y - camera.y + camera.screenH / 2;
+    Sprites.drawChaosOracle(ctx, sx, sy, now);
+
+    // Proximity prompt
+    if (oracle.nearMe) {
+      const cooldownOk = !oracle.myCooldownUntil || oracle.myCooldownUntil < now;
+      ctx.save();
+      ctx.font = 'bold 10px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = cooldownOk ? '#cc88ff' : '#888';
+      ctx.shadowColor = '#000'; ctx.shadowBlur = 4;
+      const label = cooldownOk ? '[Q] Consult the Oracle' : 'Oracle on cooldown';
+      ctx.fillText(label, sx, sy + 44);
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    }
+  },
+
+  drawChaosOracleOnMinimap(minimapCtx, worldData, oracle, now) {
+    if (!oracle) return;
+    const scale = minimapCtx.canvas.width / worldData.width;
+    const cx = oracle.x * scale;
+    const cy = oracle.y * scale;
+    const pulse = 0.5 + 0.5 * Math.sin(now * 0.003);
+
+    minimapCtx.save();
+    minimapCtx.shadowColor = '#cc44ff';
+    minimapCtx.shadowBlur = 8 * pulse;
+    minimapCtx.fillStyle = `rgba(180,40,255,${0.7 + 0.3 * pulse})`;
+    minimapCtx.beginPath();
+    minimapCtx.arc(cx, cy, 3.5 + pulse, 0, Math.PI * 2);
+    minimapCtx.fill();
+    minimapCtx.shadowBlur = 0;
+    minimapCtx.font = '8px sans-serif';
+    minimapCtx.textAlign = 'center';
+    minimapCtx.textBaseline = 'middle';
+    minimapCtx.fillText('🔮', cx, cy);
+    minimapCtx.restore();
+  },
 };

@@ -8848,4 +8848,85 @@ window.Sprites = {
     }
     ctx.restore();
   },
+
+  // ============================================================
+  // Session 121: Chaos Oracle — mystic fortune-teller NPC
+  // ============================================================
+  drawChaosOracle(ctx, x, y, now) {
+    ctx.save();
+    ctx.translate(x, y);
+
+    const pulse = 0.5 + 0.5 * Math.sin(now * 0.002);
+    const t = now * 0.001;
+
+    // Purple aura glow
+    const aura = ctx.createRadialGradient(0, 0, 8, 0, 0, 38);
+    aura.addColorStop(0, `rgba(180,0,255,${0.18 + 0.10 * pulse})`);
+    aura.addColorStop(1, 'rgba(80,0,180,0)');
+    ctx.fillStyle = aura;
+    ctx.beginPath(); ctx.ellipse(0, 0, 38, 38, 0, 0, Math.PI * 2); ctx.fill();
+
+    // Robe body — deep purple
+    ctx.fillStyle = '#3a005e';
+    ctx.beginPath(); ctx.ellipse(0, 4, 13, 18, 0, 0, Math.PI * 2); ctx.fill();
+
+    // Cloak highlights
+    ctx.fillStyle = '#6a00b8';
+    ctx.beginPath(); ctx.ellipse(-7, 2, 5, 10, -0.3, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(7, 2, 5, 10, 0.3, 0, Math.PI * 2); ctx.fill();
+
+    // Head
+    ctx.fillStyle = '#c8a050';
+    ctx.beginPath(); ctx.arc(0, -12, 7, 0, Math.PI * 2); ctx.fill();
+
+    // Hood
+    ctx.fillStyle = '#28003c';
+    ctx.beginPath();
+    ctx.moveTo(-9, -12);
+    ctx.quadraticCurveTo(-10, -22, 0, -24);
+    ctx.quadraticCurveTo(10, -22, 9, -12);
+    ctx.closePath(); ctx.fill();
+
+    // Glowing eyes
+    ctx.fillStyle = `rgba(255,220,0,${0.7 + 0.3 * pulse})`;
+    ctx.shadowColor = '#ffcc00'; ctx.shadowBlur = 6;
+    ctx.beginPath(); ctx.arc(-3, -12, 2, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(3, -12, 2, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Crystal ball — bobbing
+    const ballY = 8 + 2 * Math.sin(t * 1.5);
+    const ballGrad = ctx.createRadialGradient(-3, ballY - 3, 1, 0, ballY, 8);
+    ballGrad.addColorStop(0, 'rgba(220,180,255,0.9)');
+    ballGrad.addColorStop(0.5, 'rgba(140,60,220,0.7)');
+    ballGrad.addColorStop(1, 'rgba(60,0,120,0.6)');
+    ctx.fillStyle = ballGrad;
+    ctx.strokeStyle = `rgba(200,120,255,${0.4 + 0.3 * pulse})`;
+    ctx.lineWidth = 1.5;
+    ctx.shadowColor = '#cc66ff'; ctx.shadowBlur = 8;
+    ctx.beginPath(); ctx.arc(0, ballY, 8, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.beginPath(); ctx.arc(-2, ballY - 2, 2.5, 0, Math.PI * 2); ctx.fill();
+
+    // Orbiting sparkles around ball
+    for (let i = 0; i < 4; i++) {
+      const angle = t * 2 + (i * Math.PI / 2);
+      const sx = Math.cos(angle) * 11;
+      const sy = ballY + Math.sin(angle) * 5;
+      ctx.fillStyle = `rgba(255,220,80,${0.6 + 0.4 * Math.sin(t * 3 + i)})`;
+      ctx.beginPath(); ctx.arc(sx, sy, 1.2, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // Label
+    ctx.font = 'bold 8px Arial';
+    ctx.fillStyle = '#cc88ff';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    ctx.shadowColor = '#000'; ctx.shadowBlur = 3;
+    ctx.fillText('🔮 ORACLE', 0, -30);
+    ctx.shadowBlur = 0;
+
+    ctx.restore();
+  },
 };

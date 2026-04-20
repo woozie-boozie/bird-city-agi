@@ -197,6 +197,9 @@ const DAILY_CHALLENGE_POOL = [
   // Session 119: Garbage Truck challenges
   { id: 'trash_collector', title: 'Dumpster Diver', desc: 'Collect 5 garbage loot drops from the Trash Day truck',   target: 5, trackType: 'garbage_loot_collected', reward: { xp: 160, coins: 80  } },
   { id: 'trash_shot',     title: 'Trash Shot!',    desc: 'Land a poop in the garbage truck\'s open hopper (skill shot!)', target: 1, trackType: 'trash_shot_scored', reward: { xp: 200, coins: 100 } },
+  // Session 121: Chaos Oracle challenges
+  { id: 'oracle_seeker',  title: 'Oracle Seeker',  desc: 'Consult the Chaos Oracle and receive a prophecy',             target: 1, trackType: 'oracle_consulted',    reward: { xp: 180, coins: 90  } },
+  { id: 'oracle_blessed', title: 'Fortune\'s Favorite', desc: 'Receive a BLESSED prophecy from the Chaos Oracle',       target: 1, trackType: 'oracle_blessed',     reward: { xp: 250, coins: 125 } },
 ];
 
 // ============================================================
@@ -868,6 +871,13 @@ class GameEngine {
     //   - If 3+ unique birds have held it before explosion: city-wide +60 XP bonus
     this.hotPoop = null; // null | { state:'world'|'held', x, y, holderId, holderName, heldSince, holdersSeen: Set, warnedAt15s, passes }
     this._hotPoopTimer = Date.now() + this._randomRange(10 * 60000, 14 * 60000);
+
+    // === CHAOS ORACLE ===
+    // A mysterious fortune-teller who appears every 20-28 minutes at a random landmark.
+    // Press [Q] within 80px to receive a prophecy (5-min per-bird cooldown).
+    // 12 blessed outcomes, 8 cursed outcomes, 1 rare JACKPOT.
+    this.chaosOracle = null; // null | { x, y, spawnedAt, expiresAt, visitCooldowns: Map<birdId, ts> }
+    this._chaosOracleTimer = Date.now() + this._randomRange(20 * 60000, 28 * 60000);
 
     // === CRIME WAVE EVENT ===
     // Every 40-60 minutes, a 2-minute city-wide crime wave erupts:
@@ -1608,6 +1618,10 @@ class GameEngine {
       this.events.push({ type: 'sound', birdId, sound, x: bird.x, y: bird.y });
     }
 
+    if (action.type === 'oracle_consult') {
+      this._handleOracleConsult(bird, now);
+    }
+
     if (action.type === 'send_to_nest') {
       bird.inNest = true;
       bird.vx = 0;
@@ -2240,6 +2254,9 @@ class GameEngine {
 
     // === Garbage Truck (Trash Day) ===
     this._updateGarbageTruck(dt, now);
+
+    // === Chaos Oracle ===
+    this._tickChaosOracle(now);
   }
 
   // ============================================================
@@ -3254,6 +3271,10 @@ class GameEngine {
       maxSpeed *= 1.35;
     }
 
+    // Chaos Oracle: speed blessing (+40%) or slowness curse (-30%)
+    if (bird.oracleSpeedUntil > now) maxSpeed *= 1.40;
+    if (bird.oracleSlowUntil > now)  maxSpeed *= 0.70;
+
     // Pigeon Coupe: the driver rides in style at a flat 220px/s minimum (sports car speed!)
     if (bird.drivingCoupeId && this.pigeonCoupe && this.pigeonCoupe.driverId === bird.id) {
       maxSpeed = Math.max(maxSpeed, 220);
@@ -3407,6 +3428,9 @@ class GameEngine {
       }
     }
 
+    // Oracle: confused flight — controls reversed for 8 seconds
+    if (bird.oracleConfusedUntil > now) { ax = -ax; ay = -ay; }
+
     bird.vx = (bird.vx + ax * dt) * drag;
     bird.vy = (bird.vy + ay * dt) * drag;
 
@@ -3532,7 +3556,8 @@ class GameEngine {
 
     // === POOP ===
     // Block poop while driving the Pigeon Coupe (both hands on the wheel!)
-    if (!bird.carryingEggId && !bird.drivingCoupeId && bird.piperEnchantedUntil <= now && bird.input.space && now - bird.lastPoop > poopCooldown) {
+    // Also block poop during Oracle drought curse
+    if (!bird.carryingEggId && !bird.drivingCoupeId && bird.piperEnchantedUntil <= now && (bird.oraclePoopDroughtUntil || 0) <= now && bird.input.space && now - bird.lastPoop > poopCooldown) {
       bird.lastPoop = now;
       const poopId = 'p_' + uid();
       const poop = {
@@ -4654,14 +4679,16 @@ class GameEngine {
         coinGain = Math.floor(coinGain * 3);
         this.events.push({ type: 'vend_rainbow_hit', birdId: bird.id, coins: coinGain, x: poop.x, y: poop.y });
       }
+      // Chaos Oracle: Coin Rain blessing — 3× coins per poop hit for 20s
+      if ((bird.oracleCoinRainUntil || 0) > now && coinGain > 0) coinGain = Math.floor(coinGain * 3);
       bird.coins += coinGain;
 
       // === COMBO STREAK — chain hits within 8s for escalating XP ===
       if (hit.target && hit.target !== 'none') {
         const comboActive = now < bird.comboExpiresAt;
         bird.comboCount = comboActive ? bird.comboCount + 1 : 1;
-        // Aurora extends combo to 12s; blizzard to 11s (snowball chaos = more time to chain hits)
-        const comboWindow = this.aurora ? 12000 : (this.weather && this.weather.type === 'blizzard' ? 11000 : 8000);
+        // Aurora extends combo to 12s; blizzard to 11s; Oracle combo extension to 16s
+        const comboWindow = (bird.oracleComboExtUntil || 0) > now ? 16000 : this.aurora ? 12000 : (this.weather && this.weather.type === 'blizzard' ? 11000 : 8000);
         bird.comboExpiresAt = now + comboWindow;
         const combo = bird.comboCount;
         // XP bonus: flat multiplier applied to base xpGain
@@ -4742,6 +4769,13 @@ class GameEngine {
       if (bird.hotdogXpBoostHits > 0) {
         xpGain = Math.floor(xpGain * 1.3);
         bird.hotdogXpBoostHits--;
+      }
+      // Chaos Oracle: XP Surge blessing — 2× XP for 20s
+      if ((bird.oracleXpSurgeUntil || 0) > now) xpGain = Math.floor(xpGain * 2);
+      // Chaos Oracle: Poop Blessing — next 4 poops earn 2× XP
+      if ((bird.oraclePoopBlessingHits || 0) > 0 && hit.target !== 'miss') {
+        xpGain = Math.floor(xpGain * 2);
+        bird.oraclePoopBlessingHits--;
       }
       bird.xp += xpGain;
 
@@ -8002,6 +8036,13 @@ class GameEngine {
         warnedAt15s: this.hotPoop.warnedAt15s,
         holdersSeen: this.hotPoop.holdersSeen.size,
         timeLeft: this.hotPoop.state === 'held' ? Math.max(0, 30000 - (Date.now() - this.hotPoop.heldSince)) : null,
+      } : null,
+      chaosOracle: this.chaosOracle ? {
+        x: this.chaosOracle.x,
+        y: this.chaosOracle.y,
+        expiresAt: this.chaosOracle.expiresAt,
+        myCooldownUntil: this.chaosOracle.visitCooldowns.get(bird.id) || 0,
+        nearMe: Math.hypot(bird.x - this.chaosOracle.x, bird.y - this.chaosOracle.y) < 80,
       } : null,
       raccoons: nearbyRaccoons,
       drunkPigeons: nearbyDrunkPigeons,
@@ -12367,7 +12408,8 @@ class GameEngine {
       // Arrest: cop catches wanted bird (within 18px, bird not already stunned)
       // Mystery Crate: Riot Shield blocks arrest entirely
       // Session 93: Possessed birds are immune to arrest — the feral spirit repels the law!
-      if (dist < 18 && wanted.stunnedUntil <= now && !(wanted.mcRiotShieldUntil > now) && !(wanted.possessedUntil > now) && !(this.goldenRampage && this.goldenRampage.birdId === wanted.id) && !(wanted.wingSurgeUntil > now)) {
+      // Session 121: Oracle Guardian Spirit — cop immunity for 20s
+      if (dist < 18 && wanted.stunnedUntil <= now && !(wanted.mcRiotShieldUntil > now) && !(wanted.possessedUntil > now) && !(this.goldenRampage && this.goldenRampage.birdId === wanted.id) && !(wanted.wingSurgeUntil > now) && !((wanted.oracleGuardianUntil || 0) > now)) {
         // Skill Tree: Ghost Walk — 18% chance to fully evade a cop arrest
         if (wanted.skillTreeUnlocked && wanted.skillTreeUnlocked.includes('ghost_walk') && Math.random() < 0.18) {
           this.events.push({ type: 'ghost_walk_evade', birdId: wanted.id, birdName: wanted.name, x: cop.x, y: cop.y });
@@ -27088,6 +27130,239 @@ class GameEngine {
 
     this.vigilante = null;
     this.level5HeldSince = null;
+  }
+
+  // ============================================================
+  // CHAOS ORACLE — Session 121
+  // A mysterious fortune-teller who appears every 20-28 minutes
+  // at a random city landmark. Press [Q] within 80px to receive
+  // a prophecy (5-min per-bird cooldown).
+  // 12 blessed, 8 cursed, 1 rare JACKPOT prophecy.
+  // ============================================================
+
+  // 10 landmark spawn positions spread across the city
+  static get ORACLE_LOCATIONS() {
+    return [
+      { x: 1200, y: 1200, name: 'Park Center' },
+      { x: 2100, y: 1200, name: 'Downtown Plaza' },
+      { x: 2300, y: 500,  name: 'Mall Atrium' },
+      { x: 500,  y: 1800, name: 'Cafe Corner' },
+      { x: 400,  y: 500,  name: 'Residential Square' },
+      { x: 1200, y: 450,  name: 'Radio Tower Base' },
+      { x: 2750, y: 1200, name: 'The Arena' },
+      { x: 1300, y: 2380, name: 'City Docks' },
+      { x: 1780, y: 1050, name: 'City Hall Steps' },
+      { x: 1050, y: 640,  name: 'Hall of Legends' },
+    ];
+  }
+
+  // 21 prophecy definitions: outcome, type, desc, effect params
+  static get ORACLE_PROPHECIES() {
+    return [
+      // === BLESSED (12) ===
+      { id: 'coin_fortune',     type: 'blessed', emoji: '💰', text: 'Fortune smiles upon you!',          desc: '+100 coins',                          effect: 'coin_fortune'     },
+      { id: 'speed_blessing',   type: 'blessed', emoji: '💨', text: 'The winds carry your wings!',       desc: '+40% speed for 25 seconds',           effect: 'speed_blessing'   },
+      { id: 'guardian_spirit',  type: 'blessed', emoji: '🛡️', text: 'A guardian watches over you.',      desc: 'Cop arrest immunity for 20 seconds',  effect: 'guardian_spirit'  },
+      { id: 'poop_blessing',    type: 'blessed', emoji: '✨', text: 'Your aim is divinely guided!',      desc: 'Next 4 poops deal 2× XP',             effect: 'poop_blessing'    },
+      { id: 'food_abundance',   type: 'blessed', emoji: '🍗', text: 'Feast, for the gods are generous!', desc: '+80 food instantly',                  effect: 'food_abundance'   },
+      { id: 'combo_extension',  type: 'blessed', emoji: '🔥', text: 'Your streak burns eternal!',        desc: 'Combo window extended to 16s for 60s', effect: 'combo_extension'  },
+      { id: 'invisibility_mist',type: 'blessed', emoji: '👻', text: 'Step into the mist...',             desc: 'Ghost Mode for 12 seconds',           effect: 'invisibility_mist'},
+      { id: 'coin_rain',        type: 'blessed', emoji: '🌧️', text: 'Coins fall from the heavens!',      desc: '+3× coins per poop hit for 20 seconds', effect: 'coin_rain'      },
+      { id: 'heat_cleanse',     type: 'blessed', emoji: '🕊️', text: 'Your sins are forgiven.',           desc: 'Wanted heat reduced by 40',           effect: 'heat_cleanse'     },
+      { id: 'xp_surge',         type: 'blessed', emoji: '⚡', text: 'Power floods your feathers!',       desc: '+2× XP on all hits for 20 seconds',   effect: 'xp_surge'         },
+      { id: 'double_poop',      type: 'blessed', emoji: '💣', text: 'Your fury is doubled!',             desc: 'Next 3 poops are Mega Poop AOE',      effect: 'double_poop'      },
+      { id: 'flight_blessing',  type: 'blessed', emoji: '🌟', text: 'You soar above all others!',        desc: '+200 XP instantly',                   effect: 'flight_blessing'  },
+      // === CURSED (8) ===
+      { id: 'coin_drain',       type: 'cursed',  emoji: '💸', text: 'The Oracle takes her tithe.',       desc: 'Lose 20% of your coins (max 120c)',   effect: 'coin_drain'       },
+      { id: 'heat_curse',       type: 'cursed',  emoji: '🚨', text: 'Your crimes are revealed!',         desc: '+50 wanted heat added',               effect: 'heat_curse'       },
+      { id: 'slowness_curse',   type: 'cursed',  emoji: '🐢', text: 'Your wings grow heavy.',            desc: '−30% speed for 20 seconds',           effect: 'slowness_curse'   },
+      { id: 'poop_drought',     type: 'cursed',  emoji: '🚫', text: 'The Oracle silences your bowels.',  desc: 'Poop disabled for 6 seconds',         effect: 'poop_drought'     },
+      { id: 'confused_flight',  type: 'cursed',  emoji: '😵', text: 'Reality warps around you.',         desc: 'Controls reversed for 8 seconds',     effect: 'confused_flight'  },
+      { id: 'combo_wipe',       type: 'cursed',  emoji: '💔', text: 'Your streak is shattered!',         desc: 'Combo streak reset to 0',             effect: 'combo_wipe'       },
+      { id: 'coin_tax',         type: 'cursed',  emoji: '📜', text: 'A tax decree falls upon you.',      desc: 'Lose 50 coins',                       effect: 'coin_tax'         },
+      { id: 'dizzy_spell',      type: 'cursed',  emoji: '🌀', text: 'The void gazes back.',              desc: 'Stunned for 3 seconds',               effect: 'dizzy_spell'      },
+      // === JACKPOT (1, rare ~5%) ===
+      { id: 'jackpot',          type: 'jackpot', emoji: '🌈', text: 'THE ORACLE BLESSES THE CHOSEN ONE!', desc: '+300 XP, +200c, 2× XP 30s, Mega Poop x5', effect: 'jackpot' },
+    ];
+  }
+
+  _tickChaosOracle(now) {
+    // Spawn timer
+    if (!this.chaosOracle && now >= this._chaosOracleTimer && this.birds.size > 0) {
+      const locs = GameEngine.ORACLE_LOCATIONS;
+      const loc = locs[Math.floor(Math.random() * locs.length)];
+      this.chaosOracle = {
+        x: loc.x,
+        y: loc.y,
+        locationName: loc.name,
+        spawnedAt: now,
+        expiresAt: now + this._randomRange(4 * 60000, 7 * 60000), // 4-7 min window
+        visitCooldowns: new Map(),
+      };
+      this.events.push({
+        type: 'oracle_appeared',
+        x: loc.x,
+        y: loc.y,
+        locationName: loc.name,
+        expiresAt: this.chaosOracle.expiresAt,
+      });
+    }
+
+    if (!this.chaosOracle) return;
+
+    // Expire
+    if (now >= this.chaosOracle.expiresAt) {
+      this.events.push({ type: 'oracle_expired', x: this.chaosOracle.x, y: this.chaosOracle.y });
+      this.chaosOracle = null;
+      this._chaosOracleTimer = now + this._randomRange(20 * 60000, 28 * 60000);
+    }
+  }
+
+  _handleOracleConsult(bird, now) {
+    const oracle = this.chaosOracle;
+    if (!oracle) {
+      this.events.push({ type: 'oracle_fail', birdId: bird.id, reason: 'no_oracle', msg: 'The Oracle is not present right now.' });
+      return;
+    }
+    const dist = Math.hypot(bird.x - oracle.x, bird.y - oracle.y);
+    if (dist > 80) {
+      this.events.push({ type: 'oracle_fail', birdId: bird.id, reason: 'too_far', msg: 'Move closer to the Oracle. [Q] within 80px.' });
+      return;
+    }
+    const cooldownUntil = oracle.visitCooldowns.get(bird.id) || 0;
+    if (now < cooldownUntil) {
+      const secsLeft = Math.ceil((cooldownUntil - now) / 1000);
+      this.events.push({ type: 'oracle_fail', birdId: bird.id, reason: 'cooldown', msg: `The Oracle needs ${secsLeft}s to recover her sight.` });
+      return;
+    }
+
+    // Roll prophecy — 5% jackpot, 55% blessed, 40% cursed
+    const roll = Math.random();
+    let prophecy;
+    const prophecies = GameEngine.ORACLE_PROPHECIES;
+    if (roll < 0.05) {
+      prophecy = prophecies.find(p => p.id === 'jackpot');
+    } else if (roll < 0.60) {
+      const blessed = prophecies.filter(p => p.type === 'blessed');
+      prophecy = blessed[Math.floor(Math.random() * blessed.length)];
+    } else {
+      const cursed = prophecies.filter(p => p.type === 'cursed');
+      prophecy = cursed[Math.floor(Math.random() * cursed.length)];
+    }
+
+    // Apply effect
+    this._applyOracleProphecy(bird, prophecy, now);
+
+    // Set 5-minute cooldown for this bird
+    oracle.visitCooldowns.set(bird.id, now + 5 * 60000);
+
+    // Track daily challenges
+    this._trackDailyProgress(bird, 'oracle_consulted', 1);
+    if (prophecy.type === 'blessed' || prophecy.type === 'jackpot') {
+      this._trackDailyProgress(bird, 'oracle_blessed', 1);
+    }
+
+    // Push event
+    this.events.push({
+      type: 'oracle_consulted',
+      birdId: bird.id,
+      name: bird.name,
+      gangTag: bird.gangTag || null,
+      prophecyId: prophecy.id,
+      prophecyType: prophecy.type,
+      emoji: prophecy.emoji,
+      text: prophecy.text,
+      desc: prophecy.desc,
+      x: oracle.x,
+      y: oracle.y,
+    });
+
+    // Gazette tracking
+    if (!this.gazetteStats.oracleConsults) this.gazetteStats.oracleConsults = [];
+    this.gazetteStats.oracleConsults.push({ name: bird.name, gangTag: bird.gangTag || null, prophecyType: prophecy.type, prophecyId: prophecy.id });
+  }
+
+  _applyOracleProphecy(bird, prophecy, now) {
+    switch (prophecy.effect) {
+      case 'coin_fortune':
+        bird.coins = (bird.coins || 0) + 100;
+        break;
+      case 'speed_blessing':
+        bird.oracleSpeedUntil = now + 25000;
+        break;
+      case 'guardian_spirit':
+        bird.oracleGuardianUntil = now + 20000;
+        break;
+      case 'poop_blessing':
+        bird.oraclePoopBlessingHits = (bird.oraclePoopBlessingHits || 0) + 4;
+        break;
+      case 'food_abundance':
+        bird.food = Math.min(100, (bird.food || 0) + 80);
+        break;
+      case 'combo_extension':
+        bird.oracleComboExtUntil = now + 60000; // 60s of extended 16s combo window
+        break;
+      case 'invisibility_mist':
+        bird.mcGhostModeUntil = now + 12000; // reuse existing ghost mode flag
+        break;
+      case 'coin_rain':
+        bird.oracleCoinRainUntil = now + 20000;
+        break;
+      case 'heat_cleanse': {
+        const currentHeat = this._getBirdHeat(bird.id);
+        const newHeat = Math.max(0, currentHeat - 40);
+        if (this.heatScores) this.heatScores.set(bird.id, newHeat);
+        break;
+      }
+      case 'xp_surge':
+        bird.oracleXpSurgeUntil = now + 20000;
+        break;
+      case 'double_poop':
+        bird.bmMegaPoops = (bird.bmMegaPoops || 0) + 3; // reuse mega poop counter
+        break;
+      case 'flight_blessing':
+        bird.xp = (bird.xp || 0) + 200;
+        break;
+
+      // === CURSED ===
+      case 'coin_drain': {
+        const loss = Math.min(120, Math.floor((bird.coins || 0) * 0.20));
+        bird.coins = Math.max(0, (bird.coins || 0) - loss);
+        break;
+      }
+      case 'heat_curse':
+        this._addHeat(bird.id, 50);
+        break;
+      case 'slowness_curse':
+        bird.oracleSlowUntil = now + 20000;
+        break;
+      case 'poop_drought':
+        bird.oraclePoopDroughtUntil = now + 6000;
+        break;
+      case 'confused_flight':
+        bird.oracleConfusedUntil = now + 8000;
+        break;
+      case 'combo_wipe':
+        bird.combo = 0;
+        bird.lastHitTime = 0;
+        break;
+      case 'coin_tax': {
+        const tax = Math.min(50, bird.coins || 0);
+        bird.coins = Math.max(0, (bird.coins || 0) - tax);
+        break;
+      }
+      case 'dizzy_spell':
+        bird.arrestedUntil = now + 3000;
+        break;
+
+      // === JACKPOT ===
+      case 'jackpot':
+        bird.xp = (bird.xp || 0) + 300;
+        bird.coins = (bird.coins || 0) + 200;
+        bird.oracleXpSurgeUntil = now + 30000;
+        bird.bmMegaPoops = (bird.bmMegaPoops || 0) + 5;
+        break;
+    }
   }
 
 }

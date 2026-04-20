@@ -5339,6 +5339,34 @@
       showAnnouncement(ev.msg || `🌭 Can't buy right now!`, '#aa5500', 2000);
     }
 
+    // === CHAOS ORACLE (Session 121) ===
+    if (ev.type === 'oracle_appeared') {
+      screenShake(6, 400);
+      showAnnouncement(`🔮 THE CHAOS ORACLE ARRIVES!\nFly to it and press [Q] to receive a prophecy!`, '#9933ff', 5000);
+      addEventMessage(`🔮 The Chaos Oracle has materialized somewhere in Bird City! Press [Q] to consult it.`, '#cc66ff');
+    }
+    if (ev.type === 'oracle_expired') {
+      addEventMessage(`🔮 The Chaos Oracle vanishes into the void...`, '#663388');
+    }
+    if (ev.type === 'oracle_consulted') {
+      const isMe = ev.birdId === myId;
+      if (isMe) {
+        const tag = ev.gangTag ? `[${ev.gangTag}] ` : '';
+        const typeLabel = ev.prophecyType === 'jackpot' ? '💫 JACKPOT PROPHECY' :
+                          ev.prophecyType === 'blessed' ? '✨ BLESSED PROPHECY' : '☠️ CURSED PROPHECY';
+        const typeColor = ev.prophecyType === 'jackpot' ? '#ffdd00' :
+                          ev.prophecyType === 'blessed' ? '#44ffaa' : '#ff4444';
+        showAnnouncement(`🔮 ${typeLabel}!\n"${ev.prophecyText}"`, typeColor, 6000);
+        effects.push({ type: 'screen_flash', color: ev.prophecyType === 'cursed' ? 'rgba(180,0,0,0.25)' : 'rgba(120,0,220,0.25)', duration: 400, time: now });
+      } else {
+        const typeEmoji = ev.prophecyType === 'jackpot' ? '💫' : ev.prophecyType === 'blessed' ? '✨' : '☠️';
+        addEventMessage(`🔮 ${typeEmoji} ${ev.birdName} received a ${ev.prophecyType} prophecy from the Oracle!`, '#aa66ff');
+      }
+    }
+    if (ev.type === 'oracle_fail' && ev.birdId === myId) {
+      showAnnouncement(ev.msg || `🔮 You must be closer to the Oracle!`, '#663388', 2500);
+    }
+
     // === WING SURGE (Session 113) ===
     if (ev.type === 'wing_surge_activated') {
       const isMe = ev.birdId === myId;
@@ -5621,7 +5649,12 @@
       leaderboardEl.style.display = leaderboardEl.style.display === 'none' ? 'block' : 'none';
     }
     if (e.key.toLowerCase() === 'q') {
-      socket.emit('action', { type: 'caw' });
+      // Context-sensitive: consult Oracle when nearby, otherwise caw
+      if (gameState && gameState.chaosOracle && gameState.chaosOracle.nearMe) {
+        socket.emit('action', { type: 'oracle_consult' });
+      } else {
+        socket.emit('action', { type: 'caw' });
+      }
     }
     if (e.key.toLowerCase() === 'r') {
       // Race join when near START and race is open
@@ -10163,6 +10196,11 @@
       Renderer.drawHotPoop(ctx, camera, gameState.hotPoop, now);
     }
 
+    // Chaos Oracle — Session 121
+    if (gameState.chaosOracle) {
+      Renderer.drawChaosOracle(ctx, camera, gameState.chaosOracle, now);
+    }
+
     // Bird Royale — safe zone ring + danger zone overlay
     if (gameState.birdRoyale && gameState.birdRoyale.state === 'active') {
       Renderer.drawBirdRoyaleZone(ctx, camera, gameState.birdRoyale, now);
@@ -13269,6 +13307,36 @@
       }
     }
 
+    // === CHAOS ORACLE — off-screen direction arrow when active ===
+    if (gameState.chaosOracle && !gameState.chaosOracle.nearMe) {
+      const osx = gameState.chaosOracle.x - camera.x + camera.screenW / 2;
+      const osy = gameState.chaosOracle.y - camera.y + camera.screenH / 2;
+      const oOnScreen = osx > 50 && osx < camera.screenW - 50 && osy > 50 && osy < camera.screenH - 50;
+      if (!oOnScreen) {
+        const oAngle = Math.atan2(osy - camera.screenH / 2, osx - camera.screenW / 2);
+        const oArrDist = Math.min(camera.screenW, camera.screenH) / 2 - 60;
+        const oAx = camera.screenW / 2 + Math.cos(oAngle) * oArrDist;
+        const oAy = camera.screenH / 2 + Math.sin(oAngle) * oArrDist;
+        const oPulse = 0.7 + 0.3 * Math.sin(now * 0.004);
+        ctx.save();
+        ctx.translate(oAx, oAy);
+        ctx.rotate(oAngle);
+        ctx.globalAlpha = 0.9 * oPulse;
+        ctx.fillStyle = '#9933ff';
+        ctx.shadowColor = '#cc44ff';
+        ctx.shadowBlur = 12;
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(22, 0); ctx.lineTo(-10, -10); ctx.lineTo(-5, 0); ctx.lineTo(-10, 10);
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.font = 'bold 11px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('🔮', 4, 0);
+        ctx.restore();
+      }
+    }
+
     // Announcements (screen-space)
     drawAnnouncements(ctx, now);
 
@@ -13554,6 +13622,11 @@
     // Hot Poop on minimap — pulsing orange 🔥 dot (world-state only) — Session 120
     if (gameState.hotPoop && gameState.hotPoop.state === 'world' && worldData) {
       Renderer.drawHotPoopOnMinimap(minimapCtx, worldData, gameState.hotPoop, now);
+    }
+
+    // Chaos Oracle on minimap — pulsing purple 🔮 dot — Session 121
+    if (gameState.chaosOracle && worldData) {
+      Renderer.drawChaosOracleOnMinimap(minimapCtx, worldData, gameState.chaosOracle, now);
     }
 
     // Tornado on minimap — pulsing purple 🌪️ dot tracking the vortex position
@@ -16354,6 +16427,48 @@
       const secsLeft = Math.ceil(Math.max(0, rb.expiresAt - now) / 1000);
       const myHits = rb.myHits || 0;
       html += `<div class="bm-buff-pill" style="background:rgba(80,0,0,0.9);border-color:#cc1a1a;color:#ff6666;animation:pulseRed 0.8s ease-in-out infinite alternate;font-weight:bold;">🔴 RIVAL BIRD — ${rb.hp}/${rb.maxHp} HP · ${secsLeft}s · MY HITS: ${myHits} · POOP ACE!</div>`;
+    }
+
+    // === CHAOS ORACLE (Session 121) — prophecy buff/debuff pills ===
+    if (gameState.chaosOracle && gameState.chaosOracle.nearMe && gameState.chaosOracle.myCooldownUntil <= now) {
+      html += `<div class="bm-buff-pill" style="background:rgba(60,0,100,0.92);border-color:#9933ff;color:#cc88ff;animation:kingpinGlow 1.0s ease-in-out infinite alternate;font-weight:bold;">🔮 CHAOS ORACLE is here — Press [Q] to receive a prophecy!</div>`;
+    }
+    // Blessed buffs
+    if (s.oracleCoinRainUntil && s.oracleCoinRainUntil > now) {
+      const secs = Math.ceil((s.oracleCoinRainUntil - now) / 1000);
+      html += `<div class="bm-buff-pill" style="background:rgba(60,50,0,0.92);border-color:#ffdd22;color:#ffe877;animation:kingpinGlow 0.8s ease-in-out infinite alternate;font-weight:bold;">🔮 COIN RAIN — 3× coins on poop hits · ${secs}s</div>`;
+    }
+    if (s.oracleXpSurgeUntil && s.oracleXpSurgeUntil > now) {
+      const secs = Math.ceil((s.oracleXpSurgeUntil - now) / 1000);
+      html += `<div class="bm-buff-pill" style="background:rgba(0,60,60,0.92);border-color:#44ffee;color:#88ffee;animation:kingpinGlow 0.8s ease-in-out infinite alternate;font-weight:bold;">🔮 XP SURGE — 2× XP on all poop hits · ${secs}s</div>`;
+    }
+    if (s.oraclePoopBlessingHits && s.oraclePoopBlessingHits > 0) {
+      html += `<div class="bm-buff-pill" style="background:rgba(50,0,80,0.92);border-color:#dd88ff;color:#eebfff;font-weight:bold;">🔮 POOP BLESSING ×${s.oraclePoopBlessingHits} — 2× XP on next ${s.oraclePoopBlessingHits} poop hit${s.oraclePoopBlessingHits !== 1 ? 's' : ''}!</div>`;
+    }
+    if (s.oracleComboExtUntil && s.oracleComboExtUntil > now) {
+      const secs = Math.ceil((s.oracleComboExtUntil - now) / 1000);
+      html += `<div class="bm-buff-pill" style="background:rgba(60,30,0,0.88);border-color:#ff9944;color:#ffcc88;animation:kingpinGlow 1.0s ease-in-out infinite alternate;">🔮 COMBO ORACLE — 16s combo window · ${secs}s</div>`;
+    }
+    if (s.oracleGuardianUntil && s.oracleGuardianUntil > now) {
+      const secs = Math.ceil((s.oracleGuardianUntil - now) / 1000);
+      html += `<div class="bm-buff-pill" style="background:rgba(0,50,80,0.92);border-color:#44aaff;color:#88ccff;animation:kingpinGlow 0.9s ease-in-out infinite alternate;font-weight:bold;">🔮 GUARDIAN — Cops CANNOT arrest you · ${secs}s</div>`;
+    }
+    if (s.oracleSpeedUntil && s.oracleSpeedUntil > now) {
+      const secs = Math.ceil((s.oracleSpeedUntil - now) / 1000);
+      html += `<div class="bm-buff-pill" style="background:rgba(0,70,40,0.88);border-color:#44ffaa;color:#88ffcc;animation:kingpinGlow 0.7s ease-in-out infinite alternate;font-weight:bold;">🔮 ORACLE SPEED — +40% max speed · ${secs}s</div>`;
+    }
+    // Cursed debuffs
+    if (s.oracleConfusedUntil && s.oracleConfusedUntil > now) {
+      const secs = Math.ceil((s.oracleConfusedUntil - now) / 1000);
+      html += `<div class="bm-buff-pill" style="background:rgba(80,0,30,0.95);border-color:#ff4466;color:#ff8899;animation:pulseRed 0.5s infinite alternate;font-weight:bold;">☠️ ORACLE CURSE — CONTROLS REVERSED! · ${secs}s</div>`;
+    }
+    if (s.oraclePoopDroughtUntil && s.oraclePoopDroughtUntil > now) {
+      const secs = Math.ceil((s.oraclePoopDroughtUntil - now) / 1000);
+      html += `<div class="bm-buff-pill" style="background:rgba(80,40,0,0.95);border-color:#cc6600;color:#ff9944;animation:pulseRed 0.7s infinite alternate;font-weight:bold;">☠️ POOP DROUGHT — Cannot poop! · ${secs}s</div>`;
+    }
+    if (s.oracleSlowUntil && s.oracleSlowUntil > now) {
+      const secs = Math.ceil((s.oracleSlowUntil - now) / 1000);
+      html += `<div class="bm-buff-pill" style="background:rgba(0,0,80,0.9);border-color:#4444cc;color:#8888ff;animation:pulseRed 0.8s infinite alternate;">☠️ ORACLE CURSE — −30% speed · ${secs}s</div>`;
     }
 
     el.innerHTML = html;

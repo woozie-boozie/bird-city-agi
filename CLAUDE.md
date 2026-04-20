@@ -4149,6 +4149,41 @@ Every 10-14 minutes, a scorching Hot Poop materializes somewhere in Bird City �
 
 **Creative intent**: Every other "cursed item" in Bird City (Cursed Coin, Riot Shield, Ghost Mode) is something you WANT to hold. The Hot Poop is the opposite: it's simultaneously the strongest buff in the game AND a ticking death sentence. The pass mechanic creates a city-wide game of hot potato — you see it appear on the minimap, you sprint toward it for the XP boost, but the moment you grab it you're hunting your next victim to dump it on. A chain of 5+ passes announced in the event feed builds social drama in real time. The explosion's coin scatter means nearby birds WANT the holder to blow up, creating natural shark-circling behavior around the carrier near the 15-second warning. Two birds near each other at 5 seconds left, both desperately trying to be the one who passes — pure CARNAGE CITY chaos. Pure CARNAGE + SOCIAL + SPECTACLE energy.
 
+**Session 121 — 2026-04-20: The Chaos Oracle — Prophecies of Fortune and Ruin**
+A mysterious robed figure materializes somewhere in Bird City every 12–18 minutes — the Chaos Oracle. Press [Q] near them to receive a prophecy drawn from a weighted pool: 5% jackpot, 55% blessed, 40% cursed. The Oracle gives with one hand and takes with the other.
+
+**21 prophecy effects (weighted pool):**
+- **Jackpot (5%)**: 🌟 TRIPLE BLESSING — coin rain + XP surge + 4 poop blessings simultaneously. The rarest, most powerful event in Bird City when it fires.
+- **Blessed (55%)**: 6 different buffs — Coin Rain (3× coins, 30s), XP Surge (2× XP, 25s), Poop Blessing (2× XP next 4 hits), Combo Oracle (16s combo window, 40s), Guardian (cop arrest immunity, 20s), Speed Oracle (+40% speed, 25s)
+- **Cursed (40%)**: 6 different debuffs — Poop Drought (can't fire, 12s), Confusion (controls reversed, 10s), Slow Curse (−30% speed, 20s), Coin Drain (−8% coins per second for 10s), Attraction (all nearby food pulled toward you for 8s — sounds good but draws cops), Mega Taunt (instantly gets everyone to caw at you, +30 wanted heat)
+
+**Server mechanics (`server/game.js`):**
+- `this.chaosOracle` — `{ x, y, spawnedAt, expiresAt, consultedBy: Set }` — persists 5-8 minutes after spawning
+- `static get ORACLE_LOCATIONS()` — 10 handpicked positions across the city
+- `static get ORACLE_PROPHECIES()` — 21 weighted prophecy definitions, each with id, type, text, effectFn
+- `_tickChaosOracle(now)` — manages spawn/expire timers; 3-4 minute cooldown between appearances
+- `_handleOracleConsult(bird, now)` — proximity check (85px), 5-minute per-bird cooldown, rolls weighted type, applies effect
+- `_applyOracleProphecy(bird, prophecy, now)` — routes to appropriate buff/debuff flags on bird
+- Engine hooks: `oracleCoinRainUntil` (3× coins in `_checkPoopHit()`), `oracleXpSurgeUntil` (2× XP), `oraclePoopBlessingHits` (2× XP next N hits), `oracleComboExtUntil` (16s window in tick), `oracleGuardianUntil` (skip cop arrest), `oracleSpeedUntil` (+40% maxSpeed), `oracleConfusedUntil` (reverse input axes), `oraclePoopDroughtUntil` (skip poop action), `oracleSlowUntil` (−30% maxSpeed), `oracleCoinDrainUntil` (per-tick coin drain), `oracleAttractionUntil` (pull nearby food), `oracleMegaTaunt` (fire caw + heat on consult)
+- Global state snapshot includes `chaosOracle: { x, y, expiresAt, myCooldownUntil, nearMe }`
+
+**Visual system:**
+- `drawChaosOracle()` in `sprites.js`: purple aura glow, deep-violet robe with hood, crystal ball held out with pulsing inner light, 4 orbiting sparkle particles, "🔮 ORACLE" label with glow
+- `drawChaosOracle()` in `renderer.js`: world-space draw with proximity "[Q] Consult the Oracle" prompt appearing within 85px
+- Minimap: pulsing purple dot with shadowBlur at Oracle's world position
+- Off-screen direction arrow: purple 🔮 arrow pointing toward Oracle when it's off-screen
+- Context-sensitive [Q] key: `oracle_consult` when `chaosOracle.nearMe`, otherwise `caw`
+- Personal announcements: colored by prophecy type (gold=jackpot, teal=blessed, red=cursed) with 6-second display showing the full prophecy text
+- Active Buffs HUD: proximity nudge pill when near Oracle, then individual pill per active buff/debuff with color-coded urgency
+
+**Two new daily challenges (added to `DAILY_CHALLENGE_POOL`):**
+- 🔮 **Oracle Seeker**: Consult the Chaos Oracle (150 XP, 75c)
+- 🔮 **Blessed by Chaos**: Receive a Blessed or Jackpot prophecy (220 XP, 110c)
+
+**Gazette tracking:** `oracleJackpots` tracked in `gazetteStats` — headline: "🔮 CHAOS ORACLE JACKPOT: [Name] RECEIVES TRIPLE BLESSING — The stars align!" when a jackpot fires.
+
+**Creative intent**: The Chaos Oracle fills the DISCOVERY pillar's last gap — a mysterious stranger who materializes and vanishes unpredictably across the city. Every consult is a gamble: you need to find the Oracle (a race in itself when the minimap dot appears), then press [Q] hoping for a blessing rather than a curse. The Poop Drought is deviously timed — landing right before a crime spree destroys your rhythm. The 10-second Confusion reversal is the funniest debuff in Bird City: suddenly flying into a wall while trying to escape cops. The Jackpot (5% chance) is the rarest single moment in the game — all three blessed buffs at once creates an astronomical XP window. And the Oracle vanishing 5-8 minutes after appearing means every appearance is a city-wide race — "🔮 THE CHAOS ORACLE HAS ARRIVED!" fires and every bird checks their minimap simultaneously. Pure DISCOVERY + CARNAGE + SPECTACLE energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
