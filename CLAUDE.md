@@ -4372,6 +4372,36 @@ The cherry blossom season gets its crown jewel: the Full Moon Spring Festival. E
 
 **Creative intent**: Session 80 made the park beautiful (cherry blossoms). Session 81 added the Hanami Lantern (one lantern, one prize). The Full Moon Festival is the seasonal CROWN JEWEL — five simultaneous prize lanterns rising from the Sacred Pond while the moon shines as a brilliant silver full disc above the park. Unlike the Hanami Lantern (winner-takes-all), the festival gives every fast bird a chance at a different prize — there are 5 lanterns for however many birds are online. The Spring Badge is the rarest cosmetic reward in the game outside of Blood Moon and Aurora — you can't buy it, you can't grind for it, you just have to be in the right place on the right spring night. A bird wearing 🌕 SPRING FEST, 🏮 Hanami Lantern, 🌸 cherry blossoms, and prestige badges is a Bird City veteran who's truly lived the seasons. Pure DISCOVERY + SPECTACLE + PROGRESSION energy — the city now has its most beautiful night event.
 
+**Session 127 — 2026-04-21: Ring Toss Event — Poop the Floating Rings**
+Every 12–18 minutes, 4 glowing teal rings materialize at random city positions and drift sinusoidally across the map. The whole city must poop them down before the 90-second window closes. Claim all 4 for a city-wide JACKPOT bonus.
+
+**Core mechanic (`server/game.js`):**
+- `this.ringToss = null` + `this._ringTossTimer` fire every 12–18 minutes when ≥1 player online
+- `_spawnRingToss(now)`: creates 4 rings at random world positions, each with unique drift parameters (phase, frequency, amplitude) — they float independently across the map
+- `_tickRingToss(dt, now)`: handles expiry + poop hit detection via `_checkPoopHit` proximity check
+- Ring positions computed via sinusoidal drift: `x = spawnX + Math.sin(phase + elapsed × freq) × amplitude`, `y = spawnY + Math.cos(phase × 1.3 + elapsed × freq × 0.8) × amplitude × 0.5`
+- Hit radius: `hitRadius + 42` — rings feel generous to hit as moving targets (more satisfying than stationary ones)
+- **Rewards per ring**: +85 XP + 45 coins immediately on claim, daily challenge progress
+- **Jackpot**: if all 4 rings are claimed before the 90s timer expires, every contributor gets +200 XP + 100 coins city-wide
+- If time expires with unclaimed rings: quiet event feed note
+
+**Client-server position sync (key design decision):**
+- State snapshot sends only immutable ring parameters (spawnX, spawnY, phase, freq, amplitude, spawnedAt) — NOT real-time coordinates
+- Both client and server compute current position from the identical sinusoidal formula using `now` — no drift, no desync, perfectly matched hit detection and visuals
+
+**Visual system (`public/js/renderer.js`, `public/js/main.js`):**
+- `drawRingToss()`: glowing teal rings with concentric glow layers, 🎯 emoji at center, radial gradient behind each ring — floating and pulsing against the city skyline
+- `drawRingTossOnMinimap()`: pulsing teal dots at each ring's live position — trackable from anywhere on the map
+- HUD countdown bar (stacks below all other event bars): teal fill showing time remaining, claimed/total count, personal rings count, jackpot hint
+- Off-screen direction arrow: single teal 🎯 arrow pointing toward the nearest unclaimed off-screen ring (not 4 separate arrows — clean single target)
+- Full event handlers: screen flash + announcement on start, floating "+85XP +45c CLAIMED!" at claim position, jackpot screen shake + big announcement, expiry event feed note
+
+**Two new daily challenges (added to `DAILY_CHALLENGE_POOL`):**
+- 🎯 **Ring Shot!**: Claim 1 ring during a Ring Toss event — 160 XP, 80c
+- 🎯 **Hat Trick**: Claim 3 rings in a single Ring Toss event — 280 XP, 140c (requires either skill or teamwork)
+
+**Creative intent**: The Ring Toss fills a gap — Bird City's timed collection events (Golden Egg Scramble, El Piñata) require either flying somewhere or smashing something. The Ring Toss is the first event where the TARGETS MOVE AUTONOMOUSLY across the map. The sinusoidal drift means a ring that's conveniently close now will drift away in 10 seconds — creating urgency without confusion. The jackpot condition (all 4 claimed) is achievable solo with a fast bird, or easy with 4 cooperating birds, making it equally fun solo and multiplayer. The nearest-ring HUD arrow navigates you to the most urgent target without cluttering the screen with 4 simultaneous arrows. A city-wide ring toss firing during a Crime Wave — everyone chasing glowing teal rings across a blood-red city while dodging cops — is peak CARNAGE CITY chaos. Pure CARNAGE + SOCIAL + SPECTACLE energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -4631,3 +4661,13 @@ Built the Territory Control System on top of the existing upstream code:
 - Gladiator Rematch: if the same bird wins the Dome Champion badge 3 sessions in a row, they earn a permanent "⚡ ARENA LEGEND" persistent badge (like Mafia Rep tier)
 - ~~Great Migration × Gang War: both warring gangs get +50% XP for killing the Alpha Leader (shared enemy bonus — ancient rivalry forgotten in the face of the great bird)~~ (DONE Session 91)
 - Great Migration slipstream racing: during an active race, migration slipstream boost stacks with race boost gates — brief supercharge moment when paths intersect
+- ~~Ring Toss Event — 4 drifting sinusoidal rings, poop to claim each one, jackpot if all 4 claimed in 90s~~ (DONE Session 127)
+- Ring Toss × Crime Wave: during a crime wave, rings drift 50% faster (more chaotic, harder to hit)
+- Ring Toss × Formation Flying: wedge formation increases hit radius for rings by +20% — rewards tight formation play even outside combat
+- Ring Toss jackpot upgrade: if all 4 rings claimed in under 45 seconds, bonus jackpot tier (2× rewards) — encourages speed runs
+- Constellation daily challenge: "Ring Master" — achieve a jackpot (all 4 rings in one event)
+- The Bird Olympics: periodic multi-event competition — Ring Toss + Racing + Arena + Egg Scramble — points across all 4 events, overall champion badge
+- Graffiti trail: while flying at high speed (>200px/s), birds leave a brief colored trail in their gang color — visual only, speed-gated
+- Kite Festival: seasonal April event where large decorative kites drift across the map, collecting them gives XP and cosmetic kite badge
+- Bird Photographer NPC: roaming visitor who randomly takes "photos" (appears near you for 3s), photographed birds get a small XP bonus — random, unexpected, joyful
+- Bubble Wrap Floor event: random city plazas become bouncy bubble wrap for 30s — birds landing in the zone bounce upward (vertical velocity boost) with satisfying visual
