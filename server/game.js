@@ -107,6 +107,7 @@ const DAILY_CHALLENGE_POOL = [
   { id: 'blossom_collector', title: 'Blossom Collector', desc: 'Collect 5 cherry blossom mochi from the park',                       target: 5,  trackType: 'mochi_collected',    reward: { xp: 180, coins: 90  } },
   { id: 'lantern_catcher',   title: 'Lantern Catcher',   desc: 'Catch the Hanami Lantern floating from the Sacred Pond on a spring night', target: 1, trackType: 'hanami_lantern', reward: { xp: 250, coins: 125 } },
   { id: 'spring_witness',    title: 'Spring Witness',    desc: 'Be near the Sacred Pond when a Hanami Lantern rises during Cherry Blossom season', target: 1, trackType: 'spring_witness', reward: { xp: 150, coins: 75 } },
+  { id: 'festival_lantern',  title: 'Festival Lantern',  desc: 'Catch a festival lantern during the Full Moon Spring Festival night', target: 1, trackType: 'festival_lantern', reward: { xp: 300, coins: 150 } },
   { id: 'duke_challenge_winner',  title: 'Noble Victor',      desc: "Complete a Duke's Challenge and claim the prize coins",    target: 1, trackType: 'duke_challenge_won',  reward: { xp: 180, coins: 90  } },
   { id: 'baron_challenge_winner', title: 'Baron\'s Champion',  desc: "Complete a Baron's Decree and claim the prize coins",      target: 1, trackType: 'baron_challenge_won', reward: { xp: 120, coins: 60  } },
   { id: 'count_challenge_winner', title: 'Count\'s Courier',   desc: "Complete a Count's Edict and claim the prize coins",       target: 1, trackType: 'count_challenge_won', reward: { xp: 80,  coins: 40  } },
@@ -959,6 +960,12 @@ class GameEngine {
     this.hanamiLanternFiredThisNight = false; // one lantern per night cycle
     this.hanamiLanternScheduledAt = null;     // scheduled spawn timestamp
 
+    // === FULL MOON SPRING FESTIVAL — rare 5-lantern event during cherry blossom season ===
+    // 20% chance per night (cherry blossom only, when no aurora or blood moon triggers).
+    // 5 festival lanterns rise simultaneously from around the Sacred Pond, each with a unique prize.
+    this.fullMoonNight = null;              // null | { startedAt, endsAt, lanterns: [...] }
+    this.fullMoonTriggeredThisNight = false;
+
     // === NOBLE CHALLENGE SYSTEM — tiered challenges from Duke/Baron/Count ===
     this.dukeChallenge  = null; // null | { type, target, reward, dukeId,  dukeName,  gangTag, expiresAt, progress: Map }
     this.baronChallenge = null; // null | { type, target, reward, baronId, baronName, gangTag, expiresAt, progress: Map }
@@ -1493,7 +1500,8 @@ class GameEngine {
       vpMachineCooldowns: {},      // machineId → timestamp (last use)
       // === PIGEON FIGHTING CHAMPIONSHIP ===
       fightingChampBadge: false,   // session-only: won the bracket tournament this session
-      hanamiLanternBadge: false,   // session-only: caught the Hanami Lantern at the Sacred Pond
+      hanamiLanternBadge: false,      // session-only: caught the Hanami Lantern at the Sacred Pond
+      springFestivalBadge: saved ? (saved.spring_festival_badge || false) : false, // persistent: caught the spring_badge lantern during the Full Moon Festival
       domeChampBadge: false,        // session-only: top pooper inside a Thunder Dome
       domeWins: saved ? (saved.dome_wins || 0) : 0,              // lifetime dome champion wins (persistent)
       arenaLegend: saved ? (saved.arena_legend || false) : false, // permanent badge: 3+ dome champion wins
@@ -4876,6 +4884,8 @@ class GameEngine {
       if (this._electionPolicyActive('festival')) xpGain = Math.floor(xpGain * 1.5);
       // Aurora Borealis: sacred sky event gives +25% XP to ALL birds
       if (this.aurora) xpGain = Math.floor(xpGain * 1.25);
+      // Full Moon Spring Festival: sacred moonlight gives +20% XP to ALL birds
+      if (this.fullMoonNight) xpGain = Math.floor(xpGain * 1.20);
       // Blood Moon: crimson chaos gives +50% XP AND coins to ALL birds
       if (this.bloodMoon) {
         xpGain = Math.floor(xpGain * 1.5);
@@ -7466,21 +7476,26 @@ class GameEngine {
         for (let i = 0; i < 3; i++) this._spawnPondFish();
         this.pondFishRespawnTimer = Date.now() + 45000;
         this.events.push({ type: 'owl_appears' });
-        // 30% chance of Aurora Borealis — OR 20% chance of Blood Moon (mutually exclusive)
+        // 30% chance Aurora | 20% Blood Moon | 20% Full Moon Festival (cherry blossom only)
         this.auroraTriggeredThisNight = false;
         this.bloodMoonTriggeredThisNight = false;
+        this.fullMoonTriggeredThisNight = false;
         const nightRoll = Math.random();
         if (nightRoll < 0.30) {
           this._startAurora(now);
         } else if (nightRoll < 0.50) {
           // 20% chance Blood Moon (only when aurora doesn't trigger)
           this._startBloodMoon(now);
+        } else if (this.cherryBlossoms && nightRoll < 0.70) {
+          // 20% chance Full Moon Festival during cherry blossom season
+          this._startFullMoonFestival(now);
         }
       }
-      // At dusk: reset aurora + blood moon trigger flags + hanami lantern so each night starts fresh
+      // At dusk: reset aurora + blood moon + full moon trigger flags + hanami lantern so each night starts fresh
       if (newPhase === 'dusk') {
         this.auroraTriggeredThisNight = false;
         this.bloodMoonTriggeredThisNight = false;
+        this.fullMoonTriggeredThisNight = false;
         this.hanamiLanternFiredThisNight = false;
         this.hanamiLanternScheduledAt = null;
         if (this.hanamiLantern) {
@@ -7508,6 +7523,10 @@ class GameEngine {
       if (newPhase === 'day' && this.nightMarket) {
         this.nightMarket = null;
         this.events.push({ type: 'night_market_close' });
+      }
+      if (newPhase === 'day' && this.fullMoonNight) {
+        this.fullMoonNight = null;
+        this.events.push({ type: 'full_moon_festival_end', message: '🌕 The Full Moon sets as dawn breaks over Bird City...' });
       }
       // At dawn: respawn all street foods to celebrate the new day
       if (newPhase === 'dawn') {
@@ -7580,6 +7599,7 @@ class GameEngine {
           constellationBadge: b.constellationBadge || false,
           constellations: b.constellations || [],
           hanamiLanternBadge: b.hanamiLanternBadge || false,
+          springFestivalBadge: b.springFestivalBadge || false,
           domeChampBadge: b.domeChampBadge || false,
           arenaLegend: b.arenaLegend || false,
           courtTitle: (() => { const cm = this.royalCourt.find(m => m.birdId === b.id); return cm ? cm.title : null; })(),
@@ -9070,6 +9090,7 @@ class GameEngine {
       royaleChampBadge: bird.royaleChampBadge || false,
       fightingChampBadge: bird.fightingChampBadge || false,
       hanamiLanternBadge: bird.hanamiLanternBadge || false,
+      springFestivalBadge: bird.springFestivalBadge || false,
       domeChampBadge: bird.domeChampBadge || false,
       arenaLegend: bird.arenaLegend || false,
       nearIdolStage: (() => {
@@ -9143,6 +9164,13 @@ class GameEngine {
         spawnedAt: this.hanamiLantern.spawnedAt,
         expiresAt: this.hanamiLantern.expiresAt,
         floatPhase: this.hanamiLantern.floatPhase,
+      } : null,
+      // Full Moon Spring Festival — 5 festival lanterns rising from the pond
+      fullMoonNight: this.fullMoonNight ? {
+        endsAt: this.fullMoonNight.endsAt,
+        lanterns: this.fullMoonNight.lanterns
+          .filter(l => !l.claimed && now < l.expiresAt)
+          .map(l => ({ id: l.id, x: l.x, y: l.y, baseY: l.baseY, spawnedAt: l.spawnedAt, expiresAt: l.expiresAt, floatPhase: l.floatPhase, prizeType: l.prizeType })),
       } : null,
       // Night Market (aurora bazaar — near Sacred Pond)
       nightMarket: this.nightMarket ? { x: this.nightMarket.x, y: this.nightMarket.y } : null,
@@ -9627,6 +9655,7 @@ class GameEngine {
       prestige: bird.prestige || 0,
       eagle_feather: bird.eagleFeather || false,
       alpha_feather: bird.alphaFeather || false,
+      spring_festival_badge: bird.springFestivalBadge || false,
       skill_points: bird.skillPoints || 0,
       skill_tree: JSON.stringify(bird.skillTreeUnlocked || []),
       skill_tree_master: bird.skillTreeMaster || false,
@@ -19768,7 +19797,7 @@ class GameEngine {
 
     // === HANAMI LANTERN — once per night, a glowing lantern rises from the pond ===
     if (this.dayPhase === 'night') {
-      if (!this.hanamiLanternFiredThisNight && !this.hanamiLantern) {
+      if (!this.hanamiLanternFiredThisNight && !this.hanamiLantern && !this.fullMoonNight) {
         // Schedule the lantern 1–4 minutes into the night phase
         if (!this.hanamiLanternScheduledAt) {
           this.hanamiLanternScheduledAt = now + this._randomRange(60000, 4 * 60000);
@@ -19779,9 +19808,13 @@ class GameEngine {
       if (this.hanamiLantern) this._tickHanamiLantern(now);
     }
 
-    // === SAKURA VIEWING PARTY — 4+ birds near the pond simultaneously get +100 XP each ===
+    // === FULL MOON SPRING FESTIVAL — tick lanterns if active ===
+    if (this.fullMoonNight) this._tickFullMoonFestival(now);
+
+    // === SAKURA VIEWING PARTY — 2+ birds during Full Moon, 4+ normally, near the pond get +100 XP each ===
     const PARTY_POND_CX = 1050, PARTY_POND_CY = 1100, PARTY_RADIUS = 210;
     const SAKURA_PARTY_COOLDOWN = 3 * 60000; // 3-minute cooldown
+    const partyThreshold = this.fullMoonNight ? 2 : 4; // Full Moon lowers threshold to 2
     if (now - this.sakuraPartyLastFired >= SAKURA_PARTY_COOLDOWN) {
       const nearbyBirds = [];
       for (const bird of this.birds.values()) {
@@ -19789,7 +19822,7 @@ class GameEngine {
         const dx = bird.x - PARTY_POND_CX, dy = bird.y - PARTY_POND_CY;
         if (Math.sqrt(dx * dx + dy * dy) <= PARTY_RADIUS) nearbyBirds.push(bird);
       }
-      if (nearbyBirds.length >= 4) {
+      if (nearbyBirds.length >= partyThreshold) {
         this.sakuraPartyLastFired = now;
         for (const b of nearbyBirds) {
           b.xp += 100;
@@ -19801,6 +19834,7 @@ class GameEngine {
           count: nearbyBirds.length,
           names: nearbyBirds.map(b => b.name),
           xp: 100, coins: 25,
+          fullMoon: !!this.fullMoonNight,
         });
       }
     }
@@ -19936,6 +19970,88 @@ class GameEngine {
     }
   }
 
+  // ============================================================
+  // FULL MOON SPRING FESTIVAL — 5 festival lanterns, cherry blossom season
+  // ============================================================
+
+  _startFullMoonFestival(now) {
+    if (this.fullMoonTriggeredThisNight) return;
+    this.fullMoonTriggeredThisNight = true;
+    this.hanamiLanternFiredThisNight = true; // suppress regular lantern tonight
+
+    const FESTIVAL_DURATION = 8 * 60000; // 8 minutes of moonlight
+    const POND_CX = 1050, POND_CY = 1100;
+    const PRIZE_TYPES = ['fortune', 'speed', 'wisdom', 'spring_badge', 'mystic'];
+    const shuffledPrizes = [...PRIZE_TYPES].sort(() => Math.random() - 0.5);
+
+    // Launch positions spread around the pond in a loose arc
+    const launchOffsets = [
+      { dx: -60, dy: 0 }, { dx: 60, dy: 0 },
+      { dx: 0, dy: -40 }, { dx: -40, dy: 30 }, { dx: 40, dy: 30 },
+    ];
+
+    const lanterns = launchOffsets.map((off, i) => ({
+      id: `fml_${now}_${i}`,
+      x: POND_CX + off.dx + (Math.random() - 0.5) * 20,
+      y: POND_CY + off.dy,
+      baseY: POND_CY + off.dy,
+      spawnedAt: now + i * 2000, // stagger 2 seconds apart
+      expiresAt: now + i * 2000 + 90000, // 90s claim window per lantern
+      floatPhase: Math.random() * Math.PI * 2,
+      prizeType: shuffledPrizes[i],
+      claimed: false,
+    }));
+
+    this.fullMoonNight = { startedAt: now, endsAt: now + FESTIVAL_DURATION, lanterns };
+
+    this.events.push({
+      type: 'full_moon_festival_start',
+      message: '🌕 THE FULL MOON SPRING FESTIVAL! 5 glowing lanterns rise from the Sacred Pond. Catch them for sacred prizes!',
+      endsAt: this.fullMoonNight.endsAt,
+    });
+  }
+
+  _tickFullMoonFestival(now) {
+    const fm = this.fullMoonNight;
+    if (!fm) return;
+
+    // Expire the whole festival
+    if (now >= fm.endsAt) {
+      this.fullMoonNight = null;
+      this.events.push({ type: 'full_moon_festival_end', message: '🌕 The Full Moon Festival lanterns fade into the night sky...' });
+      return;
+    }
+
+    const POND_CX = 1050, POND_CY = 1100;
+    for (const lantern of fm.lanterns) {
+      if (lantern.claimed) continue;
+      if (now < lantern.spawnedAt) continue; // not yet launched
+
+      // Expire individual lanterns
+      if (now >= lantern.expiresAt) {
+        lantern.claimed = true; // mark as gone
+        this.events.push({ type: 'festival_lantern_expired', lanternId: lantern.id, prizeType: lantern.prizeType });
+        continue;
+      }
+
+      // Update floating position
+      const elapsed = (now - lantern.spawnedAt) / 1000;
+      lantern.y = lantern.baseY - Math.min(elapsed * 7, 180);
+      lantern.x += Math.sin(elapsed * 0.6 + lantern.floatPhase) * 8 * 0.05;
+
+      // Auto-collect: first bird within 60px
+      for (const bird of this.birds.values()) {
+        if (bird.inSewer || bird.stunnedUntil > now) continue;
+        const dx = bird.x - lantern.x;
+        const dy = bird.y - lantern.y;
+        if (Math.sqrt(dx * dx + dy * dy) < 60) {
+          this._claimFestivalLantern(bird, lantern, now);
+          break;
+        }
+      }
+    }
+  }
+
   _collectSpringEgg(bird, egg, eid, now) {
     egg.active = false;
     this.eggHuntIds.delete(eid);
@@ -19973,6 +20089,76 @@ class GameEngine {
     }
 
     this.events.push({ type: 'egg_collected', birdId: bird.id, name: bird.name, tier: egg.tier, coins, xp, x: egg.x, y: egg.y });
+  }
+
+  _claimFestivalLantern(bird, lantern, now) {
+    if (lantern.claimed) return;
+    lantern.claimed = true;
+
+    let xpReward = 0, coinReward = 0, message = '';
+    switch (lantern.prizeType) {
+      case 'fortune':
+        coinReward = 400;
+        xpReward = 80;
+        bird.coins += coinReward;
+        bird.xp += xpReward;
+        message = '💰 FORTUNE LANTERN! +400 coins!';
+        this._trackDailyProgress(bird, 'coins_earned', coinReward);
+        break;
+      case 'speed':
+        bird.bmSpeedUntil = Math.max(bird.bmSpeedUntil || 0, now + 30000);
+        xpReward = 60;
+        bird.xp += xpReward;
+        message = '💨 SPEED LANTERN! +60% speed for 30 seconds!';
+        break;
+      case 'wisdom':
+        xpReward = 600;
+        bird.xp += xpReward;
+        message = '✨ WISDOM LANTERN! +600 XP — enlightened!';
+        break;
+      case 'spring_badge':
+        bird.springFestivalBadge = true;
+        xpReward = 150;
+        coinReward = 100;
+        bird.xp += xpReward;
+        bird.coins += coinReward;
+        message = '🌸 SPRING BADGE LANTERN! You earned the 🌸 Spring Festival badge permanently!';
+        this._trackDailyProgress(bird, 'coins_earned', coinReward);
+        break;
+      case 'mystic':
+        bird.bmDoubleXpUntil = Math.max(bird.bmDoubleXpUntil || 0, now + 300000); // 5-min double XP
+        xpReward = 100;
+        coinReward = 50;
+        bird.xp += xpReward;
+        bird.coins += coinReward;
+        message = '🔮 MYSTIC LANTERN! 2× XP for 5 minutes!';
+        this._trackDailyProgress(bird, 'coins_earned', coinReward);
+        break;
+    }
+
+    this._trackDailyProgress(bird, 'festival_lantern', 1);
+
+    // Level-up check
+    const newLvl = world.getLevelFromXP(bird.xp);
+    if (newLvl !== bird.level) {
+      bird.level = newLvl;
+      bird.type = world.getBirdTypeForLevel(newLvl);
+      this.events.push({ type: 'evolve', birdId: bird.id, name: bird.name, birdType: bird.type });
+    }
+
+    this.events.push({
+      type: 'festival_lantern_claimed',
+      birdId: bird.id,
+      name: bird.name,
+      gangTag: bird.gangTag || null,
+      lanternId: lantern.id,
+      prizeType: lantern.prizeType,
+      xp: xpReward,
+      coins: coinReward,
+      message,
+      x: lantern.x,
+      y: lantern.y,
+    });
   }
 
   // ============================================================

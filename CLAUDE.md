@@ -4318,6 +4318,60 @@ A giant rainbow papier-mâché piñata drifts into Bird City every 30–40 minut
 
 **Creative intent**: Bird City has cooperative boss fights (Eagle Overlord, Vault Truck) and cooperative hunts (Seagull Invasion, Migration Alpha) — but nothing purely joyful and festive. El Piñata Gigante is a party event: colorful, chaotic, low-stakes. Any bird can chip in with one poop hit and earn proportional rewards. The slow bouncing movement means you have to chase it across the city — a piñata weaving through Downtown during a Crime Wave while everyone chases it is genuinely funny. The loot explosion scatter creates a frantic post-smash scramble. The rainbow sprite is the most visually festive thing in Bird City. Pure CARNAGE + SOCIAL + SPECTACLE energy — the city's first party event.
 
+**Session 126 — 2026-04-21: Spring Lantern Festival — Full Moon Night Sacred Event**
+The cherry blossom season gets its crown jewel: the Full Moon Spring Festival. Every April night has a 20% chance of this magical event (mutually exclusive with Aurora and Blood Moon). When it fires, 5 sacred lanterns rise from the Sacred Pond — each carrying a different prize. The moon transforms into a radiant full silver disc that illuminates the night.
+
+**The Full Moon Festival flow (`server/game.js`):**
+- 20% probability at each night phase start (roll range 0.50–0.70) — cherry blossom season only
+- `fullMoonTriggeredThisNight` flag prevents retriggering; resets at dusk/day
+- 5 lanterns spawned with staggered timing (0–120s between each), each at a unique position near the Sacred Pond with randomized float phase
+- Each lantern floats upward from `baseY` at 6px/s with a 22px sinusoidal sway — rises up to 200px before expiring
+- 60-second claim window per lantern; auto-collect by flying within 50px
+
+**Five prize types (auto-balanced, one of each per festival):**
+- 💰 **Fortune**: instant +180–280c coin windfall — golden burst effect
+- 💨 **Speed**: +35% max speed for 4 minutes (`festivalSpeedUntil`) — spring wind in your wings
+- ✨ **Wisdom**: instant +350 XP + 2× XP multiplier for 5 minutes (`festivalXpUntil`) — the rarest knowledge prize
+- 🌸 **Spring Badge**: awards the permanent `springFestivalBadge` (persisted to Firestore) — the rarest cosmetic reward
+- 🔮 **Mystic**: 3 minutes of 2× all coin gains (`festivalMysticUntil`) — the money-maker
+
+**City-wide XP bonus:** +20% XP on all poop hits for all birds while the festival is active — stacks with Lucky Charm, Signal Boost, Prestige, Aurora, everything.
+
+**Sakura Viewing Party lowered threshold:** During the Full Moon Festival, only 2 birds (vs normal 4) trigger the cooperative viewing party reward — the sacred night makes gathering easier.
+
+**Full Moon visual (`public/js/renderer.js`):**
+- `drawDayNight` signature updated to accept 7th param `fullMoonNight`, passed through to `_drawStarsAndMoon`
+- Wide luminous silver-white outer halo (5× moon radius) with pulsing opacity — far brighter than the normal crescent halo
+- Inner bright halo ring (2.5× moon radius) — extra luminous glow ring
+- Full bright disc: radial gradient from `#fffff8` center to `#a8c0f0` edge — unmistakably full and round
+- Subtle grey craters for texture (lighter than crescent, since the full disc is brighter)
+- Warm golden "🌕 FULL MOON" label beneath the disc
+- Stars remain white (not red like Blood Moon — the full moon is beautiful, not threatening)
+
+**Festival lantern renderer (`public/js/renderer.js` — `drawFestivalLanterns`):**
+- 5 prize-type palettes: fortune (gold), speed (teal), wisdom (purple), spring_badge (pink/cherry), mystic (magenta)
+- Each lantern: outer halo radial gradient, gradient oval body, 3 horizontal ribs, top/bottom caps, tassel with sway, inner warm glow, prize emoji label
+- Urgency-sensitive label: shows "HURRY!" in red when <10 seconds remain
+- `drawFestivalLanternsOnMinimap`: pulsing emoji dots at each lantern's minimap position (💰💨✨🌸🔮)
+
+**Direction arrows (`public/js/main.js`):**
+- Off-screen arrows for each unclaimed festival lantern using rotated triangle pattern
+- Prize-type-specific colors (gold/teal/purple/pink/magenta) with 🏮 emoji in center
+
+**🌕 SPRING FEST Badge (`public/js/sprites.js`):**
+- New `springFestivalBadge` parameter added as the last param to `drawNameTag`
+- Rendered as a warm gold badge between the Hanami Lantern and Dome Champion badges in the nametag stack
+- Dark background with `#ffe680` border, golden-white text, soft glow — visible from across the map
+- Persistent across all sessions — a permanent mark of catching a sacred spring lantern
+
+**Two new daily challenges (added to `DAILY_CHALLENGE_POOL`):**
+- 🌕 **Festival Lantern**: Catch a Full Moon Festival lantern (any prize type) — 250 XP, 125c
+- 🌕 **Spring Mystic**: Catch specifically the Mystic (🔮) prize lantern — 300 XP, 150c (the hardest spring challenge — 1-in-5 chance even if you're first to every lantern)
+
+**Gazette tracking:** "🌕 FULL MOON SPRING FESTIVAL — N LANTERNS CLAIMED" headline during the next morning edition.
+
+**Creative intent**: Session 80 made the park beautiful (cherry blossoms). Session 81 added the Hanami Lantern (one lantern, one prize). The Full Moon Festival is the seasonal CROWN JEWEL — five simultaneous prize lanterns rising from the Sacred Pond while the moon shines as a brilliant silver full disc above the park. Unlike the Hanami Lantern (winner-takes-all), the festival gives every fast bird a chance at a different prize — there are 5 lanterns for however many birds are online. The Spring Badge is the rarest cosmetic reward in the game outside of Blood Moon and Aurora — you can't buy it, you can't grind for it, you just have to be in the right place on the right spring night. A bird wearing 🌕 SPRING FEST, 🏮 Hanami Lantern, 🌸 cherry blossoms, and prestige badges is a Bird City veteran who's truly lived the seasons. Pure DISCOVERY + SPECTACLE + PROGRESSION energy — the city now has its most beautiful night event.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)

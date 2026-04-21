@@ -78,6 +78,7 @@ const db = {
       prestige: data.prestige || 0,
       eagle_feather: data.eagle_feather || false,
       alpha_feather: data.alpha_feather || false,
+      spring_festival_badge: data.spring_festival_badge || false,
       skill_points: data.skill_points || 0,
       skill_tree: data.skill_tree || '[]',
       skill_tree_master: data.skill_tree_master || false,

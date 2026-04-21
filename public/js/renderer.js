@@ -858,7 +858,7 @@ window.Renderer = {
 
   // Draw day/night overlay with street lamp glow holes
   // Called in screen-space (after ctx.restore() removes world zoom)
-  drawDayNight(ctx, camera, zoom, dayTime, streetLamps, bloodMoon) {
+  drawDayNight(ctx, camera, zoom, dayTime, streetLamps, bloodMoon, fullMoonNight) {
     if (dayTime === undefined || dayTime === null) return;
 
     // Compute darkness level (0 = full daylight, ~0.65 = full night)
@@ -952,7 +952,7 @@ window.Renderer = {
     ctx.drawImage(this._nightCanvas, 0, 0);
 
     // Draw stars + moon on top of the darkness overlay (they peek through the night)
-    this._drawStarsAndMoon(ctx, camera, darkness, sw, sh, bloodMoon);
+    this._drawStarsAndMoon(ctx, camera, darkness, sw, sh, bloodMoon, !!fullMoonNight);
 
     // Draw warm lamp glow dots on top of the darkness
     if (darkness > 0.08 && streetLamps && streetLamps.length) {
@@ -982,7 +982,7 @@ window.Renderer = {
   },
 
   // Internal helper: draw stars + moon on top of the darkness overlay
-  _drawStarsAndMoon(ctx, camera, darkness, sw, sh, bloodMoon) {
+  _drawStarsAndMoon(ctx, camera, darkness, sw, sh, bloodMoon, fullMoon) {
     if (darkness < 0.05) return;
 
     // Lazily generate a stable star field
@@ -1057,12 +1057,63 @@ window.Renderer = {
       ctx.beginPath(); ctx.arc(moonX + 6, moonY - 5, 3, 0, Math.PI * 2); ctx.fill();
       ctx.beginPath(); ctx.arc(moonX - 2, moonY + 8, 3.5, 0, Math.PI * 2); ctx.fill();
 
-      // "🌑" text label under the moon for clarity
+      // "BLOOD MOON" text label under the moon for clarity
       ctx.globalAlpha = darkness * 0.75;
       ctx.fillStyle = '#ff6060';
       ctx.font = `bold ${Math.round(moonR * 0.6)}px monospace`;
       ctx.textAlign = 'center';
       ctx.fillText('BLOOD MOON', moonX, moonY + moonR + 14);
+    } else if (fullMoon) {
+      // Full Moon Spring Festival: bright silver disc — no crescent, radiant and beautiful
+      const pulse = (Math.sin(now * 0.0015) * 0.5 + 0.5);
+
+      // Wide luminous silver-white outer halo
+      ctx.globalAlpha = darkness * (0.18 + pulse * 0.12);
+      const fullHalo = ctx.createRadialGradient(moonX, moonY, moonR * 0.5, moonX, moonY, moonR * 5);
+      fullHalo.addColorStop(0, 'rgba(255, 255, 240, 1)');
+      fullHalo.addColorStop(0.35, 'rgba(220, 235, 255, 0.5)');
+      fullHalo.addColorStop(1, 'rgba(180, 210, 255, 0)');
+      ctx.fillStyle = fullHalo;
+      ctx.beginPath();
+      ctx.arc(moonX, moonY, moonR * 5, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Bright inner halo ring — distinct from the blood moon
+      ctx.globalAlpha = darkness * (0.35 + pulse * 0.15);
+      const innerHalo = ctx.createRadialGradient(moonX, moonY, moonR * 0.8, moonX, moonY, moonR * 2.5);
+      innerHalo.addColorStop(0, 'rgba(255, 255, 220, 0.9)');
+      innerHalo.addColorStop(1, 'rgba(200, 230, 255, 0)');
+      ctx.fillStyle = innerHalo;
+      ctx.beginPath();
+      ctx.arc(moonX, moonY, moonR * 2.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Full bright moon disc — radiant silver-white
+      ctx.globalAlpha = darkness * 0.96;
+      const moonGrad = ctx.createRadialGradient(moonX - moonR * 0.25, moonY - moonR * 0.25, 0, moonX, moonY, moonR);
+      moonGrad.addColorStop(0, '#fffff8');
+      moonGrad.addColorStop(0.45, '#e8f0ff');
+      moonGrad.addColorStop(0.85, '#c8daff');
+      moonGrad.addColorStop(1, '#a8c0f0');
+      ctx.fillStyle = moonGrad;
+      ctx.beginPath();
+      ctx.arc(moonX, moonY, moonR, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Subtle grey craters for texture (lighter than normal crescent craters)
+      ctx.globalAlpha = darkness * 0.25;
+      ctx.fillStyle = 'rgba(140, 160, 200, 0.5)';
+      ctx.beginPath(); ctx.arc(moonX - 5, moonY - 4, 3.5, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(moonX + 6, moonY - 6, 2.5, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(moonX - 2, moonY + 7, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(moonX + 4, moonY + 4, 2, 0, Math.PI * 2); ctx.fill();
+
+      // "🌕 FULL MOON" label — warm golden text beneath the disc
+      ctx.globalAlpha = darkness * (0.7 + pulse * 0.2);
+      ctx.fillStyle = '#ffe680';
+      ctx.font = `bold ${Math.round(moonR * 0.6)}px monospace`;
+      ctx.textAlign = 'center';
+      ctx.fillText('🌕 FULL MOON', moonX, moonY + moonR + 14);
     } else {
       // Normal crescent moon
       // Glow halo
@@ -4806,6 +4857,137 @@ window.Renderer = {
     minimapCtx.shadowBlur = 0;
     minimapCtx.globalAlpha = 1;
     minimapCtx.restore();
+  },
+
+  // ── Full Moon Spring Festival Lanterns ──────────────────────
+  // 5 sacred lanterns rise from the Sacred Pond during cherry-blossom full-moon nights.
+  // Each has a unique prize-type color and floats upward just like the Hanami Lantern.
+  drawFestivalLanterns(ctx, camera, lanterns, now) {
+    if (!lanterns || !lanterns.length) return;
+    // Prize-type visual palettes
+    const PALETTES = {
+      fortune:      { halo: 'rgba(255,210,30,', inner: '#fff4aa', mid: '#ffcc00', edge: '#cc8800', rib: 'rgba(180,100,0,0.55)', cap: '#aa6600', tassel: '#ffeeaa', label: '💰 FORTUNE' },
+      speed:        { halo: 'rgba(80,255,200,', inner: '#ccffee', mid: '#44ffcc', edge: '#008866', rib: 'rgba(0,120,80,0.55)',  cap: '#006644', tassel: '#88ffcc', label: '💨 SPEED' },
+      wisdom:       { halo: 'rgba(180,100,255,', inner: '#eebbff', mid: '#cc88ff', edge: '#660088', rib: 'rgba(100,0,160,0.55)', cap: '#550077', tassel: '#ddaaff', label: '✨ WISDOM' },
+      spring_badge: { halo: 'rgba(255,120,180,', inner: '#ffddee', mid: '#ff88bb', edge: '#aa2255', rib: 'rgba(180,30,80,0.55)',  cap: '#aa2255', tassel: '#ffaacc', label: '🌸 BADGE' },
+      mystic:       { halo: 'rgba(120,80,255,', inner: '#ddccff', mid: '#9966ff', edge: '#440099', rib: 'rgba(80,0,160,0.55)',  cap: '#440099', tassel: '#cc99ff', label: '🔮 MYSTIC' },
+    };
+    const t = now / 1000;
+    for (const lantern of lanterns) {
+      const elapsed = (now - lantern.spawnedAt) / 1000;
+      if (elapsed < 0) continue; // not yet launched
+      const curY = lantern.baseY - Math.min(elapsed * 7, 180);
+      const swayX = lantern.x + Math.sin(elapsed * 0.6 + (lantern.floatPhase || 0)) * 20;
+      const sx = swayX - camera.x + camera.screenW / 2;
+      const sy = curY - camera.y + camera.screenH / 2;
+      if (sx < -80 || sx > camera.screenW + 80 || sy < -80 || sy > camera.screenH + 80) continue;
+
+      const pal = PALETTES[lantern.prizeType] || PALETTES.fortune;
+      const pulse = 0.5 + 0.5 * Math.sin(t * 3.2 + (lantern.floatPhase || 0));
+      const timeLeft = Math.max(0, lantern.expiresAt - now);
+      const urgency = timeLeft < 15000 ? 1 - timeLeft / 15000 : 0;
+
+      ctx.save();
+      // Outer halo glow
+      const haloR = 48 + 12 * pulse;
+      const haloGrad = ctx.createRadialGradient(sx, sy, 0, sx, sy, haloR);
+      haloGrad.addColorStop(0, `${pal.halo}${0.38 + 0.14 * pulse})`);
+      haloGrad.addColorStop(0.5, `${pal.halo}${0.14 + 0.07 * pulse})`);
+      haloGrad.addColorStop(1, `${pal.halo}0)`);
+      ctx.fillStyle = haloGrad;
+      ctx.beginPath();
+      ctx.arc(sx, sy, haloR, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.save();
+      ctx.translate(sx, sy);
+      const bodyW = 16, bodyH = 22;
+      const bodyGrad = ctx.createRadialGradient(-3, -4, 0, 0, 0, bodyH);
+      bodyGrad.addColorStop(0, pal.inner);
+      bodyGrad.addColorStop(0.4, pal.mid);
+      bodyGrad.addColorStop(1, pal.edge);
+      ctx.fillStyle = bodyGrad;
+      ctx.shadowColor = pal.mid;
+      ctx.shadowBlur = 16 + 8 * pulse;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, bodyW, bodyH, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      // Ribs
+      ctx.strokeStyle = pal.rib;
+      ctx.lineWidth = 1.1;
+      for (let i = -1; i <= 1; i++) {
+        const ry = i * 7;
+        const rx = Math.sqrt(Math.max(0, bodyW * bodyW * (1 - (ry * ry) / (bodyH * bodyH))));
+        ctx.beginPath();
+        ctx.ellipse(0, ry, rx * 0.9, 3.5, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      // Top + bottom caps
+      ctx.fillStyle = pal.cap;
+      ctx.beginPath(); ctx.ellipse(0, -bodyH, bodyW * 0.52, 4.5, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(0, bodyH, bodyW * 0.52, 4.5, 0, 0, Math.PI * 2); ctx.fill();
+      // Tassel
+      ctx.strokeStyle = pal.tassel;
+      ctx.lineWidth = 1.1;
+      ctx.beginPath(); ctx.moveTo(0, bodyH + 4); ctx.lineTo(0, bodyH + 11); ctx.stroke();
+      for (let i = -2; i <= 2; i++) {
+        ctx.beginPath();
+        ctx.moveTo(i * 2.2, bodyH + 11);
+        ctx.lineTo(i * 3.2 + Math.sin(t * 4 + i) * 1.8, bodyH + 18);
+        ctx.stroke();
+      }
+      // Inner light
+      const innerGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, bodyW * 0.62);
+      innerGrad.addColorStop(0, `rgba(255,255,255,${0.55 + 0.3 * pulse})`);
+      innerGrad.addColorStop(1, `rgba(255,255,255,0)`);
+      ctx.fillStyle = innerGrad;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, bodyW * 0.62, bodyH * 0.62, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      // Prize label
+      const labelAlpha = urgency > 0 ? (0.7 + 0.3 * Math.sin(now * 0.02)) : (0.78 + 0.22 * pulse);
+      ctx.globalAlpha = labelAlpha;
+      ctx.font = 'bold 10px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = urgency > 0.5 ? '#ff4400' : pal.mid;
+      ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+      ctx.lineWidth = 3;
+      const label = urgency > 0 ? '⏰ HURRY!' : pal.label;
+      ctx.strokeText(label, sx, sy - 34);
+      ctx.fillText(label, sx, sy - 34);
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+  },
+
+  drawFestivalLanternsOnMinimap(minimapCtx, worldData, lanterns, now) {
+    if (!lanterns || !lanterns.length) return;
+    const mw = worldData.minimapW, mh = worldData.minimapH;
+    const worldWidth = worldData.worldWidth, worldHeight = worldData.worldHeight;
+    const PRIZE_EMOJI = { fortune: '💰', speed: '💨', wisdom: '✨', spring_badge: '🌸', mystic: '🔮' };
+    const pulse = 0.5 + 0.5 * Math.sin(now * 0.007);
+    for (const lantern of lanterns) {
+      const elapsed = (now - lantern.spawnedAt) / 1000;
+      if (elapsed < 0) continue;
+      const curY = lantern.baseY - Math.min(elapsed * 7, 180);
+      const swayX = lantern.x + Math.sin(elapsed * 0.6 + (lantern.floatPhase || 0)) * 20;
+      const mx = swayX * (mw / worldWidth);
+      const my = curY * (mh / worldHeight);
+      minimapCtx.save();
+      minimapCtx.globalAlpha = 0.65 + 0.35 * pulse;
+      minimapCtx.shadowColor = '#ffe680';
+      minimapCtx.shadowBlur = 5;
+      minimapCtx.font = `${6 + Math.round(pulse * 2)}px sans-serif`;
+      minimapCtx.textAlign = 'center';
+      minimapCtx.textBaseline = 'middle';
+      minimapCtx.fillText(PRIZE_EMOJI[lantern.prizeType] || '🏮', mx, my);
+      minimapCtx.shadowBlur = 0;
+      minimapCtx.globalAlpha = 1;
+      minimapCtx.restore();
+    }
   },
 
   // ── Thunder Dome ────────────────────────────────────────────

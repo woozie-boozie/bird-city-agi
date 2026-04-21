@@ -167,7 +167,7 @@ window.Sprites = {
   },
 
   // === NAME TAG ===
-  drawNameTag(ctx, x, y, name, level, type, isPlayer, mafiaTitle, gangTag, gangColor, tattoosEquipped, prestige, eagleFeather, idolBadge, royaleChampBadge, skillTreeMaster, fightingChampBadge, constellationBadge, courtTitle, hanamiLanternBadge, domeChampBadge, alphaFeather, arenaLegend, goldenBirdBadge, constellations, stampedeBadge, throneChampBadge, perchChampBadge, marshalBadge) {
+  drawNameTag(ctx, x, y, name, level, type, isPlayer, mafiaTitle, gangTag, gangColor, tattoosEquipped, prestige, eagleFeather, idolBadge, royaleChampBadge, skillTreeMaster, fightingChampBadge, constellationBadge, courtTitle, hanamiLanternBadge, domeChampBadge, alphaFeather, arenaLegend, goldenBirdBadge, constellations, stampedeBadge, throneChampBadge, perchChampBadge, marshalBadge, springFestivalBadge) {
     const text = `${name} [Lv.${level}]`;
     ctx.font = 'bold 11px Courier New';
     ctx.textAlign = 'center';
@@ -304,6 +304,25 @@ window.Sprites = {
       ctx.shadowBlur = 9;
       ctx.fillStyle = '#ffcc88';
       ctx.fillText('🏮', x, y - 41 - offsetY);
+      ctx.shadowBlur = 0;
+      ctx.font = 'bold 11px Courier New';
+      offsetY += 14;
+    }
+
+    // 🌕 Spring Festival Badge — caught a sacred Full Moon Festival lantern (persistent)
+    if (springFestivalBadge) {
+      ctx.font = '10px serif';
+      const sfStr = '🌕 SPRING FEST';
+      const sfw = ctx.measureText(sfStr).width + 10;
+      ctx.fillStyle = 'rgba(20,15,0,0.95)';
+      ctx.fillRect(x - sfw / 2, y - 52 - offsetY, sfw, 14);
+      ctx.strokeStyle = '#ffe680';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(x - sfw / 2, y - 52 - offsetY, sfw, 14);
+      ctx.shadowColor = '#ffd700';
+      ctx.shadowBlur = 9;
+      ctx.fillStyle = '#fff2b0';
+      ctx.fillText(sfStr, x, y - 41 - offsetY);
       ctx.shadowBlur = 0;
       ctx.font = 'bold 11px Courier New';
       offsetY += 14;

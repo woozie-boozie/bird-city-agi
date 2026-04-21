@@ -3735,6 +3735,32 @@
       addEventMessage('🏮 The Hanami Lantern drifted away unclaimed...', '#aa7744');
     }
 
+    // === FULL MOON SPRING FESTIVAL ===
+    if (ev.type === 'full_moon_festival_start') {
+      window._fullMoonFestivalActive = true;
+      screenShake(10, 1200);
+      showAnnouncement('🌕 FULL MOON SPRING FESTIVAL!\n5 sacred lanterns rise from the Sacred Pond!\nCatch them for rare prizes!', '#ffe680', 7000);
+      addEventMessage('🌕 FULL MOON SPRING FESTIVAL! 5 glowing lanterns rise — each carries a different sacred prize!', '#ffe680');
+    }
+    if (ev.type === 'festival_lantern_claimed') {
+      const isMe = ev.birdId === myId;
+      const tag = ev.gangTag ? `[${ev.gangTag}] ` : '';
+      if (isMe) {
+        screenShake(8, 900);
+        showAnnouncement(`🌕 ${ev.message}`, '#ffe680', 6000);
+        if (ev.coins > 0) effects.push({ type: 'text', x: gameState.self ? gameState.self.x : 0, y: gameState.self ? gameState.self.y : 0, text: `+${ev.coins}c 🌕`, color: '#ffe680', size: 14, time: performance.now(), duration: 2000 });
+      } else {
+        addEventMessage(`🌕 ${tag}${ev.name} caught a festival lantern! ${ev.message}`, '#ffe680');
+      }
+    }
+    if (ev.type === 'festival_lantern_expired') {
+      addEventMessage(`🌕 A sacred lantern drifted away unclaimed...`, '#aa9944');
+    }
+    if (ev.type === 'full_moon_festival_end') {
+      window._fullMoonFestivalActive = false;
+      addEventMessage('🌕 The Full Moon Festival lanterns fade into the night sky...', '#aa9944');
+    }
+
     // === SAKURA VIEWING PARTY ===
     if (ev.type === 'sakura_viewing_party') {
       screenShake(8, 800);
@@ -10361,6 +10387,11 @@
       Renderer.drawHanamiLantern(ctx, camera, _lantern, now);
     }
 
+    // Full Moon Spring Festival lanterns
+    if (gameState.fullMoonNight && gameState.fullMoonNight.lanterns) {
+      Renderer.drawFestivalLanterns(ctx, camera, gameState.fullMoonNight.lanterns, now);
+    }
+
     // Pigeon Pied Piper
     if (gameState.self && gameState.self.piper) {
       Renderer.drawPiedPiper(ctx, camera, gameState.self.piper, now);
@@ -10805,7 +10836,7 @@
 
           Sprites.drawBird(ctx, sx, sy, b.rotation, b.type, b.wingPhase, isPlayer, b.featherColor || b.birdColor || null, b.hatType || null);
           ctx.globalAlpha = 1; // Always reset after bird draw
-          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0, b.eagleFeather || false, b.idolBadge || false, b.royaleChampBadge || false, b.skillTreeMaster || false, b.fightingChampBadge || false, b.constellationBadge || false, b.courtTitle || null, b.hanamiLanternBadge || false, b.domeChampBadge || false, b.alphaFeather || false, b.arenaLegend || false, b.goldenBirdBadge || false, b.constellations || [], b.stampedeBadge || false, b.throneChampBadge || false, b.perchChampBadge || false, b.marshalBadge || false);
+          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0, b.eagleFeather || false, b.idolBadge || false, b.royaleChampBadge || false, b.skillTreeMaster || false, b.fightingChampBadge || false, b.constellationBadge || false, b.courtTitle || null, b.hanamiLanternBadge || false, b.domeChampBadge || false, b.alphaFeather || false, b.arenaLegend || false, b.goldenBirdBadge || false, b.constellations || [], b.stampedeBadge || false, b.throneChampBadge || false, b.perchChampBadge || false, b.marshalBadge || false, b.springFestivalBadge || false);
 
           // Bird Flu: sneezing emoji indicator above infected birds
           if (b.isFlu) {
@@ -11203,7 +11234,7 @@
 
     // Day/Night overlay (screen-space, after zoom restore)
     if (gameState.dayTime !== undefined && worldData) {
-      Renderer.drawDayNight(ctx, camera, z, gameState.dayTime, worldData.streetLamps, gameState.bloodMoon || null);
+      Renderer.drawDayNight(ctx, camera, z, gameState.dayTime, worldData.streetLamps, gameState.bloodMoon || null, gameState.fullMoonNight || null);
     }
 
     // Aurora Borealis (screen-space, AFTER darkness overlay — additive blending makes it glow through)
@@ -12833,6 +12864,50 @@
       ctx.restore();
     }
 
+    // === FULL MOON FESTIVAL LANTERNS — direction arrows for off-screen lanterns ===
+    if (gameState.fullMoonNight && gameState.fullMoonNight.lanterns) {
+      for (const fLantern of gameState.fullMoonNight.lanterns) {
+        const elapsed_fl = (now - fLantern.spawnedAt) / 1000;
+        if (elapsed_fl < 0) continue; // not yet launched
+        const curFLY = fLantern.baseY - Math.min(elapsed_fl * 7, 180);
+        const curFLX = fLantern.x + Math.sin(elapsed_fl * 0.6 + (fLantern.floatPhase || 0)) * 20;
+        const flsx = curFLX - camera.x + camera.screenW / 2;
+        const flsy = curFLY - camera.y + camera.screenH / 2;
+        const flOnScreen = flsx > 40 && flsx < camera.screenW - 40 && flsy > 40 && flsy < camera.screenH - 40;
+        if (!flOnScreen) {
+          // Prize-type colors
+          const prizeColors = { fortune: '#ffd700', speed: '#88ffdd', wisdom: '#ccaaff', spring_badge: '#ffaacc', mystic: '#cc88ff' };
+          const arrowColor = prizeColors[fLantern.prizeType] || '#ffe680';
+          const flPulse = 0.7 + 0.3 * Math.sin(now * 0.007 + (fLantern.id || '').length);
+          const angle = Math.atan2(flsy - camera.screenH / 2, flsx - camera.screenW / 2);
+          const arrowDist = Math.min(camera.screenW, camera.screenH) / 2 - 55;
+          const ax = camera.screenW / 2 + Math.cos(angle) * arrowDist;
+          const ay = camera.screenH / 2 + Math.sin(angle) * arrowDist;
+          ctx.save();
+          ctx.translate(ax, ay);
+          ctx.rotate(angle);
+          ctx.globalAlpha = 0.85 * flPulse;
+          ctx.fillStyle = arrowColor;
+          ctx.strokeStyle = '#332200';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(20, 0);
+          ctx.lineTo(-10, -10);
+          ctx.lineTo(-5, 0);
+          ctx.lineTo(-10, 10);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+          ctx.font = 'bold 9px Arial';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = '#110800';
+          ctx.fillText('🏮', 4, 0);
+          ctx.restore();
+        }
+      }
+    }
+
     // === METEOR SHOWER — direction arrows for each unclaimed landing site ===
     if (window._meteorShowerData && window._meteorShowerData.length > 0) {
       for (const mStar of window._meteorShowerData) {
@@ -14019,6 +14094,12 @@
     if (_minimapLantern && worldData) {
       const worldDataMM = { minimapW: minimapCtx.canvas.width, minimapH: minimapCtx.canvas.height, worldWidth: worldData.width, worldHeight: worldData.height };
       Renderer.drawHanamiLanternOnMinimap(minimapCtx, worldDataMM, _minimapLantern, now);
+    }
+
+    // Full Moon Festival lanterns on minimap
+    if (gameState.fullMoonNight && gameState.fullMoonNight.lanterns && worldData) {
+      const worldDataMM = { minimapW: minimapCtx.canvas.width, minimapH: minimapCtx.canvas.height, worldWidth: worldData.width, worldHeight: worldData.height };
+      Renderer.drawFestivalLanternsOnMinimap(minimapCtx, worldDataMM, gameState.fullMoonNight.lanterns, now);
     }
 
     // Pied Piper on minimap — rainbow pulsing dot
@@ -16321,6 +16402,15 @@
       const auSecs = auLeft % 60;
       const auTime = auMins > 0 ? `${auMins}m ${auSecs}s` : `${auLeft}s`;
       html += `<div class="bm-buff-pill" style="background:rgba(0,60,40,0.9);border-color:#88ffcc;color:#aaffdd;font-weight:bold;animation:kingpinGlow 1.5s ease-in-out infinite alternate;">✨ AURORA BOREALIS — ${auTime} · +25% XP · Combo 12s</div>`;
+    }
+
+    // Full Moon Spring Festival — sacred moonlit lantern event
+    if (gameState.fullMoonNight) {
+      const fmLeft = Math.max(0, Math.ceil((gameState.fullMoonNight.endsAt - now) / 1000));
+      const fmMins = Math.floor(fmLeft / 60), fmSecs = fmLeft % 60;
+      const fmCount = (gameState.fullMoonNight.lanterns || []).length;
+      const fmTimeStr = fmMins > 0 ? `${fmMins}m ${fmSecs}s` : `${fmLeft}s`;
+      html += `<div class="bm-buff-pill" style="background:rgba(30,25,50,0.95);border-color:#ffe680;color:#fff2b0;font-weight:bold;animation:kingpinGlow 1.5s ease-in-out infinite alternate;">🌕 FULL MOON FESTIVAL — ${fmTimeStr} · ${fmCount} lanterns · +20% XP · 🌸 Party at 2!</div>`;
     }
 
     // Night Market proximity nudge (when market is open and you're near but haven't visited)
