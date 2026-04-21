@@ -5673,6 +5673,28 @@
     if (ev.type === 'pinata_expired') {
       addEventMessage(`🎉 El Piñata Gigante floated away… nobody smashed it in time.`, '#aa5588');
     }
+    // === RING TOSS ===
+    if (ev.type === 'ring_toss_started') {
+      effects.push({ type: 'screen_flash', color: 'rgba(0,255,180,0.25)', duration: 400, time: now });
+      showAnnouncement(`🎯 RING TOSS EVENT!\n4 glowing rings drift across the city.\nFly close and POOP to claim each one!\nClaim all 4 in 90 seconds = JACKPOT!`, '#00ffcc', 7000);
+      addEventMessage(`🎯 RING TOSS! 4 rings floating across the city — poop to claim, claim all 4 for JACKPOT!`, '#00ffcc');
+    }
+    if (ev.type === 'ring_claimed') {
+      effects.push({ type: 'float_text', x: ev.x, y: ev.y - 20, time: now, duration: 1100, text: `🎯 CLAIMED! +85XP +45c`, color: '#00ffcc' });
+      if (ev.birdId === myId) {
+        effects.push({ type: 'screen_flash', color: 'rgba(0,255,180,0.2)', duration: 300, time: now });
+      }
+      addEventMessage(`🎯 ${ev.birdName}${ev.gangTag ? ` [${ev.gangTag}]` : ''} claimed a ring! (${ev.claimedCount}/${ev.totalRings})`, '#00ffcc');
+    }
+    if (ev.type === 'ring_toss_jackpot') {
+      screenShake(14, 700);
+      effects.push({ type: 'screen_flash', color: 'rgba(0,255,180,0.5)', duration: 700, time: now });
+      showAnnouncement(`🎯💥 RING TOSS JACKPOT!\nAll 4 rings claimed — BONUS PAYOUT!\nContributors: +200 XP +100c EACH!`, '#00ffcc', 9000);
+      addEventMessage(`🎯💥 RING TOSS JACKPOT! All rings claimed! Contributors each get +200 XP +100c!`, '#44ffdd');
+    }
+    if (ev.type === 'ring_toss_expired') {
+      addEventMessage(`🎯 Ring Toss ended — only ${ev.claimed}/${ev.total} rings claimed. So close!`, '#448866');
+    }
   }
 
   function showAnnouncement(text, color, duration) {
@@ -10422,6 +10444,11 @@
       Renderer.drawPinata(ctx, camera, gameState.pinata, now);
     }
 
+    // Ring Toss Event — Session 127
+    if (gameState.ringToss) {
+      Renderer.drawRingToss(ctx, camera, gameState.ringToss, now);
+    }
+
     // Bird Royale — safe zone ring + danger zone overlay
     if (gameState.birdRoyale && gameState.birdRoyale.state === 'active') {
       Renderer.drawBirdRoyaleZone(ctx, camera, gameState.birdRoyale, now);
@@ -12236,6 +12263,73 @@
       ctx.restore();
     }
 
+    // === RING TOSS HUD BAR (Session 127) ===
+    if (gameState.ringToss) {
+      const rt = gameState.ringToss;
+      const rtTimeLeft = Math.max(0, rt.endsAt - now);
+      const rtFrac = rtTimeLeft / 90000;
+      const rtPulse = 0.65 + 0.35 * Math.abs(Math.sin(now * 0.006));
+      const hasCWrt = gameState.self && gameState.self.crimeWave;
+      const hasSGrt = gameState.seagullInvasion;
+      const hasMGrt = gameState.migration;
+      const hasVTrt = gameState.vaultTruck && !gameState.vaultTruck.cracked && !gameState.vaultTruck.escaped;
+      const hasSTrt = gameState.stampede;
+      const hasPKrt = gameState.suspiciousPackage;
+      const hasBVrt = gameState.birdnapperVan && gameState.birdnapperVan.state === 'escaping';
+      const hasFMrt = gameState.flashMob;
+      const hasSPrt = gameState.skyPirateShip && !gameState.skyPirateShip.sinking;
+      const hasMCrt = gameState.motorcade;
+      const hasDRrt = gameState.deliveryRush && gameState.deliveryRush.state === 'carried';
+      const hasPNrt = gameState.pinata;
+      let rtBarY = 132;
+      if (hasCWrt) rtBarY += 43;
+      if (hasSGrt) rtBarY += 43;
+      if (hasMGrt) rtBarY += 43;
+      if (hasVTrt) rtBarY += 43;
+      if (hasSTrt) rtBarY += 43;
+      if (hasPKrt) rtBarY += 43;
+      if (hasBVrt) rtBarY += 43;
+      if (hasFMrt) rtBarY += 43;
+      if (hasSPrt) rtBarY += 43;
+      if (hasMCrt) rtBarY += 43;
+      if (hasDRrt) rtBarY += 43;
+      if (hasPNrt) rtBarY += 43;
+
+      const rtBarW = 220, rtBarH = 12;
+      const rtBarX = camera.screenW / 2 - rtBarW / 2;
+      const rtSecsLeft = Math.ceil(rtTimeLeft / 1000);
+      const rtMyRings = rt.myRings || 0;
+      const rtClaimed = rt.claimed || 0;
+      const rtTotal = (rt.rings || []).length || 4;
+
+      ctx.save();
+      ctx.globalAlpha = 0.93;
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.beginPath();
+      ctx.roundRect(rtBarX - 55, rtBarY - 18, rtBarW + 110, rtBarH + 32, 10);
+      ctx.fill();
+
+      ctx.globalAlpha = 0.82;
+      ctx.fillStyle = 'rgba(0,40,40,0.5)';
+      ctx.beginPath();
+      ctx.roundRect(rtBarX, rtBarY + 2, rtBarW, rtBarH, 4);
+      ctx.fill();
+
+      ctx.globalAlpha = rtPulse;
+      ctx.fillStyle = '#00ffcc';
+      ctx.beginPath();
+      ctx.roundRect(rtBarX, rtBarY + 2, rtBarW * rtFrac, rtBarH, 4);
+      ctx.fill();
+
+      ctx.globalAlpha = 0.92;
+      ctx.fillStyle = '#00ffcc';
+      ctx.font = 'bold 11px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(`🎯 RING TOSS — ${rtClaimed}/${rtTotal} rings · ${rtSecsLeft}s · MY RINGS: ${rtMyRings} · CLAIM ALL FOR JACKPOT!`, camera.screenW / 2, rtBarY - 4);
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+
     // === CRIME WAVE OVERLAY ===
     if (gameState.self && gameState.self.crimeWave) {
       const cw = gameState.self.crimeWave;
@@ -13420,6 +13514,60 @@
       }
     }
 
+    // === RING TOSS — off-screen direction arrows (nearest unclaimed ring) ===
+    if (gameState.ringToss && gameState.ringToss.rings) {
+      const rtElapsed = (now - gameState.ringToss.spawnedAt) / 1000;
+      let nearestRingDist = Infinity;
+      let nearestRingAngle = 0;
+      let anyUnclaimed = false;
+      for (const ring of gameState.ringToss.rings) {
+        if (ring.claimed) continue;
+        anyUnclaimed = true;
+        const rx = ring.spawnX + Math.sin(ring.phase + rtElapsed * ring.freq) * ring.amplitude;
+        const ry = ring.spawnY + Math.cos(ring.phase * 1.3 + rtElapsed * ring.freq * 0.8) * ring.amplitude * 0.5;
+        const rsx = rx - camera.x + camera.screenW / 2;
+        const rsy = ry - camera.y + camera.screenH / 2;
+        const rOnScreen = rsx > 55 && rsx < camera.screenW - 55 && rsy > 55 && rsy < camera.screenH - 55;
+        if (!rOnScreen) {
+          const dist = Math.sqrt((rsx - camera.screenW / 2) ** 2 + (rsy - camera.screenH / 2) ** 2);
+          if (dist < nearestRingDist) {
+            nearestRingDist = dist;
+            nearestRingAngle = Math.atan2(rsy - camera.screenH / 2, rsx - camera.screenW / 2);
+          }
+        }
+      }
+      if (anyUnclaimed && nearestRingDist < Infinity) {
+        const rtArrowDist = Math.min(camera.screenW, camera.screenH) / 2 - 60;
+        const rtAx = camera.screenW / 2 + Math.cos(nearestRingAngle) * rtArrowDist;
+        const rtAy = camera.screenH / 2 + Math.sin(nearestRingAngle) * rtArrowDist;
+        const rtPulse2 = 0.7 + 0.3 * Math.sin(now * 0.007);
+        ctx.save();
+        ctx.translate(rtAx, rtAy);
+        ctx.rotate(nearestRingAngle);
+        ctx.globalAlpha = 0.9 * rtPulse2;
+        ctx.fillStyle = '#00ffcc';
+        ctx.shadowColor = '#00ffcc';
+        ctx.shadowBlur = 12;
+        ctx.strokeStyle = '#005533';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(22, 0);
+        ctx.lineTo(-10, -10);
+        ctx.lineTo(-5, 0);
+        ctx.lineTo(-10, 10);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 10px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('🎯', 4, 0);
+        ctx.restore();
+      }
+    }
+
     // Ice Rink — direction arrow when off-screen (during blizzard)
     if (gameState.iceRink && selfBird && weatherState && weatherState.type === 'blizzard') {
       const irsx = gameState.iceRink.x - camera.x + camera.screenW / 2;
@@ -14130,6 +14278,11 @@
     // El Piñata Gigante on minimap — Session 125
     if (gameState.pinata && worldData) {
       Renderer.drawPinataOnMinimap(minimapCtx, worldData, gameState.pinata, now);
+    }
+
+    // Ring Toss Event on minimap — Session 127
+    if (gameState.ringToss && worldData) {
+      Renderer.drawRingTossOnMinimap(minimapCtx, worldData, gameState.ringToss, now);
     }
 
     // Spring Painted Eggs on minimap — Session 123 (April 14–28)

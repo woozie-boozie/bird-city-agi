@@ -6252,4 +6252,83 @@ window.Renderer = {
     minimapCtx.fillText('🎉', mx, my);
     minimapCtx.restore();
   },
+
+  drawRingToss(ctx, camera, ringToss, now) {
+    if (!ringToss) return;
+    const elapsed = (now - ringToss.spawnedAt) / 1000;
+    for (const ring of ringToss.rings) {
+      const wx = ring.spawnX + Math.sin(ring.phase + elapsed * ring.freq) * ring.amplitude;
+      const wy = ring.spawnY + Math.cos(ring.phase * 1.3 + elapsed * ring.freq * 0.8) * ring.amplitude * 0.5;
+      const sx = (wx - camera.x) * camera.zoom + ctx.canvas.width / 2;
+      const sy = (wy - camera.y) * camera.zoom + ctx.canvas.height / 2;
+      const radius = 36 * camera.zoom;
+      ctx.save();
+      if (!ring.claimed) {
+        const pulse = 0.7 + 0.3 * Math.sin(now * 0.006 + ring.phase);
+        ctx.shadowColor = '#00ffcc';
+        ctx.shadowBlur = 18 * pulse;
+        // Outer glow ring
+        ctx.strokeStyle = `rgba(150,255,230,${0.4 * pulse})`;
+        ctx.lineWidth = 10 * camera.zoom;
+        ctx.beginPath();
+        ctx.arc(sx, sy, radius, 0, Math.PI * 2);
+        ctx.stroke();
+        // Main ring
+        ctx.strokeStyle = `rgba(0,255,200,${0.8 + 0.2 * pulse})`;
+        ctx.lineWidth = 4 * camera.zoom;
+        ctx.beginPath();
+        ctx.arc(sx, sy, radius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        // Center target emoji
+        ctx.font = `bold ${Math.max(10, 16 * camera.zoom)}px Arial`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('🎯', sx, sy);
+      } else {
+        // Claimed — faded with check
+        ctx.globalAlpha = 0.35;
+        ctx.strokeStyle = '#00ff99';
+        ctx.lineWidth = 3 * camera.zoom;
+        ctx.beginPath();
+        ctx.arc(sx, sy, radius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.globalAlpha = 0.5;
+        ctx.fillStyle = '#00ff99';
+        ctx.font = `bold ${Math.max(8, 14 * camera.zoom)}px Arial`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('✓', sx, sy);
+      }
+      ctx.restore();
+    }
+  },
+
+  drawRingTossOnMinimap(minimapCtx, worldData, ringToss, now) {
+    if (!ringToss) return;
+    const elapsed = (now - ringToss.spawnedAt) / 1000;
+    const scale = minimapCtx.canvas.width / worldData.width;
+    const pulse = 0.5 + 0.5 * Math.sin(now * 0.007);
+    for (const ring of ringToss.rings) {
+      if (ring.claimed) continue;
+      const wx = ring.spawnX + Math.sin(ring.phase + elapsed * ring.freq) * ring.amplitude;
+      const wy = ring.spawnY + Math.cos(ring.phase * 1.3 + elapsed * ring.freq * 0.8) * ring.amplitude * 0.5;
+      const mx = wx * scale;
+      const my = wy * scale;
+      minimapCtx.save();
+      minimapCtx.shadowColor = '#00ffcc';
+      minimapCtx.shadowBlur = 8 * pulse;
+      minimapCtx.strokeStyle = `rgba(0,255,200,${0.7 + 0.3 * pulse})`;
+      minimapCtx.lineWidth = 2;
+      minimapCtx.beginPath();
+      minimapCtx.arc(mx, my, 4 + pulse, 0, Math.PI * 2);
+      minimapCtx.stroke();
+      minimapCtx.shadowBlur = 0;
+      minimapCtx.font = '9px sans-serif';
+      minimapCtx.textAlign = 'center';
+      minimapCtx.textBaseline = 'middle';
+      minimapCtx.fillText('🎯', mx, my);
+      minimapCtx.restore();
+    }
+  },
 };

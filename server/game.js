@@ -210,6 +210,9 @@ const DAILY_CHALLENGE_POOL = [
   // Session 125: El Piñata Gigante
   { id: 'pinata_hitter',   title: 'Piñata Hitter',  desc: 'Hit the Giant Piñata 10 times', target: 10, trackType: 'pinata_hit',           reward: { xp: 180, coins: 90  } },
   { id: 'pinata_smasher',  title: 'Sweet Smasher',  desc: 'Contribute 5+ hits to smash the Giant Piñata open', target: 5, trackType: 'pinata_smash_contrib', reward: { xp: 220, coins: 110 } },
+  // Session 127: Ring Toss Event
+  { id: 'ring_shot',      title: 'Ring Shot!',   desc: 'Claim a floating Ring Toss ring by pooping through it', target: 1, trackType: 'ring_shot',      reward: { xp: 200, coins: 100 } },
+  { id: 'ring_hat_trick', title: 'Hat Trick',    desc: 'Claim 3 rings in a single Ring Toss event',            target: 3, trackType: 'ring_hat_trick', reward: { xp: 280, coins: 140 } },
 ];
 
 // ============================================================
@@ -919,6 +922,12 @@ class GameEngine {
     // Expires after 5 minutes if not smashed.
     this.pinata = null; // null | { x, y, vx, vy, hp, maxHp, spawnedAt, expiresAt, milestones: Set, contributors: Map<id,{hits,name,gangTag}> }
     this._pinataTimer = Date.now() + this._randomRange(30 * 60000, 40 * 60000);
+
+    // === RING TOSS EVENT ===
+    // 4 glowing rings drift sinusoidally across the city every 12-18 minutes.
+    // Poop within 42px of a ring to claim it. Claim all 4 = city-wide JACKPOT.
+    this.ringToss = null; // null | { rings: Array<{id,spawnX,spawnY,phase,freq,amplitude,claimed,claimedById,claimedByName,claimedByGang}>, spawnedAt, endsAt, claimed, contributors: Map }
+    this._ringTossTimer = Date.now() + this._randomRange(12 * 60000, 18 * 60000);
 
     // === AURORA BOREALIS ===
     // A rare, breathtaking night spectacle — colored light ribbons flow across the sky.
@@ -2349,6 +2358,9 @@ class GameEngine {
 
     // === El Piñata Gigante ===
     this._tickPinata(dt, now);
+
+    // === Ring Toss Event ===
+    this._tickRingToss(dt, now);
   }
 
   // ============================================================
@@ -4643,6 +4655,31 @@ class GameEngine {
         if (this.pinata.hp <= 0) {
           this._destroyPinata(now, bird.id);
         }
+      } else if (hit.target === 'ring_toss' && this.ringToss) {
+        // Ring Toss — claim a floating ring by pooping through it!
+        const rt = this.ringToss;
+        const ring = rt.rings.find(r => r.id === hit.ringId && !r.claimed);
+        if (ring) {
+          ring.claimed = true;
+          ring.claimedById = bird.id;
+          ring.claimedByName = bird.name;
+          ring.claimedByGang = bird.gangTag || null;
+          rt.claimed++;
+          xpGain = 85;
+          bird.coins += 45;
+          const contrib = rt.contributors.get(bird.id);
+          if (contrib) { contrib.rings++; }
+          else { rt.contributors.set(bird.id, { rings: 1, name: bird.name, gangTag: bird.gangTag || null }); }
+          this._trackDailyProgress(bird, 'ring_shot', 1);
+          this._trackDailyProgress(bird, 'ring_hat_trick', contrib ? contrib.rings : 1);
+          const elapsed = (now - rt.spawnedAt) / 1000;
+          const rx = ring.spawnX + Math.sin(ring.phase + elapsed * ring.freq) * ring.amplitude;
+          const ry = ring.spawnY + Math.cos(ring.phase * 1.3 + elapsed * ring.freq * 0.8) * ring.amplitude * 0.5;
+          this.events.push({ type: 'ring_claimed', birdId: bird.id, birdName: bird.name, gangTag: bird.gangTag || null, ringId: ring.id, x: rx, y: ry, claimedCount: rt.claimed, totalRings: rt.rings.length });
+          if (rt.claimed >= rt.rings.length) {
+            this._endRingToss(now, true);
+          }
+        }
       } else if (hit.target === 'hit_target' && hit.hitContract) {
         // Bounty hunting — player hit a bird with an active hit contract
         const hitContract = hit.hitContract;
@@ -6249,6 +6286,22 @@ class GameEngine {
       const pdy = poop.y - this.pinata.y;
       if (Math.sqrt(pdx * pdx + pdy * pdy) < hitRadius + 36) {
         return { target: 'pinata' };
+      }
+    }
+
+    // Ring Toss hit detection
+    if (this.ringToss) {
+      const rt = this.ringToss;
+      const elapsed = (now - rt.spawnedAt) / 1000;
+      for (const ring of rt.rings) {
+        if (ring.claimed) continue;
+        const rx = ring.spawnX + Math.sin(ring.phase + elapsed * ring.freq) * ring.amplitude;
+        const ry = ring.spawnY + Math.cos(ring.phase * 1.3 + elapsed * ring.freq * 0.8) * ring.amplitude * 0.5;
+        const rdx = poop.x - rx;
+        const rdy = poop.y - ry;
+        if (Math.sqrt(rdx * rdx + rdy * rdy) < hitRadius + 42) {
+          return { target: 'ring_toss', ringId: ring.id };
+        }
       }
     }
 
@@ -8244,6 +8297,17 @@ class GameEngine {
         maxHp: this.pinata.maxHp,
         expiresAt: this.pinata.expiresAt,
         myHits: (this.pinata.contributors.get(bird.id) || {}).hits || 0,
+      } : null,
+      ringToss: this.ringToss ? {
+        rings: this.ringToss.rings.map(r => ({
+          id: r.id, spawnX: r.spawnX, spawnY: r.spawnY,
+          phase: r.phase, freq: r.freq, amplitude: r.amplitude,
+          claimed: r.claimed, claimedByName: r.claimedByName || null,
+        })),
+        spawnedAt: this.ringToss.spawnedAt,
+        endsAt: this.ringToss.endsAt,
+        claimed: this.ringToss.claimed,
+        myRings: (this.ringToss.contributors.get(bird.id) || {}).rings || 0,
       } : null,
       raccoons: nearbyRaccoons,
       drunkPigeons: nearbyDrunkPigeons,
@@ -28277,6 +28341,86 @@ class GameEngine {
 
     this.pinata = null;
     this._pinataTimer = now + this._randomRange(30 * 60000, 40 * 60000);
+  }
+
+  // ============================================================
+  // RING TOSS EVENT
+  // ============================================================
+
+  _tickRingToss(dt, now) {
+    if (!this.ringToss && now >= this._ringTossTimer) {
+      const onlineBirds = [...this.birds.values()].filter(b => b.connected);
+      if (onlineBirds.length > 0) {
+        this._spawnRingToss(now);
+      } else {
+        this._ringTossTimer = now + 60000;
+      }
+      return;
+    }
+    if (!this.ringToss) return;
+    if (now >= this.ringToss.endsAt) {
+      this._endRingToss(now, false);
+    }
+  }
+
+  _spawnRingToss(now) {
+    const POSITIONS = [
+      { x: 600,  y: 600  }, { x: 1500, y: 500  }, { x: 2500, y: 600  },
+      { x: 600,  y: 1500 }, { x: 1500, y: 1500 }, { x: 2500, y: 1500 },
+      { x: 600,  y: 2500 }, { x: 1500, y: 2500 }, { x: 2400, y: 2400 },
+    ];
+    const shuffled = POSITIONS.slice().sort(() => Math.random() - 0.5);
+    const chosen = [];
+    for (const pos of shuffled) {
+      if (chosen.every(c => Math.sqrt((c.x - pos.x) ** 2 + (c.y - pos.y) ** 2) > 500)) {
+        chosen.push(pos);
+        if (chosen.length === 4) break;
+      }
+    }
+    this.ringToss = {
+      rings: chosen.map((pos, i) => ({
+        id: `ring_${i}`,
+        spawnX: pos.x,
+        spawnY: pos.y,
+        phase: Math.random() * Math.PI * 2,
+        freq: 0.3 + Math.random() * 0.2,
+        amplitude: 60 + Math.random() * 40,
+        claimed: false,
+        claimedById: null,
+        claimedByName: null,
+        claimedByGang: null,
+      })),
+      spawnedAt: now,
+      endsAt: now + 90000,
+      claimed: 0,
+      contributors: new Map(),
+    };
+    this.events.push({
+      type: 'ring_toss_started',
+      rings: this.ringToss.rings.map(r => ({ id: r.id, x: r.spawnX, y: r.spawnY })),
+      endsAt: this.ringToss.endsAt,
+    });
+  }
+
+  _endRingToss(now, allClaimed) {
+    const rt = this.ringToss;
+    if (!rt) return;
+    if (allClaimed) {
+      const jackpotXp = 200, jackpotCoins = 100;
+      const rewards = [];
+      for (const [birdId, contrib] of rt.contributors) {
+        const b = this.birds.get(birdId);
+        if (!b) continue;
+        b.xp = (b.xp || 0) + jackpotXp;
+        b.coins = (b.coins || 0) + jackpotCoins;
+        rewards.push({ birdId, birdName: contrib.name, gangTag: contrib.gangTag, xp: jackpotXp, coins: jackpotCoins, rings: contrib.rings });
+      }
+      this.events.push({ type: 'ring_toss_jackpot', rewards });
+    } else {
+      this.events.push({ type: 'ring_toss_expired', claimed: rt.claimed, total: rt.rings.length });
+    }
+    this.ringToss = null;
+    this._ringTossTimer = now + this._randomRange(12 * 60000, 18 * 60000);
   }
 
 }
