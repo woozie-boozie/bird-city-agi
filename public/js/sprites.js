@@ -9210,4 +9210,153 @@ window.Sprites = {
 
     ctx.restore();
   },
+
+  // ============================================================
+  // EL PIÑATA GIGANTE — Session 125
+  // Colorful spinning star piñata with candy decorations and HP bar
+  // ============================================================
+  drawPinata(ctx, sx, sy, hp, maxHp, now) {
+    ctx.save();
+    ctx.translate(sx, sy);
+
+    const t = now * 0.001;
+    const pulse = 0.5 + 0.5 * Math.sin(t * 2.5);
+    const spin = (now * 0.0007) % (Math.PI * 2);
+    const bob = Math.sin(t * 1.8) * 6;
+    ctx.translate(0, bob);
+
+    // Radial glow aura
+    const aura = ctx.createRadialGradient(0, 0, 10, 0, 0, 50);
+    aura.addColorStop(0, `rgba(255,100,200,${0.18 + 0.12 * pulse})`);
+    aura.addColorStop(1, 'rgba(255,50,180,0)');
+    ctx.fillStyle = aura;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 50, 50, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Hanging string
+    ctx.strokeStyle = 'rgba(180,130,80,0.9)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(0, -28);
+    ctx.lineTo(0, -40);
+    ctx.stroke();
+
+    ctx.rotate(spin);
+
+    // === STAR BODY — 7 points, colored wedge segments ===
+    const POINTS = 7;
+    const OUTER_R = 26;
+    const INNER_R = 13;
+    const SEGMENT_COLORS = ['#ff2244', '#ff8800', '#ffdd00', '#22cc44', '#2288ff', '#aa44ff', '#ff44aa'];
+
+    for (let i = 0; i < POINTS; i++) {
+      const a1 = (i / POINTS) * Math.PI * 2 - Math.PI / 2;
+      const a2 = ((i + 1) / POINTS) * Math.PI * 2 - Math.PI / 2;
+      const aMid = (a1 + a2) / 2;
+
+      // Fill wedge segment in alternating festive color
+      ctx.fillStyle = SEGMENT_COLORS[i % SEGMENT_COLORS.length];
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.arc(0, 0, OUTER_R, a1, a2);
+      ctx.closePath();
+      ctx.fill();
+
+      // Cone/spike tip
+      const tipX = Math.cos(aMid) * (OUTER_R + 10);
+      const tipY = Math.sin(aMid) * (OUTER_R + 10);
+      const baseL = { x: Math.cos(a1) * OUTER_R, y: Math.sin(a1) * OUTER_R };
+      const baseR = { x: Math.cos(a2) * OUTER_R, y: Math.sin(a2) * OUTER_R };
+      ctx.fillStyle = SEGMENT_COLORS[(i + 1) % SEGMENT_COLORS.length];
+      ctx.beginPath();
+      ctx.moveTo(baseL.x, baseL.y);
+      ctx.lineTo(tipX, tipY);
+      ctx.lineTo(baseR.x, baseR.y);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // Inner circle (body center)
+    const bodyGrd = ctx.createRadialGradient(0, 0, 2, 0, 0, INNER_R);
+    bodyGrd.addColorStop(0, '#ffeecc');
+    bodyGrd.addColorStop(1, '#ffcc66');
+    ctx.fillStyle = bodyGrd;
+    ctx.beginPath();
+    ctx.arc(0, 0, INNER_R, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Candy dot decorations
+    const dotColors = ['#ff2244', '#2288ff', '#22cc44', '#aa44ff', '#ffdd00'];
+    for (let i = 0; i < 8; i++) {
+      const da = (i / 8) * Math.PI * 2;
+      const dr = 18 + (i % 2) * 4;
+      const dx = Math.cos(da) * dr;
+      const dy = Math.sin(da) * dr;
+      ctx.fillStyle = dotColors[i % dotColors.length];
+      ctx.beginPath();
+      ctx.arc(dx, dy, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+      ctx.lineWidth = 0.8;
+      ctx.stroke();
+    }
+
+    // Center highlight
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.beginPath();
+    ctx.arc(-4, -4, 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+    ctx.save();
+    ctx.translate(sx, sy + bob);
+
+    // HP bar (rainbow gradient)
+    const hpFrac = hp / maxHp;
+    const barW = 70;
+    const barH = 7;
+    const barX = -barW / 2;
+    const barY = -46;
+
+    ctx.fillStyle = 'rgba(0,0,0,0.65)';
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(barX - 1, barY - 1, barW + 2, barH + 2, 2);
+    else ctx.rect(barX - 1, barY - 1, barW + 2, barH + 2);
+    ctx.fill();
+
+    // Rainbow fill
+    const rainbowGrd = ctx.createLinearGradient(barX, 0, barX + barW * hpFrac, 0);
+    rainbowGrd.addColorStop(0, '#ff2244');
+    rainbowGrd.addColorStop(0.33, '#ffdd00');
+    rainbowGrd.addColorStop(0.66, '#22cc44');
+    rainbowGrd.addColorStop(1, '#2288ff');
+    ctx.fillStyle = rainbowGrd;
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(barX, barY, barW * hpFrac, barH, 2);
+    else ctx.rect(barX, barY, barW * hpFrac, barH);
+    ctx.fill();
+
+    // HP text
+    ctx.font = 'bold 6px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#fff';
+    ctx.shadowColor = '#000';
+    ctx.shadowBlur = 3;
+    ctx.fillText(`${hp}/${maxHp}`, 0, barY + barH / 2);
+    ctx.shadowBlur = 0;
+
+    // Label
+    ctx.font = `bold ${8 + pulse * 1.5}px Arial`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillStyle = `rgba(255,${Math.floor(180 + 60 * pulse)},220,0.95)`;
+    ctx.shadowColor = '#000';
+    ctx.shadowBlur = 5;
+    ctx.fillText('🎉 EL PIÑATA GIGANTE', 0, barY - 3);
+    ctx.shadowBlur = 0;
+
+    ctx.restore();
+  },
 };

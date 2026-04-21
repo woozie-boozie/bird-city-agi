@@ -6038,4 +6038,36 @@ window.Renderer = {
       minimapCtx.restore();
     }
   },
+
+  // ============================================================
+  // SESSION 125: EL PIÑATA GIGANTE
+  // ============================================================
+
+  drawPinata(ctx, camera, pinata, now) {
+    if (!pinata) return;
+    const sx = (pinata.x - camera.x) * camera.zoom + ctx.canvas.width / 2;
+    const sy = (pinata.y - camera.y) * camera.zoom + ctx.canvas.height / 2;
+    Sprites.drawPinata(ctx, sx, sy, pinata.hp, pinata.maxHp, now);
+  },
+
+  drawPinataOnMinimap(minimapCtx, worldData, pinata, now) {
+    if (!pinata) return;
+    const scale = minimapCtx.canvas.width / worldData.width;
+    const mx = pinata.x * scale;
+    const my = pinata.y * scale;
+    const pulse = 0.5 + 0.5 * Math.sin(now * 0.006);
+    minimapCtx.save();
+    minimapCtx.shadowColor = '#ff88cc';
+    minimapCtx.shadowBlur = 10 * pulse;
+    minimapCtx.fillStyle = `rgba(255,140,200,${0.7 + 0.3 * pulse})`;
+    minimapCtx.beginPath();
+    minimapCtx.arc(mx, my, 5 + pulse, 0, Math.PI * 2);
+    minimapCtx.fill();
+    minimapCtx.shadowBlur = 0;
+    minimapCtx.font = '9px sans-serif';
+    minimapCtx.textAlign = 'center';
+    minimapCtx.textBaseline = 'middle';
+    minimapCtx.fillText('🎉', mx, my);
+    minimapCtx.restore();
+  },
 };

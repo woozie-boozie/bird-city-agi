@@ -206,6 +206,9 @@ const DAILY_CHALLENGE_POOL = [
   // Session 124: Delivery Rush challenges
   { id: 'rush_delivery',  title: 'Rush Delivery',  desc: 'Complete a timed Package Rush delivery to the destination', target: 1, trackType: 'delivery_completed',  reward: { xp: 220, coins: 110 } },
   { id: 'delivery_thief', title: 'Package Thief',  desc: 'Steal a delivery package from another carrier (3 poop hits)', target: 1, trackType: 'delivery_stolen',    reward: { xp: 200, coins: 100 } },
+  // Session 125: El Piñata Gigante
+  { id: 'pinata_hitter',   title: 'Piñata Hitter',  desc: 'Hit the Giant Piñata 10 times', target: 10, trackType: 'pinata_hit',           reward: { xp: 180, coins: 90  } },
+  { id: 'pinata_smasher',  title: 'Sweet Smasher',  desc: 'Contribute 5+ hits to smash the Giant Piñata open', target: 5, trackType: 'pinata_smash_contrib', reward: { xp: 220, coins: 110 } },
 ];
 
 // ============================================================
@@ -904,6 +907,17 @@ class GameEngine {
     // If time runs out, the package explodes in a small coin scatter for nearby birds.
     this.deliveryPackage = null; // null | { state, x, y, originName, destX, destY, destName, carrierId, carrierName, pickedUpAt, expiresAt, waitExpiresAt, stealHits, stealHitterIds, lastCarrierX, lastCarrierY, warnedLow }
     this._deliveryPackageTimer = Date.now() + this._randomRange(8 * 60000, 12 * 60000);
+
+    // === EL PIÑATA GIGANTE (Session 125) ===
+    // Every 30-40 minutes a giant colorful papier-mâché piñata drifts into the city.
+    // It floats slowly across the map, bouncing off world edges.
+    // 80 HP shared pool — every bird poops at it to smash it.
+    // HP milestones announced city-wide at 75%, 50%, 25%.
+    // On smash: 18 food items + 12 coin stacks + 3 Mystery Crate items scatter across a wide radius.
+    // All contributors split 400 XP + 200 coins proportional to their hit count.
+    // Expires after 5 minutes if not smashed.
+    this.pinata = null; // null | { x, y, vx, vy, hp, maxHp, spawnedAt, expiresAt, milestones: Set, contributors: Map<id,{hits,name,gangTag}> }
+    this._pinataTimer = Date.now() + this._randomRange(30 * 60000, 40 * 60000);
 
     // === AURORA BOREALIS ===
     // A rare, breathtaking night spectacle — colored light ribbons flow across the sky.
@@ -2324,6 +2338,9 @@ class GameEngine {
 
     // === Delivery Rush ===
     this._tickDeliveryRush(now);
+
+    // === El Piñata Gigante ===
+    this._tickPinata(dt, now);
   }
 
   // ============================================================
@@ -4604,6 +4621,20 @@ class GameEngine {
             });
           }
         }
+      } else if (hit.target === 'pinata' && this.pinata) {
+        // El Piñata Gigante — poop the papier-mâché beast!
+        const dmg = isMegaPoop ? 3 : 1;
+        this.pinata.hp = Math.max(0, this.pinata.hp - dmg);
+        xpGain = isMegaPoop ? 30 : 12;
+        bird.coins += isMegaPoop ? 8 : 3;
+        this._trackDailyProgress(bird, 'pinata_hit', 1);
+        const c = this.pinata.contributors.get(bird.id);
+        if (c) { c.hits += dmg; }
+        else { this.pinata.contributors.set(bird.id, { hits: dmg, name: bird.name, gangTag: bird.gangTag || null }); }
+        this.events.push({ type: 'pinata_hit', birdId: bird.id, birdName: bird.name, x: this.pinata.x, y: this.pinata.y, hp: this.pinata.hp, maxHp: this.pinata.maxHp, dmg });
+        if (this.pinata.hp <= 0) {
+          this._destroyPinata(now, bird.id);
+        }
       } else if (hit.target === 'hit_target' && hit.hitContract) {
         // Bounty hunting — player hit a bird with an active hit contract
         const hitContract = hit.hitContract;
@@ -6199,6 +6230,15 @@ class GameEngine {
         if (Math.sqrt(hdx * hdx + hdy * hdy) < hitRadius + 14) {
           return { target: 'hot_poop_pass', recipientId: otherId, recipient: other };
         }
+      }
+    }
+
+    // El Piñata Gigante hit detection
+    if (this.pinata) {
+      const pdx = poop.x - this.pinata.x;
+      const pdy = poop.y - this.pinata.y;
+      if (Math.sqrt(pdx * pdx + pdy * pdy) < hitRadius + 36) {
+        return { target: 'pinata' };
       }
     }
 
@@ -8176,6 +8216,14 @@ class GameEngine {
         expiresAt: this.chaosOracle.expiresAt,
         myCooldownUntil: this.chaosOracle.visitCooldowns.get(bird.id) || 0,
         nearMe: Math.hypot(bird.x - this.chaosOracle.x, bird.y - this.chaosOracle.y) < 80,
+      } : null,
+      pinata: this.pinata ? {
+        x: this.pinata.x,
+        y: this.pinata.y,
+        hp: this.pinata.hp,
+        maxHp: this.pinata.maxHp,
+        expiresAt: this.pinata.expiresAt,
+        myHits: (this.pinata.contributors.get(bird.id) || {}).hits || 0,
       } : null,
       raccoons: nearbyRaccoons,
       drunkPigeons: nearbyDrunkPigeons,
@@ -17169,6 +17217,8 @@ class GameEngine {
       treasureFinds:        [],   // [{ name, gangTag, coins }] — buried treasure claims this cycle
       rivalBirdKilled:      0,   // rival bird kill count this cycle
       moleSuccesses:        [],  // [{ moleName, moleGang }] — successful infiltrations this cycle
+      pinataSmashes:        0,   // piñatas smashed this cycle
+      pinataKiller:         null, // name of the bird who landed the killing blow
     };
   }
 
@@ -17635,6 +17685,16 @@ class GameEngine {
         icon: '🔥',
         headline: `HOT POOP DETONATES ON ${tag}${top.name.toUpperCase()} — CITY EXPLODES IN CHAOS`,
         subline: `${top.passes} birds handled the cursed turd before it blew. "I thought it was someone else's problem," says every bird who touched it.`,
+      });
+    }
+
+    // Piñata smashed
+    if (stats.pinataSmashes > 0) {
+      const killerLabel = stats.pinataKiller ? `${stats.pinataKiller.toUpperCase()} LANDS THE FINAL HIT` : 'BRAVE BIRDS SMASH IT OPEN';
+      headlines.push({
+        icon: '🎉',
+        headline: `EL PIÑATA GIGANTE SMASHED — ${killerLabel}`,
+        subline: 'Candy, coins, and mystery items rained from the sky. Property damage is "extensive." Officials refuse to comment.',
       });
     }
 
@@ -27860,6 +27920,177 @@ class GameEngine {
         bird.bmMegaPoops = (bird.bmMegaPoops || 0) + 5;
         break;
     }
+  }
+
+  // ============================================================
+  // SESSION 125: EL PIÑATA GIGANTE
+  // ============================================================
+
+  _tickPinata(dt, now) {
+    // Spawn timer
+    if (!this.pinata && now >= this._pinataTimer) {
+      const onlineBirds = [...this.birds.values()].filter(b => b.connected);
+      if (onlineBirds.length > 0) {
+        this._spawnPinata(now);
+      } else {
+        this._pinataTimer = now + 60000; // retry in 1 min
+      }
+      return;
+    }
+
+    if (!this.pinata) return;
+
+    const p = this.pinata;
+
+    // Move — gentle drift, bounce off world edges
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+
+    const MARGIN = 120;
+    if (p.x < MARGIN)        { p.x = MARGIN;                    p.vx = Math.abs(p.vx); }
+    if (p.x > 3000 - MARGIN) { p.x = 3000 - MARGIN;             p.vx = -Math.abs(p.vx); }
+    if (p.y < MARGIN)        { p.y = MARGIN;                    p.vy = Math.abs(p.vy); }
+    if (p.y > 3000 - MARGIN) { p.y = 3000 - MARGIN;             p.vy = -Math.abs(p.vy); }
+
+    // Occasionally nudge velocity slightly for organic drift
+    if (Math.random() < 0.002) {
+      p.vx += (Math.random() - 0.5) * 4;
+      p.vy += (Math.random() - 0.5) * 4;
+      const speed = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
+      if (speed > 28) { p.vx = (p.vx / speed) * 28; p.vy = (p.vy / speed) * 28; }
+      if (speed < 10) { p.vx = (p.vx / speed) * 10; p.vy = (p.vy / speed) * 10; }
+    }
+
+    // HP milestone announcements at 75%, 50%, 25%
+    const hpFrac = p.hp / p.maxHp;
+    const milestoneChecks = [[0.75, '75%'], [0.50, '50%'], [0.25, '25% — ALMOST THERE!']];
+    for (const [frac, label] of milestoneChecks) {
+      if (!p.milestones.has(frac) && hpFrac <= frac) {
+        p.milestones.add(frac);
+        this.events.push({ type: 'pinata_milestone', hp: p.hp, maxHp: p.maxHp, label });
+      }
+    }
+
+    // Expire after 5 minutes if not smashed
+    if (now >= p.expiresAt) {
+      this.events.push({ type: 'pinata_expired' });
+      this.pinata = null;
+      this._pinataTimer = now + this._randomRange(30 * 60000, 40 * 60000);
+    }
+  }
+
+  _spawnPinata(now) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 14 + Math.random() * 10;
+    this.pinata = {
+      x: 300 + Math.random() * 2400,
+      y: 300 + Math.random() * 2400,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      hp: 80,
+      maxHp: 80,
+      spawnedAt: now,
+      expiresAt: now + 5 * 60000,
+      milestones: new Set(),
+      contributors: new Map(), // birdId -> { hits, name, gangTag }
+    };
+    this.events.push({
+      type: 'pinata_spawned',
+      x: this.pinata.x,
+      y: this.pinata.y,
+    });
+  }
+
+  _destroyPinata(now, killerId) {
+    const p = this.pinata;
+    if (!p) return;
+
+    // Scatter 18 food items + 12 coin stacks + 3 Mystery Crate items around the smash site
+    const SCATTER_RADIUS = 260;
+    const scatterItems = [];
+
+    // Food items
+    for (let i = 0; i < 18; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const r = 30 + Math.random() * SCATTER_RADIUS;
+      const foodTypes = ['pizza', 'sandwich', 'donut', 'cake', 'bread', 'cheese'];
+      const fx = Math.max(60, Math.min(2940, p.x + Math.cos(angle) * r));
+      const fy = Math.max(60, Math.min(2940, p.y + Math.sin(angle) * r));
+      const foodId = `pinata_food_${Date.now()}_${i}`;
+      this.foods.set(foodId, { id: foodId, x: fx, y: fy, type: foodTypes[Math.floor(Math.random() * foodTypes.length)], active: true });
+      scatterItems.push({ x: fx, y: fy, kind: 'food' });
+    }
+
+    // Coin stacks — auto-collected by proximity in tick
+    const coinDrops = [];
+    for (let i = 0; i < 12; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const r = 40 + Math.random() * SCATTER_RADIUS;
+      const cx = Math.max(60, Math.min(2940, p.x + Math.cos(angle) * r));
+      const cy = Math.max(60, Math.min(2940, p.y + Math.sin(angle) * r));
+      coinDrops.push({ x: cx, y: cy, amount: 30 + Math.floor(Math.random() * 60) });
+    }
+
+    // Mystery Crate items for top-3 contributors
+    const sorted = [...p.contributors.entries()].sort((a, b) => b[1].hits - a[1].hits);
+    const crateWinners = sorted.slice(0, 3);
+    for (const [birdId] of crateWinners) {
+      const b = this.birds.get(birdId);
+      if (b) {
+        const item = this._rollMysteryCrateItem();
+        this._applyMysteryCrateEffect(b, item, now);
+        this.events.push({ type: 'pinata_crate_reward', birdId, birdName: b.name, item: item.emoji, itemName: item.name });
+      }
+    }
+
+    // Distribute coin drops to nearby birds
+    const onlineBirds = [...this.birds.values()].filter(b => b.connected && !b.inSewer);
+    for (const drop of coinDrops) {
+      let closest = null, closestDist = 200;
+      for (const b of onlineBirds) {
+        const dd = Math.sqrt((b.x - drop.x) ** 2 + (b.y - drop.y) ** 2);
+        if (dd < closestDist) { closest = b; closestDist = dd; }
+      }
+      if (closest) {
+        closest.coins += drop.amount;
+        this.events.push({ type: 'pinata_coin_drop', birdId: closest.id, birdName: closest.name, amount: drop.amount, x: drop.x, y: drop.y });
+      }
+    }
+
+    // Proportional XP + coin rewards to contributors
+    const totalHits = [...p.contributors.values()].reduce((sum, c) => sum + c.hits, 0);
+    const TOTAL_XP_POOL = 400;
+    const TOTAL_COIN_POOL = 200;
+    const rewards = [];
+    for (const [birdId, contrib] of p.contributors) {
+      const b = this.birds.get(birdId);
+      if (!b) continue;
+      const share = totalHits > 0 ? contrib.hits / totalHits : 0;
+      const xpReward = Math.max(40, Math.floor(TOTAL_XP_POOL * share));
+      const coinReward = Math.max(15, Math.floor(TOTAL_COIN_POOL * share));
+      b.xp = (b.xp || 0) + xpReward;
+      b.coins = (b.coins || 0) + coinReward;
+      this._trackDailyProgress(b, 'pinata_smash_contrib', 1);
+      rewards.push({ birdId, birdName: contrib.name, gangTag: contrib.gangTag, xp: xpReward, coins: coinReward, hits: contrib.hits });
+    }
+
+    this.gazetteStats = this.gazetteStats || {};
+    this.gazetteStats.pinataSmashes = (this.gazetteStats.pinataSmashes || 0) + 1;
+    if (killerId) {
+      const kb = this.birds.get(killerId);
+      this.gazetteStats.pinataKiller = kb ? (kb.gangTag ? `[${kb.gangTag}] ${kb.name}` : kb.name) : 'Unknown';
+    }
+
+    this.events.push({
+      type: 'pinata_smashed',
+      x: p.x, y: p.y,
+      rewards,
+      coinDrops: coinDrops.length,
+      foodItems: 18,
+    });
+
+    this.pinata = null;
+    this._pinataTimer = now + this._randomRange(30 * 60000, 40 * 60000);
   }
 
 }

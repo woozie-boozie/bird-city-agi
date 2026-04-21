@@ -5616,6 +5616,37 @@
     if (ev.type === 'garbage_truck_gone') {
       addEventMessage(`🚛 The garbage truck has finished its route and driven off.`, '#668844');
     }
+
+    // === EL PIÑATA GIGANTE — Session 125 ===
+    if (ev.type === 'pinata_spawned') {
+      effects.push({ type: 'screen_shake', intensity: 8, duration: 500, time: now });
+      effects.push({ type: 'screen_flash', color: 'rgba(255,100,200,0.3)', duration: 400, time: now });
+      showAnnouncement(`🎉 EL PIÑATA GIGANTE APPEARS!\nCooperate to smash it open — 80 HP!\nPoop it for XP, coins, and a LOOT EXPLOSION!`, '#ff44cc', 7000);
+      addEventMessage(`🎉 EL PIÑATA GIGANTE is here! 80 HP — smash it for food, coins & mystery items!`, '#ff88dd');
+    }
+    if (ev.type === 'pinata_hit') {
+      effects.push({ type: 'float_text', x: ev.x, y: ev.y - 22, time: now, duration: 900, text: `🎉 -${ev.damage}HP`, color: '#ff88cc' });
+      if (ev.birdId === myId) {
+        effects.push({ type: 'float_text', x: ev.x, y: ev.y - 38, time: now, duration: 1000, text: `+${ev.xp} XP +${ev.coins}c`, color: '#ffccee' });
+      }
+    }
+    if (ev.type === 'pinata_milestone') {
+      screenShake(6, 400);
+      effects.push({ type: 'screen_flash', color: 'rgba(255,100,200,0.2)', duration: 350, time: now });
+      addEventMessage(`🎉 PIÑATA — ${ev.pct}% smashed! Only ${ev.hp} HP left — KEEP GOING!`, '#ff66cc');
+    }
+    if (ev.type === 'pinata_smashed') {
+      screenShake(16, 800);
+      effects.push({ type: 'screen_flash', color: 'rgba(255,80,180,0.5)', duration: 600, time: now });
+      showAnnouncement(`🎊 EL PIÑATA GIGANTE IS SMASHED!\nFood, coins & mystery items EVERYWHERE!\nContributors share 400 XP + 200c!`, '#ff44cc', 8000);
+      addEventMessage(`🎊 PIÑATA SMASHED! Loot explosion — ${ev.foodCount || 18} food + ${ev.coinCount || 12} coin stacks + mystery items!`, '#ff88dd');
+      if (ev.myXp && ev.myXp > 0) {
+        effects.push({ type: 'float_text', x: (camera && camera.screenW / 2) || 400, y: (camera && camera.screenH / 2) || 300, time: now, duration: 2000, text: `🎊 +${ev.myXp} XP +${ev.myCoins}c`, color: '#ffccee' });
+      }
+    }
+    if (ev.type === 'pinata_expired') {
+      addEventMessage(`🎉 El Piñata Gigante floated away… nobody smashed it in time.`, '#aa5588');
+    }
   }
 
   function showAnnouncement(text, color, duration) {
@@ -10355,6 +10386,11 @@
       Renderer.drawDeliveryRush(ctx, camera, gameState.deliveryRush, now);
     }
 
+    // El Piñata Gigante — Session 125
+    if (gameState.pinata) {
+      Renderer.drawPinata(ctx, camera, gameState.pinata, now);
+    }
+
     // Bird Royale — safe zone ring + danger zone overlay
     if (gameState.birdRoyale && gameState.birdRoyale.state === 'active') {
       Renderer.drawBirdRoyaleZone(ctx, camera, gameState.birdRoyale, now);
@@ -12098,6 +12134,77 @@
       }
     }
 
+    // === EL PIÑATA GIGANTE HUD BAR (Session 125) ===
+    if (gameState.pinata) {
+      const pin = gameState.pinata;
+      const pinHpFrac = Math.max(0, pin.hp / pin.maxHp);
+      const pinTimeLeft = Math.max(0, pin.expiresAt - now);
+      const pinPulse = 0.65 + 0.35 * Math.abs(Math.sin(now * 0.007));
+      const hasCWpin = gameState.self && gameState.self.crimeWave;
+      const hasSGpin = gameState.seagullInvasion;
+      const hasMGpin = gameState.migration;
+      const hasVTpin = gameState.vaultTruck && !gameState.vaultTruck.cracked && !gameState.vaultTruck.escaped;
+      const hasSTpin = gameState.stampede;
+      const hasPKpin = gameState.suspiciousPackage;
+      const hasBVpin = gameState.birdnapperVan && gameState.birdnapperVan.state === 'escaping';
+      const hasFMpin = gameState.flashMob;
+      const hasSPpin = gameState.skyPirateShip && !gameState.skyPirateShip.sinking;
+      const hasMCpin = gameState.motorcade;
+      const hasDRpin = gameState.deliveryRush && gameState.deliveryRush.state === 'carried';
+      let pinBarY = 132;
+      if (hasCWpin) pinBarY += 43;
+      if (hasSGpin) pinBarY += 43;
+      if (hasMGpin) pinBarY += 43;
+      if (hasVTpin) pinBarY += 43;
+      if (hasSTpin) pinBarY += 43;
+      if (hasPKpin) pinBarY += 43;
+      if (hasBVpin) pinBarY += 43;
+      if (hasFMpin) pinBarY += 43;
+      if (hasSPpin) pinBarY += 43;
+      if (hasMCpin) pinBarY += 43;
+      if (hasDRpin) pinBarY += 43;
+
+      const pinBarW = 220, pinBarH = 12;
+      const pinBarX = camera.screenW / 2 - pinBarW / 2;
+      const pinSecsLeft = Math.ceil(pinTimeLeft / 1000);
+      const pinMyHits = pin.myHits || 0;
+
+      ctx.save();
+      ctx.globalAlpha = 0.93;
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.beginPath();
+      ctx.roundRect(pinBarX - 55, pinBarY - 18, pinBarW + 110, pinBarH + 32, 10);
+      ctx.fill();
+
+      // Rainbow gradient HP fill
+      const pinGrad = ctx.createLinearGradient(pinBarX, 0, pinBarX + pinBarW, 0);
+      pinGrad.addColorStop(0,   '#ff4488');
+      pinGrad.addColorStop(0.25,'#ff8800');
+      pinGrad.addColorStop(0.5, '#ffee00');
+      pinGrad.addColorStop(0.75,'#44dd44');
+      pinGrad.addColorStop(1,   '#44aaff');
+
+      ctx.globalAlpha = 0.82;
+      ctx.fillStyle = 'rgba(80,0,40,0.45)';
+      ctx.beginPath();
+      ctx.roundRect(pinBarX, pinBarY + 2, pinBarW, pinBarH, 4);
+      ctx.fill();
+
+      ctx.globalAlpha = pinPulse;
+      ctx.fillStyle = pinGrad;
+      ctx.beginPath();
+      ctx.roundRect(pinBarX, pinBarY + 2, pinBarW * pinHpFrac, pinBarH, 4);
+      ctx.fill();
+
+      ctx.globalAlpha = 0.92;
+      ctx.fillStyle = '#ff88dd';
+      ctx.font = 'bold 11px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(`🎉 EL PIÑATA — ${pin.hp}/${pin.maxHp} HP · ${pinSecsLeft}s · MY HITS: ${pinMyHits} · SMASH IT!`, camera.screenW / 2, pinBarY - 4);
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+
     // === CRIME WAVE OVERLAY ===
     if (gameState.self && gameState.self.crimeWave) {
       const cw = gameState.self.crimeWave;
@@ -13200,6 +13307,44 @@
       }
     }
 
+    // === EL PIÑATA GIGANTE — off-screen direction arrow ===
+    if (gameState.pinata) {
+      const pinSX = gameState.pinata.x - camera.x + camera.screenW / 2;
+      const pinSY = gameState.pinata.y - camera.y + camera.screenH / 2;
+      const pinOnScreen = pinSX > 55 && pinSX < camera.screenW - 55 && pinSY > 55 && pinSY < camera.screenH - 55;
+      if (!pinOnScreen) {
+        const pinAngle = Math.atan2(pinSY - camera.screenH / 2, pinSX - camera.screenW / 2);
+        const pinArrowDist = Math.min(camera.screenW, camera.screenH) / 2 - 60;
+        const pinAx = camera.screenW / 2 + Math.cos(pinAngle) * pinArrowDist;
+        const pinAy = camera.screenH / 2 + Math.sin(pinAngle) * pinArrowDist;
+        const pinPulse2 = 0.7 + 0.3 * Math.sin(now * 0.008);
+        ctx.save();
+        ctx.translate(pinAx, pinAy);
+        ctx.rotate(pinAngle);
+        ctx.globalAlpha = 0.9 * pinPulse2;
+        ctx.fillStyle = '#ff44cc';
+        ctx.shadowColor = '#ff88ee';
+        ctx.shadowBlur = 12;
+        ctx.strokeStyle = '#440022';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(22, 0);
+        ctx.lineTo(-10, -10);
+        ctx.lineTo(-5, 0);
+        ctx.lineTo(-10, 10);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 10px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('🎉', 4, 0);
+        ctx.restore();
+      }
+    }
+
     // Ice Rink — direction arrow when off-screen (during blizzard)
     if (gameState.iceRink && selfBird && weatherState && weatherState.type === 'blizzard') {
       const irsx = gameState.iceRink.x - camera.x + camera.screenW / 2;
@@ -13899,6 +14044,11 @@
     // Delivery Rush on minimap — Session 124
     if (gameState.deliveryRush && worldData) {
       Renderer.drawDeliveryRushOnMinimap(minimapCtx, worldData, gameState.deliveryRush, now);
+    }
+
+    // El Piñata Gigante on minimap — Session 125
+    if (gameState.pinata && worldData) {
+      Renderer.drawPinataOnMinimap(minimapCtx, worldData, gameState.pinata, now);
     }
 
     // Spring Painted Eggs on minimap — Session 123 (April 14–28)

@@ -4289,6 +4289,35 @@ Bird City now has a hot-potato courier sprint. Every 8–12 minutes, a glowing b
 
 **Creative intent**: The Delivery Rush is Bird City's first "carry and protect" event — the carrier is simultaneously the most valuable bird on the map (big reward potential) and the most vulnerable (−15% speed, can't fight back, publicly tracked on the minimap). Every second you hold the package your bonus grows, but so does the risk of interception. Rivals must coordinate the 3-hit steal window precisely — one hit resets the 12-second clock if they're too slow. The coin-scatter explosion on timeout means even a failed carry has social consequences: nearby birds profit from your failure. A carrier zigzagging through downtown trying to shake a pursuer while watching their 90-second HUD drain — that's peak Bird City tension. Pure CARNAGE + SOCIAL + SPECTACLE energy.
 
+**Session 125 — 2026-04-21: El Piñata Gigante — Cooperative Smash Event**
+A giant rainbow papier-mâché piñata drifts into Bird City every 30–40 minutes, bouncing lazily off the map edges. The whole city must cooperate to smash it open — 80 shared HP, every poop counts. When it explodes: 18 food items, 12 coin stacks, and 3 Mystery Crate-tier items scatter across the impact zone.
+
+**El Piñata mechanics (`server/game.js`):**
+- Spawns every 30–40 minutes when ≥1 player is online at a random city position with random velocity (±85px/s), bouncing off map edges
+- 80 HP shared pool: normal poop = 1 HP (6 XP, 2c immediate), mega poop = 3 HP (18 XP, 6c) — all hits tracked per-contributor
+- Milestone announcements at 75%, 50%, and 25% HP remaining — escalating urgency broadcasts with screen shakes
+- 5-minute expiry: if not smashed, it floats away with a quiet event feed note
+- **Smash rewards**: all contributors split 400 XP + 200 coins proportional to damage dealt; no minimum floor — every hit counts
+- **Loot explosion**: 18 food items (variety: premium food) + 12 coin stacks (20–60c each) + 3 Mystery Crate-tier items scatter around the piñata's position on smash
+- Gazette tracking: "🎉 EL PIÑATA GIGANTE SMASHED — LOOT SHOWER!" headline + top smasher named
+
+**Visual system (`public/js/sprites.js`, `public/js/renderer.js`):**
+- Custom `drawPinata()` sprite: 7-point star body with rainbow-segmented arms, spinning slowly, gentle vertical bob, radial glow aura in magenta/pink, hanging string at top, candy dot decorations across the arms, inner gradient center
+- Rainbow-gradient HP bar below the sprite (pink → orange → yellow → green → blue)
+- Pulsing "🎉 EL PIÑATA GIGANTE" label above the sprite
+- `drawPinataOnMinimap()`: pulsing magenta dot with 🎉 emoji at piñata's live position — trackable from anywhere on the map
+- Off-screen direction arrow: magenta 🎉 arrow pointing toward the piñata when off-screen
+- HUD bar: stacks below all other event bars, shows HP/maxHP with rainbow gradient fill, time remaining, and player's personal hit count
+
+**Events & announcements (`public/js/main.js`):**
+- `pinata_spawned`: screen shake + pink screen flash + big announcement inviting the whole city
+- `pinata_hit`: floating "🎉 -NHP" damage text + personal XP/coin popup for the shooter
+- `pinata_milestone`: screen shake + flash + event feed "PIÑATA — 50% smashed! Keep going!"
+- `pinata_smashed`: large screen shake + pink flash + city-wide "LOOT EXPLOSION" announcement + personal reward callout
+- `pinata_expired`: quiet event feed note "El Piñata Gigante floated away…"
+
+**Creative intent**: Bird City has cooperative boss fights (Eagle Overlord, Vault Truck) and cooperative hunts (Seagull Invasion, Migration Alpha) — but nothing purely joyful and festive. El Piñata Gigante is a party event: colorful, chaotic, low-stakes. Any bird can chip in with one poop hit and earn proportional rewards. The slow bouncing movement means you have to chase it across the city — a piñata weaving through Downtown during a Crime Wave while everyone chases it is genuinely funny. The loot explosion scatter creates a frantic post-smash scramble. The rainbow sprite is the most visually festive thing in Bird City. Pure CARNAGE + SOCIAL + SPECTACLE energy — the city's first party event.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
