@@ -732,6 +732,13 @@ window.Sprites = {
 
   // === FOOD ===
   drawFood(ctx, x, y, type) {
+    // Spring Painted Eggs — delegate to dedicated renderer
+    if (type && type.startsWith('spring_egg_')) {
+      const tier = type.replace('spring_egg_', '');
+      Sprites.drawSpringEgg(ctx, x, y, tier, Date.now());
+      return;
+    }
+
     ctx.save();
     ctx.translate(x, y);
 
@@ -8986,6 +8993,105 @@ window.Sprites = {
     ctx.textAlign = 'center'; ctx.textBaseline = 'top';
     ctx.shadowColor = '#000'; ctx.shadowBlur = 3;
     ctx.fillText('🔮 ORACLE', 0, -30);
+    ctx.shadowBlur = 0;
+
+    ctx.restore();
+  },
+
+  // ============================================================
+  // SPRING PAINTED EGG — Session 123
+  // ============================================================
+  drawSpringEgg(ctx, x, y, tier, now) {
+    ctx.save();
+    ctx.translate(x, y);
+
+    const t = now * 0.002;
+    const bobY = Math.sin(t + x * 0.01) * 2.5;
+    ctx.translate(0, bobY);
+
+    // Glow aura
+    const glowColor = tier === 'common' ? '#88ddff' :
+                      tier === 'blossom' ? '#ffaacc' :
+                      tier === 'golden'  ? '#ffd700' :
+                      /* rainbow */        '#cc88ff';
+    const glowR = tier === 'rainbow' ? 22 : tier === 'golden' ? 18 : 14;
+    const grd = ctx.createRadialGradient(0, 0, 0, 0, 0, glowR);
+    grd.addColorStop(0, glowColor + '55');
+    grd.addColorStop(1, glowColor + '00');
+    ctx.fillStyle = grd;
+    ctx.beginPath(); ctx.ellipse(0, 0, glowR, glowR * 1.2, 0, 0, Math.PI * 2); ctx.fill();
+
+    // Egg body
+    const ew = tier === 'rainbow' ? 11 : tier === 'golden' ? 9 : 7;
+    const eh = ew * 1.4;
+
+    if (tier === 'common') {
+      const bodyGrd = ctx.createLinearGradient(-ew, -eh, ew, eh);
+      bodyGrd.addColorStop(0, '#a8e6ff');
+      bodyGrd.addColorStop(0.5, '#5bbce4');
+      bodyGrd.addColorStop(1, '#3a8fb5');
+      ctx.fillStyle = bodyGrd;
+      ctx.beginPath(); ctx.ellipse(0, 0, ew, eh, 0, 0, Math.PI * 2); ctx.fill();
+      // Stripe
+      ctx.strokeStyle = '#ffffffaa'; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(-ew * 0.8, 0); ctx.lineTo(ew * 0.8, 0); ctx.stroke();
+
+    } else if (tier === 'blossom') {
+      const bodyGrd = ctx.createLinearGradient(-ew, -eh, ew, eh);
+      bodyGrd.addColorStop(0, '#ffcce0');
+      bodyGrd.addColorStop(0.5, '#ff88b2');
+      bodyGrd.addColorStop(1, '#e0607a');
+      ctx.fillStyle = bodyGrd;
+      ctx.beginPath(); ctx.ellipse(0, 0, ew, eh, 0, 0, Math.PI * 2); ctx.fill();
+      // Blossom dots
+      const dotPositions = [[0, -eh * 0.4], [ew * 0.45, 0], [-ew * 0.45, 0], [0, eh * 0.4]];
+      ctx.fillStyle = '#ffffff99';
+      for (const [dx, dy] of dotPositions) {
+        ctx.beginPath(); ctx.arc(dx, dy, 1.5, 0, Math.PI * 2); ctx.fill();
+      }
+
+    } else if (tier === 'golden') {
+      const bodyGrd = ctx.createLinearGradient(-ew, -eh, ew, eh);
+      bodyGrd.addColorStop(0, '#fff0a0');
+      bodyGrd.addColorStop(0.4, '#ffd700');
+      bodyGrd.addColorStop(1, '#b8860b');
+      ctx.fillStyle = bodyGrd;
+      ctx.beginPath(); ctx.ellipse(0, 0, ew, eh, 0, 0, Math.PI * 2); ctx.fill();
+      // Star
+      ctx.fillStyle = '#ffffffcc';
+      ctx.font = `${ew}px Arial`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('★', 0, 0);
+
+    } else { // rainbow
+      // Hue-cycling gradient
+      const hue = (t * 60) % 360;
+      const bodyGrd = ctx.createLinearGradient(-ew, -eh, ew, eh);
+      bodyGrd.addColorStop(0, `hsl(${hue}, 90%, 65%)`);
+      bodyGrd.addColorStop(0.25, `hsl(${hue + 60}, 90%, 65%)`);
+      bodyGrd.addColorStop(0.5, `hsl(${hue + 120}, 90%, 65%)`);
+      bodyGrd.addColorStop(0.75, `hsl(${hue + 200}, 90%, 65%)`);
+      bodyGrd.addColorStop(1, `hsl(${hue + 280}, 90%, 65%)`);
+      ctx.fillStyle = bodyGrd;
+      ctx.beginPath(); ctx.ellipse(0, 0, ew, eh, 0, 0, Math.PI * 2); ctx.fill();
+      // Sparkle cross
+      ctx.strokeStyle = '#ffffffcc'; ctx.lineWidth = 1;
+      const sLen = ew * 0.7;
+      ctx.beginPath(); ctx.moveTo(-sLen, 0); ctx.lineTo(sLen, 0); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, -sLen); ctx.lineTo(0, sLen); ctx.stroke();
+    }
+
+    // Egg outline
+    ctx.strokeStyle = glowColor + 'aa'; ctx.lineWidth = 0.8;
+    ctx.beginPath(); ctx.ellipse(0, 0, ew, eh, 0, 0, Math.PI * 2); ctx.stroke();
+
+    // Label
+    const label = tier === 'common' ? '🥚' : tier === 'blossom' ? '🌸🥚' : tier === 'golden' ? '✨🥚' : '🌈🥚';
+    ctx.font = `bold ${tier === 'rainbow' ? 7 : 6}px Arial`;
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    ctx.shadowColor = '#000'; ctx.shadowBlur = 3;
+    ctx.fillText(label, 0, eh + 2);
     ctx.shadowBlur = 0;
 
     ctx.restore();

@@ -3742,6 +3742,40 @@
       addEventMessage(`🌸 SAKURA VIEWING PARTY! ${ev.count} birds gathered at the Sacred Pond — all earn +${ev.xp} XP +${ev.coins}c!`, '#ff88c8');
     }
 
+    // === SPRING PAINTED EGG HUNT (Session 123) ===
+    if (ev.type === 'egg_hunt_started') {
+      screenShake(4, 500);
+      showAnnouncement(`🥚 SPRING EGG HUNT BEGINS!\n${ev.count} decorated eggs hidden across the city — find them all!`, '#ff99cc', 5000);
+      addEventMessage(`🥚 Spring Painted Eggs have appeared across Bird City! Find them for coins and bonuses!`, '#ff99cc');
+    }
+    if (ev.type === 'egg_collected') {
+      const isMe = ev.birdId === myId;
+      if (isMe) {
+        const tierMsg = {
+          common:  `🥚 SPRING EGG! +${ev.coins}c +${ev.xp} XP`,
+          blossom: `🌸🥚 BLOSSOM EGG! +${ev.coins}c +${ev.xp} XP + Speed Boost 15s!`,
+          golden:  `✨🥚 GOLDEN EGG! +${ev.coins}c +${ev.xp} XP + Lucky Charm 2min!`,
+          rainbow: `🌈🥚 RAINBOW EGG! +${ev.coins}c +${ev.xp} XP + Wing Surge FILLED!`,
+        }[ev.tier] || `🥚 EGG! +${ev.coins}c +${ev.xp} XP`;
+        const intensity = ev.tier === 'rainbow' ? 10 : ev.tier === 'golden' ? 7 : 4;
+        screenShake(intensity, 400);
+        showAnnouncement(tierMsg, '#ff99cc', ev.tier === 'rainbow' ? 6000 : 3000);
+        effects.push({ type: 'float_text', text: `+${ev.coins}c`, x: ev.x, y: ev.y - 20, color: '#ffd700', duration: 1200, time: performance.now() });
+      } else if (ev.tier === 'rainbow' || ev.tier === 'golden') {
+        const tag = ev.gangTag ? `[${ev.gangTag}] ` : '';
+        addEventMessage(`${ev.tier === 'rainbow' ? '🌈' : '✨'}🥚 ${tag}${ev.name} found the ${ev.tier} egg! (+${ev.coins}c +${ev.xp} XP)`, '#ff99cc');
+      }
+    }
+    if (ev.type === 'spring_champion') {
+      const isMe = ev.birdId === myId;
+      if (isMe) {
+        screenShake(10, 800);
+        showAnnouncement(`🌈 SPRING CHAMPION!\nYou collected 5 eggs — +${ev.bonus}c bonus! 🏅`, '#ff66aa', 7000);
+      }
+      const tag = ev.gangTag ? `[${ev.gangTag}] ` : '';
+      addEventMessage(`🌸🏅 ${tag}${ev.name} is the SPRING CHAMPION — collected 5 eggs! (+${ev.bonus}c bonus)`, '#ff66aa');
+    }
+
     // === UNDERGROUND SEWER EVENTS ===
     if (ev.type === 'sewer_enter') {
       const isMe = ev.birdId === myId;
@@ -13672,6 +13706,30 @@
     // Chaos Oracle on minimap — pulsing purple 🔮 dot — Session 121
     if (gameState.chaosOracle && worldData) {
       Renderer.drawChaosOracleOnMinimap(minimapCtx, worldData, gameState.chaosOracle, now);
+    }
+
+    // Spring Painted Eggs on minimap — Session 123 (April 14–28)
+    if (gameState.springEggs && gameState.springEggs.length > 0 && worldData) {
+      const mw = minimapCtx.canvas.width;
+      const mh = minimapCtx.canvas.height;
+      const ePulse = 0.6 + 0.4 * Math.sin(now * 0.008);
+      for (const egg of gameState.springEggs) {
+        const ex = egg.x * mw / worldData.width;
+        const ey = egg.y * mh / worldData.height;
+        const eColor = egg.tier === 'rainbow' ? 'rgba(200,100,255,' :
+                       egg.tier === 'golden'  ? 'rgba(255,215,0,' :
+                       egg.tier === 'blossom' ? 'rgba(255,150,200,' : 'rgba(100,200,255,';
+        minimapCtx.save();
+        minimapCtx.fillStyle = eColor + (ePulse * 0.5) + ')';
+        minimapCtx.beginPath();
+        minimapCtx.arc(ex, ey, egg.tier === 'rainbow' ? 4 : egg.tier === 'golden' ? 3.5 : 2.5, 0, Math.PI * 2);
+        minimapCtx.fill();
+        minimapCtx.font = '7px sans-serif';
+        minimapCtx.textAlign = 'center';
+        minimapCtx.textBaseline = 'middle';
+        minimapCtx.fillText('🥚', ex, ey);
+        minimapCtx.restore();
+      }
     }
 
     // Tornado on minimap — pulsing purple 🌪️ dot tracking the vortex position

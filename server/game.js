@@ -200,6 +200,9 @@ const DAILY_CHALLENGE_POOL = [
   // Session 121: Chaos Oracle challenges
   { id: 'oracle_seeker',  title: 'Oracle Seeker',  desc: 'Consult the Chaos Oracle and receive a prophecy',             target: 1, trackType: 'oracle_consulted',    reward: { xp: 180, coins: 90  } },
   { id: 'oracle_blessed', title: 'Fortune\'s Favorite', desc: 'Receive a BLESSED prophecy from the Chaos Oracle',       target: 1, trackType: 'oracle_blessed',     reward: { xp: 250, coins: 125 } },
+  // Session 123: Spring Painted Egg Hunt challenges (April 14-28 only)
+  { id: 'egg_hunter',    title: 'Egg Hunter',       desc: 'Collect 3 painted Spring Eggs hidden around the city',    target: 3, trackType: 'spring_egg_collected', reward: { xp: 180, coins: 90  } },
+  { id: 'rainbow_chaser',title: 'Rainbow Chaser',   desc: 'Find and collect the rare Rainbow Egg (Sacred Pond area)', target: 1, trackType: 'spring_egg_rainbow',  reward: { xp: 300, coins: 150 } },
 ];
 
 // ============================================================
@@ -1064,6 +1067,41 @@ class GameEngine {
       { x: 880, y: 975 }, { x: 1020, y: 940 }, { x: 1310, y: 990 },
       { x: 1430, y: 1070 }, { x: 940, y: 1390 }, { x: 1130, y: 1480 },
       { x: 1380, y: 1440 }, { x: 1090, y: 1260 },
+    ];
+
+    // === SPRING PAINTED EGG HUNT ===
+    // Active April 14–28. 15 decorated eggs hidden across the city in 3 tiers.
+    // Common (5): +30c +60 XP. Spring Blossom (5): +70c +120 XP + speed boost 15s.
+    // Golden (4): +150c +250 XP + Lucky Charm 2min. Rainbow (1): +350c +600 XP + Wing Surge refill + badge.
+    // First bird to collect 5+ eggs earns a Spring Champion badge + 200c city-wide bonus.
+    const _now = Date.now();
+    const _month = new Date().getMonth(); // 0=Jan .. 3=Apr
+    const _day   = new Date().getDate();
+    this.easterEggHunt = (_month === 3 && _day >= 14 && _day <= 28);
+    this.eggHuntIds = new Set();          // food IDs of active eggs
+    this.eggHuntTimer = _now + 10000;     // first batch 10s after start
+    this.eggHuntChampions = new Set();    // birdIds that already earned the Spring Champion badge
+    // 15 hand-picked positions — non-obvious spots around the whole city map
+    this.EGG_HUNT_POSITIONS = [
+      // Common eggs (indices 0–4)
+      { x: 720,  y: 1310, tier: 'common' },
+      { x: 2420, y: 900,  tier: 'common' },
+      { x: 380,  y: 2150, tier: 'common' },
+      { x: 1780, y: 2380, tier: 'common' },
+      { x: 2700, y: 1900, tier: 'common' },
+      // Spring Blossom eggs (indices 5–9)
+      { x: 960,  y: 680,  tier: 'blossom' },
+      { x: 1620, y: 1800, tier: 'blossom' },
+      { x: 2280, y: 2050, tier: 'blossom' },
+      { x: 490,  y: 1050, tier: 'blossom' },
+      { x: 2080, y: 560,  tier: 'blossom' },
+      // Golden eggs (indices 10–13)
+      { x: 1350, y: 2480, tier: 'golden' },
+      { x: 2780, y: 500,  tier: 'golden' },
+      { x: 310,  y: 760,  tier: 'golden' },
+      { x: 2100, y: 1560, tier: 'golden' },
+      // Rainbow egg (index 14)
+      { x: 1050, y: 1100, tier: 'rainbow' },  // Sacred Pond area — the rarest hidden here
     ];
 
     // === DONUT COP ===
@@ -2142,6 +2180,9 @@ class GameEngine {
 
     // === Cherry Blossoms Spring Festival ===
     if (this.cherryBlossoms) this._updateCherryBlossoms(now);
+
+    // === Spring Painted Egg Hunt ===
+    if (this.easterEggHunt) this._tickSpringEggHunt(now);
 
     // === Underground Sewer ===
     this._updateSewerRats(dt, now);
@@ -8961,6 +9002,13 @@ class GameEngine {
       } : null,
       // Cherry Blossoms Spring Festival (April only)
       cherryBlossoms: this.cherryBlossoms,
+      // Spring Painted Egg Hunt (April 14–28 only)
+      easterEggHunt: this.easterEggHunt,
+      springChampion: bird.springChampBadge || false,
+      springEggs: this.easterEggHunt ? [...this.eggHuntIds].map(eid => {
+        const e = this.foods.get(eid);
+        return e && e.active ? { id: e.id, x: e.x, y: e.y, tier: e.tier } : null;
+      }).filter(Boolean) : [],
       // Hanami Lantern — glowing paper lantern that rises from the Sacred Pond on spring nights
       hanamiLantern: this.hanamiLantern ? {
         x: this.hanamiLantern.x,
@@ -19691,6 +19739,85 @@ class GameEngine {
       gangTag: bird.gangTag || null,
       coins: 200, xp: 120,
     });
+  }
+
+  // ============================================================
+  // SPRING PAINTED EGG HUNT — April 14–28 seasonal event
+  // ============================================================
+
+  _tickSpringEggHunt(now) {
+    // Spawn a fresh batch of all 15 eggs when the timer fires and board is empty
+    if (now >= this.eggHuntTimer && this.eggHuntIds.size === 0 && this.birds.size > 0) {
+      for (const pos of this.EGG_HUNT_POSITIONS) {
+        const eid = `egg_${pos.tier}_${now}_${Math.random().toFixed(4)}`;
+        this.foods.set(eid, { id: eid, x: pos.x, y: pos.y, type: `spring_egg_${pos.tier}`, active: true, value: 1, tier: pos.tier });
+        this.eggHuntIds.add(eid);
+      }
+      // Reset per-session champion counter so every batch is a fresh race
+      for (const bird of this.birds.values()) bird._eggHuntCount = 0;
+      this.eggHuntChampions.clear();
+      this.eggHuntTimer = now + this._randomRange(10 * 60000, 15 * 60000);
+      this.events.push({ type: 'egg_hunt_started', count: this.EGG_HUNT_POSITIONS.length });
+    }
+
+    // Clean up collected/stale eggs
+    for (const eid of [...this.eggHuntIds]) {
+      const egg = this.foods.get(eid);
+      if (!egg || !egg.active) this.eggHuntIds.delete(eid);
+    }
+
+    // Proximity auto-collect (35px)
+    for (const bird of this.birds.values()) {
+      if (bird.inSewer || (bird.stunnedUntil && bird.stunnedUntil > now)) continue;
+      for (const eid of [...this.eggHuntIds]) {
+        const egg = this.foods.get(eid);
+        if (!egg || !egg.active) continue;
+        const dx = bird.x - egg.x, dy = bird.y - egg.y;
+        if (Math.sqrt(dx * dx + dy * dy) < 35) {
+          this._collectSpringEgg(bird, egg, eid, now);
+          break;
+        }
+      }
+    }
+  }
+
+  _collectSpringEgg(bird, egg, eid, now) {
+    egg.active = false;
+    this.eggHuntIds.delete(eid);
+    this.foods.delete(eid);
+
+    let coins = 0, xp = 0;
+    if (egg.tier === 'common')  { coins = 30;  xp = 60; }
+    if (egg.tier === 'blossom') { coins = 70;  xp = 120; bird.speedBoostUntil = now + 15000; }
+    if (egg.tier === 'golden')  {
+      coins = 150; xp = 250;
+      const extra = 120000;
+      bird.luckyCharmUntil = bird.luckyCharmUntil && bird.luckyCharmUntil > now
+        ? bird.luckyCharmUntil + extra : now + extra;
+    }
+    if (egg.tier === 'rainbow') {
+      coins = 350; xp = 600;
+      bird.wingCharge = 100; // instant Wing Surge
+      bird.springChampBadge = true;
+    }
+
+    bird.coins += coins;
+    bird.xp += xp;
+    this._trackDailyProgress(bird, 'spring_egg_collected', 1);
+    this._trackDailyProgress(bird, 'coins_earned', coins);
+    if (egg.tier === 'rainbow') this._trackDailyProgress(bird, 'spring_egg_rainbow', 1);
+
+    // Spring Champion — first bird to collect 5+ eggs in the current batch
+    bird._eggHuntCount = (bird._eggHuntCount || 0) + 1;
+    if (bird._eggHuntCount >= 5 && !this.eggHuntChampions.has(bird.id)) {
+      this.eggHuntChampions.add(bird.id);
+      bird.coins += 200;
+      bird.springChampBadge = true;
+      this._trackDailyProgress(bird, 'coins_earned', 200);
+      this.events.push({ type: 'spring_champion', birdId: bird.id, name: bird.name, gangTag: bird.gangTag || null, bonus: 200 });
+    }
+
+    this.events.push({ type: 'egg_collected', birdId: bird.id, name: bird.name, tier: egg.tier, coins, xp, x: egg.x, y: egg.y });
   }
 
   // ============================================================

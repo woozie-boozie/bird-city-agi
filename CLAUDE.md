@@ -4212,6 +4212,37 @@ Bird City's first dedicated cosmetic customization shop. A teal-signed factory s
 
 **Creative intent**: Bird City has 121 sessions of mechanical systems but almost no personal identity expression beyond tattoos and prestige badges. The Feather Factory is pure DISCOVERY + PROGRESSION: fly around the city and suddenly you see a crimson bird with a fedora and a 👑 GOLDEN BIRD badge and think "wait, I can look like THAT?" The dye system is intentionally cheap enough that new players can afford Midnight (40c) quickly, while the Crown Hat (120c) is an aspirational purchase for richer birds. Most importantly: your look is persistent and visible to everyone — flying over Downtown as a gold-feathered bird in a Top Hat while listed on the Hall of Legends is the ultimate status flex. Pure PROGRESSION + DISCOVERY + SPECTACLE energy.
 
+**Session 123 — 2026-04-21: Spring Painted Egg Hunt — Seasonal Scavenger Hunt**
+Bird City's first fully seasonal scavenger hunt. Active April 14–28, 15 decorated eggs in 4 tiers are hidden at fixed positions across the city and respawn every 10–15 minutes. Find them by flying within 35px — no button press needed.
+
+**Four egg tiers (escalating rarity and reward):**
+- 🥚 **Common** (5 eggs, pale blue stripe): +30 coins, +60 XP — easy finds scattered across all districts
+- 🌸 **Blossom** (5 eggs, pink dots on white): +70 coins, +120 XP + **15-second Speed Boost** — hidden near landmarks and road junctions
+- ✨ **Golden** (4 eggs, yellow shimmer + star): +150 coins, +250 XP + **2-minute Lucky Charm** — tucked into map corners
+- 🌈 **Rainbow** (1 egg, hue-cycling + sparkles): +350 coins, +600 XP + **Wing Surge fully charged** — at the Sacred Pond (the game's most beautiful spot)
+
+**Spring Champion bonus:**
+- Collect 5+ eggs in a single batch → **+200c bonus** + `🌸 SPRING CHAMPION` session badge appears on your nametag (visible to all nearby players)
+- Each batch resets the champion tracker — fresh race every 10–15 minutes
+
+**Server mechanics (`server/game.js`):**
+- `this.easterEggHunt` — date-gated boolean (April 14–28); `this.eggHuntIds` Set tracks active egg IDs in `this.foods` Map
+- `_tickSpringEggHunt(now)`: spawns all 15 eggs when timer fires + players online; cleans up collected eggs from IDs Set; proximity-checks all birds vs all eggs each tick
+- `_collectSpringEgg(bird, egg, eid, now)`: tier-specific reward application, daily challenge tracking, champion check
+- State snapshot: `easterEggHunt`, `springChampion`, and `springEggs` filtered array (only active eggs, only while event is on)
+- Two new daily challenges: **Egg Hunter** (collect 3 spring eggs, 180 XP/90c) and **Rainbow Chaser** (find the Rainbow Egg, 300 XP/150c)
+
+**Visual system (`public/js/sprites.js`, `public/js/main.js`):**
+- `drawSpringEgg(ctx, x, y, tier, now)`: per-tier rendering — Common (pale blue base, white stripe band), Blossom (white base, pink polka dots, tiny 5-petal flower on top), Golden (golden gradient, 6-point star sparkle, bright highlight), Rainbow (hue-cycling body via `hsl(${hue},80%,60%)`, 5 orbiting sparkle stars, shimmer glow)
+- All tiers: floating bob animation (sine wave per egg position), tier-appropriate glow halo, white outline, tier label above (🥚/🌸/✨/🌈)
+- `drawFood` delegates to `drawSpringEgg` when `type.startsWith('spring_egg_')`
+- Minimap: tier-colored pulsing dots with 🥚 emoji at each active egg's world position — the egg hunt is visible from the minimap
+- Event handlers: spawn announcement with screen shake, personal tier-specific reward callout (blossom/golden/rainbow fireworks), city-wide callout for golden/rainbow finds, Spring Champion announcement
+
+**Gazette tracking:** 🥚 SPRING EGG HUNT: N EGGS COLLECTED — BIRD CITY GOES SCRAMBLING headline when any eggs were collected this cycle.
+
+**Creative intent**: The egg hunt is Bird City's most purely JOYFUL event. No combat, no timers, no cops — just the thrill of noticing a glowing egg on the minimap and racing to it. The 4-tier structure creates escalating excitement: common eggs are everywhere (easy wins for new players), the rainbow egg at the Sacred Pond requires knowing the map (rewards veterans). The Lucky Charm on golden eggs turns an egg find into an impromptu crime sprint. The Wing Surge from the rainbow egg creates an instant "I need to use this NOW" moment. Spring Champion badge rewards exploration over raw combat power — a refreshing alternative to the game's usual XP grind. Pure DISCOVERY + SPECTACLE + RETENTION energy — the city now has a holiday.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
