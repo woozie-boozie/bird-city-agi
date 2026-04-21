@@ -4243,6 +4243,52 @@ Bird City's first fully seasonal scavenger hunt. Active April 14–28, 15 decora
 
 **Creative intent**: The egg hunt is Bird City's most purely JOYFUL event. No combat, no timers, no cops — just the thrill of noticing a glowing egg on the minimap and racing to it. The 4-tier structure creates escalating excitement: common eggs are everywhere (easy wins for new players), the rainbow egg at the Sacred Pond requires knowing the map (rewards veterans). The Lucky Charm on golden eggs turns an egg find into an impromptu crime sprint. The Wing Surge from the rainbow egg creates an instant "I need to use this NOW" moment. Spring Champion badge rewards exploration over raw combat power — a refreshing alternative to the game's usual XP grind. Pure DISCOVERY + SPECTACLE + RETENTION energy — the city now has a holiday.
 
+**Session 124 — 2026-04-21: The Delivery Rush — Package Carrier Sprint Event**
+Bird City now has a hot-potato courier sprint. Every 8–12 minutes, a glowing brown package materialises at one of 10 post-box locations across the city. First bird within 45px auto-grabs it — and the race to the delivery destination begins. 90 seconds, −15% speed, no pooping allowed (both talons full). The longer you hold it the bigger the reward. But rivals can poop you 3 times within 12 seconds to steal it — and if the clock runs out, the package EXPLODES in a coin scatter.
+
+**Core mechanics (`server/game.js`):**
+- `this.deliveryPackage = null` and `this._deliveryPackageTimer` set in constructor, fires every 8–12 minutes
+- `static get DELIVERY_LOCATIONS()`: 10 handpicked city positions — Park gate, Donut Shop, Mall entrance, Cafe corner, Residential square, Downtown crossing, Docks warehouse, Arena steps, Radio Tower base, Hall of Legends
+- Package state machine: `'waiting'` (visible at origin, claimable within 45px) → `'carried'` (bird has it, 90-second clock) → resolved
+- `_spawnDeliveryPackage(now)`: picks random origin and DIFFERENT random destination from the 10-location list
+- Speed penalty in `_updateBird()`: `if (bird.deliveryPackageId) { maxSpeed *= 0.85; }` applied in the speed chain
+- Poop block: `&& !bird.deliveryPackageId` guard prevents the carrier from firing poop at all
+- `_tickDeliveryRush(now)`: processes pickup (proximity scan all birds vs waiting package), delivery (proximity scan carrier vs destination), timeout explosion, and waiting package 5-minute expiry
+- `_completeDelivery(bird, now)`: time-scaled reward — up to +500 XP +300 coins at full speed delivery (scales with fraction of time remaining); `delivery_completed` daily challenge tracked
+- `_explodeDeliveryPackage(carrierId, now)`: carrier loses 20% coins (max 150c), coin scatter to all birds within 250px proportional to proximity, combo wipe; fires `delivery_package_exploded` event
+
+**Steal mechanic (rolling 12-second window):**
+- `_checkPoopHit()` returns `{ target: 'delivery_steal', carrierId, carrier }` when a non-carrier hits within range of the active carrier
+- Carrier fields: `deliveryStealHits` (count), `deliveryStealWindow` (timestamp of first hit in current window)
+- Hit processing: if first hit or last hit was >12s ago → reset window. On 3rd hit within window: `_stealDeliveryPackage()` fires
+- `_stealDeliveryPackage(thief, carrier)`: transfers `deliveryPackageId` to thief; resets steal counters; fires `delivery_package_stolen` city-wide; thief gets +80 XP +30c immediately; steal chain tracked for `delivery_thief` daily challenge
+
+**State snapshot (`getStateFor(bird)`):**
+- `deliveryRush: { state, originX/Y, originName, destX/Y, destName, timeLeft, maxTime, carrierId, carrierName, iAmCarrier, stealHits }` included each tick
+
+**Two new daily challenges (added to `DAILY_CHALLENGE_POOL`):**
+- 📦 **Last Mile**: Deliver a package to its destination within 90 seconds (220 XP, 110c)
+- 📦 **Package Thief**: Steal a package from another carrier (3 poop hits in 12 seconds) (200 XP, 100c)
+
+**Visual system (`public/js/sprites.js`):**
+- `drawDeliveryPackage(ctx, x, y, timeLeft, maxTime, now)`: brown box body with corner shading, tape stripes, 📦 emoji label, bobbing sine-wave animation, urgency color-shift on glow halo (green → orange → red as time drains)
+- `drawDeliveryDestination(ctx, x, y, now)`: pulsing gold dashed circle ring, rotating 8-point star burst, "📦 DELIVER HERE" label, warm gold radial aura
+
+**World & minimap rendering (`public/js/renderer.js`):**
+- `drawDeliveryRush(ctx, camera, dr, now)`: renders package sprite at origin when `state==='waiting'`; destination marker when `state==='carried'`
+- `drawDeliveryRushOnMinimap(minimapCtx, worldData, dr, now)`: cyan 📦 pulsing dot at origin; gold 🎯 dot at destination (carrier-only)
+
+**HUD & events (`public/js/main.js`):**
+- Stacking HUD bar (below Motorcade bar): countdown timer, color-shifting fill (green→orange→red), destination name, personal directional arrow when destination is off-screen
+- Active buffs HUD pill for carrier: urgency-color countdown + time-scaled bonus % + "−15% speed" reminder. Critical (≤10s): red pulse. Urgent (≤20s): orange. Normal: green.
+- Non-carrier proximity pill: within 120px of carrier → "POOP 3× in 12s to STEAL!" warning; within 160px of waiting package → pickup hint
+- Minimap: cyan 📦 pulsing dot at package origin (waiting); gold 🎯 dot at destination for the carrier (private — rivals don't see it)
+- Full event handlers: `delivery_package_spawned` (screen shake + orange announcement), `delivery_package_picked_up` (personal + city-wide), `delivery_steal_hit` (floating "📦 1/3" progress), `delivery_package_stolen` (both thief and victim alerts), `delivery_package_delivered` (gold flash + screen shake + reward callout), `delivery_package_exploded` (red screen flash + coin shower + city-wide shame), `delivery_warning` (personal 15s warning), `delivery_package_dropped` (city-wide on disconnect), `delivery_package_expired_waiting` (quiet event feed)
+
+**Gazette tracking:** "📦 DELIVERY RUSH: [Name] DELIVERS THE PACKAGE — Xc EARNED" or "💥 PACKAGE DETONATES ON [Name]" headline based on outcome.
+
+**Creative intent**: The Delivery Rush is Bird City's first "carry and protect" event — the carrier is simultaneously the most valuable bird on the map (big reward potential) and the most vulnerable (−15% speed, can't fight back, publicly tracked on the minimap). Every second you hold the package your bonus grows, but so does the risk of interception. Rivals must coordinate the 3-hit steal window precisely — one hit resets the 12-second clock if they're too slow. The coin-scatter explosion on timeout means even a failed carry has social consequences: nearby birds profit from your failure. A carrier zigzagging through downtown trying to shake a pursuer while watching their 90-second HUD drain — that's peak Bird City tension. Pure CARNAGE + SOCIAL + SPECTACLE energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)

@@ -5426,6 +5426,79 @@
       showAnnouncement(ev.msg || `🔮 You must be closer to the Oracle!`, '#663388', 2500);
     }
 
+    // === DELIVERY RUSH (Session 124) ===
+    if (ev.type === 'delivery_package_spawned') {
+      showAnnouncement(`📦 DELIVERY RUSH!\nPackage at ${ev.originName} → Deliver to ${ev.destName}!\nFly over to pick it up — rivals can steal it!`, '#44aaff', 5000);
+      addEventMessage(`📦 DELIVERY: ${ev.originName} → ${ev.destName} — First bird wins!`, '#44aaff');
+      screenShake(5, 300);
+    }
+    if (ev.type === 'delivery_package_picked_up') {
+      const isMe = ev.carrierId === myId;
+      if (isMe) {
+        showAnnouncement(`📦 YOU GRABBED THE PACKAGE!\nDeliver to: ${ev.destName}\n90 seconds — rivals can steal it!`, '#44aaff', 5000);
+        effects.push({ type: 'screen_flash', color: 'rgba(68,170,255,0.35)', duration: 300, time: now });
+      } else {
+        addEventMessage(`📦 ${ev.carrierName} grabbed the delivery package! Heading to: ${ev.destName}`, '#44aaff');
+      }
+    }
+    if (ev.type === 'delivery_steal_hit') {
+      const isMe = ev.victimId === myId;
+      const isAttacker = ev.attackerId === myId;
+      if (isMe) {
+        showAnnouncement(`📦 STEAL ATTEMPT! ${ev.hitsSoFar}/${ev.hitsNeeded} hits!\nKeep moving to shake them!`, '#ff6600', 2500);
+      }
+      if (isAttacker) {
+        addEventMessage(`📦 Stealing! ${ev.hitsSoFar}/${ev.hitsNeeded} hits on ${ev.victimName}`, '#ff8844');
+      }
+    }
+    if (ev.type === 'delivery_package_stolen') {
+      const isThief = ev.thiefId === myId;
+      const isVictim = ev.victimId === myId;
+      if (isThief) {
+        showAnnouncement(`📦 STOLEN! You swiped the package from ${ev.victimName}!\nNow deliver to: ${ev.destName}!`, '#ff8800', 4000);
+        effects.push({ type: 'screen_flash', color: 'rgba(255,136,0,0.4)', duration: 300, time: now });
+        screenShake(5, 300);
+      } else if (isVictim) {
+        showAnnouncement(`📦 YOUR PACKAGE WAS STOLEN by ${ev.thiefName}!`, '#ff3300', 4000);
+        effects.push({ type: 'screen_flash', color: 'rgba(255,0,0,0.35)', duration: 300, time: now });
+      } else {
+        addEventMessage(`📦 ${ev.thiefName} STOLE the package from ${ev.victimName}! Racing to ${ev.destName}!`, '#ff8800');
+      }
+      screenShake(4, 250);
+    }
+    if (ev.type === 'delivery_package_delivered') {
+      const isMe = ev.carrierId === myId;
+      if (isMe) {
+        showAnnouncement(`📦 DELIVERED! +${ev.xp} XP +${ev.coins}c!\n${ev.timeLeft}s remaining — TIME BONUS!`, '#44ff88', 5000);
+        effects.push({ type: 'screen_flash', color: 'rgba(68,255,136,0.45)', duration: 500, time: now });
+      } else {
+        addEventMessage(`📦 ${ev.carrierName} delivered the package to ${ev.destName}! +${ev.xp} XP +${ev.coins}c`, '#44ff88');
+      }
+      screenShake(6, 400);
+    }
+    if (ev.type === 'delivery_package_exploded') {
+      const isMe = ev.carrierId === myId;
+      if (isMe) {
+        showAnnouncement(`📦💥 PACKAGE EXPIRED! Time ran out!\nCoins scattered to nearby birds...`, '#ff4400', 4000);
+      } else {
+        addEventMessage(`📦💥 Delivery package EXPLODED! ${ev.carrierName} ran out of time. Coins scattered!`, '#ff4400');
+      }
+      screenShake(8, 500);
+      effects.push({ type: 'screen_flash', color: 'rgba(255,100,0,0.35)', duration: 400, time: now });
+    }
+    if (ev.type === 'delivery_warning') {
+      if (ev.birdId === myId) {
+        showAnnouncement(`📦⚠️ 20 SECONDS LEFT! Get to ${ev.destName} NOW!`, '#ff4400', 3000);
+        effects.push({ type: 'screen_flash', color: 'rgba(255,100,0,0.3)', duration: 250, time: now });
+      }
+    }
+    if (ev.type === 'delivery_package_dropped') {
+      addEventMessage(`📦 Package dropped at the road! Fly over to pick it up!`, '#44aaff');
+    }
+    if (ev.type === 'delivery_package_expired_waiting') {
+      addEventMessage(`📦 The delivery package expired — nobody picked it up.`, '#888888');
+    }
+
     // === WING SURGE (Session 113) ===
     if (ev.type === 'wing_surge_activated') {
       const isMe = ev.birdId === myId;
@@ -10277,6 +10350,11 @@
       Renderer.drawChaosOracle(ctx, camera, gameState.chaosOracle, now);
     }
 
+    // Delivery Rush — package and destination marker
+    if (gameState.deliveryRush) {
+      Renderer.drawDeliveryRush(ctx, camera, gameState.deliveryRush, now);
+    }
+
     // Bird Royale — safe zone ring + danger zone overlay
     if (gameState.birdRoyale && gameState.birdRoyale.state === 'active') {
       Renderer.drawBirdRoyaleZone(ctx, camera, gameState.birdRoyale, now);
@@ -11907,6 +11985,116 @@
         ctx.textBaseline = 'middle';
         ctx.fillText('🚗', 0, 0);
         ctx.restore();
+      }
+    }
+
+    // === DELIVERY RUSH HUD BAR (Session 124) ===
+    if (gameState.deliveryRush && gameState.deliveryRush.state === 'carried') {
+      const dr = gameState.deliveryRush;
+      const drTimeLeft = dr.timeLeft != null ? Math.max(0, dr.timeLeft) : 0;
+      const drTotal = 90000;
+      const drFrac = drTimeLeft / drTotal;
+      const drIsCarrier = dr.iAmCarrier;
+      const drPulse = 0.7 + 0.3 * Math.abs(Math.sin(now * 0.008));
+      const drUrgency = 1 - drFrac; // 0=fresh, 1=almost expired
+      const drColor = drUrgency < 0.4 ? '#00cc88' : drUrgency < 0.7 ? '#ffaa00' : '#ff3300';
+
+      // Subtle tint overlay
+      ctx.save();
+      ctx.globalAlpha = 0.03 + 0.02 * drPulse;
+      ctx.fillStyle = drIsCarrier ? drColor : '#00cc88';
+      ctx.fillRect(0, 0, camera.screenW, camera.screenH);
+      ctx.globalAlpha = 1;
+      ctx.restore();
+
+      // Stack below all active HUD bars
+      const hasCWdr = gameState.self && gameState.self.crimeWave;
+      const hasSGdr = gameState.seagullInvasion;
+      const hasMGdr = gameState.migration;
+      const hasVTdr = gameState.vaultTruck && !gameState.vaultTruck.cracked && !gameState.vaultTruck.escaped;
+      const hasSTdr = gameState.stampede;
+      const hasPKdr = gameState.suspiciousPackage;
+      const hasBVdr = gameState.birdnapperVan && gameState.birdnapperVan.state === 'escaping';
+      const hasFMdr = gameState.flashMob;
+      const hasSPdr = gameState.skyPirateShip && !gameState.skyPirateShip.sinking;
+      const hasMCdr = gameState.motorcade;
+      let drBarY = 132;
+      if (hasCWdr) drBarY += 43;
+      if (hasSGdr) drBarY += 43;
+      if (hasMGdr) drBarY += 43;
+      if (hasVTdr) drBarY += 43;
+      if (hasSTdr) drBarY += 43;
+      if (hasPKdr) drBarY += 43;
+      if (hasBVdr) drBarY += 43;
+      if (hasFMdr) drBarY += 43;
+      if (hasSPdr) drBarY += 43;
+      if (hasMCdr) drBarY += 43;
+
+      const drBarW = 220, drBarH = 12;
+      const drBarX = camera.screenW / 2 - drBarW / 2;
+      const drSecsLeft = Math.ceil(drTimeLeft / 1000);
+      const drCarrierStr = drIsCarrier ? ` · FLY TO ${dr.destName}!` : ` · ${dr.carrierName} carrying`;
+
+      ctx.save();
+      ctx.globalAlpha = 0.93;
+      ctx.fillStyle = 'rgba(0,0,0,0.75)';
+      ctx.beginPath();
+      ctx.roundRect(drBarX - 55, drBarY - 18, drBarW + 110, drBarH + 32, 10);
+      ctx.fill();
+
+      ctx.globalAlpha = drIsCarrier ? (drPulse * (0.8 + 0.2 * drUrgency)) : drPulse * 0.85;
+      ctx.fillStyle = drColor;
+      ctx.font = 'bold 11px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(`📦 DELIVERY RUSH — ${drSecsLeft}s${drCarrierStr}`, camera.screenW / 2, drBarY - 4);
+
+      ctx.globalAlpha = 0.8;
+      ctx.fillStyle = 'rgba(0,50,30,0.5)';
+      ctx.beginPath();
+      ctx.roundRect(drBarX, drBarY + 2, drBarW, drBarH, 4);
+      ctx.fill();
+
+      ctx.fillStyle = drColor;
+      ctx.beginPath();
+      ctx.roundRect(drBarX, drBarY + 2, drBarW * drFrac, drBarH, 4);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.restore();
+
+      // If I am the carrier: draw directional arrow pointing to destination
+      if (drIsCarrier && dr.destX != null && dr.destY != null) {
+        const destSX = dr.destX - camera.x + camera.screenW / 2;
+        const destSY = dr.destY - camera.y + camera.screenH / 2;
+        const drPad = 65;
+        // Draw the arrow when destination is off-screen OR always as a guide
+        const destOffScreen = destSX < drPad || destSX > camera.screenW - drPad || destSY < drPad || destSY > camera.screenH - drPad;
+        if (destOffScreen) {
+          const drArrAngle = Math.atan2(destSY - camera.screenH / 2, destSX - camera.screenW / 2);
+          const drArrRadius = Math.min(camera.screenW, camera.screenH) * 0.40;
+          const drArrX = camera.screenW / 2 + Math.cos(drArrAngle) * drArrRadius;
+          const drArrY = camera.screenH / 2 + Math.sin(drArrAngle) * drArrRadius;
+          ctx.save();
+          ctx.translate(drArrX, drArrY);
+          ctx.rotate(drArrAngle);
+          ctx.globalAlpha = 0.80 + 0.20 * drPulse;
+          ctx.fillStyle = drColor;
+          ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(22, 0);
+          ctx.lineTo(-10, 10);
+          ctx.lineTo(-5, 0);
+          ctx.lineTo(-10, -10);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+          ctx.font = '13px serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('📦', 0, 0);
+          ctx.restore();
+        }
       }
     }
 
@@ -13706,6 +13894,11 @@
     // Chaos Oracle on minimap — pulsing purple 🔮 dot — Session 121
     if (gameState.chaosOracle && worldData) {
       Renderer.drawChaosOracleOnMinimap(minimapCtx, worldData, gameState.chaosOracle, now);
+    }
+
+    // Delivery Rush on minimap — Session 124
+    if (gameState.deliveryRush && worldData) {
+      Renderer.drawDeliveryRushOnMinimap(minimapCtx, worldData, gameState.deliveryRush, now);
     }
 
     // Spring Painted Eggs on minimap — Session 123 (April 14–28)
@@ -15897,6 +16090,45 @@
       const hDist = Math.sqrt(hdx * hdx + hdy * hdy);
       if (hDist < 200) {
         html += `<div class="bm-buff-pill" style="background:rgba(70,30,0,0.8);border-color:#ff8800;color:#ffcc44;">🔥 HOT POOP is right here — grab it for +50% XP!</div>`;
+      }
+    }
+
+    // === DELIVERY RUSH carrier buff — Session 124 ===
+    if (gameState.deliveryRush && gameState.deliveryRush.state === 'carried') {
+      const dr = gameState.deliveryRush;
+      if (dr.iAmCarrier && dr.timeLeft != null) {
+        const drSecs = Math.ceil(dr.timeLeft / 1000);
+        const drFrac = dr.timeLeft / 90000;
+        const isCrit = drSecs <= 10;
+        const isUrg = drSecs <= 20;
+        const dBg = isCrit ? 'rgba(120,10,0,0.95)' : isUrg ? 'rgba(100,45,0,0.9)' : 'rgba(0,60,35,0.88)';
+        const dColor = isCrit ? '#ff2200' : isUrg ? '#ff8800' : '#00dd88';
+        const dAnim = isCrit ? 'pulseRed 0.35s infinite alternate' : isUrg ? 'pulseRed 0.6s infinite alternate' : 'kingpinGlow 1.2s ease-in-out infinite alternate';
+        const bonusPct = Math.round(drFrac * 100);
+        html += `<div class="bm-buff-pill" style="background:${dBg};border-color:${dColor};color:${dColor};font-weight:bold;animation:${dAnim};">📦 DELIVERING TO ${dr.destName} — ${drSecs}s · ${bonusPct}% bonus · −15% speed</div>`;
+      } else if (!dr.iAmCarrier && dr.carrierName) {
+        // Proximity warning: if a nearby bird is carrying the package, let others know they can steal
+        const carrierBird = gameState.birds && gameState.birds.find(b => b.id === dr.carrierId);
+        if (carrierBird && s.x != null) {
+          const ddx = s.x - carrierBird.x;
+          const ddy = s.y - carrierBird.y;
+          const dDist = Math.sqrt(ddx * ddx + ddy * ddy);
+          if (dDist < 120) {
+            html += `<div class="bm-buff-pill" style="background:rgba(60,30,0,0.8);border-color:#ffaa00;color:#ffdd88;">📦 ${dr.carrierName} carrying to ${dr.destName} — POOP 3× to STEAL!</div>`;
+          }
+        }
+      }
+    }
+    // Show proximity pick-up hint when package is waiting nearby
+    if (gameState.deliveryRush && gameState.deliveryRush.state === 'waiting' && s.x != null) {
+      const drWx = gameState.deliveryRush.x;
+      const drWy = gameState.deliveryRush.y;
+      if (drWx != null && drWy != null) {
+        const drDx = s.x - drWx;
+        const drDy = s.y - drWy;
+        if (Math.sqrt(drDx * drDx + drDy * drDy) < 160) {
+          html += `<div class="bm-buff-pill" style="background:rgba(0,50,30,0.8);border-color:#00cc88;color:#88ffcc;">📦 PACKAGE HERE — fly within 45px to pick up! Deliver to ${gameState.deliveryRush.destName}</div>`;
+        }
       }
     }
 

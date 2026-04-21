@@ -9096,4 +9096,118 @@ window.Sprites = {
 
     ctx.restore();
   },
+
+  // ── Delivery Rush package (Session 124) ─────────────────────
+  drawDeliveryPackage(ctx, x, y, timeLeft, maxTime, now) {
+    ctx.save();
+    ctx.translate(x, y);
+
+    const t = now / 1000;
+    const urgency = maxTime > 0 ? Math.max(0, 1 - timeLeft / maxTime) : 0;
+    const bob = Math.sin(t * 2.2) * 3;
+
+    // Outer glow
+    const glowColor = urgency > 0.7 ? '#ff4400' : urgency > 0.4 ? '#ff8800' : '#44aaff';
+    const grad = ctx.createRadialGradient(0, bob, 2, 0, bob, 22 + Math.sin(t * 3) * 3);
+    grad.addColorStop(0, glowColor + '66');
+    grad.addColorStop(1, glowColor + '00');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(0, bob, 22 + Math.sin(t * 3) * 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Box body
+    ctx.save();
+    ctx.translate(0, bob);
+    const boxW = 16, boxH = 14;
+    ctx.fillStyle = urgency > 0.6 ? '#cc6600' : '#8B6914';
+    ctx.strokeStyle = urgency > 0.6 ? '#ff4400' : '#daa520';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.rect(-boxW / 2, -boxH / 2, boxW, boxH);
+    ctx.fill();
+    ctx.stroke();
+
+    // Box stripe (tape)
+    ctx.strokeStyle = urgency > 0.6 ? '#ff8844' : '#ffe066';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-boxW / 2, 0); ctx.lineTo(boxW / 2, 0);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, -boxH / 2); ctx.lineTo(0, boxH / 2);
+    ctx.stroke();
+
+    // Corner shading
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    ctx.fillRect(-boxW / 2, -boxH / 2, 4, 4);
+
+    // Priority arrow label
+    ctx.font = 'bold 6px Arial';
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = '#000';
+    ctx.shadowBlur = 2;
+    ctx.fillText('📦', 0, 1);
+    ctx.shadowBlur = 0;
+
+    ctx.restore();
+
+    // Label above
+    ctx.font = 'bold 7px Arial';
+    ctx.fillStyle = urgency > 0.6 ? '#ff4400' : '#44aaff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.shadowColor = '#000';
+    ctx.shadowBlur = 3;
+    ctx.fillText('DELIVERY!', 0, bob - 10);
+    ctx.shadowBlur = 0;
+
+    ctx.restore();
+  },
+
+  // ── Delivery Rush destination marker ─────────────────────────
+  drawDeliveryDestination(ctx, x, y, now) {
+    ctx.save();
+    ctx.translate(x, y);
+    const t = now / 1000;
+    const pulse = 0.7 + 0.3 * Math.sin(t * 3);
+    const r = 22 * pulse;
+
+    // Pulsing gold ring
+    ctx.strokeStyle = `rgba(255,215,0,${0.6 + 0.4 * pulse})`;
+    ctx.lineWidth = 3;
+    ctx.setLineDash([6, 4]);
+    ctx.lineDashOffset = -t * 20;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Inner star
+    ctx.fillStyle = `rgba(255,215,0,${0.5 * pulse})`;
+    ctx.beginPath();
+    for (let i = 0; i < 8; i++) {
+      const angle = (i * Math.PI) / 4;
+      const rr = i % 2 === 0 ? 10 : 5;
+      const px = Math.cos(angle) * rr;
+      const py = Math.sin(angle) * rr;
+      i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.fill();
+
+    // "DELIVER HERE" label
+    ctx.font = 'bold 7px Arial';
+    ctx.fillStyle = '#ffd700';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.shadowColor = '#000';
+    ctx.shadowBlur = 3;
+    ctx.fillText('📦 DELIVER HERE', 0, -r - 4);
+    ctx.shadowBlur = 0;
+
+    ctx.restore();
+  },
 };

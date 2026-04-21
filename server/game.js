@@ -203,6 +203,9 @@ const DAILY_CHALLENGE_POOL = [
   // Session 123: Spring Painted Egg Hunt challenges (April 14-28 only)
   { id: 'egg_hunter',    title: 'Egg Hunter',       desc: 'Collect 3 painted Spring Eggs hidden around the city',    target: 3, trackType: 'spring_egg_collected', reward: { xp: 180, coins: 90  } },
   { id: 'rainbow_chaser',title: 'Rainbow Chaser',   desc: 'Find and collect the rare Rainbow Egg (Sacred Pond area)', target: 1, trackType: 'spring_egg_rainbow',  reward: { xp: 300, coins: 150 } },
+  // Session 124: Delivery Rush challenges
+  { id: 'rush_delivery',  title: 'Rush Delivery',  desc: 'Complete a timed Package Rush delivery to the destination', target: 1, trackType: 'delivery_completed',  reward: { xp: 220, coins: 110 } },
+  { id: 'delivery_thief', title: 'Package Thief',  desc: 'Steal a delivery package from another carrier (3 poop hits)', target: 1, trackType: 'delivery_stolen',    reward: { xp: 200, coins: 100 } },
 ];
 
 // ============================================================
@@ -893,6 +896,15 @@ class GameEngine {
     this.crimeWave = null;  // null | { startedAt, endsAt }
     this.crimeWaveTimer = Date.now() + this._randomRange(40 * 60000, 60 * 60000);
 
+    // === DELIVERY RUSH (Session 124) ===
+    // A glowing package appears at a city post-box every 8-12 minutes.
+    // First bird within 45px auto-grabs it (−15% speed, no poop while carrying).
+    // Fly to the destination within 90 seconds for big rewards (scales with time remaining).
+    // Rivals can poop the carrier 3 times in a 12-second window to steal the package.
+    // If time runs out, the package explodes in a small coin scatter for nearby birds.
+    this.deliveryPackage = null; // null | { state, x, y, originName, destX, destY, destName, carrierId, carrierName, pickedUpAt, expiresAt, waitExpiresAt, stealHits, stealHitterIds, lastCarrierX, lastCarrierY, warnedLow }
+    this._deliveryPackageTimer = Date.now() + this._randomRange(8 * 60000, 12 * 60000);
+
     // === AURORA BOREALIS ===
     // A rare, breathtaking night spectacle — colored light ribbons flow across the sky.
     // Triggers with 30% chance at the start of each night phase. Lasts 4–7 minutes.
@@ -1405,6 +1417,10 @@ class GameEngine {
       // === GOLDEN EGG SCRAMBLE ===
       carryingEggId: null,         // id of the golden egg this bird is carrying, or null
       eggTackleImmunityUntil: 0,   // timestamp until tackle immunity (after being robbed)
+      // === DELIVERY RUSH (Session 124) ===
+      deliveryPackageId: null,    // id of the delivery package this bird is carrying, or null
+      deliveryStealHits: 0,       // steal-attempt hit count in current rolling window
+      deliveryStealWindow: 0,     // timestamp: steal window expires at this time
       // === PIGEON MAFIA DON ===
       mafiaRep: saved ? (saved.mafia_rep || 0) : 0,
       donMission: null,            // { jobId, progress, startedAt, survivalStarted }
@@ -2305,6 +2321,9 @@ class GameEngine {
 
     // === Chaos Oracle ===
     this._tickChaosOracle(now);
+
+    // === Delivery Rush ===
+    this._tickDeliveryRush(now);
   }
 
   // ============================================================
@@ -3380,6 +3399,11 @@ class GameEngine {
       maxSpeed *= 0.8;
     }
 
+    // Delivery package: heavy parcel slows you down (-15% speed)
+    if (bird.deliveryPackageId) {
+      maxSpeed *= 0.85;
+    }
+
     // Bird Flu: sick birds drag their wings (-25% speed, combo capped at 1x)
     if (bird.fluUntil > now) {
       maxSpeed *= 0.75;
@@ -3605,7 +3629,7 @@ class GameEngine {
     // === POOP ===
     // Block poop while driving the Pigeon Coupe (both hands on the wheel!)
     // Also block poop during Oracle drought curse
-    if (!bird.carryingEggId && !bird.drivingCoupeId && bird.piperEnchantedUntil <= now && (bird.oraclePoopDroughtUntil || 0) <= now && bird.input.space && now - bird.lastPoop > poopCooldown) {
+    if (!bird.carryingEggId && !bird.drivingCoupeId && !bird.deliveryPackageId && bird.piperEnchantedUntil <= now && (bird.oraclePoopDroughtUntil || 0) <= now && bird.input.space && now - bird.lastPoop > poopCooldown) {
       bird.lastPoop = now;
       const poopId = 'p_' + uid();
       const poop = {
@@ -4537,6 +4561,48 @@ class GameEngine {
             passes: this.hotPoop.passes,
             x: recipient.x, y: recipient.y,
           });
+        }
+      } else if (hit.target === 'delivery_steal' && this.deliveryPackage && this.deliveryPackage.state === 'carried') {
+        // Delivery Rush steal: poop the carrier 3 times in a 12-second window to steal the package
+        const stealCarrier = hit.carrier;
+        const dp = this.deliveryPackage;
+        if (stealCarrier && stealCarrier.id === dp.carrierId) {
+          const windowMs = 12000;
+          if (now > (stealCarrier.deliveryStealWindow || 0)) {
+            stealCarrier.deliveryStealHits = 0;
+            stealCarrier.deliveryStealWindow = now + windowMs;
+          }
+          stealCarrier.deliveryStealHits = (stealCarrier.deliveryStealHits || 0) + 1;
+          xpGain = 20;
+          this.events.push({
+            type: 'delivery_steal_hit',
+            x: stealCarrier.x, y: stealCarrier.y,
+            hitsSoFar: stealCarrier.deliveryStealHits, hitsNeeded: 3,
+            attackerId: bird.id, attackerName: bird.name,
+            victimId: stealCarrier.id, victimName: stealCarrier.name,
+          });
+          if (stealCarrier.deliveryStealHits >= 3) {
+            // STEAL SUCCEEDS — transfer package to thief
+            stealCarrier.deliveryPackageId = null;
+            stealCarrier.deliveryStealHits = 0;
+            bird.deliveryPackageId = dp.carrierId; // carry over same "id" slot
+            dp.carrierId = bird.id;
+            dp.carrierName = bird.name;
+            dp.pickedUpAt = now;
+            dp.expiresAt = now + 90000;
+            dp.warnedLow = false;
+            xpGain = 180;
+            bird.coins += 80;
+            this._trackDailyProgress(bird, 'delivery_stolen', 1);
+            this.events.push({
+              type: 'delivery_package_stolen',
+              thiefId: bird.id, thiefName: bird.name,
+              victimId: stealCarrier.id, victimName: stealCarrier.name,
+              destX: dp.destX, destY: dp.destY, destName: dp.destName,
+              expiresAt: dp.expiresAt,
+              x: stealCarrier.x, y: stealCarrier.y,
+            });
+          }
         }
       } else if (hit.target === 'hit_target' && hit.hitContract) {
         // Bounty hunting — player hit a bird with an active hit contract
@@ -6108,6 +6174,18 @@ class GameEngine {
       if (Math.sqrt(cpdx * cpdx + cpdy * cpdy) < hitRadius + 14) {
         if (!isMegaPoop) return { target: 'courier_pigeon' };
         allHits.push({ target: 'courier_pigeon' });
+      }
+    }
+
+    // Delivery Package steal: if a bird carrying a delivery package is hit, register a steal attempt
+    if (this.deliveryPackage && this.deliveryPackage.state === 'carried' && this.deliveryPackage.carrierId !== poop.birdId) {
+      const carrier = this.birds.get(this.deliveryPackage.carrierId);
+      if (carrier && !carrier.inSewer) {
+        const dpdx = poop.x - carrier.x;
+        const dpdy = poop.y - carrier.y;
+        if (Math.sqrt(dpdx * dpdx + dpdy * dpdy) < hitRadius + 16) {
+          return { target: 'delivery_steal', carrierId: this.deliveryPackage.carrierId, carrier };
+        }
       }
     }
 
@@ -9342,6 +9420,23 @@ class GameEngine {
         openUntil: this.vigilanteCall.openUntil,
       } : null,
       marshalBadge: bird.marshalBadge || false,
+      // Delivery Rush
+      deliveryRush: this.deliveryPackage ? {
+        state: this.deliveryPackage.state,
+        x: this.deliveryPackage.x,
+        y: this.deliveryPackage.y,
+        originName: this.deliveryPackage.originName,
+        destX: this.deliveryPackage.destX,
+        destY: this.deliveryPackage.destY,
+        destName: this.deliveryPackage.destName,
+        carrierId: this.deliveryPackage.carrierId,
+        carrierName: this.deliveryPackage.carrierName,
+        expiresAt: this.deliveryPackage.expiresAt,
+        waitExpiresAt: this.deliveryPackage.waitExpiresAt,
+        warnedLow: this.deliveryPackage.warnedLow,
+        iAmCarrier: this.deliveryPackage.carrierId === bird.id,
+        timeLeft: this.deliveryPackage.expiresAt ? Math.max(0, this.deliveryPackage.expiresAt - Date.now()) : null,
+      } : null,
     };
   }
 
@@ -27422,6 +27517,202 @@ class GameEngine {
       this.chaosOracle = null;
       this._chaosOracleTimer = now + this._randomRange(20 * 60000, 28 * 60000);
     }
+  }
+
+  // ============================================================
+  // DELIVERY RUSH (Session 124)
+  // ============================================================
+  static get DELIVERY_LOCATIONS() {
+    return [
+      { name: 'Park Post Box',          x: 1100, y: 960  },
+      { name: 'Downtown Office',        x: 1880, y: 1520 },
+      { name: 'Mall Entrance',          x: 2300, y: 420  },
+      { name: 'Cafe Counter',           x: 520,  y: 1700 },
+      { name: 'Docks Shipping Office',  x: 1250, y: 2300 },
+      { name: 'Radio Tower Base',       x: 1200, y: 450  },
+      { name: 'City Hall Steps',        x: 1780, y: 1050 },
+      { name: 'Residential Corner',     x: 400,  y: 500  },
+      { name: 'Arena Gate',             x: 2750, y: 1200 },
+      { name: 'Hall of Legends',        x: 1050, y: 640  },
+    ];
+  }
+
+  _tickDeliveryRush(now) {
+    const dp = this.deliveryPackage;
+
+    // ── Spawn ──────────────────────────────────────────────────
+    if (!dp && now >= this._deliveryPackageTimer && this.birds.size > 0) {
+      this._spawnDeliveryPackage(now);
+      return;
+    }
+
+    if (!dp) return;
+
+    // ── Waiting state: auto-pickup ─────────────────────────────
+    if (dp.state === 'waiting') {
+      // Expire if nobody picks it up in 3 minutes
+      if (now >= dp.waitExpiresAt) {
+        this.events.push({ type: 'delivery_package_expired_waiting', x: dp.x, y: dp.y, originName: dp.originName });
+        this.deliveryPackage = null;
+        this._deliveryPackageTimer = now + this._randomRange(8 * 60000, 12 * 60000);
+        return;
+      }
+      // Check for pickup
+      for (const bird of this.birds.values()) {
+        if (bird.inSewer) continue;
+        const dist = Math.hypot(bird.x - dp.x, bird.y - dp.y);
+        if (dist <= 45) {
+          // Pick up!
+          dp.state = 'carried';
+          dp.carrierId = bird.id;
+          dp.carrierName = bird.name;
+          dp.pickedUpAt = now;
+          dp.expiresAt = now + 90000; // 90 seconds to deliver
+          bird.deliveryPackageId = dp.carrierId; // tag bird as carrier
+          this.events.push({
+            type: 'delivery_package_picked_up',
+            carrierId: bird.id, carrierName: bird.name,
+            destX: dp.destX, destY: dp.destY, destName: dp.destName,
+            expiresAt: dp.expiresAt,
+            x: dp.x, y: dp.y,
+          });
+          return; // only one pickup per tick
+        }
+      }
+      return;
+    }
+
+    // ── Carried state ──────────────────────────────────────────
+    if (dp.state === 'carried') {
+      const carrier = this.birds.get(dp.carrierId);
+
+      // Carrier disconnected — drop at last known position
+      if (!carrier) {
+        dp.state = 'waiting';
+        dp.x = dp.lastCarrierX || dp.x;
+        dp.y = dp.lastCarrierY || dp.y;
+        dp.waitExpiresAt = now + 3 * 60000;
+        dp.carrierId = null;
+        dp.carrierName = null;
+        this.events.push({ type: 'delivery_package_dropped', x: dp.x, y: dp.y, destName: dp.destName });
+        return;
+      }
+
+      // Track carrier position for drop
+      dp.lastCarrierX = carrier.x;
+      dp.lastCarrierY = carrier.y;
+
+      // 20-second warning
+      const timeLeft = dp.expiresAt - now;
+      if (!dp.warnedLow && timeLeft <= 20000) {
+        dp.warnedLow = true;
+        this.events.push({ type: 'delivery_warning', birdId: carrier.id, birdName: carrier.name, destName: dp.destName, timeLeft });
+      }
+
+      // Expiry — explode
+      if (now >= dp.expiresAt) {
+        this._explodeDeliveryPackage(carrier, now);
+        return;
+      }
+
+      // Check delivery — carrier within 55px of destination
+      const distToDest = Math.hypot(carrier.x - dp.destX, carrier.y - dp.destY);
+      if (distToDest <= 55) {
+        this._completeDelivery(carrier, now);
+        return;
+      }
+    }
+  }
+
+  _spawnDeliveryPackage(now) {
+    const locs = GameEngine.DELIVERY_LOCATIONS;
+    // Pick two distinct locations
+    const originIdx = Math.floor(Math.random() * locs.length);
+    let destIdx;
+    do { destIdx = Math.floor(Math.random() * locs.length); } while (destIdx === originIdx);
+    const origin = locs[originIdx];
+    const dest   = locs[destIdx];
+
+    this.deliveryPackage = {
+      state: 'waiting',
+      x: origin.x, y: origin.y,
+      originName: origin.name,
+      destX: dest.x, destY: dest.y,
+      destName: dest.name,
+      carrierId: null, carrierName: null,
+      pickedUpAt: null,
+      expiresAt: null,
+      waitExpiresAt: now + 3 * 60000, // 3 min to be picked up
+      lastCarrierX: origin.x, lastCarrierY: origin.y,
+      warnedLow: false,
+    };
+
+    this.events.push({
+      type: 'delivery_package_spawned',
+      x: origin.x, y: origin.y,
+      originName: origin.name,
+      destX: dest.x, destY: dest.y,
+      destName: dest.name,
+    });
+  }
+
+  _completeDelivery(carrier, now) {
+    const dp = this.deliveryPackage;
+    const timeLeft = Math.max(0, dp.expiresAt - now);
+    const timeBonus = Math.floor((timeLeft / 90000) * 200); // up to 200 bonus coins for speed
+    const baseCoins = 150;
+    const totalCoins = baseCoins + timeBonus;
+    const baseXp = 300;
+    const xpBonus = Math.floor((timeLeft / 90000) * 200);
+    const totalXp = baseXp + xpBonus;
+
+    carrier.coins += totalCoins;
+    carrier.deliveryPackageId = null;
+    this._trackDailyProgress(carrier, 'delivery_completed', 1);
+
+    this.events.push({
+      type: 'delivery_package_delivered',
+      carrierId: carrier.id, carrierName: carrier.name,
+      xp: totalXp, coins: totalCoins,
+      timeLeft: Math.floor(timeLeft / 1000),
+      destName: dp.destName,
+      x: carrier.x, y: carrier.y,
+    });
+
+    this.deliveryPackage = null;
+    this._deliveryPackageTimer = now + this._randomRange(8 * 60000, 12 * 60000);
+  }
+
+  _explodeDeliveryPackage(carrier, now) {
+    const dp = this.deliveryPackage;
+    // Scatter 80c worth of coins to nearby birds
+    const nearbyBirds = [];
+    for (const b of this.birds.values()) {
+      const dist = Math.hypot(b.x - carrier.x, b.y - carrier.y);
+      if (dist <= 200) nearbyBirds.push({ bird: b, dist });
+    }
+    const scatterCoins = 80;
+    if (nearbyBirds.length > 0) {
+      const perBird = Math.floor(scatterCoins / nearbyBirds.length);
+      for (const { bird: b } of nearbyBirds) {
+        b.coins += perBird;
+      }
+    }
+
+    if (carrier) carrier.deliveryPackageId = null;
+
+    this.events.push({
+      type: 'delivery_package_exploded',
+      x: dp.lastCarrierX || dp.x,
+      y: dp.lastCarrierY || dp.y,
+      carrierId: carrier ? carrier.id : null,
+      carrierName: carrier ? carrier.name : null,
+      nearbyNames: nearbyBirds.map(b => b.bird.name),
+      scatterCoins,
+    });
+
+    this.deliveryPackage = null;
+    this._deliveryPackageTimer = now + this._randomRange(10 * 60000, 14 * 60000);
   }
 
   _handleOracleConsult(bird, now) {

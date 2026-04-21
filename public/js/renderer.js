@@ -5968,4 +5968,74 @@ window.Renderer = {
     minimapCtx.fillText('🔮', cx, cy);
     minimapCtx.restore();
   },
+
+  // ── Delivery Rush (Session 124) ───────────────────────────────
+  drawDeliveryRush(ctx, camera, dr, now) {
+    if (!dr) return;
+
+    if (dr.state === 'waiting') {
+      // Draw package at origin waiting for pickup
+      const sx = dr.x - camera.x + camera.screenW / 2;
+      const sy = dr.y - camera.y + camera.screenH / 2;
+      Sprites.drawDeliveryPackage(ctx, sx, sy, 0, 1, now);
+
+      // "Pick up" prompt label
+      ctx.save();
+      ctx.font = 'bold 9px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#44aaff';
+      ctx.shadowColor = '#000'; ctx.shadowBlur = 3;
+      ctx.fillText(`📦 ${dr.originName} → ${dr.destName}`, sx, sy - 28);
+      ctx.fillText('Fly over to pick it up!', sx, sy - 18);
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    } else if (dr.state === 'carried') {
+      // Draw destination marker
+      const dx = dr.destX - camera.x + camera.screenW / 2;
+      const dy = dr.destY - camera.y + camera.screenH / 2;
+      Sprites.drawDeliveryDestination(ctx, dx, dy, now);
+    }
+  },
+
+  drawDeliveryRushOnMinimap(minimapCtx, worldData, dr, now) {
+    if (!dr) return;
+    const scale = minimapCtx.canvas.width / worldData.width;
+    const pulse = 0.5 + 0.5 * Math.sin(now * 0.004);
+
+    if (dr.state === 'waiting') {
+      // Cyan pulsing dot at origin
+      const cx = dr.x * scale;
+      const cy = dr.y * scale;
+      minimapCtx.save();
+      minimapCtx.shadowColor = '#44aaff';
+      minimapCtx.shadowBlur = 8 * pulse;
+      minimapCtx.fillStyle = `rgba(68,170,255,${0.7 + 0.3 * pulse})`;
+      minimapCtx.beginPath();
+      minimapCtx.arc(cx, cy, 4 + pulse, 0, Math.PI * 2);
+      minimapCtx.fill();
+      minimapCtx.shadowBlur = 0;
+      minimapCtx.font = '8px sans-serif';
+      minimapCtx.textAlign = 'center';
+      minimapCtx.textBaseline = 'middle';
+      minimapCtx.fillText('📦', cx, cy);
+      minimapCtx.restore();
+    } else if (dr.state === 'carried') {
+      // Gold pulsing dot at destination
+      const dx = dr.destX * scale;
+      const dy = dr.destY * scale;
+      minimapCtx.save();
+      minimapCtx.shadowColor = '#ffd700';
+      minimapCtx.shadowBlur = 8 * pulse;
+      minimapCtx.fillStyle = `rgba(255,215,0,${0.7 + 0.3 * pulse})`;
+      minimapCtx.beginPath();
+      minimapCtx.arc(dx, dy, 4 + pulse, 0, Math.PI * 2);
+      minimapCtx.fill();
+      minimapCtx.shadowBlur = 0;
+      minimapCtx.font = '8px sans-serif';
+      minimapCtx.textAlign = 'center';
+      minimapCtx.textBaseline = 'middle';
+      minimapCtx.fillText('🎯', dx, dy);
+      minimapCtx.restore();
+    }
+  },
 };
