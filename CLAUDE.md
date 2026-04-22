@@ -4528,6 +4528,29 @@ Upgraded the bare-bones parade system into a full cooperative disruption event. 
 
 **Creative intent**: The parade was the city's most civic event — now it's a target. The milestone system creates a collective snowball: early players doing solo poop hits build toward disruption, then word spreads, and suddenly 4 birds are converging to finish the job. The marshal is a genuine boss fight requiring teamwork — 3 hits of mega poop or 3 normal poops gets it done, but the contributor tracking means even one early hit earns proportional rewards. Watching the baton-twirling drum-major try to maintain decorum while pigeons scatter in panic around them is pure CARNAGE + SPECTACLE energy.
 
+**Session 132 — 2026-04-22: Lost Chick Event — Escort Baby Bird Home**
+Bird City's first purely compassionate mechanic. A baby bird separates from its parent and wanders the city every 15–20 minutes. Bond with it by staying within 60px for 8 continuous seconds — it follows you to the 🪺 nest. But rivals can poop you 3 times in a rolling 12-second window to steal the escort. Pure SOCIAL + CARNAGE + DISCOVERY energy.
+
+**The Lost Chick flow (`server/game.js`):**
+- Spawns at a random world position every 15–20 minutes (when ≥1 player online), wanders at 30px/s with gentle direction changes every 2–4s
+- `state` machine: `wandering` → `escorted` → `delivered` / `expired`
+- **Bonding mechanic**: the nearest bird within 60px accumulates `escortProgress` at 0.12/s — 8.3 seconds of unbroken proximity earns the escort. Progress held by the nearest bird; resets to 0 if a different bird is closer
+- **Escort follow**: chick lerps toward the escort bird at 1.1× chick speed — it can keep up, but the escort's −15% speed penalty (+no poop) makes them a slower target
+- **90-second delivery window**: escort must reach the nest (one of 8 fixed city positions) within 90 seconds
+- **Steal mechanic**: rivals can poop the escort 3 times within a rolling 12-second window to steal the chick — 3rd hit transfers bond to thief, resets progress
+- **Delivery**: escort flies within 55px of the 🪺 nest → chick delivered → +400 XP +300c for escort, +40 XP +15c for all birds within 250px
+- **Expiry**: if not escorted within 3 minutes of spawn, chick wanders off quietly
+- **Two daily challenges**: 🐣 **Kind Soul** (deliver the lost chick, 280 XP/140c) + 🐣 **Chick Interceptor** (steal the chick from another escort, 200 XP/100c)
+
+**Visual system:**
+- `drawLostChick()` in `renderer.js`: pulsing 🐣 emoji with soft yellow/green radial glow, state label (`WANDERING...` / `FOLLOWING ESCORT`), bond progress arc (green fill) when being bonded, 🪺 nest marker with dashed pulsing ring and "BRING HERE" label
+- `drawLostChickOnMinimap()`: pulsing colored dot (yellow=wandering, green=escorted) + 🐣 emoji; 🪺 dot for nest when chick is escorted
+- Off-screen direction arrow: yellow (wandering) or green (escorted) 🐣 triangle arrow pointing toward the chick when off-screen
+- Active buffs HUD (3 states): escort sees timer countdown + steal warning with animation; wandering-nearby birds see bonding %; rival-observing-escorted sees steal instructions
+- Gazette headline: "🐣 LOST CHICK REUNITED: [Name] RETURNS THE BABY BIRD HOME"
+
+**Creative intent**: Bird City has 131 sessions of systems that reward aggression — pooping, fighting, raiding, stealing. The Lost Chick is the first mechanic that rewards PROTECTION. The core tension is the steal mechanic: you're slowed, can't fight back, and every rival is a potential interceptor. A bird who outruns 3 interception attempts to reunite the chick with its nest earns a genuinely warm city-wide callout. The helpers reward nearby birds who cheered from a distance. And inevitably someone will steal the chick mid-escort for the daily challenge, creating a chase sequence nobody scripted. Pure SOCIAL + CARNAGE + DISCOVERY energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -4814,12 +4837,12 @@ Built the Territory Control System on top of the existing upstream code:
 - The Weathervane: a spinning rooster weathervane atop a building predicts the next weather 90 seconds early — only visible if you're within 120px of it (discovery reward)
 - Street Performer: a juggling NPC appears in a plaza, watch them for 10 seconds to earn XP (patience reward), poop them for small coins but lose the watch bonus
 - The Detective Bird: a fedora-wearing NPC who randomly accuses an online bird of "looking suspicious" — that bird gets +10 heat city-wide. Can be cleared by visiting the Police Station.
-- Lost Chick Event: a baby bird is separated from its parent somewhere in the city — escort it 500px to the nest (fly within 60px for 8s) for a big reward; rivals can intercept by flying between you and the chick
+- ~~Lost Chick Event: a baby bird is separated from its parent somewhere in the city — escort it 500px to the nest (fly within 60px for 8s) for a big reward; rivals can intercept by flying between you and the chick~~ (DONE Session 132)
 - Golden Goose Egg × Sewer: if a golden egg falls into a manhole cover (goose walks over one while scared), it drops into the sewer as a premium loot cache
 - Golden Goose daily gazette tracking: if the goose was scared vs walked away peacefully — different headline tone each morning
 - Parade Crasher cross-system: during a Crime Wave, parade pigeons are worth 3× poop XP (criminals crashing a civic event)
 - Parade Marshal × Kingpin: if the Kingpin personally lands the killing blow on the marshal, the city-wide "PARADE RUINED" announcement names them as the culprit — instant +30 heat but +200 XP bonus
 - Parade × Gang War: if two gangs are at war when the parade fires, gang war hits can stack on parade pigeon hits (one poop counts for both)
 - Street Performer event: a juggling NPC appears in a plaza, watch them for 10 seconds to earn XP (patience reward like the Golden Goose), poop them for small coins but lose the watch bonus — tension between patience and instinct
-- Lost Chick Event: a baby bird is separated from its parent somewhere in the city — escort it 500px to the nest (fly within 60px for 8s) for a big reward; rivals can intercept by flying between you and the chick
+- ~~Lost Chick Event: a baby bird is separated from its parent somewhere in the city — escort it 500px to the nest (fly within 60px for 8s) for a big reward; rivals can intercept by flying between you and the chick~~ (DONE Session 132)
 - The Charity Gala: a fancy party in the park every 60 minutes — tuxedo-wearing NPCs worth 3× XP on poop hits, but a Gala Guard politely (forcefully) escorts disruptive birds away if they score 5+ hits
