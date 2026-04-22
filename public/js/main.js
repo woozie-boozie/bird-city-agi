@@ -488,6 +488,9 @@
         laundry: { text: 'LAUNDRY RUINED!', color: '#ff00ff', size: 16 },
         bride: { text: 'BRIDE BOMBED! +100!', color: '#ff69b4', size: 20 },
         parade_pigeon: { text: 'PARADE HIT!', color: '#aaaaff', size: 14 },
+        marching_band: { text: '🥁 BAND HIT!', color: '#ff8844', size: 15 },
+        confetti_bird: { text: '🎉 CONFETTI!', color: '#ff44ff', size: 16 },
+        city_guard: { text: '🛡️ GUARD STUNNED!', color: '#ff4444', size: 16 },
         event_npc: { text: 'EVENT HIT!', color: '#ffaa00', size: 14 },
         janitor: { text: 'JANITOR HIT! +20 XP', color: '#3355aa', size: 16 },
         eagle_overlord: { text: '🦅 EAGLE HIT! −8HP', color: '#ff8c00', size: 18 },
@@ -5904,6 +5907,50 @@
       showAnnouncement(`🎺💀 PARADE RUINED!\n${gangStr}${ev.killerName} took down the Marshal!\nThe parade is OVER!`, '#ff4444', 7000);
       addEventMessage(`🎺💀 ${gangStr}${ev.killerName} RUINED the parade — Marshal defeated!`, '#ff4444');
     }
+    // Session 109: Parade NPC additions
+    if (ev.type === 'confetti_burst') {
+      // Spawn a burst of colorful confetti particles
+      const COLORS = ['#ff4444', '#ffaa00', '#44ff44', '#4488ff', '#ff44ff', '#44ffff', '#ff88ff', '#ffff44'];
+      for (let i = 0; i < 18; i++) {
+        const ang = (Math.PI * 2 / 18) * i + Math.random() * 0.5;
+        const spd = 60 + Math.random() * 80;
+        const sx2 = ev.x, sy2 = ev.y;
+        effects.push({
+          type: 'particle', x: sx2, y: sy2,
+          vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd - 30,
+          size: 3 + Math.random() * 3,
+          color: COLORS[i % COLORS.length],
+          time: now, duration: 900,
+        });
+      }
+    }
+    if (ev.type === 'parade_guard_chase') {
+      if (ev.birdId === window._myId) {
+        screenShake(8, 400);
+        showAnnouncement('🛡️ CITY GUARD IS CHASING YOU!\nFly away from the parade!', '#ff6666', 3000);
+        showFloatingText(window._myX || 1500, window._myY || 1500, '🛡️ GUARD INCOMING!', '#ff4444');
+      }
+    }
+    if (ev.type === 'guard_stunned') {
+      if (ev.birdId === window._myId) {
+        showFloatingText(ev.x, ev.y, '🛡️ GUARD STUNNED! +40 XP', '#ffaa44');
+      }
+      addEventMessage(`🛡️ A City Guard was stunned mid-chase!`, '#ff8844');
+    }
+    if (ev.type === 'guard_caught_player') {
+      if (ev.birdId === window._myId) {
+        screenShake(8, 400);
+        showAnnouncement(`🛡️ CAUGHT BY THE GUARD!\n−${ev.stolenCoins}c fine for disrupting the parade!`, '#ff4444', 3500);
+        showFloatingText(window._myX || 1500, window._myY || 1500, `−${ev.stolenCoins}c FINE`, '#ff4444');
+      }
+    }
+    if (ev.type === 'parade_crasher_badge') {
+      if (ev.birdId === window._myId) {
+        screenShake(10, 500);
+        showAnnouncement('🎉 PARADE CRASHER BADGE EARNED!\nYou hit 5 Confetti Birds — you\'re chaos incarnate!', '#ff88ff', 5000);
+      }
+      addEventMessage(`🎉 ${ev.name} earned the PARADE CRASHER badge!`, '#ff88ff');
+    }
     // ── end Parade Crasher ────────────────────────────────────────────────
   }
 
@@ -9996,6 +10043,12 @@
             Sprites.drawBird(ctx, sx, sy, 0, 'pigeon', now * 0.005, false);
           } else if (npc.type === 'parade_marshal') {
             Sprites.drawParadeMarshal(ctx, sx, sy, npc.batonAngle || 0, npc.hp || 0, npc.state);
+          } else if (npc.type === 'marching_band') {
+            Sprites.drawMarchingBandBird(ctx, sx, sy, now);
+          } else if (npc.type === 'confetti_bird') {
+            Sprites.drawConfettiBird(ctx, sx, sy, now);
+          } else if (npc.type === 'city_guard') {
+            Sprites.drawCityGuard(ctx, sx, sy, npc.state, now);
           } else if (npc.type === 'revenge_npc') {
             Sprites.drawRevengeNPC(ctx, sx, sy);
           } else {
@@ -11090,7 +11143,7 @@
 
           Sprites.drawBird(ctx, sx, sy, b.rotation, b.type, b.wingPhase, isPlayer, b.featherColor || b.birdColor || null, b.hatType || null);
           ctx.globalAlpha = 1; // Always reset after bird draw
-          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0, b.eagleFeather || false, b.idolBadge || false, b.royaleChampBadge || false, b.skillTreeMaster || false, b.fightingChampBadge || false, b.constellationBadge || false, b.courtTitle || null, b.hanamiLanternBadge || false, b.domeChampBadge || false, b.alphaFeather || false, b.arenaLegend || false, b.goldenBirdBadge || false, b.constellations || [], b.stampedeBadge || false, b.throneChampBadge || false, b.perchChampBadge || false, b.marshalBadge || false, b.springFestivalBadge || false);
+          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0, b.eagleFeather || false, b.idolBadge || false, b.royaleChampBadge || false, b.skillTreeMaster || false, b.fightingChampBadge || false, b.constellationBadge || false, b.courtTitle || null, b.hanamiLanternBadge || false, b.domeChampBadge || false, b.alphaFeather || false, b.arenaLegend || false, b.goldenBirdBadge || false, b.constellations || [], b.stampedeBadge || false, b.throneChampBadge || false, b.perchChampBadge || false, b.marshalBadge || false, b.springFestivalBadge || false, b.paradeCrasherBadge || false);
 
           // Bird Flu: sneezing emoji indicator above infected birds
           if (b.isFlu) {
@@ -17436,6 +17489,9 @@
     }
     if (s && s.perchChampBadge) {
       html += `<div class="bm-buff-pill" style="background:rgba(50,40,0,0.9);border-color:#ffd700;color:#ffe566;">🏅 PERCH CHAMPION — King of the Hill!</div>`;
+    }
+    if (s && s.paradeCrasherBadge) {
+      html += `<div class="bm-buff-pill" style="background:rgba(30,0,30,0.9);border-color:#ff44ff;color:#ffccff;">🎉 PARADE CRASHER — You hit 5 Confetti Birds!</div>`;
     }
 
     // Golden Perch: holding pill

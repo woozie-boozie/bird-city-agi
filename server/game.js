@@ -225,6 +225,7 @@ const DAILY_CHALLENGE_POOL = [
   // Session 131: Parade Crasher
   { id: 'parade_crasher', title: 'Parade Crasher',  desc: 'Hit 10 parade pigeons during a city parade',              target: 10, trackType: 'parade_pigeon_hit',   reward: { xp: 180, coins: 90  } },
   { id: 'kill_the_beat',  title: 'Kill The Beat',   desc: 'Defeat the Parade Marshal and ruin the parade',           target: 1,  trackType: 'parade_marshal_killed', reward: { xp: 300, coins: 150 } },
+  { id: 'party_animal',   title: 'Party Animal',    desc: 'Hit 3 Confetti Birds during the Grand Parade',             target: 3,  trackType: 'confetti_bird_hit',     reward: { xp: 120, coins: 60  } },
   // Session 132: Lost Chick Event
   { id: 'chick_escort',      title: 'Kind Soul',   desc: 'Escort the lost chick safely to its nest',                 target: 1, trackType: 'chick_delivered', reward: { xp: 280, coins: 140 } },
   { id: 'chick_interceptor', title: 'Bird Thief',  desc: 'Steal the lost chick from another bird\'s escort',         target: 1, trackType: 'chick_stolen',   reward: { xp: 200, coins: 100 } },
@@ -3117,6 +3118,58 @@ class GameEngine {
     };
     this.worldEventNPCs.set(marshal.id, marshal);
 
+    // Session 109 additions: Marching Band birds (6) flanking the parade
+    for (let i = 0; i < 6; i++) {
+      const side = i % 2 === 0 ? -1 : 1;
+      const row = Math.floor(i / 2);
+      const mb = {
+        id: 'evt_mb_' + i,
+        type: 'marching_band',
+        x: loc.startX + row * 55 - 30,
+        y: loc.startY + side * 55,
+        baseY: loc.startY + side * 55,
+        targetX: loc.endX,
+        speed: 62,
+        state: 'marching',
+      };
+      this.worldEventNPCs.set(mb.id, mb);
+    }
+
+    // Session 109 additions: Confetti Birds (5) scattered through the parade
+    for (let i = 0; i < 5; i++) {
+      const cb = {
+        id: 'evt_cb_' + i,
+        type: 'confetti_bird',
+        x: loc.startX + i * 50 + 20,
+        y: loc.startY + (Math.random() - 0.5) * 80,
+        baseY: loc.startY + (Math.random() - 0.5) * 80,
+        targetX: loc.endX,
+        speed: 60 + Math.random() * 10,
+        state: 'marching',
+      };
+      this.worldEventNPCs.set(cb.id, cb);
+    }
+
+    // Session 109 additions: City Guards (2) patrolling the sides
+    for (let i = 0; i < 2; i++) {
+      const side = i === 0 ? -1 : 1;
+      const guard = {
+        id: 'evt_guard_' + i,
+        type: 'city_guard',
+        x: loc.startX + 40,
+        y: loc.startY + side * 90,
+        baseY: loc.startY + side * 90,
+        targetX: loc.endX,
+        speed: 75,
+        state: 'marching',
+        chaseTarget: null,
+        chaseUntil: 0,
+        returnX: null,
+        returnY: null,
+      };
+      this.worldEventNPCs.set(guard.id, guard);
+    }
+
     this.events.push({ type: 'event_start', eventType: 'parade', x: loc.startX, y: loc.startY, duration: 90000 });
     this.events.push({ type: 'parade_start', x: loc.startX, y: loc.startY });
   }
@@ -3269,6 +3322,84 @@ class GameEngine {
         }
         // Animate baton
         npc.batonAngle = Math.sin(now * 0.006) * 0.6;
+        sumX += npc.x;
+        count++;
+        continue;
+      }
+
+      // Marching band and confetti birds — just march forward
+      if (npc.type === 'marching_band' || npc.type === 'confetti_bird') {
+        const dx = npc.targetX - npc.x;
+        if (Math.abs(dx) > 2) {
+          npc.x += (dx > 0 ? 1 : -1) * npc.speed * dt;
+          allExited = false;
+        } else {
+          npc.state = 'exited';
+        }
+        sumX += npc.x;
+        count++;
+        continue;
+      }
+
+      // City guards — chase any bird that poops on the parade, then return
+      if (npc.type === 'city_guard') {
+        if (npc.state === 'chasing' && npc.chaseTarget) {
+          const target = this.birds.get(npc.chaseTarget);
+          if (!target || now > npc.chaseUntil) {
+            // Give up chase — return to parade
+            npc.state = 'returning';
+            npc.chaseTarget = null;
+          } else {
+            const cdx = target.x - npc.x;
+            const cdy = target.y - npc.y;
+            const dist = Math.sqrt(cdx * cdx + cdy * cdy);
+            if (dist > 1) {
+              npc.x += (cdx / dist) * npc.speed * 1.3 * dt;
+              npc.y += (cdy / dist) * npc.speed * 1.3 * dt;
+            }
+            // Catch player — minor coin penalty
+            if (dist < 35) {
+              const caught = this.birds.get(npc.chaseTarget);
+              if (caught) {
+                const stolenCoins = Math.min(Math.floor(caught.coins * 0.05), 25);
+                caught.coins = Math.max(0, caught.coins - stolenCoins);
+                this.events.push({ type: 'guard_caught_player', birdId: npc.chaseTarget, stolenCoins, x: npc.x, y: npc.y });
+              }
+              npc.state = 'returning';
+              npc.chaseTarget = null;
+              npc.chaseUntil = 0;
+            }
+          }
+          allExited = false;
+          sumX += npc.x;
+          count++;
+          continue;
+        }
+        if (npc.state === 'returning') {
+          const tx = npc.returnX || (npc.x + 30);
+          const ty = npc.returnY || npc.baseY;
+          const cdx = tx - npc.x;
+          const cdy = ty - npc.y;
+          const dist = Math.sqrt(cdx * cdx + cdy * cdy);
+          if (dist > 8) {
+            npc.x += (cdx / dist) * npc.speed * dt;
+            npc.y += (cdy / dist) * npc.speed * dt;
+          } else {
+            npc.state = 'marching';
+          }
+          allExited = false;
+          sumX += npc.x;
+          count++;
+          continue;
+        }
+        // Normal march
+        const gdx = npc.targetX - npc.x;
+        if (Math.abs(gdx) > 2) {
+          npc.x += (gdx > 0 ? 1 : -1) * npc.speed * dt;
+          allExited = false;
+        } else {
+          npc.state = 'exited';
+        }
         sumX += npc.x;
         count++;
         continue;
@@ -3893,6 +4024,22 @@ class GameEngine {
           we.contributors.set(bird.id, (we.contributors.get(bird.id) || 0) + 1);
           // Daily challenge progress
           this._trackDailyProgress(bird, 'parade_pigeon_hit', 1);
+          // Trigger a nearby idle guard to chase the poop culprit
+          for (const [, gnpc] of this.worldEventNPCs) {
+            if (gnpc.type === 'city_guard' && gnpc.state === 'marching' && !gnpc.chaseTarget) {
+              const dx = gnpc.x - hit.npc.x;
+              const dy = gnpc.y - hit.npc.y;
+              if (Math.sqrt(dx * dx + dy * dy) < 300) {
+                gnpc.state = 'chasing';
+                gnpc.chaseTarget = bird.id;
+                gnpc.chaseUntil = now + 8000;
+                gnpc.returnX = gnpc.x;
+                gnpc.returnY = gnpc.y;
+                this.events.push({ type: 'parade_guard_chase', birdId: bird.id, x: gnpc.x, y: gnpc.y });
+                break;
+              }
+            }
+          }
           // Milestone chaos events
           if (!we.milestones.has(10) && we.hits >= 10) {
             we.milestones.add(10);
@@ -3911,6 +4058,41 @@ class GameEngine {
             xpGain = 25;
             coinGain = 8;
           }
+        }
+      } else if (hit.target === 'marching_band') {
+        xpGain = 15;
+        coinGain = 4;
+        // Confetti burst effect
+        this.events.push({ type: 'confetti_burst', x: hit.npc.x, y: hit.npc.y });
+        if (this.worldEvent && this.worldEvent.type === 'parade') {
+          this.worldEvent.contributors.set(bird.id, (this.worldEvent.contributors.get(bird.id) || 0) + 1);
+        }
+      } else if (hit.target === 'confetti_bird') {
+        xpGain = 18;
+        coinGain = 6;
+        // Bigger confetti burst
+        this.events.push({ type: 'confetti_burst', x: hit.npc.x, y: hit.npc.y });
+        this._trackDailyProgress(bird, 'confetti_bird_hit', 1);
+        if (this.worldEvent && this.worldEvent.type === 'parade') {
+          this.worldEvent.contributors.set(bird.id, (this.worldEvent.contributors.get(bird.id) || 0) + 1);
+          // Award paradeCrasherBadge when a bird hits 5+ confetti birds
+          const confettiHits = (bird._confettiHitsThisParade || 0) + 1;
+          bird._confettiHitsThisParade = confettiHits;
+          if (confettiHits >= 5 && !bird.paradeCrasherBadge) {
+            bird.paradeCrasherBadge = true;
+            this.events.push({ type: 'parade_crasher_badge', birdId: bird.id, name: bird.name });
+          }
+        }
+      } else if (hit.target === 'city_guard') {
+        const guard = hit.npc;
+        if (guard && guard.state === 'chasing') {
+          // Stun the guard — it retreats
+          xpGain = 40;
+          coinGain = 15;
+          guard.state = 'returning';
+          guard.chaseTarget = null;
+          guard.chaseUntil = 0;
+          this.events.push({ type: 'guard_stunned', x: guard.x, y: guard.y, birdId: bird.id });
         }
       } else if (hit.target === 'parade_marshal') {
         const marshal = hit.npc;
@@ -6072,6 +6254,18 @@ class GameEngine {
           if (npc.state === 'dead') continue;
           if (!isMegaPoop) return { target: 'parade_marshal', npc };
           allHits.push({ target: 'parade_marshal', npc });
+        } else if (npc.type === 'marching_band') {
+          if (!isMegaPoop) return { target: 'marching_band', npc };
+          allHits.push({ target: 'marching_band', npc });
+        } else if (npc.type === 'confetti_bird') {
+          if (!isMegaPoop) return { target: 'confetti_bird', npc };
+          allHits.push({ target: 'confetti_bird', npc });
+        } else if (npc.type === 'city_guard') {
+          if (npc.state === 'chasing') {
+            if (!isMegaPoop) return { target: 'city_guard', npc };
+            allHits.push({ target: 'city_guard', npc });
+          }
+          // Cannot poop guards who are just marching — they retaliate
         } else {
           if (!isMegaPoop) return { target: 'event_npc', npc };
           allHits.push({ target: 'event_npc', npc });
@@ -7977,6 +8171,8 @@ class GameEngine {
           stampedeBadge: b.stampedeBadge || false,
           // Session 100: Golden Throne champion badge
           throneChampBadge: b.throneChampBadge || false,
+          // Session 109: Parade Crasher badge
+          paradeCrasherBadge: b.paradeCrasherBadge || false,
           // Session 109: Bowling Ball — giant rolling bird visible to all
           isBowlingBird: !!(this.bowlingBall && this.bowlingBall.birdId === b.id && this.bowlingBall.hp > 0),
           bowlingBadge: b.bowlingBadge || false,
@@ -8849,6 +9045,7 @@ class GameEngine {
         goldenBirdBadge: bird.goldenBirdBadge || false,
         stampedeBadge: bird.stampedeBadge || false,
         throneChampBadge: bird.throneChampBadge || false,
+        paradeCrasherBadge: bird.paradeCrasherBadge || false,
         // Session 109: Bowling Ball
         isBowlingBird: !!(this.bowlingBall && this.bowlingBall.birdId === bird.id && this.bowlingBall.hp > 0),
         bowlingBadge: bird.bowlingBadge || false,

@@ -4551,6 +4551,41 @@ Bird City's first purely compassionate mechanic. A baby bird separates from its 
 
 **Creative intent**: Bird City has 131 sessions of systems that reward aggression — pooping, fighting, raiding, stealing. The Lost Chick is the first mechanic that rewards PROTECTION. The core tension is the steal mechanic: you're slowed, can't fight back, and every rival is a potential interceptor. A bird who outruns 3 interception attempts to reunite the chick with its nest earns a genuinely warm city-wide callout. The helpers reward nearby birds who cheered from a distance. And inevitably someone will steal the chick mid-escort for the daily challenge, creating a chase sequence nobody scripted. Pure SOCIAL + CARNAGE + DISCOVERY energy.
 
+**Session 133 — 2026-04-22: Grand Parade Supporting Cast — Marching Band, Confetti Birds & City Guards**
+The Grand Parade (Session 131) got its full supporting cast. Three new NPC types now flesh out every parade procession, turning a single-file march into a living spectacle.
+
+**Marching Band Birds (6 per parade):**
+- Deep red uniforms with white stripes, animated shako hats with bobbing gold plumes, side drums
+- Flanking position: 3 on each side of the main parade line
+- March forward at 62px/s alongside the parade pigeons
+- Hittable for +15 XP +4c with a `confetti_burst` particle effect on hit
+- All hits tracked toward contributor rewards at parade end
+
+**Confetti Birds (5 per parade):**
+- Yellow party birds with pink cone hats and 6 orbiting confetti particles cycling through rainbow colors
+- Scatter freely through the parade at ~60-70px/s
+- Hittable for +18 XP +6c — the most satisfying visual target in the parade
+- **Party Animal** daily challenge: hit 3 Confetti Birds during one Grand Parade (120 XP, 60c)
+- **Parade Crasher Badge**: hit 5+ Confetti Birds in one parade to earn the `🎉 PARADE CRASHER` session nametag badge (hot pink glow, dark purple background)
+
+**City Guards (2 per parade):**
+- Navy armored pigeons with grey helmets, glowing visors (blue when calm, orange when chasing)
+- Patrol both flanks at 75px/s during normal march
+- **Guard trigger**: when any bird poop-hits a parade pigeon, the nearest idle guard within 300px switches to `chasing` state and pursues the culprit for 8 seconds
+- **Catch mechanic**: guard flies within 35px of the bird → steals 5% of their coins (capped at 25c) + city-wide callout
+- **Counter-play**: poop on a guard WHILE it's chasing → guard stunned (+40 XP +15c for the shooter)
+- Only hittable while in `chasing` state — prevents easy farming during calm marching
+- Baton swings animated with sine wave when in pursuit; "STOP!" label floats above
+
+**Visual & Events:**
+- `confetti_burst` event: 18 rainbow particle explosion at hit location, particles orbit outward
+- `parade_guard_chase` event: personal screen shake + "CITY GUARD IS CHASING YOU — FLEE!" announcement
+- `guard_stunned` event: "+40 XP" floating text for shooter + city-wide callout
+- `guard_caught_player` event: personal screen shake + coin fine announcement + city-wide shame
+- `parade_crasher_badge` event: personal "🎉 PARADE CRASHER BADGE EARNED!" + city-wide callout
+
+**Creative intent**: The parade was visually thin — a line of pigeons, a marshal, done. Adding the marching band fills in the flanks with musical energy. Confetti birds are pure joy targets — their rainbow orbiting particles and party hat make them the most visually rewarding thing to poop on in the parade. The city guards create the first consequence for casual parade disruption: you can't just spam-poop the whole procession without a guard coming after you. Now parade-crashing is a SPORT: time your shots to avoid guard retaliation, or fight the guard for the stun reward. The Parade Crasher badge rewards commitment to the chaos theme — hit 5 confetti birds in one parade and wear the pink badge all session. Pure CARNAGE + SPECTACLE + DISCOVERY energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)

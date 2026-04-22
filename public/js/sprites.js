@@ -167,7 +167,7 @@ window.Sprites = {
   },
 
   // === NAME TAG ===
-  drawNameTag(ctx, x, y, name, level, type, isPlayer, mafiaTitle, gangTag, gangColor, tattoosEquipped, prestige, eagleFeather, idolBadge, royaleChampBadge, skillTreeMaster, fightingChampBadge, constellationBadge, courtTitle, hanamiLanternBadge, domeChampBadge, alphaFeather, arenaLegend, goldenBirdBadge, constellations, stampedeBadge, throneChampBadge, perchChampBadge, marshalBadge, springFestivalBadge) {
+  drawNameTag(ctx, x, y, name, level, type, isPlayer, mafiaTitle, gangTag, gangColor, tattoosEquipped, prestige, eagleFeather, idolBadge, royaleChampBadge, skillTreeMaster, fightingChampBadge, constellationBadge, courtTitle, hanamiLanternBadge, domeChampBadge, alphaFeather, arenaLegend, goldenBirdBadge, constellations, stampedeBadge, throneChampBadge, perchChampBadge, marshalBadge, springFestivalBadge, paradeCrasherBadge) {
     const text = `${name} [Lv.${level}]`;
     ctx.font = 'bold 11px Courier New';
     ctx.textAlign = 'center';
@@ -323,6 +323,25 @@ window.Sprites = {
       ctx.shadowBlur = 9;
       ctx.fillStyle = '#fff2b0';
       ctx.fillText(sfStr, x, y - 41 - offsetY);
+      ctx.shadowBlur = 0;
+      ctx.font = 'bold 11px Courier New';
+      offsetY += 14;
+    }
+
+    // 🎉 Parade Crasher Badge — session: hit 5+ confetti birds in the Grand Parade
+    if (paradeCrasherBadge) {
+      ctx.font = '10px serif';
+      const pcStr = '🎉 PARADE CRASHER';
+      const pcw = ctx.measureText(pcStr).width + 10;
+      ctx.fillStyle = 'rgba(30,0,30,0.95)';
+      ctx.fillRect(x - pcw / 2, y - 52 - offsetY, pcw, 14);
+      ctx.strokeStyle = '#ff44ff';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(x - pcw / 2, y - 52 - offsetY, pcw, 14);
+      ctx.shadowColor = '#ff88ff';
+      ctx.shadowBlur = 9;
+      ctx.fillStyle = '#ffccff';
+      ctx.fillText(pcStr, x, y - 41 - offsetY);
       ctx.shadowBlur = 0;
       ctx.font = 'bold 11px Courier New';
       offsetY += 14;
@@ -9603,6 +9622,175 @@ window.Sprites = {
     ctx.fillText(isDead ? '💀 MARSHAL DOWN' : '🎺 MARSHAL', 0, -32);
     ctx.shadowBlur = 0;
 
+    ctx.restore();
+  },
+
+  // Session 109 — Marching Band Bird: deep red uniform, animated shako hat, drum
+  drawMarchingBandBird(ctx, x, y, now) {
+    ctx.save();
+    ctx.translate(x, y);
+    const t = now * 0.003;
+    // Body — deep red uniform
+    ctx.fillStyle = '#cc1111';
+    ctx.beginPath();
+    ctx.ellipse(0, 2, 9, 12, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // White uniform stripes
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(-3, -4, 2, 10);
+    ctx.fillRect(1, -4, 2, 10);
+    // Black shako hat body
+    ctx.fillStyle = '#111111';
+    ctx.fillRect(-5, -20, 10, 12);
+    // Red hat band
+    ctx.fillStyle = '#cc1111';
+    ctx.fillRect(-5, -21, 10, 3);
+    // Gold plume — bobs with time
+    ctx.fillStyle = '#ffd700';
+    ctx.beginPath();
+    ctx.moveTo(0, -21);
+    ctx.lineTo(-1, -29 + Math.sin(t * 2) * 2);
+    ctx.lineTo(1, -29 + Math.sin(t * 2 + 0.5) * 2);
+    ctx.closePath();
+    ctx.fill();
+    // Eyes
+    ctx.fillStyle = '#222';
+    ctx.beginPath();
+    ctx.arc(-2, -6, 1.5, 0, Math.PI * 2);
+    ctx.arc(2, -6, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+    // Drum with animated bob
+    const drumY = Math.sin(t) * 2;
+    ctx.save();
+    ctx.translate(-14, 2 + drumY);
+    ctx.fillStyle = '#cc6600';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 5, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#ffd700';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.restore();
+    // Drum arm
+    ctx.strokeStyle = '#8b4513';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-8, 0);
+    ctx.lineTo(-14, 2 + drumY);
+    ctx.stroke();
+    ctx.restore();
+  },
+
+  // Session 109 — Confetti Bird: yellow body, pink party hat, orbiting confetti particles
+  drawConfettiBird(ctx, x, y, now) {
+    ctx.save();
+    ctx.translate(x, y);
+    const t = now * 0.004;
+    // Body — cheerful yellow
+    ctx.fillStyle = '#ffe066';
+    ctx.beginPath();
+    ctx.ellipse(0, 2, 8, 11, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Party hat — pink cone
+    ctx.fillStyle = '#ff4488';
+    ctx.beginPath();
+    ctx.moveTo(-6, -8);
+    ctx.lineTo(6, -8);
+    ctx.lineTo(0, -22);
+    ctx.closePath();
+    ctx.fill();
+    // Hat stripes
+    ctx.strokeStyle = '#ffff00';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(-2, -10);
+    ctx.lineTo(-1, -20);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(2, -10);
+    ctx.lineTo(1, -20);
+    ctx.stroke();
+    // Hat pompom
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(0, -22, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+    // Eyes
+    ctx.fillStyle = '#333';
+    ctx.beginPath();
+    ctx.arc(-2, -4, 1.5, 0, Math.PI * 2);
+    ctx.arc(2, -4, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+    // Orbiting confetti particles
+    const CONFETTI_COLORS = ['#ff4444', '#ffaa00', '#44ff44', '#4488ff', '#ff44ff', '#44ffff'];
+    for (let i = 0; i < 6; i++) {
+      const ang = t + i * (Math.PI * 2 / 6);
+      const r = 14;
+      ctx.fillStyle = CONFETTI_COLORS[i];
+      ctx.save();
+      ctx.translate(Math.cos(ang) * r, Math.sin(ang) * r);
+      ctx.rotate(ang + t);
+      ctx.fillRect(-2, -1, 4, 2);
+      ctx.restore();
+    }
+    ctx.restore();
+  },
+
+  // Session 109 — City Guard: navy armor, glowing visor, baton — chases parade crashers
+  drawCityGuard(ctx, x, y, state, now) {
+    ctx.save();
+    ctx.translate(x, y);
+    const isChasing = state === 'chasing' || state === 'returning';
+    // Body — navy when calm, dark red when chasing
+    ctx.fillStyle = isChasing ? '#880000' : '#003366';
+    ctx.beginPath();
+    ctx.ellipse(0, 2, 9, 12, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Chest armor arc
+    ctx.strokeStyle = isChasing ? '#ff4444' : '#4488cc';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(0, 0, 7, -0.8, 0.8);
+    ctx.stroke();
+    // Helmet
+    ctx.fillStyle = '#888899';
+    ctx.beginPath();
+    ctx.arc(0, -8, 7, Math.PI, 0);
+    ctx.fill();
+    // Visor band
+    ctx.fillStyle = isChasing ? '#ff6666' : '#aaaacc';
+    ctx.fillRect(-7, -8, 14, 3);
+    // Helmet top
+    ctx.fillStyle = isChasing ? '#ff0000' : '#002244';
+    ctx.fillRect(-4, -10, 8, 3);
+    // Glowing visor eyes
+    ctx.fillStyle = isChasing ? '#ffaa00' : '#4488ff';
+    ctx.shadowColor = isChasing ? '#ff8800' : '#4488ff';
+    ctx.shadowBlur = 4;
+    ctx.beginPath();
+    ctx.arc(-2, -9, 1.5, 0, Math.PI * 2);
+    ctx.arc(2, -9, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    // Baton swing
+    const batonSwing = isChasing ? Math.sin(now * 0.015) * 0.6 : 0;
+    ctx.strokeStyle = '#8b4513';
+    ctx.lineWidth = 3;
+    ctx.save();
+    ctx.translate(10, 0);
+    ctx.rotate(batonSwing);
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(0, 14);
+    ctx.stroke();
+    ctx.restore();
+    // STOP! label when chasing
+    if (isChasing) {
+      ctx.font = 'bold 9px Courier New';
+      ctx.fillStyle = '#ff4444';
+      ctx.textAlign = 'center';
+      ctx.fillText('STOP!', 0, -26);
+    }
     ctx.restore();
   },
 };
