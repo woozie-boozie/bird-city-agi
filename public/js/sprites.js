@@ -6981,6 +6981,43 @@ window.Sprites = {
   },
 
   /**
+   * Bird Tag IT effect — pulsing orange glow + "IT!" label drawn around the IT bird.
+   * Called BEFORE drawing the bird sprite so the glow appears behind the bird.
+   */
+  drawBirdTagItEffect(ctx, x, y, timeLeft, now) {
+    ctx.save();
+    ctx.translate(x, y);
+    const pulse = 0.5 + 0.5 * Math.sin(now * 0.010);
+    const urgency = timeLeft < 15000 ? (0.6 + 0.4 * Math.sin(now * 0.022)) : pulse;
+
+    // Pulsing orange radial aura behind the bird
+    const aura = ctx.createRadialGradient(0, 0, 6, 0, 0, 36);
+    aura.addColorStop(0, `rgba(255,120,0,${0.55 + 0.25 * urgency})`);
+    aura.addColorStop(0.5, `rgba(255,80,0,${0.28 + 0.12 * urgency})`);
+    aura.addColorStop(1, 'rgba(200,40,0,0)');
+    ctx.fillStyle = aura;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 36, 32, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // "IT!" badge text above bird
+    const labelY = -30;
+    const fontSize = timeLeft < 10000 ? 10 : 8;
+    ctx.font = `bold ${fontSize}px Arial`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#ff7700';
+    ctx.shadowColor = '#ff9900';
+    ctx.shadowBlur = 8 + 4 * urgency;
+    ctx.globalAlpha = 0.85 + 0.15 * urgency;
+    ctx.fillText('🏷️ IT!', 0, labelY);
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
+
+    ctx.restore();
+  },
+
+  /**
    * Stampede Bird — panicked urban pigeon fleeing in a frenzy.
    * Chubby round body, wide terrified eyes, wings flapping erratically, motion blur streaks.
    * phase: per-bird unique offset (0..1) for animation variety.

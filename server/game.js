@@ -216,6 +216,9 @@ const DAILY_CHALLENGE_POOL = [
   // Session 128: Kite Festival
   { id: 'kite_chaser', title: 'Kite Chaser', desc: 'Catch 3 drifting kites during the Kite Festival',          target: 3, trackType: 'kite_caught', reward: { xp: 180, coins: 90  } },
   { id: 'kite_ace',    title: 'Kite Ace',    desc: 'Catch 5 kites in a single Kite Festival',                  target: 5, trackType: 'kite_ace',    reward: { xp: 280, coins: 140 } },
+  // Session 129: Bird Tag
+  { id: 'tag_escape',  title: 'Escape Artist', desc: 'Be IT in Bird Tag and successfully tag someone else',    target: 1, trackType: 'tag_escape',  reward: { xp: 180, coins: 90  } },
+  { id: 'tag_master',  title: 'Tag Master',    desc: 'Tag 3 birds in Bird Tag events during this session',     target: 3, trackType: 'tag_master',  reward: { xp: 250, coins: 125 } },
 ];
 
 // ============================================================
@@ -939,6 +942,14 @@ class GameEngine {
     this.kiteFestival = null; // null | { kites: Array<{id,color,spawnX,spawnY,phase,freq,amplitude,caught,caughtById,caughtByName}>, spawnedAt, endsAt, windBonus }
     this._kiteFestivalTimer = Date.now() + this._randomRange(10 * 60000, 15 * 60000);
 
+    // === BIRD TAG (Session 129) ===
+    // Every 5–8 minutes one random bird is selected as IT. The IT bird gets +30% XP on all
+    // poop hits but has 60 seconds to tag (fly within 45px of) another bird. Successfully
+    // tagging passes IT to the victim. Fail to tag anyone = lose 25% of your coins (burn).
+    // Event ends after 3 successful tag transfers or 4 minutes total.
+    this.birdTag = null; // null | { itId, itName, itGang, startedAt, endsAt, totalTags, tagCooldowns: Map<birdId, timestamp> }
+    this._birdTagTimer = Date.now() + this._randomRange(5 * 60000, 8 * 60000);
+
     // === AURORA BOREALIS ===
     // A rare, breathtaking night spectacle — colored light ribbons flow across the sky.
     // Triggers with 30% chance at the start of each night phase. Lasts 4–7 minutes.
@@ -1461,6 +1472,8 @@ class GameEngine {
       deliveryPackageId: null,    // id of the delivery package this bird is carrying, or null
       deliveryStealHits: 0,       // steal-attempt hit count in current rolling window
       deliveryStealWindow: 0,     // timestamp: steal window expires at this time
+      // === BIRD TAG (Session 129) ===
+      tagSessionCount: 0,         // tags successfully passed this session (for Tag Master daily)
       // === PIGEON MAFIA DON ===
       mafiaRep: saved ? (saved.mafia_rep || 0) : 0,
       donMission: null,            // { jobId, progress, startedAt, survivalStarted }
@@ -2374,6 +2387,9 @@ class GameEngine {
 
     // === Kite Festival (April seasonal) ===
     if (this.cherryBlossoms) this._tickKiteFestival(dt, now);
+
+    // === Bird Tag ===
+    this._tickBirdTag(now);
   }
 
   // ============================================================
@@ -4953,6 +4969,10 @@ class GameEngine {
       // Wing Surge: active burst — double XP on every hit. Hyper mode (+10× combo) adds another 50%.
       if (bird.wingSurgeUntil > now) {
         xpGain = Math.floor(xpGain * (bird.wingSurgeHyperXp ? 3.0 : 2.0));
+      }
+      // Bird Tag (Session 129): IT bird earns +30% XP on every poop hit — incentive to play aggressively while being hunted
+      if (this.birdTag && this.birdTag.itId === bird.id) {
+        xpGain = Math.floor(xpGain * 1.3);
       }
       // Golden Perch zone: all birds within 80px of the active perch earn 3× XP (fight for it!)
       if (bird.inGoldenPerchZone) xpGain = Math.floor(xpGain * 3);
@@ -7761,6 +7781,9 @@ class GameEngine {
           isVigilante: !!(this.vigilante && this.vigilante.birdId === b.id),
           isVigTarget: !!(this.vigilante && this.vigilante.targetId === b.id),
           marshalBadge: b.marshalBadge || false,
+          // Session 129: Bird Tag
+          isIt: !!(this.birdTag && this.birdTag.itId === b.id),
+          itTimeLeft: (this.birdTag && this.birdTag.itId === b.id) ? Math.max(0, this.birdTag.itTimeoutAt - Date.now()) : 0,
         });
       }
     }
@@ -9642,6 +9665,11 @@ class GameEngine {
         openUntil: this.vigilanteCall.openUntil,
       } : null,
       marshalBadge: bird.marshalBadge || false,
+      // Session 129: Bird Tag
+      isIt: !!(this.birdTag && this.birdTag.itId === bird.id),
+      itTimeLeft: (this.birdTag && this.birdTag.itId === bird.id) ? Math.max(0, this.birdTag.itTimeoutAt - Date.now()) : 0,
+      birdTagActive: !!this.birdTag,
+      birdTagItName: this.birdTag ? this.birdTag.itName : null,
       // Delivery Rush
       deliveryRush: this.deliveryPackage ? {
         state: this.deliveryPackage.state,
@@ -28596,6 +28624,115 @@ class GameEngine {
     this.kiteFestival = null;
     this._kiteFestivalTimer = now + this._randomRange(10 * 60000, 15 * 60000);
   }
+
+
+  // ─── BIRD TAG (Session 129) ──────────────────────────────────────────────
+  _startBirdTag(now) {
+    const online = [...this.birds.values()].filter(b => b.connected);
+    if (online.length < 2) return;
+    const it = online[Math.floor(Math.random() * online.length)];
+    this.birdTag = {
+      itId: it.id,
+      itName: it.name,
+      itGang: it.gangTag || null,
+      startedAt: now,
+      endsAt: now + 4 * 60000,
+      itTimeoutAt: now + 60000,
+      totalTags: 0,
+      tagCooldowns: new Map(), // birdId -> timestamp until which they cannot be IT again
+    };
+    this.gazetteStats = this.gazetteStats || {};
+    this.gazetteStats.birdTagRounds = (this.gazetteStats.birdTagRounds || 0) + 1;
+    this.events.push({ type: 'bird_tag_start', itId: it.id, itName: it.name, itGang: it.gangTag || null, endsAt: this.birdTag.endsAt });
+  }
+
+  _tickBirdTag(now) {
+    // Spawn a new round if timer expired and ≥2 players are online
+    if (!this.birdTag) {
+      if (now < this._birdTagTimer) return;
+      const online = [...this.birds.values()].filter(b => b.connected);
+      if (online.length >= 2) {
+        this._startBirdTag(now);
+      } else {
+        this._birdTagTimer = now + 60000; // retry in 1 min
+      }
+      return;
+    }
+
+    const bt = this.birdTag;
+    const itBird = this.birds.get(bt.itId);
+
+    // IT bird disconnected — end event cleanly
+    if (!itBird || !itBird.connected) {
+      this._endBirdTag(now);
+      return;
+    }
+
+    // IT bird exceeded 60-second tag window — BURN
+    if (now >= bt.itTimeoutAt) {
+      const burn = Math.min(Math.floor((itBird.coins || 0) * 0.25), 200);
+      itBird.coins = Math.max(0, (itBird.coins || 0) - burn);
+      this.events.push({ type: 'bird_tag_burn', birdId: bt.itId, birdName: bt.itName, burned: burn });
+      this._endBirdTag(now);
+      return;
+    }
+
+    // Check proximity for tag transfer: IT flies within 45px of another bird
+    for (const b of this.birds.values()) {
+      if (!b.connected || b.id === bt.itId) continue;
+      const cooldown = bt.tagCooldowns.get(b.id) || 0;
+      if (now < cooldown) continue;
+      const dx = b.x - itBird.x;
+      const dy = b.y - itBird.y;
+      if (Math.sqrt(dx * dx + dy * dy) > 45) continue;
+
+      // TAG! Transfer IT status
+      const prevId   = bt.itId;
+      const prevName = bt.itName;
+
+      // Reward the tagger (old IT)
+      itBird.xp    = (itBird.xp    || 0) + 100;
+      itBird.coins = (itBird.coins || 0) + 40;
+      itBird.tagSessionCount = (itBird.tagSessionCount || 0) + 1;
+      this._trackDailyProgress(itBird, 'tag_escape', 1);
+      this._trackDailyProgress(itBird, 'tag_master',  1);
+
+      // Old IT gets a 3-second immunity (can't be immediately re-tagged)
+      bt.tagCooldowns.set(prevId, now + 3000);
+
+      // Transfer IT
+      bt.itId        = b.id;
+      bt.itName      = b.name;
+      bt.itGang      = b.gangTag || null;
+      bt.itTimeoutAt = now + 60000;
+      bt.totalTags++;
+
+      this.events.push({
+        type: 'bird_tag_transfer',
+        fromId: prevId, fromName: prevName,
+        toId:   b.id,   toName:   b.name,
+        totalTags: bt.totalTags,
+      });
+
+      // End after 3 successful transfers
+      if (bt.totalTags >= 3) {
+        this._endBirdTag(now);
+        return;
+      }
+      break; // only one tag per tick
+    }
+
+    // Overall 4-minute timeout
+    if (now >= bt.endsAt) this._endBirdTag(now);
+  }
+
+  _endBirdTag(now) {
+    const totalTags = this.birdTag ? this.birdTag.totalTags : 0;
+    this.events.push({ type: 'bird_tag_end', totalTags });
+    this.birdTag = null;
+    this._birdTagTimer = now + this._randomRange(5 * 60000, 8 * 60000);
+  }
+  // ─── end Bird Tag ────────────────────────────────────────────────────────
 
 }
 

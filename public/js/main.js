@@ -5732,6 +5732,42 @@
       }
       addEventMessage(`🪁 ${ev.birdName}${ev.gangTag ? ` [${ev.gangTag}]` : ''} earned the 🪁 KITE FLYER session badge!`, '#ffbb33');
     }
+
+    // ── Session 129: Bird Tag ──────────────────────────────────────────────
+    if (ev.type === 'bird_tag_start') {
+      screenShake(12, 600);
+      effects.push({ type: 'screen_flash', color: 'rgba(255,120,0,0.35)', duration: 500, time: now });
+      if (ev.itId === myId) {
+        showAnnouncement(`🏷️ YOU ARE IT!\n+30% XP on all poop hits — TAG someone within 60s or lose 25% coins!`, '#ff7700', 8000);
+      } else {
+        showAnnouncement(`🏷️ BIRD TAG!\n${ev.itGang ? `[${ev.itGang}] ` : ''}${ev.itName} is IT — stay away or get tagged!`, '#ff9933', 5000);
+      }
+      addEventMessage(`🏷️ BIRD TAG! ${ev.itName} is IT — they have 60s to tag someone!`, '#ff9933');
+    }
+    if (ev.type === 'bird_tag_transfer') {
+      screenShake(8, 400);
+      if (ev.fromId === myId) {
+        showAnnouncement(`🏷️ TAGGED! +100 XP +40c\n${ev.toName} is IT now — you escaped!`, '#66ff88', 5000);
+        addEventMessage(`🏷️ ${ev.fromName} tagged ${ev.toName}! Tag #${ev.totalTags}/3.`, '#ffaa44');
+      } else if (ev.toId === myId) {
+        showAnnouncement(`🏷️ YOU'VE BEEN TAGGED!\nTag someone within 60s or lose 25% of your coins!`, '#ff5500', 7000);
+        addEventMessage(`🏷️ ${ev.fromName} tagged ${ev.toName}! Tag #${ev.totalTags}/3.`, '#ffaa44');
+      } else {
+        addEventMessage(`🏷️ ${ev.fromName} tagged ${ev.toName}! Tag #${ev.totalTags}/3.`, '#ffaa44');
+      }
+    }
+    if (ev.type === 'bird_tag_burn') {
+      if (ev.birdId === myId) {
+        screenShake(14, 700);
+        effects.push({ type: 'screen_flash', color: 'rgba(255,50,0,0.40)', duration: 600, time: now });
+        showAnnouncement(`🏷️💸 BURNED!\nYou ran out of time as IT — lost ${ev.burned}c!`, '#ff3300', 6000);
+      }
+      addEventMessage(`🏷️ ${ev.birdName} got BURNED as IT — lost ${ev.burned}c!`, '#ff5500');
+    }
+    if (ev.type === 'bird_tag_end') {
+      addEventMessage(`🏷️ Bird Tag over! ${ev.totalTags} tag${ev.totalTags !== 1 ? 's' : ''} this round.`, '#ffaa44');
+    }
+    // ── end Bird Tag ───────────────────────────────────────────────────────
   }
 
   function showAnnouncement(text, color, duration) {
@@ -11156,6 +11192,12 @@
             Sprites.drawBowlingBirdEffects(ctx, sx, sy, b.rotation, bb.hp, bb.maxHp, timeLeft, now);
           }
 
+          // === BIRD TAG (Session 129) — IT bird pulsing orange glow + "IT!" label ===
+          if (b.isIt) {
+            const itTimeLeft = b.itTimeLeft || 0;
+            Sprites.drawBirdTagItEffect(ctx, sx, sy, itTimeLeft, now);
+          }
+
           // === THE MOLE (Session 117) ===
           const moleData = gameState.self && gameState.self.mole;
           if (moleData) {
@@ -14136,6 +14178,40 @@
         ctx.font = 'bold 11px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.fillText('🔮', 4, 0);
         ctx.restore();
+      }
+    }
+
+    // === BIRD TAG — off-screen direction arrow pointing toward the IT bird (for non-IT players) ===
+    if (gameState.self && gameState.self.birdTagActive && !gameState.self.isIt && gameState.self.birdTagItName) {
+      // Find IT bird in other birds list
+      const itBird = gameState.birds && gameState.birds.find(b => b.isIt);
+      if (itBird) {
+        const itsx = itBird.x - camera.x + camera.screenW / 2;
+        const itsy = itBird.y - camera.y + camera.screenH / 2;
+        const itOnScreen = itsx > 50 && itsx < camera.screenW - 50 && itsy > 50 && itsy < camera.screenH - 50;
+        if (!itOnScreen) {
+          const itAngle = Math.atan2(itsy - camera.screenH / 2, itsx - camera.screenW / 2);
+          const itArrDist = Math.min(camera.screenW, camera.screenH) / 2 - 60;
+          const itAx = camera.screenW / 2 + Math.cos(itAngle) * itArrDist;
+          const itAy = camera.screenH / 2 + Math.sin(itAngle) * itArrDist;
+          const itPulse = 0.7 + 0.3 * Math.sin(now * 0.008);
+          ctx.save();
+          ctx.translate(itAx, itAy);
+          ctx.rotate(itAngle);
+          ctx.globalAlpha = 0.9 * itPulse;
+          ctx.fillStyle = '#ff7700';
+          ctx.shadowColor = '#ff9933';
+          ctx.shadowBlur = 14;
+          ctx.strokeStyle = '#000';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(22, 0); ctx.lineTo(-10, -10); ctx.lineTo(-5, 0); ctx.lineTo(-10, 10);
+          ctx.closePath(); ctx.fill(); ctx.stroke();
+          ctx.shadowBlur = 0;
+          ctx.font = 'bold 11px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText('🏷️', 4, 0);
+          ctx.restore();
+        }
       }
     }
 
@@ -17380,6 +17456,13 @@
       const kfMyKites = kf.myKites || 0;
       const kfWindStr = kf.windBonus ? ' 🌬️ 2× rewards!' : '';
       html += `<div class="bm-buff-pill" style="background:rgba(80,40,0,0.88);border-color:#ffaa00;color:#ffcc44;animation:kingpinGlow 1.0s ease-in-out infinite alternate;font-weight:bold;">🪁 KITE FESTIVAL — ${kfSecsLeft}s · MY KITES: ${kfMyKites} · FLY CLOSE TO CATCH!${kfWindStr}</div>`;
+    }
+    // === BIRD TAG (Session 129) ===
+    if (s.isIt) {
+      const itSecs = Math.ceil((s.itTimeLeft || 0) / 1000);
+      html += `<div class="bm-buff-pill" style="background:rgba(100,40,0,0.95);border-color:#ff7700;color:#ffaa33;animation:kingpinGlow 0.5s ease-in-out infinite alternate;font-weight:bold;">🏷️ YOU ARE IT! — FLY CLOSE TO TAG SOMEONE · ${itSecs}s · +30% XP on hits!</div>`;
+    } else if (s.birdTagActive && s.birdTagItName) {
+      html += `<div class="bm-buff-pill" style="background:rgba(60,30,0,0.88);border-color:#ff9933;color:#ffcc77;">🏷️ BIRD TAG — ${s.birdTagItName} is IT! Stay away!</div>`;
     }
 
     el.innerHTML = html;

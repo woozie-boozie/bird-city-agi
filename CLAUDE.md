@@ -4442,6 +4442,34 @@ A colorful seasonal kite festival fills the sky above Bird City every April. Eve
 
 **Creative intent**: The Kite Festival is the cherry blossom season's most joyful activity — pure visual spectacle with no combat, no enemies, no timers threatening explosion. Six colored diamond kites drift across the sky in independent sinusoidal paths, creating a beautiful aerial dance. The wind synergy is the killer design decision: the same weather that makes flying hard (headwind) also makes kite catching more profitable. A bird grinding a rain combo who suddenly sees golden kite rewards double when the storm blows in — pure discovery. Kite Master (all 6 in 3 minutes) is a genuine speed challenge requiring map awareness and fast interception geometry. The Spring Champion badge links the Kite Festival to the broader cherry blossom season progression track. Pure DISCOVERY + SPECTACLE + RETENTION energy — the sky is alive in April.
 
+**Session 129 — 2026-04-22: Bird Tag — Multiplayer Chase Event**
+Every 5–8 minutes, one random bird becomes "IT" — marked with a pulsing orange 🏷️ IT! glow visible to all nearby players. The IT bird must fly within 45px of another bird to TAG them and transfer the curse, or lose 25% of their coins when the 60-second timer expires.
+
+**Core mechanics (`server/game.js`):**
+- `this.birdTag` state: `{ itId, itName, itGang, startedAt, endsAt, itTimeoutAt, totalTags, tagCooldowns: Map }`
+- IT timer: 60 seconds to tag someone; global event ends after 3 successful transfers OR 4 minutes total
+- **Tag transfer**: IT bird flies within 45px of any non-IT connected bird → tag fires. 3-second per-pair cooldown prevents instant re-tag loops.
+- **Burn penalty**: if the IT bird fails to tag anyone in 60 seconds → `bird_tag_burn` fires, IT loses 25% of coins (max 250c), combo streak wiped, 1 extra minute given to make things interesting
+- **IT bonuses**: +30% XP on all poop hits while IT — incentivizes staying active and offensive rather than passive fleeing
+- **Tag rewards**: tagger earns +100 XP +40c immediately; new IT bird gets a fresh 60-second clock
+- **End condition**: 3 total transfers OR 4-minute global timer → `bird_tag_end` fires, `_birdTagTimer` reset for 5–8 minutes
+- **Two new daily challenges**: 🏷️ **Tag Escape** (be IT and successfully tag someone, 180 XP/90c) + 🏷️ **Tag Master** (be IT 3 times in one session, 250 XP/125c)
+- `tagSessionCount` per bird for Tag Master tracking; `_trackDailyProgress` hooks at both tag transfer and game start
+
+**Visual system (`public/js/sprites.js`):**
+- `Sprites.drawBirdTagItEffect(ctx, x, y, timeLeft, now)`: pulsing orange radial aura (3-tier gradient) behind the IT bird's sprite, "🏷️ IT!" badge floating above — visible to ALL nearby players
+- Urgency escalation: pulse accelerates at <15 seconds remaining; label grows larger at <10 seconds
+
+**HUD (`public/js/main.js`):**
+- IT bird: pulsing orange/red "🏷️ YOU ARE IT! — FLY CLOSE TO TAG SOMEONE · Xs · +30% XP on hits!" pill in active buffs
+- Non-IT birds: passive "[itName] is IT! Stay away!" orange pill
+- **Off-screen direction arrow**: orange 🏷️ arrow points non-IT players TOWARD the IT bird (so they can avoid them — or hunt them if brave)
+- Event handlers for all 4 events: `bird_tag_start` (screen shake + flash), `bird_tag_transfer` (per-role announcements), `bird_tag_burn` (strong shake for victim), `bird_tag_end` (summary)
+
+**Gazette tracking:** `birdTagRounds` tracked in `gazetteStats` — future headline slot ready.
+
+**Creative intent**: Bird Tag fills the SOCIAL pillar's most glaring gap — a direct player-vs-player chase mechanic that needs NO button presses, NO coins, NO entry fee. The moment someone is tagged IT, the whole city dynamic shifts. Non-IT birds watch the orange glow hunting through the minimap and decide: do I stay near other birds as a potential tag target, or do I scatter? The +30% XP incentive means the IT bird WANTS to keep fighting (not just flee to someone and touch them). The 60-second burn penalty is the killer design: if nobody cooperates to accept the tag, the IT bird bleeds coins, creating social pressure that forces the tag game forward. Three transfers and the event resets cleanly — never overstays its welcome. Pure SOCIAL + CARNAGE energy — the city now plays tag.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -4711,3 +4739,7 @@ Built the Territory Control System on top of the existing upstream code:
 - ~~Kite Festival: seasonal April event where large decorative kites drift across the map, collecting them gives XP and cosmetic kite badge~~ (DONE Session 128)
 - Bird Photographer NPC: roaming visitor who randomly takes "photos" (appears near you for 3s), photographed birds get a small XP bonus — random, unexpected, joyful
 - Bubble Wrap Floor event: random city plazas become bouncy bubble wrap for 30s — birds landing in the zone bounce upward (vertical velocity boost) with satisfying visual
+- ~~Bird Tag — periodic multiplayer chase event: one random bird becomes IT, must tag another within 60s or lose 25% coins; +30% XP while IT; 3 transfers ends the event~~ (DONE Session 129)
+- Bird Tag × Crime Wave: while a Crime Wave is active, the IT burn penalty doubles (−50% coins) — the city punishes hesitation in chaos
+- Bird Tag × Kingpin: if the Kingpin is tagged IT, their passive tribute is suspended for the duration — the city won't pay tribute to a bird on the run
+- Bird Tag chain bonus: if the same bird is tagged IT twice in one session, all XP bonuses double for the second stint (veteran IT player reward)
