@@ -4498,6 +4498,36 @@ Bird City's first purely peaceful NPC visitor. A shimmering golden goose wanders
 
 **Creative intent**: Every NPC in Bird City demands combat. The Golden Goose is the first NPC that demands RESTRAINT — and rewards it. The core tension is beautiful: you see a shimmering golden goose ahead dropping valuable eggs, and you must fight every Bird City instinct to NOT poop on it. The patience reward (+50 XP +20 coins) goes to birds who watched from a safe distance when someone else inevitably broke. The scatter on scare makes even the failure mode exciting: a burst of 6–10 eggs drops and everyone scrambles. The Goose Whisperer daily challenge is the hardest "peaceful" task in the game — collect an egg without scaring the goose by approaching from exactly the right angle. Pure DISCOVERY + CARNAGE energy — the city now has something worth protecting.
 
+**Session 131 — 2026-04-22: Parade Crasher — Marshal Boss, Milestone Chaos, Contributor Rewards**
+Upgraded the bare-bones parade system into a full cooperative disruption event. A drum-major Marshal leads 30 formation pigeons through the city — the whole city must cooperate to ruin the parade for escalating rewards.
+
+**The Parade flow (`server/game.js`):**
+- 30 pigeon NPCs march in formation behind the Marshal, heading city-to-city edge at 65px/s
+- `worldEvent.hits` counter tracks total poop hits against parade pigeons (separate from marshal HP)
+- **Milestone system** (using `milestones` Set to prevent double-triggers):
+  - 10 hits → `parade_disrupted`: pigeons panic for 8 seconds (random scatter movement), city-wide announcement + screen shake
+  - 20 hits → `parade_chaos`: 12-second extended panic, boosted XP per pigeon hit (18 XP, 5c), bigger shake
+  - 30 hits → `parade_total_chaos`: 20-second full panic, max boosted XP (25 XP, 8c), near-total chaos
+
+**The Marshal boss fight:**
+- 3 HP: normal poop = 1 HP, mega poop = 2 HP. `marshalDead` flag prevents double-reward triggers.
+- Per-bird contribution tracked in `contributors` Map (birdId → hits) for proportional reward split
+- On death: all contributors split 500 XP + 300 coins scaled by damage share; 8 food items scatter; city-wide 30-second mass panic fires; `marshalDead = true` gates further milestone progression
+- Daily challenge: **Parade Crasher** (10 pigeon hits, 200 XP/100c) + **Kill The Beat** (defeat marshal, 300 XP/150c)
+
+**Visual system (`sprites.js`):**
+- Custom `drawParadeMarshal()`: royal purple drum-major uniform, gold epaulettes + chest stripe, tall shako hat with pink plume, animated baton rotating around right shoulder (`batonAngle = Math.sin(now × 0.006) × 0.6`), HP bar (green→orange→red), X-eyes + greyed palette when dead
+- HP bar only shown when `hp > 0 && hp < maxHp` — clean transitions on spawn and death
+
+**Client feedback (`main.js`):**
+- 7 event handlers covering `parade_start`, `parade_disrupted`, `parade_chaos`, `parade_total_chaos`, `parade_marshal_hit`, `parade_marshal_reward`, `parade_ruined`
+- Progressive screen shake escalation (8→12→16→18 intensity across milestones)
+- Floating reward text + proportional reward announcement for each contributor on marshal death
+
+**Gazette headline:** "🎺 CITY PARADE RUINED — MARSHAL DEFEATED BY ROGUE BIRDS"
+
+**Creative intent**: The parade was the city's most civic event — now it's a target. The milestone system creates a collective snowball: early players doing solo poop hits build toward disruption, then word spreads, and suddenly 4 birds are converging to finish the job. The marshal is a genuine boss fight requiring teamwork — 3 hits of mega poop or 3 normal poops gets it done, but the contributor tracking means even one early hit earns proportional rewards. Watching the baton-twirling drum-major try to maintain decorum while pigeons scatter in panic around them is pure CARNAGE + SPECTACLE energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -4780,10 +4810,16 @@ Built the Territory Control System on top of the existing upstream code:
 - Charity Box: a donation box appears in the park every 45 minutes; first bird to donate 50c gets +400 XP and a city-wide "generous bird" callout — rewards altruism
 - The Stunt Ramp: a glowing yellow ramp appears on a road corner, birds who fly into it get a brief aerial somersault animation + +30 XP — pure discovery spectacle
 - Flock Formation Missions: the mission board adds flock-specific missions (all 3+ flock members must reach a point) — cooperative movement challenges
-- NPC Parade: 8 NPCs march in a line across the city periodically, hitting the whole line with one wide poop scores chain bonus XP
+- ~~NPC Parade: 8 NPCs march in a line across the city periodically, hitting the whole line with one wide poop scores chain bonus XP~~ (DONE Session 131 — evolved into Parade Crasher with marshal boss + milestone chaos)
 - The Weathervane: a spinning rooster weathervane atop a building predicts the next weather 90 seconds early — only visible if you're within 120px of it (discovery reward)
 - Street Performer: a juggling NPC appears in a plaza, watch them for 10 seconds to earn XP (patience reward), poop them for small coins but lose the watch bonus
 - The Detective Bird: a fedora-wearing NPC who randomly accuses an online bird of "looking suspicious" — that bird gets +10 heat city-wide. Can be cleared by visiting the Police Station.
 - Lost Chick Event: a baby bird is separated from its parent somewhere in the city — escort it 500px to the nest (fly within 60px for 8s) for a big reward; rivals can intercept by flying between you and the chick
 - Golden Goose Egg × Sewer: if a golden egg falls into a manhole cover (goose walks over one while scared), it drops into the sewer as a premium loot cache
 - Golden Goose daily gazette tracking: if the goose was scared vs walked away peacefully — different headline tone each morning
+- Parade Crasher cross-system: during a Crime Wave, parade pigeons are worth 3× poop XP (criminals crashing a civic event)
+- Parade Marshal × Kingpin: if the Kingpin personally lands the killing blow on the marshal, the city-wide "PARADE RUINED" announcement names them as the culprit — instant +30 heat but +200 XP bonus
+- Parade × Gang War: if two gangs are at war when the parade fires, gang war hits can stack on parade pigeon hits (one poop counts for both)
+- Street Performer event: a juggling NPC appears in a plaza, watch them for 10 seconds to earn XP (patience reward like the Golden Goose), poop them for small coins but lose the watch bonus — tension between patience and instinct
+- Lost Chick Event: a baby bird is separated from its parent somewhere in the city — escort it 500px to the nest (fly within 60px for 8s) for a big reward; rivals can intercept by flying between you and the chick
+- The Charity Gala: a fancy party in the park every 60 minutes — tuxedo-wearing NPCs worth 3× XP on poop hits, but a Gala Guard politely (forcefully) escorts disruptive birds away if they score 5+ hits
