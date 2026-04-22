@@ -225,6 +225,9 @@ const DAILY_CHALLENGE_POOL = [
   // Session 131: Parade Crasher
   { id: 'parade_crasher', title: 'Parade Crasher',  desc: 'Hit 10 parade pigeons during a city parade',              target: 10, trackType: 'parade_pigeon_hit',   reward: { xp: 180, coins: 90  } },
   { id: 'kill_the_beat',  title: 'Kill The Beat',   desc: 'Defeat the Parade Marshal and ruin the parade',           target: 1,  trackType: 'parade_marshal_killed', reward: { xp: 300, coins: 150 } },
+  // Session 132: Lost Chick Event
+  { id: 'chick_escort',      title: 'Kind Soul',   desc: 'Escort the lost chick safely to its nest',                 target: 1, trackType: 'chick_delivered', reward: { xp: 280, coins: 140 } },
+  { id: 'chick_interceptor', title: 'Bird Thief',  desc: 'Steal the lost chick from another bird\'s escort',         target: 1, trackType: 'chick_stolen',   reward: { xp: 200, coins: 100 } },
 ];
 
 // ============================================================
@@ -965,6 +968,14 @@ class GameEngine {
     this.goldenGoose = null; // null | { x, y, vx, vy, state, stateAt, eggsLaid, spawnedAt, expiresAt, dirChangeAt, layTimer }
     this._goldenGooseTimer = Date.now() + this._randomRange(22 * 60000, 32 * 60000);
     this.goldenGooseEggIds = new Set(); // IDs of active goose_egg items in this.foods
+
+    // === LOST CHICK EVENT ===
+    // A confused baby bird wanders the city peeping for help. The first bird to patiently
+    // circle it (8s within 60px) bonds with it — the chick then follows them to the nest
+    // (500px from spawn). Rivals can poop-steal mid-escort (3 hits in 12s). Delivery earns
+    // +400 XP +300 coins. Spawns every 20-28 minutes.
+    this.lostChick = null; // null | { x, y, nx, ny, vx, vy, spawnX, spawnY, state, escortId, escortName, escortProgress, stealHits, stealWindow, stateAt, spawnedAt, expiresAt, deliverBy, dirChangeAt }
+    this._lostChickTimer = Date.now() + this._randomRange(20 * 60000, 28 * 60000);
 
     // === AURORA BOREALIS ===
     // A rare, breathtaking night spectacle — colored light ribbons flow across the sky.
@@ -2406,6 +2417,7 @@ class GameEngine {
 
     // === Bird Tag ===
     this._tickBirdTag(now);
+    this._tickLostChick(dt, now);
 
     // === Golden Goose ===
     this._tickGoldenGoose(dt, now);
@@ -9879,6 +9891,21 @@ class GameEngine {
         state: this.goldenGoose.state,
         eggsLaid: this.goldenGoose.eggsLaid,
         expiresAt: this.goldenGoose.expiresAt,
+      } : null,
+      // Session 132: Lost Chick
+      lostChick: this.lostChick ? {
+        x: this.lostChick.x,
+        y: this.lostChick.y,
+        nx: this.lostChick.nx,
+        ny: this.lostChick.ny,
+        state: this.lostChick.state,
+        escortId: this.lostChick.escortId,
+        escortName: this.lostChick.escortName,
+        escortProgress: this.lostChick.escortProgress,
+        stealHits: this.lostChick.stealHits,
+        expiresAt: this.lostChick.expiresAt,
+        deliverBy: this.lostChick.deliverBy,
+        iAmEscort: this.lostChick.escortId === bird.id,
       } : null,
       // Delivery Rush
       deliveryRush: this.deliveryPackage ? {
@@ -18117,6 +18144,15 @@ class GameEngine {
         icon: '🪿',
         headline: `GOLDEN GOOSE SPOTTED IN BIRD CITY — ${stats.goldenGooseVisits > 1 ? `${stats.goldenGooseVisits} VISITS TODAY` : 'RARE VISITOR LAYS GOLDEN EGGS'}`,
         subline: 'Shimmering eggs found scattered across streets. "We were told to stay back," admits local bird. "We did not stay back."',
+      });
+    }
+
+    // Lost Chick headline
+    if (stats.chickDeliveries > 0) {
+      headlines.push({
+        icon: '🐣',
+        headline: `KIND SOUL REUNITES LOST CHICK WITH NEST — ${stats.chickEscort ? stats.chickEscort.toUpperCase() + ' IS THE HERO' : 'A HERO EMERGES'}`,
+        subline: 'A confused baby bird found its way home, guided by a compassionate local. Several rivals attempted to intercept. The chick is fine.',
       });
     }
 
@@ -29160,6 +29196,254 @@ class GameEngine {
     }
   }
   // ─── end Golden Goose ────────────────────────────────────────────────────
+
+  // ─── Lost Chick Event ────────────────────────────────────────────────────
+  _tickLostChick(dt, now) {
+    // Spawn check
+    if (!this.lostChick) {
+      if (now < this._lostChickTimer) return;
+      // Need at least one connected player
+      const players = [...this.birds.values()].filter(b => b.connected);
+      if (players.length === 0) return;
+      // Pick random spawn position (avoid map edges)
+      const spawnX = 300 + Math.random() * 2400;
+      const spawnY = 300 + Math.random() * 2400;
+      // Nest is 500px away in a random cardinal-ish direction
+      const angle = Math.random() * Math.PI * 2;
+      const nx = Math.max(100, Math.min(2900, spawnX + Math.cos(angle) * 500));
+      const ny = Math.max(100, Math.min(2900, spawnY + Math.sin(angle) * 500));
+      const initAngle = Math.random() * Math.PI * 2;
+      this.lostChick = {
+        x: spawnX, y: spawnY,
+        nx, ny,
+        vx: Math.cos(initAngle) * 35,
+        vy: Math.sin(initAngle) * 35,
+        spawnX, spawnY,
+        state: 'wandering',    // 'wandering' | 'escorted'
+        escortId: null,
+        escortName: null,
+        escortProgress: 0,     // 0→1 over ~8s when nearest bird within 60px
+        lastProgressBirdId: null,
+        stealHits: 0,
+        stealWindow: 0,
+        stateAt: now,
+        spawnedAt: now,
+        expiresAt: now + 5 * 60000,  // 5-minute lifetime
+        deliverBy: 0,               // deadline when escorted; set on bond
+        dirChangeAt: now + this._randomRange(2000, 5000),
+        lastInterceptBy: {},        // birdId → timestamp for steal cooldown
+      };
+      this.events.push({
+        type: 'lost_chick_appeared',
+        x: spawnX, y: spawnY,
+        nx, ny,
+      });
+      return;
+    }
+
+    const c = this.lostChick;
+
+    // Global expiry
+    if (now >= c.expiresAt) {
+      this.events.push({ type: 'lost_chick_wandered_away' });
+      this.lostChick = null;
+      this._lostChickTimer = now + this._randomRange(20 * 60000, 28 * 60000);
+      return;
+    }
+
+    if (c.state === 'wandering') {
+      // Movement with direction changes
+      if (now >= c.dirChangeAt) {
+        const a = Math.random() * Math.PI * 2;
+        c.vx = Math.cos(a) * 35;
+        c.vy = Math.sin(a) * 35;
+        c.dirChangeAt = now + this._randomRange(2000, 5000);
+      }
+      c.x += c.vx * (dt / 1000);
+      c.y += c.vy * (dt / 1000);
+      // Edge bounce
+      if (c.x < 80 || c.x > 2920) { c.vx = -c.vx; c.x = Math.max(80, Math.min(2920, c.x)); }
+      if (c.y < 80 || c.y > 2920) { c.vy = -c.vy; c.y = Math.max(80, Math.min(2920, c.y)); }
+
+      // Bond accumulation — find nearest connected bird within 60px
+      let nearestBird = null;
+      let nearestDist = Infinity;
+      for (const bird of this.birds.values()) {
+        if (!bird.connected) continue;
+        const dx = bird.x - c.x;
+        const dy = bird.y - c.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 60 && dist < nearestDist) {
+          nearestDist = dist;
+          nearestBird = bird;
+        }
+      }
+
+      if (nearestBird) {
+        if (c.lastProgressBirdId !== nearestBird.id) {
+          // New bird became nearest — reset progress
+          c.escortProgress = 0;
+          c.lastProgressBirdId = nearestBird.id;
+        }
+        c.escortProgress += 0.12 * (dt / 1000); // fills in ~8.3s
+        if (c.escortProgress >= 1.0) {
+          // Bond formed — transition to escorted
+          c.state = 'escorted';
+          c.escortId = nearestBird.id;
+          c.escortName = nearestBird.name || nearestBird.id;
+          c.stateAt = now;
+          c.deliverBy = now + 90000; // 90s to deliver
+          c.stealHits = 0;
+          c.stealWindow = 0;
+          this.events.push({
+            type: 'lost_chick_escorted',
+            escortId: c.escortId,
+            escortName: c.escortName,
+            nx: c.nx, ny: c.ny,
+          });
+        }
+      } else {
+        // Nobody nearby — decay progress slowly
+        c.escortProgress = Math.max(0, c.escortProgress - 0.05 * (dt / 1000));
+      }
+    } else if (c.state === 'escorted') {
+      const escort = this.birds.get(c.escortId);
+
+      // If escort disconnected — revert to wandering
+      if (!escort || !escort.connected) {
+        c.state = 'wandering';
+        c.escortId = null;
+        c.escortName = null;
+        c.escortProgress = 0;
+        c.lastProgressBirdId = null;
+        c.stateAt = now;
+        this.events.push({ type: 'lost_chick_escort_broken', reason: 'disconnected' });
+        return;
+      }
+
+      // 90-second delivery deadline
+      if (now >= c.deliverBy) {
+        c.state = 'wandering';
+        c.escortId = null;
+        c.escortName = null;
+        c.escortProgress = 0;
+        c.lastProgressBirdId = null;
+        c.stateAt = now;
+        this.events.push({ type: 'lost_chick_escort_broken', reason: 'timeout' });
+        return;
+      }
+
+      // Chick follows escort — lerp toward escort
+      const lerpSpeed = 0.06;
+      c.x += (escort.x - c.x) * lerpSpeed;
+      c.y += (escort.y - c.y) * lerpSpeed;
+
+      // Delivery check — escort within 80px of nest
+      const dnx = escort.x - c.nx;
+      const dny = escort.y - c.ny;
+      if (Math.sqrt(dnx * dnx + dny * dny) < 80) {
+        this._deliverLostChick(escort, now);
+        return;
+      }
+
+      // Steal check — rival within 45px of chick; 3 hits in 12s to steal
+      for (const rival of this.birds.values()) {
+        if (!rival.connected || rival.id === c.escortId) continue;
+        const dx = rival.x - c.x;
+        const dy = rival.y - c.y;
+        if (Math.sqrt(dx * dx + dy * dy) < 45) {
+          const cooldownKey = rival.id;
+          const lastTime = c.lastInterceptBy[cooldownKey] || 0;
+          if (now - lastTime < 1500) continue; // 1.5s per-hit cooldown
+          c.lastInterceptBy[cooldownKey] = now;
+
+          // Start or continue steal window
+          if (c.stealHits === 0 || now - c.stealWindow > 12000) {
+            c.stealHits = 1;
+            c.stealWindow = now;
+          } else {
+            c.stealHits++;
+          }
+
+          rival.xp = (rival.xp || 0) + 30;
+          rival.coins = (rival.coins || 0) + 10;
+          this._checkLevelUp(rival);
+          this.events.push({
+            type: 'lost_chick_steal_hit',
+            rivalId: rival.id,
+            rivalName: rival.name || rival.id,
+            hits: c.stealHits,
+            escortName: c.escortName,
+          });
+
+          if (c.stealHits >= 3) {
+            // Steal successful
+            const prevEscortName = c.escortName;
+            c.escortId = rival.id;
+            c.escortName = rival.name || rival.id;
+            c.stealHits = 0;
+            c.stealWindow = 0;
+            c.deliverBy = now + 90000;
+            c.stateAt = now;
+            this._trackDailyProgress(rival, 'chick_stolen', 1);
+            this.events.push({
+              type: 'lost_chick_intercepted',
+              thiefId: rival.id,
+              thiefName: c.escortName,
+              prevEscortName,
+              nx: c.nx, ny: c.ny,
+            });
+          }
+          break; // one steal hit per tick
+        }
+      }
+    }
+  }
+
+  _deliverLostChick(escort, now) {
+    const c = this.lostChick;
+    if (!c) return;
+
+    // Reward escort
+    const xpGain = 400;
+    const coinGain = 300;
+    escort.xp = (escort.xp || 0) + xpGain;
+    escort.coins = (escort.coins || 0) + coinGain;
+    this._checkLevelUp(escort);
+    this._trackDailyProgress(escort, 'chick_delivered', 1);
+
+    // Small bonus for nearby birds (within 250px of nest)
+    const helpers = [];
+    for (const bird of this.birds.values()) {
+      if (!bird.connected || bird.id === escort.id) continue;
+      const dx = bird.x - c.nx;
+      const dy = bird.y - c.ny;
+      if (Math.sqrt(dx * dx + dy * dy) < 250) {
+        bird.xp = (bird.xp || 0) + 40;
+        bird.coins = (bird.coins || 0) + 15;
+        this._checkLevelUp(bird);
+        helpers.push(bird.name || bird.id);
+      }
+    }
+
+    this.gazetteStats = this.gazetteStats || {};
+    this.gazetteStats.chickDeliveries = (this.gazetteStats.chickDeliveries || 0) + 1;
+    this.gazetteStats.chickEscort = escort.name || escort.id;
+
+    this.events.push({
+      type: 'lost_chick_delivered',
+      escortId: escort.id,
+      escortName: escort.name || escort.id,
+      xp: xpGain,
+      coins: coinGain,
+      helpers,
+      x: c.nx, y: c.ny,
+    });
+
+    this.lostChick = null;
+    this._lostChickTimer = now + this._randomRange(20 * 60000, 28 * 60000);
+  }
+  // ─── end Lost Chick ───────────────────────────────────────────────────────
 
 }
 

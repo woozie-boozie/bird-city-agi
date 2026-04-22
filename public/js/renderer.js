@@ -6230,6 +6230,126 @@ window.Renderer = {
     minimapCtx.restore();
   },
 
+  // ── Lost Chick (Session 132) ─────────────────────────────────
+  drawLostChick(ctx, camera, chick, now) {
+    if (!chick) return;
+    const sx = chick.x - camera.x + camera.screenW / 2;
+    const sy = chick.y - camera.y + camera.screenH / 2;
+
+    // Cull if off-screen
+    if (sx < -80 || sx > camera.screenW + 80 || sy < -80 || sy > camera.screenH + 80) return;
+
+    const pulse = 0.5 + 0.5 * Math.sin(now * 0.003);
+    const isEscorted = chick.state === 'escorted';
+
+    ctx.save();
+
+    // Glow aura
+    const auraColor = isEscorted ? '#88ffaa' : '#ffffaa';
+    const auraGrad = ctx.createRadialGradient(sx, sy, 0, sx, sy, 30);
+    auraGrad.addColorStop(0, isEscorted ? `rgba(100,255,150,${0.35 * pulse})` : `rgba(255,255,150,${0.3 * pulse})`);
+    auraGrad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = auraGrad;
+    ctx.beginPath();
+    ctx.arc(sx, sy, 30, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Baby chick emoji
+    ctx.font = `${22 + 4 * pulse}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('🐣', sx, sy);
+
+    // Label above
+    ctx.font = 'bold 10px sans-serif';
+    ctx.textBaseline = 'bottom';
+    if (isEscorted) {
+      ctx.fillStyle = '#88ffaa';
+      ctx.shadowColor = '#00cc55';
+      ctx.shadowBlur = 6;
+      ctx.fillText(`🐣 following ${chick.escortName}`, sx, sy - 18);
+    } else {
+      ctx.fillStyle = '#ffff99';
+      ctx.shadowColor = '#cccc00';
+      ctx.shadowBlur = 5;
+      ctx.fillText('🐣 LOST CHICK', sx, sy - 18);
+    }
+    ctx.shadowBlur = 0;
+
+    // Escort bond progress arc (wandering phase)
+    if (!isEscorted && chick.escortProgress > 0) {
+      const arc = chick.escortProgress * Math.PI * 2;
+      ctx.strokeStyle = '#ffffaa';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(sx, sy, 24, -Math.PI / 2, -Math.PI / 2 + arc);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+
+    // Draw nest marker
+    const nsx = chick.nx - camera.x + camera.screenW / 2;
+    const nsy = chick.ny - camera.y + camera.screenH / 2;
+    if (nsx > -50 && nsx < camera.screenW + 50 && nsy > -50 && nsy < camera.screenH + 50) {
+      ctx.save();
+      const nestPulse = 0.5 + 0.5 * Math.sin(now * 0.005);
+      // Dashed nest ring
+      ctx.strokeStyle = `rgba(200,255,180,${0.5 + 0.4 * nestPulse})`;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      ctx.lineDashOffset = -(now * 0.03) % 10;
+      ctx.beginPath();
+      ctx.arc(nsx, nsy, 28 + 4 * nestPulse, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // Nest emoji
+      ctx.font = '18px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('🪺', nsx, nsy);
+      ctx.font = 'bold 9px sans-serif';
+      ctx.fillStyle = '#ccffcc';
+      ctx.textBaseline = 'top';
+      ctx.fillText('BRING HERE', nsx, nsy + 16);
+      ctx.restore();
+    }
+  },
+
+  drawLostChickOnMinimap(minimapCtx, worldData, chick, now) {
+    if (!chick) return;
+    const scale = minimapCtx.canvas.width / worldData.width;
+    const cx = chick.x * scale;
+    const cy = chick.y * scale;
+    const pulse = 0.5 + 0.5 * Math.sin(now * 0.004);
+
+    minimapCtx.save();
+    const isEscorted = chick.state === 'escorted';
+    minimapCtx.shadowColor = isEscorted ? '#88ffaa' : '#ffff99';
+    minimapCtx.shadowBlur = 7 * pulse;
+    minimapCtx.fillStyle = isEscorted
+      ? `rgba(100,255,150,${0.7 + 0.3 * pulse})`
+      : `rgba(255,255,150,${0.7 + 0.3 * pulse})`;
+    minimapCtx.beginPath();
+    minimapCtx.arc(cx, cy, 3 + pulse, 0, Math.PI * 2);
+    minimapCtx.fill();
+    minimapCtx.shadowBlur = 0;
+    minimapCtx.font = '8px sans-serif';
+    minimapCtx.textAlign = 'center';
+    minimapCtx.textBaseline = 'middle';
+    minimapCtx.fillText('🐣', cx, cy);
+
+    // Nest dot
+    const nnx = chick.nx * scale;
+    const nny = chick.ny * scale;
+    minimapCtx.fillStyle = `rgba(150,255,150,${0.5 + 0.3 * pulse})`;
+    minimapCtx.beginPath();
+    minimapCtx.arc(nnx, nny, 2.5, 0, Math.PI * 2);
+    minimapCtx.fill();
+    minimapCtx.fillText('🪺', nnx, nny);
+    minimapCtx.restore();
+  },
+
   // ── Delivery Rush (Session 124) ───────────────────────────────
   drawDeliveryRush(ctx, camera, dr, now) {
     if (!dr) return;

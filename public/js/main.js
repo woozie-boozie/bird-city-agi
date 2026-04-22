@@ -5807,6 +5807,61 @@
     }
     // ── end Golden Goose ──────────────────────────────────────────────────
 
+    // ── Lost Chick ────────────────────────────────────────────────────────
+    if (ev.type === 'lost_chick_appeared') {
+      showAnnouncement('🐣 A LOST CHICK IS WANDERING THE CITY!\nFly close to earn its trust (8s) and escort it to the nest!\nRivals can intercept — 3 poop hits to steal the chick!', '#ffff99', 5500);
+      addEventMessage(`🐣 A lost chick appeared near (${Math.round(ev.x)}, ${Math.round(ev.y)})! Fly close and hold position to bond with it.`, '#ffff99');
+      screenShake(5, 400);
+    }
+    if (ev.type === 'lost_chick_escorted') {
+      if (ev.escortId === window._myId) {
+        showAnnouncement(`🐣 THE CHICK IS FOLLOWING YOU!\nFly to the nest 🪺 — 90 seconds!\nWatch out for rival interceptors!`, '#88ffaa', 5000);
+      } else {
+        addEventMessage(`🐣 ${ev.escortName || 'A bird'} earned the lost chick's trust! Rivals: poop them 3× to intercept!`, '#88ffaa');
+      }
+    }
+    if (ev.type === 'lost_chick_steal_hit') {
+      if (ev.rivalId === window._myId) {
+        showFloatingText(ev.x || 0, ev.y || 0, `🐣 ${ev.hits}/3 — STEAL!`, '#ffaa55');
+        if (ev.hits >= 2) showAnnouncement(`🐣 ONE MORE HIT to steal the chick from ${ev.escortName}!`, '#ffaa55', 2500);
+      } else if (window._myId) {
+        addEventMessage(`🐣 ${ev.rivalName || 'Someone'} is intercepting! ${ev.hits}/3 hits on ${ev.escortName}'s escort!`, '#ffaa55');
+      }
+    }
+    if (ev.type === 'lost_chick_intercepted') {
+      screenShake(8, 500);
+      if (ev.thiefId === window._myId) {
+        showAnnouncement(`🐣 YOU STOLE THE CHICK!\nNow fly it to the nest 🪺 — 90 seconds!`, '#ffaa44', 5000);
+      } else {
+        showAnnouncement(`🐣 ${ev.thiefName || 'A rival'} INTERCEPTED THE CHICK from ${ev.prevEscortName}!\nNew escort — fly to the nest 🪺!`, '#ffaa44', 4000);
+      }
+      addEventMessage(`🐣 ${ev.thiefName || 'A bird'} stole the chick from ${ev.prevEscortName}!`, '#ffaa44');
+    }
+    if (ev.type === 'lost_chick_delivered') {
+      screenShake(12, 700);
+      effects.push({ type: 'screen_flash', color: 'rgba(100,255,150,0.35)', duration: 600, time: now });
+      if (ev.escortId === window._myId) {
+        showAnnouncement(`🐣🪺 YOU REUNITED THE CHICK!\n+${ev.xp} XP  +${ev.coins}c\nKind Soul mission complete!`, '#88ffaa', 7000);
+      } else {
+        showAnnouncement(`🐣🪺 ${ev.escortName || 'A bird'} REUNITED THE LOST CHICK WITH ITS NEST!\n+${ev.xp} XP  +${ev.coins}c for the escort!`, '#88ffaa', 5000);
+      }
+      addEventMessage(`🐣 ${ev.escortName || 'A bird'} reunited the lost chick! +${ev.xp} XP +${ev.coins}c`, '#88ffaa');
+      if (ev.helpers && ev.helpers.length > 0) {
+        addEventMessage(`🐣 Nearby helpers: ${ev.helpers.join(', ')} also earn +40 XP +15c!`, '#88ffaa');
+      }
+    }
+    if (ev.type === 'lost_chick_wandered_away') {
+      addEventMessage('🐣 The lost chick wandered away into the city...', '#aaa');
+    }
+    if (ev.type === 'lost_chick_escort_broken') {
+      if (ev.reason === 'disconnected') {
+        addEventMessage('🐣 The escort disconnected — the chick is wandering again!', '#ffaa55');
+      } else if (ev.reason === 'timeout') {
+        addEventMessage('🐣 The escort ran out of time — the chick is wandering again!', '#ffaa55');
+      }
+    }
+    // ── end Lost Chick ────────────────────────────────────────────────────
+
     // ── Parade Crasher ────────────────────────────────────────────────────
     if (ev.type === 'parade_start') {
       showAnnouncement('🎺 THE PIGEON PARADE IS MARCHING!\nPoop the pigeons — and take down the Marshal for MASSIVE rewards!', '#aaaaff', 5000);
@@ -10591,6 +10646,11 @@
       Renderer.drawGoldenGoose(ctx, camera, gameState.goldenGoose, now);
     }
 
+    // Lost Chick — Session 132
+    if (gameState.lostChick) {
+      Renderer.drawLostChick(ctx, camera, gameState.lostChick, now);
+    }
+
     // Chaos Oracle — Session 121
     if (gameState.chaosOracle) {
       Renderer.drawChaosOracle(ctx, camera, gameState.chaosOracle, now);
@@ -13980,6 +14040,45 @@
       }
     }
 
+    // === LOST CHICK — off-screen direction arrow (Session 132) ===
+    if (gameState.lostChick) {
+      const lcsx = gameState.lostChick.x - camera.x + camera.screenW / 2;
+      const lcsy = gameState.lostChick.y - camera.y + camera.screenH / 2;
+      const lcOnScreen = lcsx > 55 && lcsx < camera.screenW - 55 && lcsy > 55 && lcsy < camera.screenH - 55;
+      if (!lcOnScreen) {
+        const lcAngle = Math.atan2(lcsy - camera.screenH / 2, lcsx - camera.screenW / 2);
+        const lcArrowDist = Math.min(camera.screenW, camera.screenH) / 2 - 60;
+        const lcAx = camera.screenW / 2 + Math.cos(lcAngle) * lcArrowDist;
+        const lcAy = camera.screenH / 2 + Math.sin(lcAngle) * lcArrowDist;
+        const lcPulse = 0.7 + 0.3 * Math.sin(now * 0.007);
+        const lcEscorted = gameState.lostChick.state === 'escorted';
+        ctx.save();
+        ctx.translate(lcAx, lcAy);
+        ctx.rotate(lcAngle);
+        ctx.globalAlpha = 0.9 * lcPulse;
+        ctx.fillStyle = lcEscorted ? '#88ffaa' : '#ffff99';
+        ctx.shadowColor = lcEscorted ? '#00cc55' : '#cccc00';
+        ctx.shadowBlur = 12;
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(22, 0);
+        ctx.lineTo(-10, -10);
+        ctx.lineTo(-5, 0);
+        ctx.lineTo(-10, 10);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 10px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('🐣', 4, 0);
+        ctx.restore();
+      }
+    }
+
     // === PIGEON COUPE — off-screen direction arrow + minimap dot ===
     if (gameState.pigeonCoupe) {
       const pc = gameState.pigeonCoupe;
@@ -14639,6 +14738,11 @@
     // Golden Goose on minimap — pulsing gold 🪿 dot — Session 130
     if (gameState.goldenGoose && worldData) {
       Renderer.drawGoldenGooseOnMinimap(minimapCtx, worldData, gameState.goldenGoose, now);
+    }
+
+    // Lost Chick on minimap — pulsing 🐣 dot + nest 🪺 dot — Session 132
+    if (gameState.lostChick && worldData) {
+      Renderer.drawLostChickOnMinimap(minimapCtx, worldData, gameState.lostChick, now);
     }
 
     // Chaos Oracle on minimap — pulsing purple 🔮 dot — Session 121
@@ -17608,6 +17712,27 @@
         html += `<div class="bm-buff-pill" style="background:rgba(80,60,0,0.9);border-color:#ffd700;color:#ffe080;">🪿 GOLDEN GOOSE — ${gg.eggsLaid} egg${gg.eggsLaid !== 1 ? 's' : ''} laid · ${minsLeft}m${sLeft}s · STAY BACK for patience bonus! (55px+)</div>`;
       } else if (gg.state === 'scared') {
         html += `<div class="bm-buff-pill" style="background:rgba(80,30,0,0.95);border-color:#ff9900;color:#ffcc44;animation:kingpinGlow 0.4s ease-in-out infinite alternate;font-weight:bold;">🪿💨 GOOSE PANICKED — GRAB THE SCATTERED EGGS!</div>`;
+      }
+    }
+
+    // === LOST CHICK (Session 132) ===
+    if (gameState.lostChick) {
+      const lc = gameState.lostChick;
+      if (lc.iAmEscort) {
+        const secsLeft = Math.max(0, Math.ceil((lc.deliverBy - Date.now()) / 1000));
+        const pct = Math.round((1 - secsLeft / 90) * 100);
+        const stealWarn = lc.stealHits >= 2 ? ' ⚠️ INTERCEPT ATTEMPT!' : (lc.stealHits >= 1 ? ' — rival hit 1/3!' : '');
+        html += `<div class="bm-buff-pill" style="background:rgba(20,60,20,0.95);border-color:#88ffaa;color:#ccffcc;animation:${lc.stealHits >= 2 ? 'kingpinGlow 0.4s ease-in-out infinite alternate' : 'none'};font-weight:bold;">🐣 CHICK FOLLOWING YOU — Fly to 🪺 · ${secsLeft}s left${stealWarn}</div>`;
+      } else if (lc.state === 'wandering') {
+        const progPct = Math.round(lc.escortProgress * 100);
+        if (progPct > 0) {
+          html += `<div class="bm-buff-pill" style="background:rgba(50,50,0,0.9);border-color:#ffff99;color:#ffffcc;">🐣 BONDING WITH CHICK — ${progPct}% · Keep close!</div>`;
+        } else {
+          html += `<div class="bm-buff-pill" style="background:rgba(40,40,0,0.85);border-color:#eeee88;color:#ffffbb;">🐣 LOST CHICK nearby — fly within 60px for 8s to escort!</div>`;
+        }
+      } else if (lc.state === 'escorted' && !lc.iAmEscort) {
+        const stealPct = lc.stealHits > 0 ? ` · steal ${lc.stealHits}/3 — poop 3× to steal!` : ' · poop 3× in 12s to steal!';
+        html += `<div class="bm-buff-pill" style="background:rgba(60,30,0,0.9);border-color:#ffaa55;color:#ffddaa;">🐣 ${lc.escortName || 'A bird'} is escorting the chick${stealPct}</div>`;
       }
     }
 
