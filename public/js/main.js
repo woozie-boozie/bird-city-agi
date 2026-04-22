@@ -5695,6 +5695,43 @@
     if (ev.type === 'ring_toss_expired') {
       addEventMessage(`🎯 Ring Toss ended — only ${ev.claimed}/${ev.total} rings claimed. So close!`, '#448866');
     }
+
+    // === Kite Festival (Session 128) ===
+    if (ev.type === 'kite_festival_started') {
+      effects.push({ type: 'screen_flash', color: 'rgba(255,160,0,0.2)', duration: 400, time: now });
+      const windMsg = ev.windBonus ? ' 🌬️ WIND BONUS — 2× speed & rewards!' : '';
+      showAnnouncement(`🪁 KITE FESTIVAL!\n${ev.count} colorful kites drift across the city.\nFly within 35px to catch them!${windMsg}`, '#ffaa00', 7000);
+      addEventMessage(`🪁 KITE FESTIVAL! ${ev.count} kites in the sky — fly close to catch them!${ev.windBonus ? ' 🌬️ WIND BONUS active!' : ''}`, '#ffaa00');
+    }
+    if (ev.type === 'kite_caught') {
+      const windStr = ev.windBonus ? ' (WIND 2×)' : '';
+      effects.push({ type: 'float_text', x: ev.x, y: ev.y - 20, time: now, duration: 1100, text: `🪁 +${ev.xp}XP +${ev.coins}c${windStr}`, color: '#ffaa00' });
+      if (ev.birdId === myId) {
+        effects.push({ type: 'screen_flash', color: 'rgba(255,160,0,0.18)', duration: 250, time: now });
+        showAnnouncement(`🪁 KITE CAUGHT! +${ev.xp} XP +${ev.coins}c`, '#ffaa00', 2500);
+      }
+      addEventMessage(`🪁 ${ev.birdName}${ev.gangTag ? ` [${ev.gangTag}]` : ''} caught a ${ev.kiteColor ? '' : ''}kite!${ev.windBonus ? ' 🌬️' : ''}`, '#ffaa00');
+    }
+    if (ev.type === 'kite_festival_ended') {
+      if (ev.allCaught) {
+        addEventMessage(`🪁✅ ALL ${ev.total} KITES CAUGHT! City-wide bonus incoming!`, '#ffcc44');
+      } else {
+        addEventMessage(`🪁 Kite Festival ended — ${ev.caught}/${ev.total} kites caught.`, '#aa7700');
+      }
+    }
+    if (ev.type === 'kite_festival_all_caught_bonus') {
+      screenShake(10, 500);
+      effects.push({ type: 'screen_flash', color: 'rgba(255,180,0,0.35)', duration: 500, time: now });
+      showAnnouncement(`🪁✨ ALL ${ev.total} KITES CAUGHT!\nCity-wide bonus: +${ev.xp} XP +${ev.coins}c for EVERYONE!`, '#ffcc00', 7000);
+      addEventMessage(`🪁✨ ALL KITES CAUGHT — every bird earns +${ev.xp} XP +${ev.coins}c bonus!`, '#ffcc44');
+    }
+    if (ev.type === 'kite_badge_earned') {
+      if (ev.birdId === myId) {
+        screenShake(8, 400);
+        showAnnouncement(`🪁 KITE ACE!\nYou caught 10 kites — you've earned the 🪁 KITE FLYER badge!`, '#ffaa00', 6000);
+      }
+      addEventMessage(`🪁 ${ev.birdName}${ev.gangTag ? ` [${ev.gangTag}]` : ''} earned the 🪁 KITE FLYER session badge!`, '#ffbb33');
+    }
   }
 
   function showAnnouncement(text, color, duration) {
@@ -10449,6 +10486,11 @@
       Renderer.drawRingToss(ctx, camera, gameState.ringToss, now);
     }
 
+    // Kite Festival — Session 128
+    if (gameState.kiteFestival) {
+      Renderer.drawKiteFestival(ctx, camera, gameState.kiteFestival, now);
+    }
+
     // Bird Royale — safe zone ring + danger zone overlay
     if (gameState.birdRoyale && gameState.birdRoyale.state === 'active') {
       Renderer.drawBirdRoyaleZone(ctx, camera, gameState.birdRoyale, now);
@@ -12330,6 +12372,77 @@
       ctx.restore();
     }
 
+    // === KITE FESTIVAL HUD BAR (Session 128) ===
+    if (gameState.kiteFestival) {
+      const kf = gameState.kiteFestival;
+      const kfTimeLeft = Math.max(0, kf.endsAt - now);
+      const kfFrac = kfTimeLeft / 75000;
+      const kfPulse = 0.65 + 0.35 * Math.abs(Math.sin(now * 0.006));
+      const hasCWkf = gameState.self && gameState.self.crimeWave;
+      const hasSGkf = gameState.seagullInvasion;
+      const hasMGkf = gameState.migration;
+      const hasVTkf = gameState.vaultTruck && !gameState.vaultTruck.cracked && !gameState.vaultTruck.escaped;
+      const hasSTkf = gameState.stampede;
+      const hasPKkf = gameState.suspiciousPackage;
+      const hasBVkf = gameState.birdnapperVan && gameState.birdnapperVan.state === 'escaping';
+      const hasFMkf = gameState.flashMob;
+      const hasSPkf = gameState.skyPirateShip && !gameState.skyPirateShip.sinking;
+      const hasMCkf = gameState.motorcade;
+      const hasDRkf = gameState.deliveryRush && gameState.deliveryRush.state === 'carried';
+      const hasPNkf = gameState.pinata;
+      const hasRTkf = gameState.ringToss;
+      let kfBarY = 132;
+      if (hasCWkf) kfBarY += 43;
+      if (hasSGkf) kfBarY += 43;
+      if (hasMGkf) kfBarY += 43;
+      if (hasVTkf) kfBarY += 43;
+      if (hasSTkf) kfBarY += 43;
+      if (hasPKkf) kfBarY += 43;
+      if (hasBVkf) kfBarY += 43;
+      if (hasFMkf) kfBarY += 43;
+      if (hasSPkf) kfBarY += 43;
+      if (hasMCkf) kfBarY += 43;
+      if (hasDRkf) kfBarY += 43;
+      if (hasPNkf) kfBarY += 43;
+      if (hasRTkf) kfBarY += 43;
+
+      const kfBarW = 220, kfBarH = 12;
+      const kfBarX = camera.screenW / 2 - kfBarW / 2;
+      const kfSecsLeft = Math.ceil(kfTimeLeft / 1000);
+      const kfMyKites = kf.myKites || 0;
+      const kfCaught = kf.caughtCount || 0;
+      const kfTotal = (kf.kites || []).length || 6;
+      const kfWindBonus = kf.windBonus;
+
+      ctx.save();
+      ctx.globalAlpha = 0.93;
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.beginPath();
+      ctx.roundRect(kfBarX - 55, kfBarY - 18, kfBarW + 110, kfBarH + 32, 10);
+      ctx.fill();
+
+      ctx.globalAlpha = 0.82;
+      ctx.fillStyle = 'rgba(40,20,0,0.5)';
+      ctx.beginPath();
+      ctx.roundRect(kfBarX, kfBarY + 2, kfBarW, kfBarH, 4);
+      ctx.fill();
+
+      ctx.globalAlpha = kfPulse;
+      ctx.fillStyle = kfWindBonus ? '#44ddff' : '#ffaa00';
+      ctx.beginPath();
+      ctx.roundRect(kfBarX, kfBarY + 2, kfBarW * kfFrac, kfBarH, 4);
+      ctx.fill();
+
+      ctx.globalAlpha = 0.92;
+      ctx.fillStyle = kfWindBonus ? '#88eeff' : '#ffcc44';
+      ctx.font = 'bold 11px Arial';
+      ctx.textAlign = 'center';
+      const kfWindStr = kfWindBonus ? ' 🌬️2×' : '';
+      ctx.fillText(`🪁 KITE FESTIVAL — ${kfCaught}/${kfTotal} caught · ${kfSecsLeft}s · MY KITES: ${kfMyKites}${kfWindStr}`, camera.screenW / 2, kfBarY - 4);
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+
     // === CRIME WAVE OVERLAY ===
     if (gameState.self && gameState.self.crimeWave) {
       const cw = gameState.self.crimeWave;
@@ -13568,6 +13681,60 @@
       }
     }
 
+    // === KITE FESTIVAL — off-screen direction arrows (nearest unclaimed kite) ===
+    if (gameState.kiteFestival && gameState.kiteFestival.kites) {
+      const kfElapsed = (now - gameState.kiteFestival.spawnedAt) / 1000;
+      let nearestKiteDist = Infinity;
+      let nearestKiteAngle = 0;
+      let anyUnclaimedKite = false;
+      for (const kite of gameState.kiteFestival.kites) {
+        if (kite.caught) continue;
+        anyUnclaimedKite = true;
+        const kx = kite.spawnX + Math.sin(kite.phase + kfElapsed * kite.freq) * kite.amplitude;
+        const ky = kite.spawnY + Math.cos(kite.phase * 1.2 + kfElapsed * kite.freq * 0.7) * kite.amplitude * 0.45;
+        const ksx = kx - camera.x + camera.screenW / 2;
+        const ksy = ky - camera.y + camera.screenH / 2;
+        const kOnScreen = ksx > 55 && ksx < camera.screenW - 55 && ksy > 55 && ksy < camera.screenH - 55;
+        if (!kOnScreen) {
+          const dist = Math.sqrt((ksx - camera.screenW / 2) ** 2 + (ksy - camera.screenH / 2) ** 2);
+          if (dist < nearestKiteDist) {
+            nearestKiteDist = dist;
+            nearestKiteAngle = Math.atan2(ksy - camera.screenH / 2, ksx - camera.screenW / 2);
+          }
+        }
+      }
+      if (anyUnclaimedKite && nearestKiteDist < Infinity) {
+        const kfArrowDist = Math.min(camera.screenW, camera.screenH) / 2 - 60;
+        const kfAx = camera.screenW / 2 + Math.cos(nearestKiteAngle) * kfArrowDist;
+        const kfAy = camera.screenH / 2 + Math.sin(nearestKiteAngle) * kfArrowDist;
+        const kfPulse2 = 0.7 + 0.3 * Math.sin(now * 0.007);
+        ctx.save();
+        ctx.translate(kfAx, kfAy);
+        ctx.rotate(nearestKiteAngle);
+        ctx.globalAlpha = 0.9 * kfPulse2;
+        ctx.fillStyle = '#ffaa00';
+        ctx.shadowColor = '#ffaa00';
+        ctx.shadowBlur = 12;
+        ctx.strokeStyle = '#553300';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(22, 0);
+        ctx.lineTo(-10, -10);
+        ctx.lineTo(-5, 0);
+        ctx.lineTo(-10, 10);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 10px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('🪁', 4, 0);
+        ctx.restore();
+      }
+    }
+
     // Ice Rink — direction arrow when off-screen (during blizzard)
     if (gameState.iceRink && selfBird && weatherState && weatherState.type === 'blizzard') {
       const irsx = gameState.iceRink.x - camera.x + camera.screenW / 2;
@@ -14283,6 +14450,11 @@
     // Ring Toss Event on minimap — Session 127
     if (gameState.ringToss && worldData) {
       Renderer.drawRingTossOnMinimap(minimapCtx, worldData, gameState.ringToss, now);
+    }
+
+    // Kite Festival on minimap — Session 128
+    if (gameState.kiteFestival && worldData) {
+      Renderer.drawKiteFestivalOnMinimap(minimapCtx, worldData, gameState.kiteFestival, now);
     }
 
     // Spring Painted Eggs on minimap — Session 123 (April 14–28)
@@ -17200,6 +17372,14 @@
     if (s.oracleSlowUntil && s.oracleSlowUntil > now) {
       const secs = Math.ceil((s.oracleSlowUntil - now) / 1000);
       html += `<div class="bm-buff-pill" style="background:rgba(0,0,80,0.9);border-color:#4444cc;color:#8888ff;animation:pulseRed 0.8s infinite alternate;">☠️ ORACLE CURSE — −30% speed · ${secs}s</div>`;
+    }
+    // === KITE FESTIVAL (Session 128) ===
+    if (gameState.kiteFestival) {
+      const kf = gameState.kiteFestival;
+      const kfSecsLeft = Math.ceil(Math.max(0, kf.endsAt - now) / 1000);
+      const kfMyKites = kf.myKites || 0;
+      const kfWindStr = kf.windBonus ? ' 🌬️ 2× rewards!' : '';
+      html += `<div class="bm-buff-pill" style="background:rgba(80,40,0,0.88);border-color:#ffaa00;color:#ffcc44;animation:kingpinGlow 1.0s ease-in-out infinite alternate;font-weight:bold;">🪁 KITE FESTIVAL — ${kfSecsLeft}s · MY KITES: ${kfMyKites} · FLY CLOSE TO CATCH!${kfWindStr}</div>`;
     }
 
     el.innerHTML = html;

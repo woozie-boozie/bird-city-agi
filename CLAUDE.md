@@ -4402,6 +4402,46 @@ Every 12–18 minutes, 4 glowing teal rings materialize at random city positions
 
 **Creative intent**: The Ring Toss fills a gap — Bird City's timed collection events (Golden Egg Scramble, El Piñata) require either flying somewhere or smashing something. The Ring Toss is the first event where the TARGETS MOVE AUTONOMOUSLY across the map. The sinusoidal drift means a ring that's conveniently close now will drift away in 10 seconds — creating urgency without confusion. The jackpot condition (all 4 claimed) is achievable solo with a fast bird, or easy with 4 cooperating birds, making it equally fun solo and multiplayer. The nearest-ring HUD arrow navigates you to the most urgent target without cluttering the screen with 4 simultaneous arrows. A city-wide ring toss firing during a Crime Wave — everyone chasing glowing teal rings across a blood-red city while dodging cops — is peak CARNAGE CITY chaos. Pure CARNAGE + SOCIAL + SPECTACLE energy.
 
+**Session 128 — 2026-04-22: Kite Festival — April Seasonal Sky Event**
+A colorful seasonal kite festival fills the sky above Bird City every April. Every 8–12 minutes, 6 decorated diamond kites launch from the park and drift sinusoidally across the city sky. Birds auto-collect them by flying within 35px — no button press needed.
+
+**Six kite types with escalating rewards:**
+- 🔴 **Red** (common, 50 XP + 25c): Most frequent, scattered across the city
+- 🔵 **Blue** (common, 50 XP + 25c): Paired with red for easy early catches
+- 🟢 **Green** (uncommon, 80 XP + 40c): Drifts farther from center — requires chasing
+- 🟡 **Yellow** (uncommon, 80 XP + 40c): Wind-enhanced with faster drift
+- 🟣 **Purple** (rare, 120 XP + 65c): Wide sinusoidal sweep across the map
+- 🟠 **Orange** (rare, 120 XP + 65c): Deepest amplitude drift — hardest to intercept
+
+**Core mechanics (`server/game.js`):**
+- `this.kiteFestival = null` + `this._kiteFestivalTimer` gate behind `this.cherryBlossoms` (April-only)
+- `_spawnKiteFestival(now)`: creates 6 kites at distributed world positions, each with unique `phase`, `freq`, `amplitude` — they float completely independently
+- `_tickKiteFestival(dt, now)`: proximity scan all birds vs uncaught kites each tick; auto-catch within 35px
+- Kite positions: same sinusoidal formula as Ring Toss: `x = spawnX + sin(phase + elapsed × freq) × amplitude`, `y = spawnY + cos(phase × 1.2 + elapsed × freq × 0.7) × amplitude × 0.45`
+- **3-minute festival window**: caught kites fade to ghost (visible at 30% alpha); uncaught kites expire quietly
+- **Wind bonus**: if `weather.type === 'wind' || 'storm'`, all kite rewards are **2×** — the wind makes them race across the sky AND makes them more valuable
+- **Spring Champion**: catch 3+ kites in one festival → `springChampBadge` session badge (pulsing 🌸 on nametag, visible to all)
+- Per-catch daily challenge tracking: `kite_caught` type; new challenges: **Kite Catcher** (catch 3 kites, 180 XP/90c) and **Kite Master** (catch all 6 in one festival, 350 XP/175c)
+
+**Client-server position sync:**
+- Snapshot sends only immutable parameters (spawnX, spawnY, phase, freq, amplitude, spawnedAt) — never real-time coords
+- Both client and server compute positions identically from `now` — zero drift desync, perfect hit detection match
+
+**Visual system (`public/js/renderer.js`, `public/js/main.js`):**
+- `drawKiteFestival()`: per-kite rendering — dangling string as dashed quadratic bezier curve, 3-tier ribbon tail with independent wobble animation, diamond body with asymmetric top/bottom (realistic kite shape), glow halo when uncaught, 30% alpha fade when caught
+- `drawKiteFestivalOnMinimap()`: pulsing colored diamonds at live kite positions, skips caught kites
+- HUD countdown bar (stacks below Ring Toss bar): orange fill during normal weather, cyan when wind bonus active — shows time remaining, caught/total count, personal kite count
+- Off-screen direction arrow: orange 🪁 arrow pointing toward the nearest uncaught off-screen kite
+- Active buffs HUD pill: "🪁 KITE FESTIVAL — Xs · MY KITES: N · FLY CLOSE TO CATCH!" (with 🌬️ 2× badge if wind active)
+
+**Two new daily challenges (added to `DAILY_CHALLENGE_POOL`):**
+- 🪁 **Kite Catcher**: Catch 3 kites during a Kite Festival — 180 XP, 90c
+- 🪁 **Kite Master**: Catch all 6 kites in a single Kite Festival — 350 XP, 175c (requires speed and awareness)
+
+**Gazette tracking:** "🪁 KITE FESTIVAL: [Name] CATCHES ALL 6 KITES — SPRING CHAMPION!" headline when the full set is claimed.
+
+**Creative intent**: The Kite Festival is the cherry blossom season's most joyful activity — pure visual spectacle with no combat, no enemies, no timers threatening explosion. Six colored diamond kites drift across the sky in independent sinusoidal paths, creating a beautiful aerial dance. The wind synergy is the killer design decision: the same weather that makes flying hard (headwind) also makes kite catching more profitable. A bird grinding a rain combo who suddenly sees golden kite rewards double when the storm blows in — pure discovery. Kite Master (all 6 in 3 minutes) is a genuine speed challenge requiring map awareness and fast interception geometry. The Spring Champion badge links the Kite Festival to the broader cherry blossom season progression track. Pure DISCOVERY + SPECTACLE + RETENTION energy — the sky is alive in April.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -4668,6 +4708,6 @@ Built the Territory Control System on top of the existing upstream code:
 - Constellation daily challenge: "Ring Master" — achieve a jackpot (all 4 rings in one event)
 - The Bird Olympics: periodic multi-event competition — Ring Toss + Racing + Arena + Egg Scramble — points across all 4 events, overall champion badge
 - Graffiti trail: while flying at high speed (>200px/s), birds leave a brief colored trail in their gang color — visual only, speed-gated
-- Kite Festival: seasonal April event where large decorative kites drift across the map, collecting them gives XP and cosmetic kite badge
+- ~~Kite Festival: seasonal April event where large decorative kites drift across the map, collecting them gives XP and cosmetic kite badge~~ (DONE Session 128)
 - Bird Photographer NPC: roaming visitor who randomly takes "photos" (appears near you for 3s), photographed birds get a small XP bonus — random, unexpected, joyful
 - Bubble Wrap Floor event: random city plazas become bouncy bubble wrap for 30s — birds landing in the zone bounce upward (vertical velocity boost) with satisfying visual

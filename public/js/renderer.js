@@ -6331,4 +6331,132 @@ window.Renderer = {
       minimapCtx.restore();
     }
   },
+
+  // Session 128 — Kite Festival
+  drawKiteFestival(ctx, camera, kiteFestival, now) {
+    if (!kiteFestival || !kiteFestival.kites) return;
+    const elapsed = (now - kiteFestival.spawnedAt) / 1000;
+    // Kite color palettes: [body, string, tail]
+    const KITE_COLORS = [
+      ['#ff4444', '#cc2222', '#ff8888'],
+      ['#4488ff', '#2255cc', '#88bbff'],
+      ['#44cc44', '#228822', '#88ee88'],
+      ['#ffcc00', '#cc9900', '#ffee66'],
+      ['#cc44ff', '#8822cc', '#dd88ff'],
+      ['#ff8844', '#cc5522', '#ffbb88'],
+    ];
+    for (let i = 0; i < kiteFestival.kites.length; i++) {
+      const kite = kiteFestival.kites[i];
+      const wx = kite.spawnX + Math.sin(kite.phase + elapsed * kite.freq) * kite.amplitude;
+      const wy = kite.spawnY + Math.cos(kite.phase * 1.2 + elapsed * kite.freq * 0.7) * kite.amplitude * 0.45;
+      const sx = (wx - camera.x) * camera.zoom + ctx.canvas.width / 2;
+      const sy = (wy - camera.y) * camera.zoom + ctx.canvas.height / 2;
+      const colors = KITE_COLORS[i % KITE_COLORS.length];
+      const pulse = 0.75 + 0.25 * Math.sin(now * 0.005 + kite.phase);
+      ctx.save();
+      if (kite.caught) {
+        ctx.globalAlpha = 0.3;
+      } else {
+        ctx.globalAlpha = 0.9;
+      }
+      // Kite string (goes down and slightly right — string hangs with wind)
+      const stringLen = 28 * camera.zoom;
+      const stringEndX = sx + 8 * camera.zoom;
+      const stringEndY = sy + stringLen;
+      ctx.strokeStyle = colors[1];
+      ctx.lineWidth = 1.5 * camera.zoom;
+      ctx.setLineDash([3 * camera.zoom, 2 * camera.zoom]);
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.quadraticCurveTo(sx + 4 * camera.zoom, sy + stringLen * 0.5, stringEndX, stringEndY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // Tail — wiggly ribbon
+      for (let t = 0; t < 3; t++) {
+        const tx = stringEndX + Math.sin(now * 0.008 + t * 1.2) * 5 * camera.zoom;
+        const ty = stringEndY + t * 7 * camera.zoom;
+        ctx.fillStyle = colors[2];
+        ctx.globalAlpha = (0.8 - t * 0.2) * (kite.caught ? 0.3 : 0.9);
+        ctx.beginPath();
+        ctx.ellipse(tx, ty, 3 * camera.zoom, 2 * camera.zoom, now * 0.003 + t, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // Kite diamond body
+      const kiteSize = 15 * camera.zoom;
+      const kiteH = kiteSize * 1.4;
+      ctx.globalAlpha = kite.caught ? 0.3 : 0.9;
+      // Glow behind kite
+      if (!kite.caught) {
+        ctx.shadowColor = colors[0];
+        ctx.shadowBlur = 10 * pulse;
+      }
+      // Diamond shape
+      ctx.fillStyle = colors[0];
+      ctx.beginPath();
+      ctx.moveTo(sx, sy - kiteH);
+      ctx.lineTo(sx + kiteSize, sy);
+      ctx.lineTo(sx, sy + kiteH * 0.6);
+      ctx.lineTo(sx - kiteSize, sy);
+      ctx.closePath();
+      ctx.fill();
+      // Diagonal cross on kite body
+      ctx.strokeStyle = colors[1];
+      ctx.lineWidth = 1.2 * camera.zoom;
+      ctx.shadowBlur = 0;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy - kiteH);
+      ctx.lineTo(sx, sy + kiteH * 0.6);
+      ctx.moveTo(sx - kiteSize, sy);
+      ctx.lineTo(sx + kiteSize, sy);
+      ctx.stroke();
+      // Label
+      if (!kite.caught) {
+        ctx.shadowBlur = 0;
+        ctx.font = `bold ${Math.max(9, 13 * camera.zoom)}px Arial`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillStyle = '#fff';
+        ctx.fillText('🪁', sx, sy - kiteH - 4 * camera.zoom);
+      }
+      ctx.restore();
+    }
+  },
+
+  drawKiteFestivalOnMinimap(minimapCtx, worldData, kiteFestival, now) {
+    if (!kiteFestival || !kiteFestival.kites) return;
+    const elapsed = (now - kiteFestival.spawnedAt) / 1000;
+    const scale = minimapCtx.canvas.width / worldData.width;
+    const KITE_COLORS = ['#ff4444', '#4488ff', '#44cc44', '#ffcc00', '#cc44ff', '#ff8844'];
+    for (let i = 0; i < kiteFestival.kites.length; i++) {
+      const kite = kiteFestival.kites[i];
+      if (kite.caught) continue;
+      const wx = kite.spawnX + Math.sin(kite.phase + elapsed * kite.freq) * kite.amplitude;
+      const wy = kite.spawnY + Math.cos(kite.phase * 1.2 + elapsed * kite.freq * 0.7) * kite.amplitude * 0.45;
+      const mx = wx * scale;
+      const my = wy * scale;
+      const pulse = 0.5 + 0.5 * Math.sin(now * 0.006 + kite.phase);
+      const color = KITE_COLORS[i % KITE_COLORS.length];
+      minimapCtx.save();
+      minimapCtx.shadowColor = color;
+      minimapCtx.shadowBlur = 7 * pulse;
+      minimapCtx.strokeStyle = color;
+      minimapCtx.lineWidth = 2;
+      // Mini diamond on minimap
+      const ms = 3 + pulse;
+      minimapCtx.fillStyle = color;
+      minimapCtx.beginPath();
+      minimapCtx.moveTo(mx, my - ms * 1.4);
+      minimapCtx.lineTo(mx + ms, my);
+      minimapCtx.lineTo(mx, my + ms * 0.8);
+      minimapCtx.lineTo(mx - ms, my);
+      minimapCtx.closePath();
+      minimapCtx.fill();
+      minimapCtx.shadowBlur = 0;
+      minimapCtx.font = '8px sans-serif';
+      minimapCtx.textAlign = 'center';
+      minimapCtx.textBaseline = 'middle';
+      minimapCtx.fillText('🪁', mx, my);
+      minimapCtx.restore();
+    }
+  },
 };

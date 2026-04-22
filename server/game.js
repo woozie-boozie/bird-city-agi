@@ -213,6 +213,9 @@ const DAILY_CHALLENGE_POOL = [
   // Session 127: Ring Toss Event
   { id: 'ring_shot',      title: 'Ring Shot!',   desc: 'Claim a floating Ring Toss ring by pooping through it', target: 1, trackType: 'ring_shot',      reward: { xp: 200, coins: 100 } },
   { id: 'ring_hat_trick', title: 'Hat Trick',    desc: 'Claim 3 rings in a single Ring Toss event',            target: 3, trackType: 'ring_hat_trick', reward: { xp: 280, coins: 140 } },
+  // Session 128: Kite Festival
+  { id: 'kite_chaser', title: 'Kite Chaser', desc: 'Catch 3 drifting kites during the Kite Festival',          target: 3, trackType: 'kite_caught', reward: { xp: 180, coins: 90  } },
+  { id: 'kite_ace',    title: 'Kite Ace',    desc: 'Catch 5 kites in a single Kite Festival',                  target: 5, trackType: 'kite_ace',    reward: { xp: 280, coins: 140 } },
 ];
 
 // ============================================================
@@ -928,6 +931,13 @@ class GameEngine {
     // Poop within 42px of a ring to claim it. Claim all 4 = city-wide JACKPOT.
     this.ringToss = null; // null | { rings: Array<{id,spawnX,spawnY,phase,freq,amplitude,claimed,claimedById,claimedByName,claimedByGang}>, spawnedAt, endsAt, claimed, contributors: Map }
     this._ringTossTimer = Date.now() + this._randomRange(12 * 60000, 18 * 60000);
+
+    // === KITE FESTIVAL ===
+    // April seasonal event (ties into Cherry Blossom season). 6-8 colorful kites drift
+    // sinusoidally across the sky every 10-15 minutes. Fly within 35px to auto-catch one.
+    // Wind/storm weather doubles kite speed and rewards. 🪁 session badge after 10 catches.
+    this.kiteFestival = null; // null | { kites: Array<{id,color,spawnX,spawnY,phase,freq,amplitude,caught,caughtById,caughtByName}>, spawnedAt, endsAt, windBonus }
+    this._kiteFestivalTimer = Date.now() + this._randomRange(10 * 60000, 15 * 60000);
 
     // === AURORA BOREALIS ===
     // A rare, breathtaking night spectacle — colored light ribbons flow across the sky.
@@ -2361,6 +2371,9 @@ class GameEngine {
 
     // === Ring Toss Event ===
     this._tickRingToss(dt, now);
+
+    // === Kite Festival (April seasonal) ===
+    if (this.cherryBlossoms) this._tickKiteFestival(dt, now);
   }
 
   // ============================================================
@@ -5646,6 +5659,62 @@ class GameEngine {
       }
     }
 
+    // === Kite Festival auto-catch (fly within 35px of a drifting kite) ===
+    if (this.kiteFestival && !bird.inSewer) {
+      const kf = this.kiteFestival;
+      const elapsed = (now - kf.spawnedAt) / 1000;
+      for (const kite of kf.kites) {
+        if (kite.caught) continue;
+        const kx = kite.spawnX + Math.sin(kite.phase + elapsed * kite.freq) * kite.amplitude;
+        const ky = kite.spawnY + Math.cos(kite.phase * 1.3 + elapsed * kite.freq * 0.8) * kite.amplitude * 0.5;
+        const dx = bird.x - kx;
+        const dy = bird.y - ky;
+        if (Math.sqrt(dx * dx + dy * dy) < 35) {
+          kite.caught = true;
+          kite.caughtById = bird.id;
+          kite.caughtByName = bird.name;
+          kite.caughtByGang = bird.gangTag || null;
+          kf.caughtCount = (kf.caughtCount || 0) + 1;
+          // Wind/storm doubles rewards
+          const windBonus = !!(kf.windBonus);
+          const xpGain   = windBonus ? 90  : 45;
+          const coinGain = windBonus ? 50  : 25;
+          bird.xp    += xpGain;
+          bird.coins += coinGain;
+          // Track session kite count for 🪁 badge
+          bird.sessionKitesCaught = (bird.sessionKitesCaught || 0) + 1;
+          if (bird.sessionKitesCaught === 10 && !bird.kiteBadge) {
+            bird.kiteBadge = true;
+            this.events.push({ type: 'kite_badge_earned', birdId: bird.id, name: bird.name, gangTag: bird.gangTag || null });
+          }
+          // Daily challenge tracking
+          this._trackDailyProgress(bird, 'kite_caught', 1);
+          if (!kf.contributors) kf.contributors = new Map();
+          const contrib = kf.contributors.get(bird.id) || { name: bird.name, gangTag: bird.gangTag || null, kites: 0 };
+          contrib.kites++;
+          kf.contributors.set(bird.id, contrib);
+          if (contrib.kites >= 5) this._trackDailyProgress(bird, 'kite_ace', 1);
+          // Coin accounting
+          this._trackDailyProgress(bird, 'coins_earned', coinGain);
+          // Level-up check
+          const newLvl = world.getLevelFromXP(bird.xp);
+          if (newLvl !== bird.level) {
+            bird.level = newLvl;
+            bird.type = world.getBirdTypeForLevel(newLvl);
+            this.events.push({ type: 'evolve', birdId: bird.id, name: bird.name, birdType: bird.type });
+          }
+          this.events.push({
+            type: 'kite_caught',
+            birdId: bird.id, name: bird.name, gangTag: bird.gangTag || null,
+            kiteId: kite.id, kiteColor: kite.color,
+            xp: xpGain, coins: coinGain, windBonus,
+            x: kx, y: ky,
+          });
+          break; // one kite per tick per bird
+        }
+      }
+    }
+
     // === Pond fish auto-collect (night-only, fly near the sacred pond) ===
     if (!bird.inSewer && this.pondFishIds.size > 0) {
       for (const fishId of this.pondFishIds) {
@@ -8308,6 +8377,19 @@ class GameEngine {
         endsAt: this.ringToss.endsAt,
         claimed: this.ringToss.claimed,
         myRings: (this.ringToss.contributors.get(bird.id) || {}).rings || 0,
+      } : null,
+      kiteFestival: this.kiteFestival ? {
+        kites: this.kiteFestival.kites.map(k => ({
+          id: k.id, color: k.color,
+          spawnX: k.spawnX, spawnY: k.spawnY,
+          phase: k.phase, freq: k.freq, amplitude: k.amplitude,
+          caught: k.caught, caughtByName: k.caughtByName || null,
+        })),
+        spawnedAt: this.kiteFestival.spawnedAt,
+        endsAt: this.kiteFestival.endsAt,
+        windBonus: this.kiteFestival.windBonus,
+        caughtCount: this.kiteFestival.caughtCount || 0,
+        myKites: (this.kiteFestival.contributors ? (this.kiteFestival.contributors.get(bird.id) || {}).kites || 0 : 0),
       } : null,
       raccoons: nearbyRaccoons,
       drunkPigeons: nearbyDrunkPigeons,
@@ -28421,6 +28503,98 @@ class GameEngine {
     }
     this.ringToss = null;
     this._ringTossTimer = now + this._randomRange(12 * 60000, 18 * 60000);
+  }
+
+  // ============================================================
+  // KITE FESTIVAL — Session 128
+  // ============================================================
+  _tickKiteFestival(dt, now) {
+    // Spawn a new festival if timer expired and players are online
+    if (!this.kiteFestival && now >= this._kiteFestivalTimer) {
+      const onlineBirds = [...this.birds.values()].filter(b => b.connected);
+      if (onlineBirds.length > 0) {
+        this._spawnKiteFestival(now);
+      } else {
+        this._kiteFestivalTimer = now + 60000;
+      }
+      return;
+    }
+    if (!this.kiteFestival) return;
+
+    // Update wind bonus based on current weather
+    const wType = this.weather ? this.weather.type : null;
+    this.kiteFestival.windBonus = (wType === 'wind' || wType === 'storm');
+
+    // End the festival when timer expires
+    if (now >= this.kiteFestival.endsAt) {
+      this._endKiteFestival(now);
+    }
+  }
+
+  _spawnKiteFestival(now) {
+    const KITE_COLORS = ['#ff4444', '#ff9944', '#ffdd44', '#44cc44', '#4488ff', '#cc44ff', '#ff44bb', '#44ddcc'];
+    const count = 6 + Math.floor(Math.random() * 3); // 6–8 kites
+    // Spawn positions spread across the entire city
+    const spawnPositions = [
+      { x: 600,  y: 700  }, { x: 1200, y: 500  }, { x: 1800, y: 700  },
+      { x: 2400, y: 600  }, { x: 500,  y: 1400  }, { x: 1100, y: 1300 },
+      { x: 1700, y: 1200 }, { x: 2300, y: 1400  }, { x: 700,  y: 2100 },
+      { x: 1400, y: 2000 }, { x: 2100, y: 2200  },
+    ];
+    // Shuffle and take `count` positions
+    const shuffled = spawnPositions.sort(() => Math.random() - 0.5).slice(0, count);
+
+    const kites = shuffled.map((pos, i) => ({
+      id: `kite_${now}_${i}`,
+      color: KITE_COLORS[i % KITE_COLORS.length],
+      spawnX: pos.x,
+      spawnY: pos.y,
+      phase: Math.random() * Math.PI * 2,
+      freq:  0.25 + Math.random() * 0.25, // 0.25–0.5 rad/s
+      amplitude: 55 + Math.random() * 55,  // 55–110 px
+      caught: false,
+      caughtById: null,
+      caughtByName: null,
+      caughtByGang: null,
+    }));
+
+    this.kiteFestival = {
+      kites,
+      spawnedAt: now,
+      endsAt: now + 75000, // 75 seconds
+      windBonus: false,
+      caughtCount: 0,
+      contributors: new Map(),
+    };
+
+    this.events.push({
+      type: 'kite_festival_started',
+      count,
+      windBonus: false,
+    });
+  }
+
+  _endKiteFestival(now) {
+    const kf = this.kiteFestival;
+    const total = kf.kites.length;
+    const caught = kf.caughtCount || 0;
+    this.events.push({
+      type: 'kite_festival_ended',
+      caught, total,
+      allCaught: caught >= total,
+    });
+    // If all kites were caught: city-wide bonus
+    if (caught >= total) {
+      const onlineBirds = [...this.birds.values()].filter(b => b.connected);
+      const bonusXp = 80; const bonusCoins = 35;
+      for (const b of onlineBirds) {
+        b.xp    += bonusXp;
+        b.coins += bonusCoins;
+      }
+      this.events.push({ type: 'kite_festival_all_caught_bonus', xp: bonusXp, coins: bonusCoins, total });
+    }
+    this.kiteFestival = null;
+    this._kiteFestivalTimer = now + this._randomRange(10 * 60000, 15 * 60000);
   }
 
 }
