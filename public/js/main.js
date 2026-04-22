@@ -5768,6 +5768,44 @@
       addEventMessage(`🏷️ Bird Tag over! ${ev.totalTags} tag${ev.totalTags !== 1 ? 's' : ''} this round.`, '#ffaa44');
     }
     // ── end Bird Tag ───────────────────────────────────────────────────────
+
+    // ── Golden Goose ──────────────────────────────────────────────────────
+    if (ev.type === 'golden_goose_appeared') {
+      showAnnouncement('🪿 THE GOLDEN GOOSE WANDERED INTO THE CITY!\nStay calm — she lays golden eggs!\nGet too close and she PANICS!', '#ffd700', 5000);
+      addEventMessage('🪿 The Golden Goose has appeared! Stay back to collect eggs peacefully.', '#ffd700');
+      screenShake(6, 400);
+    }
+    if (ev.type === 'golden_goose_laid') {
+      // subtle sparkle — no announcement to keep it quiet/discoverable
+      addEventMessage('🥚 The Golden Goose laid an egg!', '#ffe080');
+    }
+    if (ev.type === 'golden_goose_scared') {
+      showAnnouncement(`🪿💨 THE GOOSE PANICKED!\nScattered ${ev.numEggs} eggs — grab them fast!`, '#ff9900', 4000);
+      addEventMessage(`🪿💨 The Goose scattered ${ev.numEggs} eggs and fled!`, '#ff9900');
+      screenShake(10, 600);
+    }
+    if (ev.type === 'goose_patience_reward') {
+      if (ev.birdId === window._myId) {
+        showAnnouncement('🪿 PATIENCE REWARDED! +50 XP +20c\n(You stayed back while others scared her)', '#ffd700', 4000);
+      } else {
+        addEventMessage(`🪿 ${ev.name} patiently collected a patience bonus!`, '#ffd700');
+      }
+    }
+    if (ev.type === 'goose_egg_collected') {
+      if (ev.birdId === window._myId) {
+        showFloatingText(ev.x, ev.y, '🥚 +45c +60 XP', '#ffd700');
+      } else {
+        addEventMessage(`🥚 ${ev.name || ev.gangTag || ''} collected a golden egg!`, '#ffd700');
+      }
+    }
+    if (ev.type === 'golden_goose_fled') {
+      if (ev.peaceful) {
+        addEventMessage('🪿 The Golden Goose wandered back into the wild...', '#aaa');
+      } else {
+        addEventMessage('🪿 The Golden Goose escaped!', '#ff9900');
+      }
+    }
+    // ── end Golden Goose ──────────────────────────────────────────────────
   }
 
   function showAnnouncement(text, color, duration) {
@@ -10502,6 +10540,11 @@
       Renderer.drawHotPoop(ctx, camera, gameState.hotPoop, now);
     }
 
+    // Golden Goose — Session 130
+    if (gameState.goldenGoose) {
+      Renderer.drawGoldenGoose(ctx, camera, gameState.goldenGoose, now);
+    }
+
     // Chaos Oracle — Session 121
     if (gameState.chaosOracle) {
       Renderer.drawChaosOracle(ctx, camera, gameState.chaosOracle, now);
@@ -13852,6 +13895,45 @@
       }
     }
 
+    // === GOLDEN GOOSE — off-screen direction arrow (Session 130) ===
+    if (gameState.goldenGoose) {
+      const ggsx = gameState.goldenGoose.x - camera.x + camera.screenW / 2;
+      const ggsy = gameState.goldenGoose.y - camera.y + camera.screenH / 2;
+      const ggOnScreen = ggsx > 55 && ggsx < camera.screenW - 55 && ggsy > 55 && ggsy < camera.screenH - 55;
+      if (!ggOnScreen) {
+        const ggAngle = Math.atan2(ggsy - camera.screenH / 2, ggsx - camera.screenW / 2);
+        const ggArrowDist = Math.min(camera.screenW, camera.screenH) / 2 - 60;
+        const ggAx = camera.screenW / 2 + Math.cos(ggAngle) * ggArrowDist;
+        const ggAy = camera.screenH / 2 + Math.sin(ggAngle) * ggArrowDist;
+        const ggPulse = 0.7 + 0.3 * Math.sin(now * 0.007);
+        const ggScared = gameState.goldenGoose.state === 'scared';
+        ctx.save();
+        ctx.translate(ggAx, ggAy);
+        ctx.rotate(ggAngle);
+        ctx.globalAlpha = 0.9 * ggPulse;
+        ctx.fillStyle = ggScared ? '#ff6600' : '#ffd700';
+        ctx.shadowColor = ggScared ? '#ff8800' : '#ffe000';
+        ctx.shadowBlur = 12;
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(22, 0);
+        ctx.lineTo(-10, -10);
+        ctx.lineTo(-5, 0);
+        ctx.lineTo(-10, 10);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 10px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('🪿', 4, 0);
+        ctx.restore();
+      }
+    }
+
     // === PIGEON COUPE — off-screen direction arrow + minimap dot ===
     if (gameState.pigeonCoupe) {
       const pc = gameState.pigeonCoupe;
@@ -14506,6 +14588,11 @@
     // Hot Poop on minimap — pulsing orange 🔥 dot (world-state only) — Session 120
     if (gameState.hotPoop && gameState.hotPoop.state === 'world' && worldData) {
       Renderer.drawHotPoopOnMinimap(minimapCtx, worldData, gameState.hotPoop, now);
+    }
+
+    // Golden Goose on minimap — pulsing gold 🪿 dot — Session 130
+    if (gameState.goldenGoose && worldData) {
+      Renderer.drawGoldenGooseOnMinimap(minimapCtx, worldData, gameState.goldenGoose, now);
     }
 
     // Chaos Oracle on minimap — pulsing purple 🔮 dot — Session 121
@@ -17463,6 +17550,19 @@
       html += `<div class="bm-buff-pill" style="background:rgba(100,40,0,0.95);border-color:#ff7700;color:#ffaa33;animation:kingpinGlow 0.5s ease-in-out infinite alternate;font-weight:bold;">🏷️ YOU ARE IT! — FLY CLOSE TO TAG SOMEONE · ${itSecs}s · +30% XP on hits!</div>`;
     } else if (s.birdTagActive && s.birdTagItName) {
       html += `<div class="bm-buff-pill" style="background:rgba(60,30,0,0.88);border-color:#ff9933;color:#ffcc77;">🏷️ BIRD TAG — ${s.birdTagItName} is IT! Stay away!</div>`;
+    }
+
+    // === GOLDEN GOOSE (Session 130) ===
+    if (gameState.goldenGoose) {
+      const gg = gameState.goldenGoose;
+      if (gg.state === 'wandering') {
+        const secsLeft = Math.max(0, Math.ceil((gg.expiresAt - Date.now()) / 1000));
+        const minsLeft = Math.floor(secsLeft / 60);
+        const sLeft    = secsLeft % 60;
+        html += `<div class="bm-buff-pill" style="background:rgba(80,60,0,0.9);border-color:#ffd700;color:#ffe080;">🪿 GOLDEN GOOSE — ${gg.eggsLaid} egg${gg.eggsLaid !== 1 ? 's' : ''} laid · ${minsLeft}m${sLeft}s · STAY BACK for patience bonus! (55px+)</div>`;
+      } else if (gg.state === 'scared') {
+        html += `<div class="bm-buff-pill" style="background:rgba(80,30,0,0.95);border-color:#ff9900;color:#ffcc44;animation:kingpinGlow 0.4s ease-in-out infinite alternate;font-weight:bold;">🪿💨 GOOSE PANICKED — GRAB THE SCATTERED EGGS!</div>`;
+      }
     }
 
     el.innerHTML = html;

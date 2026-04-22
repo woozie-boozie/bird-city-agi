@@ -6151,6 +6151,85 @@ window.Renderer = {
     minimapCtx.restore();
   },
 
+  // ============================================================
+  // Session 130: The Golden Goose
+  // ============================================================
+  drawGoldenGoose(ctx, camera, goose, now) {
+    if (!goose) return;
+    const sx = goose.x - camera.x + camera.screenW / 2;
+    const sy = goose.y - camera.y + camera.screenH / 2;
+
+    const pulse = 0.5 + 0.5 * Math.sin(now * 0.003);
+    const isScared = goose.state === 'scared';
+
+    ctx.save();
+
+    // Glow aura — gold when calm, orange-red when scared
+    const glowColor = isScared ? '#ff6600' : '#ffd700';
+    ctx.shadowColor = glowColor;
+    ctx.shadowBlur = 20 + 10 * pulse;
+    const auraAlpha = isScared ? (0.5 + 0.3 * pulse) : (0.3 + 0.2 * pulse);
+    const grad = ctx.createRadialGradient(sx, sy, 4, sx, sy, 32);
+    grad.addColorStop(0, isScared ? `rgba(255,120,0,${auraAlpha})` : `rgba(255,220,0,${auraAlpha})`);
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(sx, sy, 32, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Goose emoji
+    ctx.font = `${isScared ? 28 + 4 * pulse : 26}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('🪿', sx, sy);
+
+    // State label above
+    ctx.font = 'bold 9px Arial';
+    ctx.fillStyle = isScared ? '#ff6600' : '#ffd700';
+    ctx.shadowColor = '#000'; ctx.shadowBlur = 3;
+    const stateLabel = isScared ? '🪿💨 PANICKING!' : `🪿 GOLDEN GOOSE · ${goose.eggsLaid} egg${goose.eggsLaid !== 1 ? 's' : ''} laid`;
+    ctx.fillText(stateLabel, sx, sy - 22);
+
+    // Countdown when calm
+    if (!isScared && goose.expiresAt) {
+      const secsLeft = Math.max(0, Math.ceil((goose.expiresAt - now) / 1000));
+      const mLeft = Math.floor(secsLeft / 60);
+      const sLeft = secsLeft % 60;
+      ctx.font = '8px Arial';
+      ctx.fillStyle = '#ffe080';
+      ctx.fillText(`Stay back! Leaves in ${mLeft}m${sLeft}s`, sx, sy + 26);
+    }
+
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  },
+
+  drawGoldenGooseOnMinimap(minimapCtx, worldData, goose, now) {
+    if (!goose) return;
+    const scale = minimapCtx.canvas.width / worldData.width;
+    const cx = goose.x * scale;
+    const cy = goose.y * scale;
+    const pulse = 0.5 + 0.5 * Math.sin(now * 0.004);
+    const isScared = goose.state === 'scared';
+
+    minimapCtx.save();
+    minimapCtx.shadowColor = isScared ? '#ff8800' : '#ffd700';
+    minimapCtx.shadowBlur = 8 * pulse;
+    minimapCtx.fillStyle = isScared
+      ? `rgba(255,120,0,${0.7 + 0.3 * pulse})`
+      : `rgba(255,200,0,${0.7 + 0.3 * pulse})`;
+    minimapCtx.beginPath();
+    minimapCtx.arc(cx, cy, 3.5 + pulse, 0, Math.PI * 2);
+    minimapCtx.fill();
+    minimapCtx.shadowBlur = 0;
+    minimapCtx.font = '8px sans-serif';
+    minimapCtx.textAlign = 'center';
+    minimapCtx.textBaseline = 'middle';
+    minimapCtx.fillText('🪿', cx, cy);
+    minimapCtx.restore();
+  },
+
   // ── Delivery Rush (Session 124) ───────────────────────────────
   drawDeliveryRush(ctx, camera, dr, now) {
     if (!dr) return;

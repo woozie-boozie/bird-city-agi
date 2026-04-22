@@ -219,6 +219,9 @@ const DAILY_CHALLENGE_POOL = [
   // Session 129: Bird Tag
   { id: 'tag_escape',  title: 'Escape Artist', desc: 'Be IT in Bird Tag and successfully tag someone else',    target: 1, trackType: 'tag_escape',  reward: { xp: 180, coins: 90  } },
   { id: 'tag_master',  title: 'Tag Master',    desc: 'Tag 3 birds in Bird Tag events during this session',     target: 3, trackType: 'tag_master',  reward: { xp: 250, coins: 125 } },
+  // Session 130: Golden Goose
+  { id: 'egg_collector',  title: 'Egg Collector',  desc: 'Collect 3 golden eggs laid by the Golden Goose',           target: 3, trackType: 'goose_egg_collected', reward: { xp: 180, coins: 90  } },
+  { id: 'goose_whisperer', title: 'Goose Whisperer', desc: 'Collect a goose egg without scaring the goose away',     target: 1, trackType: 'goose_whisper',      reward: { xp: 220, coins: 110 } },
 ];
 
 // ============================================================
@@ -949,6 +952,16 @@ class GameEngine {
     // Event ends after 3 successful tag transfers or 4 minutes total.
     this.birdTag = null; // null | { itId, itName, itGang, startedAt, endsAt, totalTags, tagCooldowns: Map<birdId, timestamp> }
     this._birdTagTimer = Date.now() + this._randomRange(5 * 60000, 8 * 60000);
+
+    // === THE GOLDEN GOOSE ===
+    // A plump wandering goose waddles around the city laying golden eggs. She's easily
+    // startled — fly too close and she panics, scattering eggs everywhere. Patience is
+    // rewarded: stand back while she lays, then collect eggs quietly. Or spook her for a
+    // big scatter — but scare her from too close and you miss the patience bonus.
+    // Spawns every 22–32 minutes. Lays 1 egg every 15–25s. Scares at 55px proximity.
+    this.goldenGoose = null; // null | { x, y, vx, vy, state, stateAt, eggsLaid, spawnedAt, expiresAt, dirChangeAt, layTimer }
+    this._goldenGooseTimer = Date.now() + this._randomRange(22 * 60000, 32 * 60000);
+    this.goldenGooseEggIds = new Set(); // IDs of active goose_egg items in this.foods
 
     // === AURORA BOREALIS ===
     // A rare, breathtaking night spectacle — colored light ribbons flow across the sky.
@@ -2390,6 +2403,9 @@ class GameEngine {
 
     // === Bird Tag ===
     this._tickBirdTag(now);
+
+    // === Golden Goose ===
+    this._tickGoldenGoose(dt, now);
   }
 
   // ============================================================
@@ -5731,6 +5747,41 @@ class GameEngine {
             x: kx, y: ky,
           });
           break; // one kite per tick per bird
+        }
+      }
+    }
+
+    // === Golden Goose egg auto-collect (fly within 40px) ===
+    if (this.goldenGooseEggIds.size > 0) {
+      for (const eid of this.goldenGooseEggIds) {
+        const egg = this.foods.get(eid);
+        if (!egg || !egg.active) { this.goldenGooseEggIds.delete(eid); continue; }
+        const edx = bird.x - egg.x;
+        const edy = bird.y - egg.y;
+        if (Math.sqrt(edx * edx + edy * edy) < 40) {
+          egg.active = false;
+          this.goldenGooseEggIds.delete(eid);
+          bird.food = Math.min(100, bird.food + 30);
+          bird.coins += 45;
+          bird.xp += 60;
+          this._trackDailyProgress(bird, 'goose_egg_collected', 1);
+          this._trackDailyProgress(bird, 'coins_earned', 45);
+          // Goose Whisperer: collect an egg without ever scaring the goose
+          if (this.goldenGoose && this.goldenGoose.state !== 'scared' && this.goldenGoose.state !== 'fled' && !egg.scatterEgg) {
+            this._trackDailyProgress(bird, 'goose_whisper', 1);
+          }
+          const newLvl = world.getLevelFromXP(bird.xp);
+          if (newLvl !== bird.level) {
+            bird.level = newLvl;
+            bird.type  = world.getBirdTypeForLevel(newLvl);
+            this.events.push({ type: 'evolve', birdId: bird.id, name: bird.name, birdType: bird.type });
+          }
+          this.events.push({
+            type: 'goose_egg_collected',
+            birdId: bird.id, name: bird.name, gangTag: bird.gangTag || null,
+            x: egg.x, y: egg.y,
+          });
+          break; // one egg per tick
         }
       }
     }
@@ -9670,6 +9721,14 @@ class GameEngine {
       itTimeLeft: (this.birdTag && this.birdTag.itId === bird.id) ? Math.max(0, this.birdTag.itTimeoutAt - Date.now()) : 0,
       birdTagActive: !!this.birdTag,
       birdTagItName: this.birdTag ? this.birdTag.itName : null,
+      // Session 130: Golden Goose
+      goldenGoose: this.goldenGoose ? {
+        x: this.goldenGoose.x,
+        y: this.goldenGoose.y,
+        state: this.goldenGoose.state,
+        eggsLaid: this.goldenGoose.eggsLaid,
+        expiresAt: this.goldenGoose.expiresAt,
+      } : null,
       // Delivery Rush
       deliveryRush: this.deliveryPackage ? {
         state: this.deliveryPackage.state,
@@ -17898,6 +17957,15 @@ class GameEngine {
         icon: '🎉',
         headline: `EL PIÑATA GIGANTE SMASHED — ${killerLabel}`,
         subline: 'Candy, coins, and mystery items rained from the sky. Property damage is "extensive." Officials refuse to comment.',
+      });
+    }
+
+    // Golden Goose headline
+    if (stats.goldenGooseVisits > 0) {
+      headlines.push({
+        icon: '🪿',
+        headline: `GOLDEN GOOSE SPOTTED IN BIRD CITY — ${stats.goldenGooseVisits > 1 ? `${stats.goldenGooseVisits} VISITS TODAY` : 'RARE VISITOR LAYS GOLDEN EGGS'}`,
+        subline: 'Shimmering eggs found scattered across streets. "We were told to stay back," admits local bird. "We did not stay back."',
       });
     }
 
@@ -28733,6 +28801,205 @@ class GameEngine {
     this._birdTagTimer = now + this._randomRange(5 * 60000, 8 * 60000);
   }
   // ─── end Bird Tag ────────────────────────────────────────────────────────
+
+  // ============================================================
+  // THE GOLDEN GOOSE
+  // A plump wandering goose lays golden eggs around the city.
+  // Startle her (get within 55px) and she panics — scattering
+  // eggs but rewarding patient birds who stayed back.
+  // ============================================================
+
+  _tickGoldenGoose(dt, now) {
+    const WORLD_W = 3000, WORLD_H = 3000;
+
+    // --- Spawn timer ---
+    if (!this.goldenGoose) {
+      if (now < this._goldenGooseTimer) return;
+      const anyOnline = this.birds.size > 0;
+      if (!anyOnline) { this._goldenGooseTimer = now + 15000; return; }
+
+      // Pick a wandering start position away from map edges
+      const sx = 300 + Math.random() * 2400;
+      const sy = 300 + Math.random() * 2400;
+      // Random initial velocity (40px/s)
+      const angle = Math.random() * Math.PI * 2;
+      this.goldenGoose = {
+        x: sx, y: sy,
+        vx: Math.cos(angle) * 40,
+        vy: Math.sin(angle) * 40,
+        state: 'wandering',   // 'wandering' | 'scared' | 'fled'
+        stateAt: now,
+        eggsLaid: 0,
+        spawnedAt: now,
+        expiresAt: now + 5 * 60000,  // 5-minute lifetime
+        dirChangeAt: now + this._randomRange(3000, 6000),
+        layTimer:    now + this._randomRange(15000, 25000),
+        scatterDone: false,
+      };
+      this.gazetteStats = this.gazetteStats || {};
+      this.gazetteStats.goldenGooseVisits = (this.gazetteStats.goldenGooseVisits || 0) + 1;
+      this.events.push({ type: 'golden_goose_appeared', x: sx, y: sy });
+      return;
+    }
+
+    const g = this.goldenGoose;
+
+    // --- Fled / expired cleanup ---
+    if (g.state === 'fled') {
+      // Wait until the goose is off-screen or 3 seconds after scaring
+      const offMap = g.x < -100 || g.x > WORLD_W + 100 || g.y < -100 || g.y > WORLD_H + 100;
+      if (offMap || now > g.stateAt + 10000) {
+        // Clean up any remaining goose eggs that weren't collected
+        for (const eid of this.goldenGooseEggIds) {
+          const egg = this.foods.get(eid);
+          if (egg) egg.active = false;
+          this.goldenGooseEggIds.delete(eid);
+        }
+        this.goldenGoose = null;
+        this._goldenGooseTimer = now + this._randomRange(22 * 60000, 32 * 60000);
+        this.events.push({ type: 'golden_goose_fled' });
+        return;
+      }
+      // Keep moving fast toward map edge
+      g.x += g.vx * (dt / 1000);
+      g.y += g.vy * (dt / 1000);
+      return;
+    }
+
+    // --- Expire by time ---
+    if (now >= g.expiresAt && g.state === 'wandering') {
+      // Peaceful departure — just fade out
+      this.events.push({ type: 'golden_goose_fled', peaceful: true });
+      for (const eid of this.goldenGooseEggIds) {
+        const egg = this.foods.get(eid);
+        if (egg) egg.active = false;
+        this.goldenGooseEggIds.delete(eid);
+      }
+      this.goldenGoose = null;
+      this._goldenGooseTimer = now + this._randomRange(22 * 60000, 32 * 60000);
+      return;
+    }
+
+    // --- Scared state: sprint toward nearest map edge ---
+    if (g.state === 'scared') {
+      if (!g.scatterDone) {
+        g.scatterDone = true;
+        // Scatter 6-10 eggs around the goose's current position
+        const numEggs = 6 + Math.floor(Math.random() * 5);
+        for (let i = 0; i < numEggs; i++) {
+          const spreadAngle = (Math.PI * 2 * i) / numEggs + (Math.random() - 0.5) * 0.8;
+          const spreadDist  = 40 + Math.random() * 80;
+          const ex = g.x + Math.cos(spreadAngle) * spreadDist;
+          const ey = g.y + Math.sin(spreadAngle) * spreadDist;
+          const eid = 'food_goose_egg_' + uid();
+          this.foods.set(eid, {
+            id: eid,
+            type: 'goose_egg',
+            x: ex, y: ey,
+            value: 30,
+            active: true,
+            scatterEgg: true,  // scattered (not patiently laid)
+            respawnAt: 0,
+          });
+          this.goldenGooseEggIds.add(eid);
+        }
+
+        // Patience reward: birds between 55-150px earn a bonus
+        for (const bird of this.birds.values()) {
+          if (!bird.connected) continue;
+          const dx = bird.x - g.x;
+          const dy = bird.y - g.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist >= 55 && dist <= 150) {
+            bird.xp    += 50;
+            bird.coins += 20;
+            const newLvl = world.getLevelFromXP(bird.xp);
+            if (newLvl !== bird.level) {
+              bird.level = newLvl;
+              bird.type  = world.getBirdTypeForLevel(newLvl);
+              this.events.push({ type: 'evolve', birdId: bird.id, name: bird.name, birdType: bird.type });
+            }
+            this.events.push({
+              type: 'goose_patience_reward',
+              birdId: bird.id, name: bird.name,
+            });
+          }
+        }
+
+        // Sprint direction: away from the nearest bird or toward nearest map edge
+        let fleeDx = g.x < WORLD_W / 2 ? -1 : 1;
+        let fleeDy = g.y < WORLD_H / 2 ? -1 : 1;
+        const mag = Math.sqrt(fleeDx * fleeDx + fleeDy * fleeDy);
+        g.vx = (fleeDx / mag) * 200;
+        g.vy = (fleeDy / mag) * 200;
+
+        this.events.push({
+          type: 'golden_goose_scared',
+          x: g.x, y: g.y,
+          numEggs,
+        });
+      }
+
+      // Move toward edge
+      g.x += g.vx * (dt / 1000);
+      g.y += g.vy * (dt / 1000);
+
+      // Transition to fled once far enough
+      const offEdge = g.x < 50 || g.x > WORLD_W - 50 || g.y < 50 || g.y > WORLD_H - 50;
+      if (offEdge) g.state = 'fled';
+      return;
+    }
+
+    // --- Wandering state ---
+
+    // Direction changes
+    if (now >= g.dirChangeAt) {
+      const angle = Math.atan2(g.vy, g.vx) + (Math.random() - 0.5) * Math.PI;
+      g.vx = Math.cos(angle) * 40;
+      g.vy = Math.sin(angle) * 40;
+      g.dirChangeAt = now + this._randomRange(3000, 6000);
+    }
+
+    // Move and bounce off edges
+    g.x += g.vx * (dt / 1000);
+    g.y += g.vy * (dt / 1000);
+    if (g.x < 100)           { g.x = 100;           g.vx = Math.abs(g.vx); }
+    if (g.x > WORLD_W - 100) { g.x = WORLD_W - 100; g.vx = -Math.abs(g.vx); }
+    if (g.y < 100)           { g.y = 100;            g.vy = Math.abs(g.vy); }
+    if (g.y > WORLD_H - 100) { g.y = WORLD_H - 100; g.vy = -Math.abs(g.vy); }
+
+    // Lay an egg
+    if (now >= g.layTimer && g.eggsLaid < 8) {
+      const eid = 'food_goose_egg_' + uid();
+      this.foods.set(eid, {
+        id: eid,
+        type: 'goose_egg',
+        x: g.x + (Math.random() - 0.5) * 30,
+        y: g.y + (Math.random() - 0.5) * 30,
+        value: 30,
+        active: true,
+        scatterEgg: false,
+        respawnAt: 0,
+      });
+      this.goldenGooseEggIds.add(eid);
+      g.eggsLaid++;
+      g.layTimer = now + this._randomRange(15000, 25000);
+      this.events.push({ type: 'golden_goose_laid', x: g.x, y: g.y, eggsLaid: g.eggsLaid });
+    }
+
+    // Scare detection — any bird within 55px
+    for (const bird of this.birds.values()) {
+      if (!bird.connected) continue;
+      const dx = bird.x - g.x;
+      const dy = bird.y - g.y;
+      if (Math.sqrt(dx * dx + dy * dy) < 55) {
+        g.state = 'scared';
+        g.stateAt = now;
+        break;
+      }
+    }
+  }
+  // ─── end Golden Goose ────────────────────────────────────────────────────
 
 }
 

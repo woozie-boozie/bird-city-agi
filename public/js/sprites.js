@@ -1110,6 +1110,43 @@ window.Sprites = {
       ctx.textAlign = 'center';
       ctx.fillStyle = 'rgba(200, 80, 130, 0.85)';
       ctx.fillText('🌸', 0, -15);
+    } else if (type === 'goose_egg') {
+      // Golden Goose egg — Session 130: shimmering golden egg
+      const t = Date.now();
+      const pulse = 0.5 + 0.5 * Math.sin(t * 0.005);
+      // Outer gold glow halo
+      const eggGlow = ctx.createRadialGradient(0, 0, 2, 0, 0, 13);
+      eggGlow.addColorStop(0, `rgba(255, 220, 50, ${0.55 + pulse * 0.3})`);
+      eggGlow.addColorStop(1, 'rgba(255, 180, 0, 0)');
+      ctx.fillStyle = eggGlow;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 13, 15, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Egg body — warm gold gradient
+      const eggBody = ctx.createRadialGradient(-2, -3, 1, 0, 0, 8);
+      eggBody.addColorStop(0, `rgb(255, ${Math.floor(235 + pulse * 15)}, ${Math.floor(80 + pulse * 30)})`);
+      eggBody.addColorStop(0.7, `rgb(240, ${Math.floor(175 + pulse * 20)}, 30)`);
+      eggBody.addColorStop(1, 'rgb(200, 130, 10)');
+      ctx.fillStyle = eggBody;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 6, 8, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Gold outline
+      ctx.strokeStyle = `rgba(255, 200, 0, ${0.7 + pulse * 0.2})`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 6, 8, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      // Bright highlight
+      ctx.fillStyle = `rgba(255, 255, 200, ${0.45 + pulse * 0.35})`;
+      ctx.beginPath();
+      ctx.ellipse(-1.5, -2.5, 2.5, 3.5, -0.3, 0, Math.PI * 2);
+      ctx.fill();
+      // "✨" shimmer label
+      ctx.font = '9px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = `rgba(255, 230, 0, ${0.7 + pulse * 0.3})`;
+      ctx.fillText('✨', 0, -13);
     } else {
       // Generic food blob
       ctx.beginPath();
