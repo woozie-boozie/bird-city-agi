@@ -4470,6 +4470,34 @@ Every 5–8 minutes, one random bird becomes "IT" — marked with a pulsing oran
 
 **Creative intent**: Bird Tag fills the SOCIAL pillar's most glaring gap — a direct player-vs-player chase mechanic that needs NO button presses, NO coins, NO entry fee. The moment someone is tagged IT, the whole city dynamic shifts. Non-IT birds watch the orange glow hunting through the minimap and decide: do I stay near other birds as a potential tag target, or do I scatter? The +30% XP incentive means the IT bird WANTS to keep fighting (not just flee to someone and touch them). The 60-second burn penalty is the killer design: if nobody cooperates to accept the tag, the IT bird bleeds coins, creating social pressure that forces the tag game forward. Three transfers and the event resets cleanly — never overstays its welcome. Pure SOCIAL + CARNAGE energy — the city now plays tag.
 
+**Session 130 — 2026-04-22: The Golden Goose — Peaceful Visitor with Patience Mechanic**
+Bird City's first purely peaceful NPC visitor. A shimmering golden goose wanders the city every 22–32 minutes, laying glowing golden eggs as it strolls — rewarding birds who resist their pooping instincts and give it space.
+
+**The Golden Goose mechanics (`server/game.js`):**
+- Spawns every 22–32 minutes at a random city position (300–2700px), wanders at 40px/s with gentle direction changes every 3–6 seconds (small angular deltas — it's strolling, not fleeing)
+- 5-minute lifetime; bounces off map edges at 100px margin to stay visible in the city
+- **Egg laying**: drops a golden `goose_egg` food item every 15–25 seconds (max 8 per visit), placed at the goose's feet — auto-collect by flying within 40px (+30 food, +45 coins, +60 XP)
+- **Scare trigger**: any bird that flies within 55px of the goose spooks it — `scared` state begins
+- **Patience reward**: during the scared sprint, birds that WERE within 55–150px at the moment of scaring get a patience bonus (+50 XP +20 coins) — you were watching from a respectful distance
+- **Scatter on scare**: the goose scatters 6–10 golden eggs in a burst around its position before bolting — rewarding the whole city for the disruption
+- **Fled state**: goose sprints toward the nearest map corner at 200px/s, despawns off-screen after 10 seconds, resets the 22–32 minute timer
+- Peaceful expiry: if nobody scares it for 5 minutes, it walks off quietly with a "wandered away" message — a rare calm outcome
+
+**Daily challenges (2 new in pool):**
+- 🪿 **Egg Collector**: Collect 3 golden eggs laid by the Golden Goose (180 XP, 90c)
+- 🪿 **Goose Whisperer**: Collect a goose egg WITHOUT scaring the goose away (220 XP, 110c) — requires approaching from 40px while keeping the goose in wandering state, not scared
+
+**Visual system:**
+- `drawGoldenGoose()` in `renderer.js`: pulsing gold radial aura, 🪿 emoji at large scale, "🪿 GOLDEN GOOSE" gold label above, egg count badge ("🥚 N eggs laid"), countdown timer below — gold when wandering, orange when scared
+- `drawGoldenGooseOnMinimap()`: pulsing gold dot with glow shadow at goose's real-time position
+- `goose_egg` food type in `sprites.js`: shimmering animated golden egg — outer gold glow radial gradient, warm gradient body (gold→amber→brown edges), bright pulsing highlight, `✨` shimmer label above — unmistakable premium item
+- Off-screen direction arrow: gold 🪿 arrow (orange when scared) pointing toward the goose when it's off-screen
+- Active buffs HUD: gold "🪿 GOLDEN GOOSE — N eggs laid · Xm Xs · STAY BACK for patience bonus! (55px+)" pill when wandering; orange pulsing "🪿💨 GOOSE PANICKED — GRAB THE SCATTERED EGGS!" when scared
+
+**Gazette headline:** "🪿 GOLDEN GOOSE SPOTTED IN BIRD CITY — RARE VISITOR LAYS GOLDEN EGGS" with satirical subline: "Shimmering eggs found scattered across streets. 'We were told to stay back,' admits local bird. 'We did not stay back.'"
+
+**Creative intent**: Every NPC in Bird City demands combat. The Golden Goose is the first NPC that demands RESTRAINT — and rewards it. The core tension is beautiful: you see a shimmering golden goose ahead dropping valuable eggs, and you must fight every Bird City instinct to NOT poop on it. The patience reward (+50 XP +20 coins) goes to birds who watched from a safe distance when someone else inevitably broke. The scatter on scare makes even the failure mode exciting: a burst of 6–10 eggs drops and everyone scrambles. The Goose Whisperer daily challenge is the hardest "peaceful" task in the game — collect an egg without scaring the goose by approaching from exactly the right angle. Pure DISCOVERY + CARNAGE energy — the city now has something worth protecting.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -4743,3 +4771,19 @@ Built the Territory Control System on top of the existing upstream code:
 - Bird Tag × Crime Wave: while a Crime Wave is active, the IT burn penalty doubles (−50% coins) — the city punishes hesitation in chaos
 - Bird Tag × Kingpin: if the Kingpin is tagged IT, their passive tribute is suspended for the duration — the city won't pay tribute to a bird on the run
 - Bird Tag chain bonus: if the same bird is tagged IT twice in one session, all XP bonuses double for the second stint (veteran IT player reward)
+- ~~The Golden Goose — peaceful wandering NPC visitor that lays golden eggs, rewards patience, scatters egg burst when scared~~ (DONE Session 130)
+- Golden Goose × Aurora: if the goose visits during the Aurora Borealis, its eggs give +3× rewards (sacred golden eggs under the celestial light)
+- Golden Goose × Cherry Blossoms: during spring, the goose wanders the park specifically, closer to the Sacred Pond — blossom petals drift around it as it walks
+- Golden Goose × Crime Wave: during a crime wave, the goose panics immediately on spawn (skips wandering phase) and scatter-drops all eggs at once — chaos bonus for a chaotic time
+- Golden Goose × Kingpin: if the Kingpin scares the goose, the whole city gets the scatter eggs (Kingpin's recklessness benefits everyone) — a rare populist moment
+- The Cursed Poop — an NPC that curses the first bird who poops in a 200px radius of it; victim gets reversed controls for 15 seconds
+- Charity Box: a donation box appears in the park every 45 minutes; first bird to donate 50c gets +400 XP and a city-wide "generous bird" callout — rewards altruism
+- The Stunt Ramp: a glowing yellow ramp appears on a road corner, birds who fly into it get a brief aerial somersault animation + +30 XP — pure discovery spectacle
+- Flock Formation Missions: the mission board adds flock-specific missions (all 3+ flock members must reach a point) — cooperative movement challenges
+- NPC Parade: 8 NPCs march in a line across the city periodically, hitting the whole line with one wide poop scores chain bonus XP
+- The Weathervane: a spinning rooster weathervane atop a building predicts the next weather 90 seconds early — only visible if you're within 120px of it (discovery reward)
+- Street Performer: a juggling NPC appears in a plaza, watch them for 10 seconds to earn XP (patience reward), poop them for small coins but lose the watch bonus
+- The Detective Bird: a fedora-wearing NPC who randomly accuses an online bird of "looking suspicious" — that bird gets +10 heat city-wide. Can be cleared by visiting the Police Station.
+- Lost Chick Event: a baby bird is separated from its parent somewhere in the city — escort it 500px to the nest (fly within 60px for 8s) for a big reward; rivals can intercept by flying between you and the chick
+- Golden Goose Egg × Sewer: if a golden egg falls into a manhole cover (goose walks over one while scared), it drops into the sewer as a premium loot cache
+- Golden Goose daily gazette tracking: if the goose was scared vs walked away peacefully — different headline tone each morning
