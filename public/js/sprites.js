@@ -9452,4 +9452,157 @@ window.Sprites = {
 
     ctx.restore();
   },
+
+  drawParadeMarshal(ctx, x, y, batonAngle, hp, state) {
+    const maxHp = 60;
+    ctx.save();
+    ctx.translate(x, y);
+
+    const isDead = state === 'dead';
+
+    // Ground shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.18)';
+    ctx.beginPath();
+    ctx.ellipse(1, 4, 10, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Fancy uniform aura glow
+    const auraGrd = ctx.createRadialGradient(0, 0, 4, 0, 0, 22);
+    auraGrd.addColorStop(0, 'rgba(200,150,255,0.22)');
+    auraGrd.addColorStop(1, 'rgba(200,150,255,0)');
+    ctx.fillStyle = auraGrd;
+    ctx.beginPath();
+    ctx.arc(0, 0, 22, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Body — deep royal purple uniform
+    ctx.fillStyle = isDead ? '#555' : '#5a1a8a';
+    ctx.beginPath();
+    ctx.ellipse(0, 2, 8, 11, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Gold trim stripe down chest
+    ctx.strokeStyle = isDead ? '#888' : '#ffd700';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, -7);
+    ctx.lineTo(0, 10);
+    ctx.stroke();
+
+    // Gold epaulettes
+    ctx.fillStyle = isDead ? '#888' : '#ffd700';
+    ctx.beginPath();
+    ctx.ellipse(-9, -2, 5, 3, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(9, -2, 5, 3, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Head
+    ctx.fillStyle = isDead ? '#666' : '#c88050';
+    ctx.beginPath();
+    ctx.arc(0, -9, 6, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Beak
+    ctx.fillStyle = isDead ? '#888' : '#e8a040';
+    ctx.beginPath();
+    ctx.moveTo(0, -10);
+    ctx.lineTo(5, -9);
+    ctx.lineTo(0, -8);
+    ctx.closePath();
+    ctx.fill();
+
+    // Eyes — X if dead, beady if alive
+    if (isDead) {
+      ctx.strokeStyle = '#ff4444';
+      ctx.lineWidth = 1.5;
+      // Left X
+      ctx.beginPath(); ctx.moveTo(-3, -10); ctx.lineTo(-1, -8); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-1, -10); ctx.lineTo(-3, -8); ctx.stroke();
+      // Right X
+      ctx.beginPath(); ctx.moveTo(1, -10); ctx.lineTo(3, -8); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(3, -10); ctx.lineTo(1, -8); ctx.stroke();
+    } else {
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(-2, -10, 2, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(2, -10, 2, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#111';
+      ctx.beginPath(); ctx.arc(-2, -10, 1.1, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(2, -10, 1.1, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // Tall drum-major shako hat
+    ctx.fillStyle = isDead ? '#444' : '#3a0a6a';
+    // Hat brim
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(-8, -17, 16, 2, 1);
+    else ctx.rect(-8, -17, 16, 2);
+    ctx.fill();
+    // Hat body
+    ctx.fillStyle = isDead ? '#333' : '#2a0055';
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(-6, -30, 12, 14, 2);
+    else ctx.rect(-6, -30, 12, 14);
+    ctx.fill();
+    // Gold hat band
+    ctx.fillStyle = isDead ? '#777' : '#ffd700';
+    ctx.fillRect(-6, -19, 12, 2);
+    // Gold hat plume
+    if (!isDead) {
+      ctx.fillStyle = '#ff4488';
+      ctx.beginPath();
+      ctx.ellipse(0, -33, 3, 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Baton — animated via batonAngle
+    if (!isDead) {
+      ctx.save();
+      ctx.translate(8, -2);
+      ctx.rotate(batonAngle || 0);
+      // Baton stick
+      ctx.strokeStyle = '#c8a000';
+      ctx.lineWidth = 2.5;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(0, -16);
+      ctx.stroke();
+      // Baton ball
+      ctx.fillStyle = '#ffd700';
+      ctx.beginPath();
+      ctx.arc(0, -17, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // HP bar
+    if (hp > 0 && hp < maxHp) {
+      const barW = 28, barH = 4, barX = -barW / 2, barY = 16;
+      // Background
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      if (ctx.roundRect) ctx.roundRect(barX - 1, barY - 1, barW + 2, barH + 2, 2);
+      else ctx.rect(barX - 1, barY - 1, barW + 2, barH + 2);
+      ctx.fill();
+      // Fill
+      const frac = hp / maxHp;
+      ctx.fillStyle = frac > 0.5 ? '#66dd44' : frac > 0.25 ? '#ffcc00' : '#ff4444';
+      if (ctx.roundRect) ctx.roundRect(barX, barY, barW * frac, barH, 2);
+      else ctx.rect(barX, barY, barW * frac, barH);
+      ctx.fill();
+    }
+
+    // Label
+    ctx.font = 'bold 7px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillStyle = isDead ? '#aaa' : '#ffd700';
+    ctx.shadowColor = '#000';
+    ctx.shadowBlur = 4;
+    ctx.fillText(isDead ? '💀 MARSHAL DOWN' : '🎺 MARSHAL', 0, -32);
+    ctx.shadowBlur = 0;
+
+    ctx.restore();
+  },
 };

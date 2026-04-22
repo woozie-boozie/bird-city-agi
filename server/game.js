@@ -222,6 +222,9 @@ const DAILY_CHALLENGE_POOL = [
   // Session 130: Golden Goose
   { id: 'egg_collector',  title: 'Egg Collector',  desc: 'Collect 3 golden eggs laid by the Golden Goose',           target: 3, trackType: 'goose_egg_collected', reward: { xp: 180, coins: 90  } },
   { id: 'goose_whisperer', title: 'Goose Whisperer', desc: 'Collect a goose egg without scaring the goose away',     target: 1, trackType: 'goose_whisper',      reward: { xp: 220, coins: 110 } },
+  // Session 131: Parade Crasher
+  { id: 'parade_crasher', title: 'Parade Crasher',  desc: 'Hit 10 parade pigeons during a city parade',              target: 10, trackType: 'parade_pigeon_hit',   reward: { xp: 180, coins: 90  } },
+  { id: 'kill_the_beat',  title: 'Kill The Beat',   desc: 'Defeat the Parade Marshal and ruin the parade',           target: 1,  trackType: 'parade_marshal_killed', reward: { xp: 300, coins: 150 } },
 ];
 
 // ============================================================
@@ -3055,31 +3058,55 @@ class GameEngine {
     const loc = world.EVENT_LOCATIONS.parade;
     this.worldEvent = {
       type: 'parade',
-      endsAt: now + 40000,
+      endsAt: now + 90000,
       startedAt: now,
       x: loc.startX,
       y: loc.startY,
+      hits: 0,
+      milestones: new Set(),
+      panicUntil: 0,
+      marshalId: 'evt_parade_marshal',
+      marshalHp: 3,
+      marshalDead: false,
+      contributors: new Map(), // birdId -> hits for XP share
     };
 
-    // Spawn 30 parade pigeons at left edge of horizontal road
+    // Spawn 30 parade pigeons in formation rows
     for (let i = 0; i < 30; i++) {
+      const row = Math.floor(i / 6);
+      const col = i % 6;
       const npc = {
         id: 'evt_parade_' + i,
         type: 'parade_pigeon',
-        x: loc.startX + (i % 6) * 30,
-        y: loc.startY + Math.floor(i / 6) * 20 - 20,
+        x: loc.startX + col * 40,
+        y: loc.startY + row * 22 - 40,
+        baseY: loc.startY + row * 22 - 40,
         targetX: loc.endX,
-        targetY: loc.startY + Math.floor(i / 6) * 20 - 20,
-        speed: 70 + Math.random() * 10,
+        speed: 65 + Math.random() * 12,
         state: 'marching',
-        stateTimer: 0,
+        panicAngle: 0,
         poopedOn: 0,
-        hasFood: false,
       };
       this.worldEventNPCs.set(npc.id, npc);
     }
 
-    this.events.push({ type: 'event_start', eventType: 'parade', x: loc.startX, y: loc.startY, duration: 40000 });
+    // Spawn the Parade Marshal at the very front
+    const marshal = {
+      id: 'evt_parade_marshal',
+      type: 'parade_marshal',
+      x: loc.startX - 60,
+      y: loc.startY - 10,
+      baseY: loc.startY - 10,
+      targetX: loc.endX,
+      speed: 70,
+      state: 'leading',
+      hp: 3,
+      batonAngle: 0,
+    };
+    this.worldEventNPCs.set(marshal.id, marshal);
+
+    this.events.push({ type: 'event_start', eventType: 'parade', x: loc.startX, y: loc.startY, duration: 90000 });
+    this.events.push({ type: 'parade_start', x: loc.startX, y: loc.startY });
   }
 
   _updateHawk(dt, now) {
@@ -3212,20 +3239,68 @@ class GameEngine {
   }
 
   _updateParade(dt, now) {
-    // Move parade pigeons and track center
+    if (!this.worldEvent || this.worldEvent.type !== 'parade') return;
+    const we = this.worldEvent;
+    const isPanicking = now < we.panicUntil;
+
     let sumX = 0, count = 0;
+    let allExited = true;
+
     for (const [id, npc] of this.worldEventNPCs) {
+      if (npc.type === 'parade_marshal') {
+        if (npc.state === 'dead') continue;
+        // Marshal leads the parade
+        const dx = npc.targetX - npc.x;
+        if (Math.abs(dx) > 2) {
+          npc.x += (dx > 0 ? 1 : -1) * npc.speed * dt;
+          allExited = false;
+        }
+        // Animate baton
+        npc.batonAngle = Math.sin(now * 0.006) * 0.6;
+        sumX += npc.x;
+        count++;
+        continue;
+      }
+
       if (npc.type !== 'parade_pigeon') continue;
+
+      if (isPanicking && npc.state !== 'exited') {
+        // Panic scatter — run in random direction
+        if (npc.state !== 'panicking') {
+          npc.state = 'panicking';
+          npc.panicAngle = Math.random() * Math.PI * 2;
+          npc.panicSpeed = 120 + Math.random() * 60;
+        }
+        npc.x += Math.cos(npc.panicAngle) * npc.panicSpeed * dt;
+        npc.y += Math.sin(npc.panicAngle) * npc.panicSpeed * dt;
+        // Bounce off world edges loosely
+        if (npc.x < 0 || npc.x > 3000) npc.panicAngle = Math.PI - npc.panicAngle;
+        if (npc.y < 0 || npc.y > 3000) npc.panicAngle = -npc.panicAngle;
+        allExited = false;
+        sumX += npc.x;
+        count++;
+        continue;
+      }
+
+      // Normal march
       const dx = npc.targetX - npc.x;
-      const dist = Math.abs(dx);
-      if (dist > 2) {
+      if (Math.abs(dx) > 2) {
         npc.x += (dx > 0 ? 1 : -1) * npc.speed * dt;
+        allExited = false;
+      } else {
+        npc.state = 'exited';
       }
       sumX += npc.x;
       count++;
     }
-    if (count > 0 && this.worldEvent) {
-      this.worldEvent.x = sumX / count;
+
+    if (count > 0) {
+      we.x = sumX / count;
+    }
+
+    // End parade if all exited naturally
+    if (allExited && !isPanicking) {
+      this._endWorldEvent(now);
     }
   }
 
@@ -3797,7 +3872,77 @@ class GameEngine {
       } else if (hit.target === 'bride') {
         xpGain = 100;
       } else if (hit.target === 'parade_pigeon') {
-        xpGain = 5;
+        xpGain = 12;
+        coinGain = 3;
+        if (this.worldEvent && this.worldEvent.type === 'parade' && !this.worldEvent.marshalDead) {
+          const we = this.worldEvent;
+          we.hits++;
+          // Track contributor
+          we.contributors.set(bird.id, (we.contributors.get(bird.id) || 0) + 1);
+          // Daily challenge progress
+          this._trackDailyProgress(bird, 'parade_pigeon_hit', 1);
+          // Milestone chaos events
+          if (!we.milestones.has(10) && we.hits >= 10) {
+            we.milestones.add(10);
+            we.panicUntil = now + 8000;
+            this.events.push({ type: 'parade_disrupted', hits: 10, x: we.x, y: we.y });
+          } else if (!we.milestones.has(20) && we.hits >= 20) {
+            we.milestones.add(20);
+            we.panicUntil = now + 12000;
+            this.events.push({ type: 'parade_chaos', hits: 20, x: we.x, y: we.y });
+            xpGain = 18; // chain bonus at chaos tier
+            coinGain = 5;
+          } else if (!we.milestones.has(30) && we.hits >= 30) {
+            we.milestones.add(30);
+            we.panicUntil = now + 20000;
+            this.events.push({ type: 'parade_total_chaos', hits: 30, x: we.x, y: we.y });
+            xpGain = 25;
+            coinGain = 8;
+          }
+        }
+      } else if (hit.target === 'parade_marshal') {
+        const marshal = hit.npc;
+        if (marshal && marshal.state !== 'dead') {
+          marshal.hp -= (isMegaPoop ? 2 : 1);
+          xpGain = 30;
+          coinGain = 10;
+          this.events.push({ type: 'parade_marshal_hit', hp: marshal.hp, maxHp: 3, x: marshal.x, y: marshal.y, birdId: bird.id });
+          if (marshal.hp <= 0) {
+            marshal.state = 'dead';
+            marshal.hp = 0;
+            if (this.worldEvent && this.worldEvent.type === 'parade') {
+              this.worldEvent.marshalDead = true;
+              this.worldEvent.panicUntil = now + 30000; // mass panic after marshal falls
+              // Scatter food reward near marshal
+              for (let fi = 0; fi < 8; fi++) {
+                const fid = 'food_parade_' + uid();
+                this.foods.set(fid, {
+                  id: fid, x: marshal.x + (Math.random() - 0.5) * 120,
+                  y: marshal.y + (Math.random() - 0.5) * 120,
+                  type: 'food', value: 20, respawnAt: null, active: true,
+                });
+                setTimeout(() => this.foods.delete(fid), 25000);
+              }
+              // Proportional rewards to all contributors
+              const totalHits = Array.from(this.worldEvent.contributors.values()).reduce((a, b) => a + b, 0);
+              for (const [bid, bHits] of this.worldEvent.contributors) {
+                const b2 = this.birds.get(bid);
+                if (!b2) continue;
+                const share = totalHits > 0 ? bHits / totalHits : 0;
+                const bonusXp = Math.floor(200 + 300 * share);
+                const bonusCoins = Math.floor(50 + 150 * share);
+                b2.xp += bonusXp;
+                b2.coins += bonusCoins;
+                this.events.push({ type: 'parade_marshal_reward', birdId: bid, xp: bonusXp, coins: bonusCoins, share: Math.round(share * 100) });
+              }
+            }
+            xpGain = 80;
+            coinGain = 40;
+            this._trackDailyProgress(bird, 'parade_marshal_killed', 1);
+            this.events.push({ type: 'parade_ruined', x: marshal.x, y: marshal.y, killerName: bird.name, killerGang: bird.gangTag });
+            if (this.gazetteStats) this.gazetteStats.paradeRuined = (this.gazetteStats.paradeRuined || 0) + 1;
+          }
+        }
       } else if (hit.target === 'event_npc') {
         xpGain = 15;
       } else if (hit.target === 'janitor') {
@@ -5911,6 +6056,10 @@ class GameEngine {
           npc.poopedOn++;
           if (!isMegaPoop) return { target: 'parade_pigeon', npc };
           allHits.push({ target: 'parade_pigeon', npc });
+        } else if (npc.type === 'parade_marshal') {
+          if (npc.state === 'dead') continue;
+          if (!isMegaPoop) return { target: 'parade_marshal', npc };
+          allHits.push({ target: 'parade_marshal', npc });
         } else {
           if (!isMegaPoop) return { target: 'event_npc', npc };
           allHits.push({ target: 'event_npc', npc });
@@ -7868,6 +8017,8 @@ class GameEngine {
           state: n.state, hasFood: n.hasFood,
           poopedOn: n.poopedOn,
           isBride: n.isBride || false,
+          hp: n.hp,
+          batonAngle: n.batonAngle,
         });
       }
     }
@@ -17966,6 +18117,15 @@ class GameEngine {
         icon: '🪿',
         headline: `GOLDEN GOOSE SPOTTED IN BIRD CITY — ${stats.goldenGooseVisits > 1 ? `${stats.goldenGooseVisits} VISITS TODAY` : 'RARE VISITOR LAYS GOLDEN EGGS'}`,
         subline: 'Shimmering eggs found scattered across streets. "We were told to stay back," admits local bird. "We did not stay back."',
+      });
+    }
+
+    // Parade Ruined headline
+    if (stats.paradeRuined > 0) {
+      headlines.push({
+        icon: '🎺',
+        headline: 'CITY PARADE RUINED — MARSHAL DEFEATED BY ROGUE BIRDS',
+        subline: 'The annual City Parade was brought to a chaotic end. The Marshal is hospitalised. Organizers are weeping.',
       });
     }
 

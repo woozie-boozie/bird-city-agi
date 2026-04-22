@@ -5806,6 +5806,50 @@
       }
     }
     // ── end Golden Goose ──────────────────────────────────────────────────
+
+    // ── Parade Crasher ────────────────────────────────────────────────────
+    if (ev.type === 'parade_start') {
+      showAnnouncement('🎺 THE PIGEON PARADE IS MARCHING!\nPoop the pigeons — and take down the Marshal for MASSIVE rewards!', '#aaaaff', 5000);
+      addEventMessage('🎺 The City Parade is underway! Hit 10 pigeons to cause chaos, then take out the Marshal!', '#aaaaff');
+    }
+    if (ev.type === 'parade_disrupted') {
+      screenShake(8, 500);
+      effects.push({ type: 'screen_flash', color: 'rgba(170,170,255,0.3)', duration: 400, time: now });
+      showAnnouncement('🎺 PARADE DISRUPTED!\n10 pigeons hit — birds are panicking!', '#aaaaff', 3000);
+      addEventMessage('🎺 PARADE DISRUPTED! Pigeons scatter for 8 seconds!', '#aaaaff');
+    }
+    if (ev.type === 'parade_chaos') {
+      screenShake(12, 700);
+      effects.push({ type: 'screen_flash', color: 'rgba(200,150,255,0.4)', duration: 500, time: now });
+      showAnnouncement('🎺🚨 TOTAL CHAOS!\n20 hits — the parade is falling apart!', '#cc88ff', 3500);
+      addEventMessage('🎺🚨 TOTAL CHAOS! 20 hits — poop rewards boosted!', '#cc88ff');
+    }
+    if (ev.type === 'parade_total_chaos') {
+      screenShake(16, 900);
+      effects.push({ type: 'screen_flash', color: 'rgba(255,100,255,0.5)', duration: 700, time: now });
+      showAnnouncement('🎺💀 PARADE IN RUINS!\n30 HITS — full panic! Go for the Marshal!', '#ff88ff', 4000);
+      addEventMessage('🎺💀 PARADE IN RUINS! 30 hits — max rewards on all parade targets!', '#ff88ff');
+    }
+    if (ev.type === 'parade_marshal_hit') {
+      if (ev.birdId === window._myId) {
+        showFloatingText(ev.x, ev.y, `🎺 MARSHAL HIT! ${ev.hp}/${ev.maxHp} HP`, '#ff8844');
+      }
+      addEventMessage(`🎺 Marshal hit! HP: ${ev.hp}/${ev.maxHp} — finish him!`, '#ff9944');
+    }
+    if (ev.type === 'parade_marshal_reward') {
+      if (ev.birdId === window._myId) {
+        showAnnouncement(`🎺 PARADE CRASHER REWARD!\n+${ev.xp} XP +${ev.coins}c (${ev.share}% contribution)`, '#ff9944', 5000);
+        showFloatingText(window._myX || 1500, window._myY || 1500, `+${ev.xp} XP +${ev.coins}c`, '#ff9944');
+      }
+    }
+    if (ev.type === 'parade_ruined') {
+      screenShake(18, 1000);
+      effects.push({ type: 'screen_flash', color: 'rgba(255,80,80,0.5)', duration: 800, time: now });
+      const gangStr = ev.killerGang ? `[${ev.killerGang}] ` : '';
+      showAnnouncement(`🎺💀 PARADE RUINED!\n${gangStr}${ev.killerName} took down the Marshal!\nThe parade is OVER!`, '#ff4444', 7000);
+      addEventMessage(`🎺💀 ${gangStr}${ev.killerName} RUINED the parade — Marshal defeated!`, '#ff4444');
+    }
+    // ── end Parade Crasher ────────────────────────────────────────────────
   }
 
   function showAnnouncement(text, color, duration) {
@@ -9895,6 +9939,8 @@
           } else if (npc.type === 'parade_pigeon' || npc.type === 'summoned_pigeon') {
             // Draw as a small bird
             Sprites.drawBird(ctx, sx, sy, 0, 'pigeon', now * 0.005, false);
+          } else if (npc.type === 'parade_marshal') {
+            Sprites.drawParadeMarshal(ctx, sx, sy, npc.batonAngle || 0, npc.hp || 0, npc.state);
           } else if (npc.type === 'revenge_npc') {
             Sprites.drawRevengeNPC(ctx, sx, sy);
           } else {
