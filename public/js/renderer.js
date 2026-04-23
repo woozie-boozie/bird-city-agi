@@ -6531,6 +6531,147 @@ window.Renderer = {
     }
   },
 
+  // Session 133 — Stunt Ramp System
+  drawStuntRamps(ctx, camera, stuntRamps, now) {
+    if (!stuntRamps || !stuntRamps.ramps) return;
+    const { ramps, myChain } = stuntRamps;
+    const cz = camera.zoom;
+    const chainActive = myChain && myChain.count > 0 && myChain.chainUntil > now;
+
+    for (let i = 0; i < ramps.length; i++) {
+      const ramp = ramps[i];
+      const sx = (ramp.x - camera.x) * cz + ctx.canvas.width / 2;
+      const sy = (ramp.y - camera.y) * cz + ctx.canvas.height / 2;
+      if (sx < -100 || sx > ctx.canvas.width + 100 || sy < -100 || sy > ctx.canvas.height + 100) continue;
+
+      const pulse = 0.7 + 0.3 * Math.sin(now * 0.004 + i * 1.2);
+      const isLast = chainActive && myChain.lastRampId === ramp.id;
+      const hitColor = isLast ? '#00ff88' : '#ffaa00';
+      const hitColorFill = isLast ? 'rgba(0,255,120,0.85)' : 'rgba(255,180,0,0.85)';
+      const hitColorFill2 = isLast ? 'rgba(0,200,80,0.5)' : 'rgba(255,110,0,0.5)';
+      const hitOutline = isLast ? '#00ff88' : '#ffdd44';
+
+      ctx.save();
+      ctx.translate(sx, sy);
+      ctx.rotate(ramp.angle);
+
+      // Glow aura
+      ctx.shadowColor = hitColor;
+      ctx.shadowBlur = (isLast ? 28 : 16) * pulse;
+
+      // Ramp body — triangle
+      const rw = 44 * cz, rh = 22 * cz;
+      ctx.beginPath();
+      ctx.moveTo(-rw / 2, rh / 2);
+      ctx.lineTo(rw / 2, rh / 2);
+      ctx.lineTo(rw / 4, -rh / 2);
+      ctx.closePath();
+      const grad = ctx.createLinearGradient(0, rh / 2, 0, -rh / 2);
+      grad.addColorStop(0, hitColorFill);
+      grad.addColorStop(1, hitColorFill2);
+      ctx.fillStyle = grad;
+      ctx.fill();
+      ctx.strokeStyle = hitOutline;
+      ctx.lineWidth = 2 * cz;
+      ctx.stroke();
+
+      // Checkerboard stripe detail
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = 0.28;
+      ctx.fillStyle = '#fff';
+      for (let s = 0; s < 4; s++) {
+        const bx = -rw / 2 + s * (rw / 4);
+        if (s % 2 === 0) ctx.fillRect(bx, rh / 4, rw / 4, rh / 4);
+      }
+      ctx.globalAlpha = 1;
+
+      // Speed arrow chevrons on ramp face
+      ctx.strokeStyle = isLast ? 'rgba(0,255,100,0.75)' : 'rgba(255,220,0,0.75)';
+      ctx.lineWidth = 1.5 * cz;
+      ctx.shadowColor = hitColor;
+      ctx.shadowBlur = 6;
+      for (let a = -1; a <= 1; a++) {
+        const ax = a * 11 * cz;
+        ctx.beginPath();
+        ctx.moveTo(ax, rh / 4);
+        ctx.lineTo(ax + 4 * cz, -rh / 6);
+        ctx.lineTo(ax - 4 * cz, -rh / 6);
+        ctx.closePath();
+        ctx.stroke();
+      }
+      ctx.shadowBlur = 0;
+      ctx.restore();
+
+      // Label below ramp
+      ctx.font = `${Math.max(8, Math.round(9 * cz))}px Courier New`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillStyle = isLast ? '#00ff88' : '#ffee88';
+      ctx.shadowColor = hitColor;
+      ctx.shadowBlur = 6;
+      ctx.fillText('⚡ ' + ramp.label, sx, sy + 14 * cz);
+      ctx.shadowBlur = 0;
+      ctx.textBaseline = 'alphabetic';
+
+      // Chain progress arc on last-hit ramp
+      if (isLast) {
+        const progress = Math.max(0, (myChain.chainUntil - now) / 15000);
+        ctx.save();
+        ctx.translate(sx, sy);
+        ctx.beginPath();
+        ctx.arc(0, 0, 34 * cz, -Math.PI / 2, -Math.PI / 2 + progress * 2 * Math.PI);
+        ctx.strokeStyle = `rgba(0,255,100,${0.5 + 0.45 * pulse})`;
+        ctx.lineWidth = 3.5 * cz;
+        ctx.shadowColor = '#00ff88';
+        ctx.shadowBlur = 10;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.font = `bold ${Math.max(10, Math.round(11 * cz))}px Courier New`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#00ff88';
+        ctx.shadowColor = '#00ff88';
+        ctx.shadowBlur = 8;
+        ctx.fillText(`🛹 ${myChain.count}/5`, 0, -42 * cz);
+        ctx.shadowBlur = 0;
+        ctx.restore();
+      }
+    }
+  },
+
+  drawStuntRampsOnMinimap(minimapCtx, worldData, stuntRamps, now) {
+    if (!stuntRamps || !stuntRamps.ramps) return;
+    const mw = minimapCtx.canvas.width;
+    const mh = minimapCtx.canvas.height;
+    const WW = worldData.worldWidth || 3000;
+    const WH = worldData.worldHeight || 3000;
+    const chainActive = stuntRamps.myChain && stuntRamps.myChain.count > 0 && stuntRamps.myChain.chainUntil > now;
+    const pulse = 0.6 + 0.4 * Math.sin(now * 0.005);
+
+    for (let i = 0; i < stuntRamps.ramps.length; i++) {
+      const ramp = stuntRamps.ramps[i];
+      const mx = (ramp.x / WW) * mw;
+      const my = (ramp.y / WH) * mh;
+      const isLast = chainActive && stuntRamps.myChain.lastRampId === ramp.id;
+
+      minimapCtx.save();
+      minimapCtx.translate(mx, my);
+      minimapCtx.rotate(Math.PI / 4);
+      const ds = (isLast ? 5 : 4) * pulse;
+      minimapCtx.shadowColor = isLast ? '#00ff88' : '#ffaa00';
+      minimapCtx.shadowBlur = isLast ? 10 : 5;
+      minimapCtx.fillStyle = isLast ? '#00ff88' : '#ffdd44';
+      minimapCtx.fillRect(-ds, -ds, ds * 2, ds * 2);
+      minimapCtx.shadowBlur = 0;
+      minimapCtx.restore();
+
+      minimapCtx.font = '8px sans-serif';
+      minimapCtx.textAlign = 'center';
+      minimapCtx.textBaseline = 'middle';
+      minimapCtx.fillText('🛹', mx, my);
+    }
+  },
+
   // Session 128 — Kite Festival
   drawKiteFestival(ctx, camera, kiteFestival, now) {
     if (!kiteFestival || !kiteFestival.kites) return;

@@ -4586,6 +4586,58 @@ The Grand Parade (Session 131) got its full supporting cast. Three new NPC types
 
 **Creative intent**: The parade was visually thin — a line of pigeons, a marshal, done. Adding the marching band fills in the flanks with musical energy. Confetti birds are pure joy targets — their rainbow orbiting particles and party hat make them the most visually rewarding thing to poop on in the parade. The city guards create the first consequence for casual parade disruption: you can't just spam-poop the whole procession without a guard coming after you. Now parade-crashing is a SPORT: time your shots to avoid guard retaliation, or fight the guard for the stun reward. The Parade Crasher badge rewards commitment to the chaos theme — hit 5 confetti birds in one parade and wear the pink badge all session. Pure CARNAGE + SPECTACLE + DISCOVERY energy.
 
+**Session 134 — 2026-04-23: Stunt Ramp System — Chain 5 Ramps for Legendary Status**
+Bird City now has 5 glowing launch ramps scattered at road corners across the city. Fly through one fast enough and you catch air — chain all 5 in sequence within 30 seconds for a LEGENDARY STUNT RUN and the 🛹 STUNT KING session badge.
+
+**Five Ramp Locations (road corners, spread city-wide):**
+- NW Residential corner (x:240, y:740) — near the north residential road junction
+- Park East entrance (x:1480, y:960) — just off the park's east road edge
+- Downtown South (x:2060, y:1980) — at the south end of the downtown block
+- Mall North Gate (x:2420, y:430) — northeast mall entry corner
+- Docks West ramp (x:550, y:2420) — southwest docks road corner
+
+**Ramp mechanics (`server/game.js`):**
+- Speed threshold: must be flying at ≥120px/s to trigger (no walking launches)
+- Per-bird cooldown: 3.5 seconds between hits on the same ramp — prevents lap-farming
+- Each hit: +30 XP +10c immediately — quick rewards for casual ramp use
+- **Chain system**: hitting a DIFFERENT ramp within 30 seconds of the last one extends the chain (same ramp doesn't count)
+- At chain 2–4: chain progress shown on the last-hit ramp as a pulsing green arc + `🛹 N/5` counter
+- **Chain 5 (LEGENDARY)**: +800 XP + 300c + `stuntKingBadge = true` (session badge) + Wing Surge fully charged (instant activation)
+- City-wide announcement + screen shake on legendary completion
+- Chain resets after 30 seconds of no new ramp hit, or on stun/arrest/predator catch
+
+**Visual system (`public/js/renderer.js`):**
+- Triangle ramp polygon with yellow/orange gradient fill, checkerboard stripe detail across the face, speed chevron arrows pointing up
+- Pulsing `ctx.shadowBlur` yellow glow on all ramps
+- Last-hit ramp turns green when you have an active chain — guides the player toward any other ramp
+- Chain progress arc + `🛹 N/5` counter drawn at the last-hit ramp for the active chainer
+- Location name label below each ramp for quick spatial orientation
+- **Minimap**: 45°-rotated diamond shape per ramp, pulsing yellow; active chain ramp glows bright green
+
+**Client feedback (`public/js/main.js`):**
+- `stunt_ramp_hit`: yellow flash + `⚡ +30 XP` float text; chain progress addEventMessage at chain ≥2 ("🛹 [Name] chaining ramps — N/5!")
+- `stunt_legendary`: full golden screen flash (55% opacity, 700ms) + 20-intensity screen shake + personal 8-second "🛹 LEGENDARY STUNT RUN!" announcement (shows XP, coins, STUNT KING callout) + city-wide event feed in gold
+- Active buffs HUD: pulsing orange "🛹 STUNT KING — Chained all 5 ramps — LEGENDARY!" pill when badge is active
+
+**🛹 STUNT KING nametag badge:**
+- Session-only badge awarded on legendary completion
+- Dark amber background, `#ffaa00` border glow, `#ffee44` text — warm golden palette distinct from the yellow Wing Surge/golden bird aesthetics
+- Renders in the badge stack above Dome Champion (session tier)
+- Visible to all nearby players the moment it's earned
+
+**Wing Surge integration:**
+- Legendary completion immediately fills `bird.wingCharge = 100` and fires auto-activation
+- Creates a beautiful sequential reward: chain the last ramp → LEGENDARY fires → wing surge bursts → 5 seconds of 1.8× speed + 2× XP on top of the 800 XP legendary payout
+- Ideal timing: complete a legendary run during an Aurora + Crime Wave for the biggest XP window in Bird City
+
+**Daily challenges (2 new in pool):**
+- 🛹 **Air Time**: Hit any stunt ramp while flying fast enough (130 XP, 65c)
+- 🛹 **Stunt Legend**: Chain all 5 ramps for a Legendary Stunt Run (350 XP, 175c) — the highest single daily challenge XP
+
+**Gazette tracking:** "🛹 STUNT LEGEND: [Name] CHAINS ALL 5 RAMPS — LEGENDARY!" headline when a legendary run fires this cycle.
+
+**Creative intent**: The Stunt Ramp System rewards the exact behavior Bird City always encouraged — flying fast across the city. Until now, speed was purely tactical (escaping cops, racing, using Jet Wings). The ramps make speed EXPRESSIVE: a bird blazing across town at 220px/s suddenly has 5 physical rewards for their trajectory. The chain mechanic creates an organic city tour — you hit the NW ramp, the minimap shows the nearest uncollected ramp, and the city unfolds as you dash from corner to corner in a 30-second street circuit. No timer bar, no entry fee, no teams — just pure kinetic momentum rewarded. The Wing Surge synergy is the killer payoff: surviving the legendary chain instantly charges your surge for a burst that stacks on top of the legendary XP reward. The 🛹 badge is immediate status — landing in the middle of a crowd with the fresh Stunt King badge after a legendary run is a cinematic arrival. Pure CARNAGE + SPECTACLE + DISCOVERY energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)

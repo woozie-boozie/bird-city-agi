@@ -167,7 +167,7 @@ window.Sprites = {
   },
 
   // === NAME TAG ===
-  drawNameTag(ctx, x, y, name, level, type, isPlayer, mafiaTitle, gangTag, gangColor, tattoosEquipped, prestige, eagleFeather, idolBadge, royaleChampBadge, skillTreeMaster, fightingChampBadge, constellationBadge, courtTitle, hanamiLanternBadge, domeChampBadge, alphaFeather, arenaLegend, goldenBirdBadge, constellations, stampedeBadge, throneChampBadge, perchChampBadge, marshalBadge, springFestivalBadge, paradeCrasherBadge) {
+  drawNameTag(ctx, x, y, name, level, type, isPlayer, mafiaTitle, gangTag, gangColor, tattoosEquipped, prestige, eagleFeather, idolBadge, royaleChampBadge, skillTreeMaster, fightingChampBadge, constellationBadge, courtTitle, hanamiLanternBadge, domeChampBadge, alphaFeather, arenaLegend, goldenBirdBadge, constellations, stampedeBadge, throneChampBadge, perchChampBadge, marshalBadge, springFestivalBadge, paradeCrasherBadge, stuntKingBadge) {
     const text = `${name} [Lv.${level}]`;
     ctx.font = 'bold 11px Courier New';
     ctx.textAlign = 'center';
@@ -342,6 +342,25 @@ window.Sprites = {
       ctx.shadowBlur = 9;
       ctx.fillStyle = '#ffccff';
       ctx.fillText(pcStr, x, y - 41 - offsetY);
+      ctx.shadowBlur = 0;
+      ctx.font = 'bold 11px Courier New';
+      offsetY += 14;
+    }
+
+    // 🛹 Stunt King Badge — chained all 5 ramps for a Legendary Stunt Run
+    if (stuntKingBadge) {
+      ctx.font = '10px serif';
+      const skStr = '🛹 STUNT KING';
+      const skw = ctx.measureText(skStr).width + 10;
+      ctx.fillStyle = 'rgba(40,25,0,0.95)';
+      ctx.fillRect(x - skw / 2, y - 52 - offsetY, skw, 14);
+      ctx.strokeStyle = '#ffaa00';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(x - skw / 2, y - 52 - offsetY, skw, 14);
+      ctx.shadowColor = '#ffee44';
+      ctx.shadowBlur = 10;
+      ctx.fillStyle = '#ffee44';
+      ctx.fillText(skStr, x, y - 41 - offsetY);
       ctx.shadowBlur = 0;
       ctx.font = 'bold 11px Courier New';
       offsetY += 14;

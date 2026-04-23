@@ -5736,6 +5736,27 @@
       addEventMessage(`🪁 ${ev.birdName}${ev.gangTag ? ` [${ev.gangTag}]` : ''} earned the 🪁 KITE FLYER session badge!`, '#ffbb33');
     }
 
+    // ── Session 133: Stunt Ramp System ────────────────────────────────────
+    if (ev.type === 'stunt_ramp_hit') {
+      if (ev.birdId === myId) {
+        effects.push({ type: 'float_text', x: ev.x, y: ev.y - 20, text: `⚡ +${ev.xp} XP`, color: '#ffee00', size: 15, duration: 1200, time: now });
+        effects.push({ type: 'screen_flash', color: 'rgba(255,200,0,0.22)', duration: 300, time: now });
+        if (ev.chain >= 2) {
+          addEventMessage(`🛹 ${ev.birdName} chaining ramps — ${ev.chain}/5!`, '#ffcc44');
+        }
+      }
+    }
+    if (ev.type === 'stunt_legendary') {
+      screenShake(20, 800);
+      effects.push({ type: 'screen_flash', color: 'rgba(255,180,0,0.55)', duration: 700, time: now });
+      if (ev.birdId === myId) {
+        showAnnouncement(`🛹 LEGENDARY STUNT RUN!\nYou chained ALL 5 RAMPS! +${ev.xp} XP +${ev.coins}c — STUNT KING!`, '#ffee00', 8000);
+      } else {
+        showAnnouncement(`🛹 LEGENDARY!\n${ev.birdName} chained ALL 5 RAMPS — STUNT KING!`, '#ffcc44', 5000);
+      }
+      addEventMessage(`🛹 LEGENDARY STUNT RUN! ${ev.birdName}${ev.gangTag ? ` [${ev.gangTag}]` : ''} chained all 5 ramps! +${ev.xp} XP +${ev.coins}c`, '#ffdd33');
+    }
+
     // ── Session 129: Bird Tag ──────────────────────────────────────────────
     if (ev.type === 'bird_tag_start') {
       screenShake(12, 600);
@@ -10729,6 +10750,11 @@
       Renderer.drawKiteFestival(ctx, camera, gameState.kiteFestival, now);
     }
 
+    // Stunt Ramps — Session 133
+    if (gameState.stuntRamps) {
+      Renderer.drawStuntRamps(ctx, camera, gameState.stuntRamps, now);
+    }
+
     // Bird Royale — safe zone ring + danger zone overlay
     if (gameState.birdRoyale && gameState.birdRoyale.state === 'active') {
       Renderer.drawBirdRoyaleZone(ctx, camera, gameState.birdRoyale, now);
@@ -11143,7 +11169,7 @@
 
           Sprites.drawBird(ctx, sx, sy, b.rotation, b.type, b.wingPhase, isPlayer, b.featherColor || b.birdColor || null, b.hatType || null);
           ctx.globalAlpha = 1; // Always reset after bird draw
-          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0, b.eagleFeather || false, b.idolBadge || false, b.royaleChampBadge || false, b.skillTreeMaster || false, b.fightingChampBadge || false, b.constellationBadge || false, b.courtTitle || null, b.hanamiLanternBadge || false, b.domeChampBadge || false, b.alphaFeather || false, b.arenaLegend || false, b.goldenBirdBadge || false, b.constellations || [], b.stampedeBadge || false, b.throneChampBadge || false, b.perchChampBadge || false, b.marshalBadge || false, b.springFestivalBadge || false, b.paradeCrasherBadge || false);
+          Sprites.drawNameTag(ctx, sx, sy, b.name || '???', b.level || 0, b.type, isPlayer, b.mafiaTitle || null, b.gangTag || null, b.gangColor || null, b.tattoosEquipped || [], b.prestige || 0, b.eagleFeather || false, b.idolBadge || false, b.royaleChampBadge || false, b.skillTreeMaster || false, b.fightingChampBadge || false, b.constellationBadge || false, b.courtTitle || null, b.hanamiLanternBadge || false, b.domeChampBadge || false, b.alphaFeather || false, b.arenaLegend || false, b.goldenBirdBadge || false, b.constellations || [], b.stampedeBadge || false, b.throneChampBadge || false, b.perchChampBadge || false, b.marshalBadge || false, b.springFestivalBadge || false, b.paradeCrasherBadge || false, b.stuntKingBadge || false);
 
           // Bird Flu: sneezing emoji indicator above infected birds
           if (b.isFlu) {
@@ -14823,6 +14849,11 @@
       Renderer.drawKiteFestivalOnMinimap(minimapCtx, worldData, gameState.kiteFestival, now);
     }
 
+    // Stunt Ramps on minimap — Session 133
+    if (gameState.stuntRamps && worldData) {
+      Renderer.drawStuntRampsOnMinimap(minimapCtx, worldData, gameState.stuntRamps, now);
+    }
+
     // Spring Painted Eggs on minimap — Session 123 (April 14–28)
     if (gameState.springEggs && gameState.springEggs.length > 0 && worldData) {
       const mw = minimapCtx.canvas.width;
@@ -17492,6 +17523,9 @@
     }
     if (s && s.paradeCrasherBadge) {
       html += `<div class="bm-buff-pill" style="background:rgba(30,0,30,0.9);border-color:#ff44ff;color:#ffccff;">🎉 PARADE CRASHER — You hit 5 Confetti Birds!</div>`;
+    }
+    if (s && s.stuntKingBadge) {
+      html += `<div class="bm-buff-pill" style="background:rgba(40,30,0,0.9);border-color:#ffaa00;color:#ffee44;animation:kingpinGlow 0.6s ease-in-out infinite alternate;">🛹 STUNT KING — Chained all 5 ramps — LEGENDARY!</div>`;
     }
 
     // Golden Perch: holding pill

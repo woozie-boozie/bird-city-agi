@@ -978,6 +978,15 @@ class GameEngine {
     this.lostChick = null; // null | { x, y, nx, ny, vx, vy, spawnX, spawnY, state, escortId, escortName, escortProgress, stealHits, stealWindow, stateAt, spawnedAt, expiresAt, deliverBy, dirChangeAt }
     this._lostChickTimer = Date.now() + this._randomRange(20 * 60000, 28 * 60000);
 
+    // === STUNT RAMPS (Session 133+) ===
+    // 5 glowing launch ramps planted on road corners across the city. Fly through one
+    // at speed (>120px/s) to trigger a spinning somersault: +25 XP, +25% Wing Surge charge,
+    // and a visual flash. Chain ramps within 15 seconds for escalating XP combos (2nd=+50,
+    // 3rd=+75, 4th+=+100 each). Hit all 5 in one chain → LEGENDARY STUNT RUN city-wide
+    // callout + "Stunt King" session badge. Daily challenge: "Stunt Pilot" (chain 3 ramps).
+    this._stuntRampCooldowns = new Map(); // birdId -> { lastRampId, chainCount, chainUntil, badgeEarned }
+    // Ramps are permanent world objects — no spawn/despawn timer needed.
+
     // === AURORA BOREALIS ===
     // A rare, breathtaking night spectacle — colored light ribbons flow across the sky.
     // Triggers with 30% chance at the start of each night phase. Lasts 4–7 minutes.
@@ -1603,6 +1612,8 @@ class GameEngine {
       wingCharge: 0,          // 0-100: fills as you land poop hits on valid targets
       wingSurgeUntil: 0,      // timestamp: active speed/power burst expires at this time
       wingCooldownUntil: 0,   // timestamp: can't charge again until this passes
+      // === STUNT RAMP ===
+      stuntKingBadge: false,  // session badge: earned first full 5-ramp chain
     };
 
     // Determine bird type from XP
@@ -2422,6 +2433,9 @@ class GameEngine {
 
     // === Golden Goose ===
     this._tickGoldenGoose(dt, now);
+
+    // === Stunt Ramps ===
+    this._tickStuntRamps(dt, now);
   }
 
   // ============================================================
@@ -8178,6 +8192,8 @@ class GameEngine {
           bowlingBadge: b.bowlingBadge || false,
           // Session 112: Golden Perch champion badge
           perchChampBadge: b.perchChampBadge || false,
+          // Stunt Ramps: Stunt King session badge visible to all nearby birds
+          stuntKingBadge: b.stuntKingBadge || false,
           // Session 113: Wing Surge — visible charge glow and active surge aura for all nearby birds
           wingSurgeUntil: b.wingSurgeUntil || 0,
           wingCharge: b.wingCharge || 0,
@@ -8824,6 +8840,7 @@ class GameEngine {
         caughtCount: this.kiteFestival.caughtCount || 0,
         myKites: (this.kiteFestival.contributors ? (this.kiteFestival.contributors.get(bird.id) || {}).kites || 0 : 0),
       } : null,
+      stuntRamps: this._getStuntRampsForClient(bird.id, now),
       raccoons: nearbyRaccoons,
       drunkPigeons: nearbyDrunkPigeons,
       cops: nearbyCops,
@@ -9673,6 +9690,7 @@ class GameEngine {
       springFestivalBadge: bird.springFestivalBadge || false,
       domeChampBadge: bird.domeChampBadge || false,
       arenaLegend: bird.arenaLegend || false,
+      stuntKingBadge: bird.stuntKingBadge || false,
       nearIdolStage: (() => {
         const dx = bird.x - this.IDOL_STAGE_POS.x;
         const dy = bird.y - this.IDOL_STAGE_POS.y;
@@ -29641,6 +29659,156 @@ class GameEngine {
     this._lostChickTimer = now + this._randomRange(20 * 60000, 28 * 60000);
   }
   // ─── end Lost Chick ───────────────────────────────────────────────────────
+
+  // ============================================================
+  // STUNT RAMPS (Session 133+)
+  // ============================================================
+
+  static get STUNT_RAMP_LOCATIONS() {
+    // 5 road-corner ramps spread across all city districts
+    return [
+      { id: 'ramp_nw',     x: 390,  y: 840,  label: 'Residential Corner', angle: 0.35 },
+      { id: 'ramp_north',  x: 1240, y: 370,  label: 'Park North Gate',    angle: -0.25 },
+      { id: 'ramp_center', x: 1880, y: 1540, label: 'Downtown Cross',     angle: 0.15 },
+      { id: 'ramp_east',   x: 2510, y: 990,  label: 'Mall Strip',         angle: -0.35 },
+      { id: 'ramp_south',  x: 760,  y: 2310, label: 'Docks South',        angle: 0.4  },
+    ];
+  }
+
+  // Build the stunt ramps snapshot for a specific client
+  _getStuntRampsForClient(birdId, now) {
+    const chain = this._stuntRampCooldowns.get(birdId) || null;
+    return {
+      ramps: GameEngine.STUNT_RAMP_LOCATIONS,
+      myChain: chain ? {
+        count:      chain.chainCount,
+        chainUntil: chain.chainUntil,
+        lastRampId: chain.lastRampId,
+      } : null,
+    };
+  }
+
+  _tickStuntRamps(dt, now) {
+    const RAMP_HIT_RADIUS = 48;   // px — fly within this to trigger the ramp
+    const MIN_SPEED       = 120;  // px/s — must be moving fast enough
+    const CHAIN_WINDOW    = 15000; // ms — next ramp must be hit within this window
+    const HIT_COOLDOWN    = 3000;  // ms — same ramp can't retrigger for a bird this fast
+
+    for (const bird of this.birds.values()) {
+      if (!bird.connected) continue;
+
+      const speed = Math.sqrt((bird.vx || 0) ** 2 + (bird.vy || 0) ** 2);
+      if (speed < MIN_SPEED) continue; // not going fast enough
+
+      for (const ramp of GameEngine.STUNT_RAMP_LOCATIONS) {
+        const dx = bird.x - ramp.x;
+        const dy = bird.y - ramp.y;
+        if (dx * dx + dy * dy > RAMP_HIT_RADIUS * RAMP_HIT_RADIUS) continue;
+
+        // Get or init chain state for this bird
+        let chain = this._stuntRampCooldowns.get(bird.id);
+        if (!chain) {
+          chain = { chainCount: 0, chainUntil: 0, lastRampId: null, lastHitTimes: new Map() };
+          this._stuntRampCooldowns.set(bird.id, chain);
+        }
+
+        // Per-ramp cooldown to prevent rapid re-triggering on the same ramp
+        const lastHit = chain.lastHitTimes.get(ramp.id) || 0;
+        if (now - lastHit < HIT_COOLDOWN) continue;
+        chain.lastHitTimes.set(ramp.id, now);
+
+        // Can't hit the same ramp twice in a row for chain credit
+        if (chain.lastRampId === ramp.id) {
+          // Still give base XP but don't advance chain
+          bird.xp = (bird.xp || 0) + 15;
+          this._checkLevelUp(bird);
+          this.events.push({ type: 'stunt_ramp_hit', birdId: bird.id, rampId: ramp.id, x: ramp.x, y: ramp.y, xpGain: 15, chainCount: 0, chainBroken: false, sameRamp: true });
+          continue;
+        }
+
+        // Check if chain is still alive
+        const chainAlive = chain.chainCount > 0 && now < chain.chainUntil;
+        const newChain = chainAlive ? chain.chainCount + 1 : 1;
+
+        // XP scaling: 1st=25, 2nd=50, 3rd=75, 4th+=100
+        const xpGain = newChain === 1 ? 25 :
+                       newChain === 2 ? 50 :
+                       newChain === 3 ? 75 : 100;
+
+        bird.xp    = (bird.xp    || 0) + xpGain;
+        bird.coins = (bird.coins || 0) + Math.floor(xpGain / 5);
+        this._checkLevelUp(bird);
+
+        // Wing Surge charge bonus: +25 charge per ramp hit (stacks up nicely)
+        if (bird.wingSurgeUntil <= now && bird.wingCooldownUntil <= now) {
+          const surgeAdd = Math.min(25, 100 - (bird.wingCharge || 0));
+          bird.wingCharge = (bird.wingCharge || 0) + surgeAdd;
+          if (bird.wingCharge >= 100) {
+            bird.wingCharge    = 0;
+            const surgeDuration = bird.prestige >= 5 ? 7000 : bird.prestige >= 3 ? 6000 : 5000;
+            bird.wingSurgeUntil    = now + surgeDuration;
+            bird.wingCooldownUntil = now + surgeDuration + (bird.skills && bird.skills.includes('quick_draw') ? 32000 : 40000);
+            // Hyper mode if on 10+ combo
+            const comboTier = (bird.comboCount || 0) >= 10;
+            bird.wingSurgeHyperXp = comboTier;
+            this.events.push({ type: 'wing_surge_activated', birdId: bird.id, hyper: comboTier, x: bird.x, y: bird.y });
+          }
+        }
+
+        // Update chain
+        chain.chainCount  = newChain;
+        chain.chainUntil  = now + CHAIN_WINDOW;
+        chain.lastRampId  = ramp.id;
+
+        // Daily challenge: chain 3+ ramps = "Stunt Pilot"
+        if (newChain >= 3) {
+          this._trackDailyProgress(bird, 'stunt_pilot', 1);
+        }
+
+        this.events.push({
+          type: 'stunt_ramp_hit',
+          birdId:     bird.id,
+          birdName:   bird.name || bird.id,
+          gangTag:    bird.gangTag || null,
+          rampId:     ramp.id,
+          rampLabel:  ramp.label,
+          x:          ramp.x,
+          y:          ramp.y,
+          xpGain,
+          chainCount: newChain,
+          chainUntil: chain.chainUntil,
+        });
+
+        // LEGENDARY: hit all 5 unique ramps in one chain
+        if (newChain >= 5 && !chain.badgeEarned) {
+          chain.badgeEarned = true;
+          bird.stuntKingBadge = true;
+
+          const display = bird.gangTag ? `[${bird.gangTag}] ${bird.name || bird.id}` : (bird.name || bird.id);
+
+          this.events.push({
+            type:     'stunt_legendary',
+            birdId:   bird.id,
+            birdName: bird.name || bird.id,
+            gangTag:  bird.gangTag || null,
+            display,
+            x:        bird.x,
+            y:        bird.y,
+          });
+
+          // Bonus payout for the legendary run
+          bird.xp    = (bird.xp    || 0) + 300;
+          bird.coins = (bird.coins || 0) + 150;
+          this._checkLevelUp(bird);
+
+          this.gazetteStats = this.gazetteStats || {};
+          this.gazetteStats.stuntLegendary = display;
+        }
+        break; // one ramp per bird per tick
+      }
+    }
+  }
+  // ─── end Stunt Ramps ──────────────────────────────────────────────────────
 
 }
 
