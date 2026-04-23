@@ -7620,6 +7620,19 @@
       }
     }
 
+    // Weathervane proximity hint (Session 138)
+    const wvPromptEl = document.getElementById('weathervanePrompt');
+    if (wvPromptEl) {
+      if (gameState.self && gameState.self.nearWeathervane && gameState.self.weathervanePrediction) {
+        const weatherEmojis = { rain:'🌧️', wind:'💨', storm:'⛈️', fog:'🌫️', hailstorm:'🌨️', heatwave:'🌡️', tornado:'🌪️', blizzard:'❄️' };
+        const wvEmoji = weatherEmojis[gameState.self.weathervanePrediction] || '🌤️';
+        wvPromptEl.innerHTML = `🐓 Weathervane: ${wvEmoji} <strong>${gameState.self.weathervanePrediction.toUpperCase()}</strong> coming next`;
+        wvPromptEl.style.display = 'block';
+      } else {
+        wvPromptEl.style.display = 'none';
+      }
+    }
+
     // Street Duel HUD
     updateStreetDuelHud();
 
@@ -10847,6 +10860,9 @@
 
     // Feather Factory (Session 122)
     Renderer.drawFeatherFactory(ctx, camera, { x: 850, y: 1580 }, !!(gameState.self && gameState.self.nearFeatherFactory), now);
+
+    // Weathervane (Session 138)
+    Renderer.drawWeathervane(ctx, camera, { x: 1380, y: 660 }, !!(gameState.self && gameState.self.nearWeathervane), (gameState.self && gameState.self.weathervanePrediction) || null, now);
 
     // Flash Mob — social congregation event (drawn before birds)
     if (gameState.flashMob) {
@@ -15806,6 +15822,9 @@
 
     // Feather Factory — permanent teal dot
     Renderer.drawFeatherFactoryOnMinimap(minimapCtx, { x: 850, y: 1580 }, { worldW: worldData.width, worldH: worldData.height, mmW: minimapCanvas.width, mmH: minimapCanvas.height }, now);
+
+    // Weathervane — spinning rooster dot
+    Renderer.drawWeathervaneOnMinimap(minimapCtx, { x: 1380, y: 660 }, { worldW: worldData.width, worldH: worldData.height, mmW: minimapCanvas.width, mmH: minimapCanvas.height }, !!(gameState.self && gameState.self.nearWeathervane), now);
 
     // Thunder Dome — pulsing electric-blue ring on minimap
     const _domeForMinimap = gameState.thunderDome || window._thunderDomeData;

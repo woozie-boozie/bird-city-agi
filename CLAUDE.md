@@ -4760,6 +4760,29 @@ Wove the newest NPCs (Golden Goose, Bird Tag, Charity Gala, Grand Parade) into t
 
 **Creative intent**: The newest NPCs all had zero interaction with the city's core chaos systems — they existed in isolation. These five synergies ensure that every time a Crime Wave erupts or the Aurora fires, the city's newest residents respond to it. A player who sees the Golden Goose wandering during the Aurora realizes they have a choice: scare it now for boosted scatter eggs, or be patient and let the aurora bless its natural eggs at 3× value. That's a genuine decision tree the world creates without any scripting. The Grand Parade during a Crime Wave is the most chaotic parade-crashing scenario in Bird City: cops flooding the streets, 2.5× XP on every pigeon hit, while the marshals tries to maintain dignity through the chaos. Pure DISCOVERY + CARNAGE + EMERGENT CHAOS energy.
 
+**Session 138 — 2026-04-23: The Weathervane — Spinning Rooster Predicts the Weather**
+Bird City's first pure DISCOVERY mechanic: a spinning rooster weathervane atop a corner building on the north road (x:1380, y:660). Fly within 120px and the weathervane whispers the next weather type to you — no button press, just awareness rewarded.
+
+**How it works (`server/game.js`, `server/world.js`):**
+- `WEATHERVANE_POS = { x: 1380, y: 660, radius: 120 }` constant in `server/world.js`
+- `this.weathervanePreview` pre-rolled in `_updateWeather()` at weather expiry alongside `scheduledNextWeather` — the weathervane "knows" 2 minutes before the weather actually spawns
+- `weathervanePreview` cleared when the weather goes live (it's no longer a prediction, it's reality)
+- `nearWeathervane` + `weathervanePrediction` fields in `getStateForBird()` — only sent when the bird is within 120px
+- No server events, no socket messages beyond the normal state snapshot — pure proximity discovery
+
+**Visual system (`public/js/renderer.js`):**
+- `drawWeathervane(ctx, camera, pos, isNear, prediction, now)`: tall post with cap, crosspiece arms (N/S/E/W indicators), spinning rooster silhouette (body, tail fan, beak, eye, comb) that rotates at ~0.24 RPM
+- Gold radial glow aura when `isNear` — the rooster brightens to signal a nearby bird is receiving the prediction
+- `drawWeathervaneOnMinimap()`: subtle amber/gold pulsing dot at north road position — permanent landmark dot, brightens when any bird is near
+
+**HUD proximity hint (`public/index.html`, `public/js/main.js`):**
+- `#weathervanePrompt` pill: `bottom:210px`, dark amber on gold, stacked above the Hot Dog Cart prompt
+- Shows 🐓 Weathervane: [emoji] [WEATHER TYPE] coming next
+- Weather emoji map: rain 🌧️, wind 💨, storm ⛈️, fog 🌫️, hailstorm 🌨️, heatwave 🌡️, tornado 🌪️, blizzard ❄️
+- Appears only when `nearWeathervane && weathervanePrediction` — disappears when you fly away
+
+**Creative intent**: The city had weather betting, weather events, weather synergies — but no way to gain an information edge through exploration. The Weathervane is the reward for curious birds who explore the north road. First-timers who stumble on it during a blizzard suddenly understand the minimap dot's meaning. The information asymmetry is real: a bird near the Weathervane can sprint to the casino, bet everything on blizzard, then collect massive pari-mutuel payouts while everyone else guessed rain. Count's City Intel (Session 84) gave this to one noble — now any bird who explores the city can discover it independently. Pure DISCOVERY energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -5043,7 +5066,7 @@ Built the Territory Control System on top of the existing upstream code:
 - The Stunt Ramp: a glowing yellow ramp appears on a road corner, birds who fly into it get a brief aerial somersault animation + +30 XP — pure discovery spectacle
 - Flock Formation Missions: the mission board adds flock-specific missions (all 3+ flock members must reach a point) — cooperative movement challenges
 - ~~NPC Parade: 8 NPCs march in a line across the city periodically, hitting the whole line with one wide poop scores chain bonus XP~~ (DONE Session 131 — evolved into Parade Crasher with marshal boss + milestone chaos)
-- The Weathervane: a spinning rooster weathervane atop a building predicts the next weather 90 seconds early — only visible if you're within 120px of it (discovery reward)
+- ~~The Weathervane: a spinning rooster weathervane atop a building predicts the next weather 90 seconds early — only visible if you're within 120px of it (discovery reward)~~ (DONE Session 138)
 - ~~Street Performer: a juggling NPC appears in a plaza, watch them for 10 seconds to earn XP (patience reward), poop them for small coins but lose the watch bonus~~ (DONE Session 136)
 - The Detective Bird: a fedora-wearing NPC who randomly accuses an online bird of "looking suspicious" — that bird gets +10 heat city-wide. Can be cleared by visiting the Police Station.
 - ~~Lost Chick Event: a baby bird is separated from its parent somewhere in the city — escort it 500px to the nest (fly within 60px for 8s) for a big reward; rivals can intercept by flying between you and the chick~~ (DONE Session 132)

@@ -390,6 +390,11 @@ const DONUT_SHOP_POS = { x: 1620, y: 750, radius: 100 };
 // [A] to open the bid panel when within 120px of the front steps.
 const AUCTION_HOUSE_POS = { x: 570, y: 1050, radius: 120 };
 
+// Weathervane — a spinning rooster weathervane atop a corner building on the north road.
+// Fly within 120px to discover what weather is coming next (pre-rolled 2 minutes ahead).
+// Pure discovery reward — no button press needed, just proximity awareness.
+const WEATHERVANE_POS = { x: 1380, y: 660, radius: 120 };
+
 // Poop Power-Up Vending Machines — 5 colorful street machines scattered across the city.
 // Fly within 70px and press [X] to buy a random single-use poop effect for 20 coins.
 // Effects: Spicy (wide splash), Freeze (slow target), Rainbow (3× coins), Toxic (chain hit), Shock (stun)
@@ -464,5 +469,6 @@ module.exports = {
   DONUT_SHOP_POS,
   AUCTION_HOUSE_POS,
   VENDING_MACHINES,
+  WEATHERVANE_POS,
   getXPForLevel, getLevelFromXP, getBirdTypeForLevel,
 };

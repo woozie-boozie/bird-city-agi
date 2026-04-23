@@ -815,6 +815,8 @@ class GameEngine {
     this._auctionTimer = Date.now() + this._randomRange(20 * 60000, 30 * 60000);
     this.AUCTION_HOUSE_POS = world.AUCTION_HOUSE_POS;
     this.FEATHER_FACTORY_POS = { x: 850, y: 1580, radius: 100 };
+    this.WEATHERVANE_POS = world.WEATHERVANE_POS;
+    this.weathervanePreview = null; // pre-rolled next weather type, revealed 2+ min before spawn
 
     // === BIRD FLU OUTBREAK ===
     // Every 25-40 minutes, Patient Zero is infected and flu spreads between nearby birds.
@@ -7021,6 +7023,24 @@ class GameEngine {
         this.weatherBetting = { openUntil: now + BET_WINDOW, bets: new Map() };
         this.events.push({ type: 'weather_bet_window', openUntil: this.weatherBetting.openUntil });
       }
+      // Pre-roll next weather for the weathervane prediction
+      if (!this.scheduledNextWeather) {
+        const roll = Math.random();
+        let previewType;
+        if (roll < 0.22) previewType = 'rain';
+        else if (roll < 0.42) previewType = 'wind';
+        else if (roll < 0.53) previewType = 'storm';
+        else if (roll < 0.63) previewType = 'fog';
+        else if (roll < 0.74) previewType = 'hailstorm';
+        else if (roll < 0.85) previewType = 'heatwave';
+        else if (roll < 0.92) previewType = 'tornado';
+        else previewType = 'blizzard';
+        this.scheduledNextWeather = previewType;
+        this.weathervanePreview = previewType;
+      } else {
+        // Count's Intel already locked the next type — weathervane shows the same prediction
+        this.weathervanePreview = this.scheduledNextWeather;
+      }
       return;
     }
 
@@ -7038,6 +7058,7 @@ class GameEngine {
       if (this.scheduledNextWeather) {
         type = this.scheduledNextWeather;
         this.scheduledNextWeather = null; // consume — the intel was correct!
+        this.weathervanePreview = null;   // weather is now live, no longer a preview
       } else {
         const roll = Math.random();
         if (roll < 0.22) type = 'rain';
@@ -7048,6 +7069,7 @@ class GameEngine {
         else if (roll < 0.85) type = 'heatwave';
         else if (roll < 0.92) type = 'tornado';
         else type = 'blizzard';  // 8% — winter blast: snowball poops, hot cocoa warmth, cops shiver
+        this.weathervanePreview = null; // fresh roll — no preview needed
       }
 
       const windAngle = Math.random() * Math.PI * 2;
@@ -8816,6 +8838,12 @@ class GameEngine {
         const fdx = bird.x - fp.x, fdy = bird.y - fp.y;
         return Math.sqrt(fdx * fdx + fdy * fdy) < fp.radius;
       })(),
+      nearWeathervane: (() => {
+        const wp = this.WEATHERVANE_POS;
+        const wdx = bird.x - wp.x, wdy = bird.y - wp.y;
+        return Math.sqrt(wdx * wdx + wdy * wdy) < wp.radius;
+      })(),
+      weathervanePrediction: this.weathervanePreview,
       courierPigeon: this.courierPigeon ? {
         x: this.courierPigeon.x,
         y: this.courierPigeon.y,

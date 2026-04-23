@@ -5928,6 +5928,111 @@ window.Renderer = {
   },
 
   // ============================================================
+  // WEATHERVANE — Session 138
+  // A spinning rooster weathervane atop a corner building on the
+  // north road. Fly within 120px to see next weather prediction.
+  // ============================================================
+  drawWeathervane(ctx, camera, pos, isNear, prediction, now) {
+    const sx = pos.x - camera.x;
+    const sy = pos.y - camera.y;
+    if (sx < -80 || sx > camera.w + 80 || sy < -80 || sy > camera.h + 80) return;
+
+    ctx.save();
+    ctx.translate(sx, sy);
+
+    // Building roof peak — simple dark-grey wedge
+    ctx.beginPath();
+    ctx.moveTo(-18, 0);
+    ctx.lineTo(0, -20);
+    ctx.lineTo(18, 0);
+    ctx.fillStyle = '#555566';
+    ctx.fill();
+    ctx.strokeStyle = '#333344';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Vertical pole
+    ctx.beginPath();
+    ctx.moveTo(0, -20);
+    ctx.lineTo(0, -44);
+    ctx.strokeStyle = '#888899';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Directional arrow arm (horizontal crossbar)
+    ctx.beginPath();
+    ctx.moveTo(-12, -38);
+    ctx.lineTo(12, -38);
+    ctx.strokeStyle = '#aaaaaa';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    // N/S/E/W tick marks
+    for (const [dx, dy] of [[-12, -38], [12, -38], [0, -50], [0, -26]]) {
+      ctx.beginPath();
+      ctx.arc(dx, dy, 1.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#aaaaaa';
+      ctx.fill();
+    }
+
+    // Spinning rooster at the top of the pole
+    const spinAngle = (now * 0.0015) % (Math.PI * 2); // slow spin
+    ctx.save();
+    ctx.translate(0, -50);
+    ctx.rotate(spinAngle);
+    ctx.font = '14px serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = isNear ? '#ffdd33' : '#cc9933';
+    if (isNear) {
+      ctx.shadowColor = '#ffcc00';
+      ctx.shadowBlur = 8;
+    }
+    ctx.fillText('🐓', 0, 0);
+    ctx.shadowBlur = 0;
+    ctx.restore();
+
+    // Label
+    ctx.font = 'bold 9px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    if (isNear && prediction) {
+      // Show weather prediction when bird is near
+      const weatherEmojis = {
+        rain: '🌧️', wind: '💨', storm: '⛈️', fog: '🌫️',
+        hailstorm: '🌨️', heatwave: '🌡️', tornado: '🌪️', blizzard: '❄️'
+      };
+      const emoji = weatherEmojis[prediction] || '🌤️';
+      ctx.fillStyle = '#ffee66';
+      ctx.shadowColor = '#ff9900';
+      ctx.shadowBlur = 4;
+      ctx.fillText(`${emoji} coming`, 0, 4);
+      ctx.shadowBlur = 0;
+    } else {
+      ctx.fillStyle = '#bbbbcc';
+      ctx.fillText('WEATHERVANE', 0, 4);
+    }
+
+    ctx.restore();
+  },
+
+  drawWeathervaneOnMinimap(minimapCtx, pos, worldData, isNear, now) {
+    const { worldW, worldH, mmW, mmH } = worldData;
+    const cx = (pos.x / worldW) * mmW;
+    const cy = (pos.y / worldH) * mmH;
+    const pulse = 0.6 + 0.4 * Math.abs(Math.sin(now * 0.003));
+    minimapCtx.save();
+    minimapCtx.beginPath();
+    minimapCtx.arc(cx, cy, 3.5, 0, Math.PI * 2);
+    minimapCtx.fillStyle = isNear ? `rgba(255, 220, 50, ${0.9 + 0.1 * pulse})` : `rgba(180, 150, 80, ${0.7 + 0.2 * pulse})`;
+    if (isNear) { minimapCtx.shadowColor = '#ffcc00'; minimapCtx.shadowBlur = 5; }
+    minimapCtx.fill();
+    minimapCtx.shadowBlur = 0;
+    minimapCtx.font = '8px sans-serif'; minimapCtx.textAlign = 'center'; minimapCtx.textBaseline = 'middle';
+    minimapCtx.fillText('🐓', cx, cy);
+    minimapCtx.restore();
+  },
+
+  // ============================================================
   // MAYOR'S MOTORCADE — Session 111
   // ============================================================
   drawMotorcade(ctx, motorcade, now) {
