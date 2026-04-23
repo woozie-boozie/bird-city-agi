@@ -4725,6 +4725,41 @@ Bird City's most philosophically conflicted mechanic. A jester-costumed juggler 
 
 **Creative intent**: Every single mechanic in Bird City rewards aggression. Poop everything, fight everyone, cause chaos. The Street Performer is the first NPC where the optimal play is to NOT POOP. The tension is immediate: you see a juggler, you feel the poop button calling you, but 4 other birds are watching and a grand finale with 120 XP is 90 seconds away. Someone always breaks first — and when they do, the watchers all lose their invested watch time. The group energy mechanic rewards patience multiplied by social trust: more watchers = more bonus ticks, but more birds also means more chances someone will give in. A 2-minute window where 5 birds are all silently willing each other not to poop is peak Bird City social tension. The Show Ruiner daily challenge gives the antisocial bird a reason to do it on purpose — and the whole city hates them for it. Pure DISCOVERY + SOCIAL energy — the city now has something worth protecting by doing nothing.
 
+**Session 137 — 2026-04-23: Cross-System Synergies Vol. 3 — Newest NPCs Meet the City's Chaos**
+Wove the newest NPCs (Golden Goose, Bird Tag, Charity Gala, Grand Parade) into the city's core chaos systems (Crime Wave, Aurora Borealis) so the world feels genuinely interconnected rather than a list of isolated events.
+
+**Five cross-system interactions shipped:**
+
+**1. Charity Gala × Crime Wave bug fix + premium XP:**
+- Fixed a pre-existing bug: `this.crimeWave && this.crimeWave.active` always returned falsy because `.active` doesn't exist on the `{ startedAt, endsAt }` object — gala Crime Wave XP bonus (75 XP vs 45 XP) never fired
+- Fixed to `!!this.crimeWave` — gala guests now correctly give 75 XP during Crime Waves as designed
+- The fix restores the intended "crime in a posh setting = premium reward" fantasy
+
+**2. Grand Parade × Crime Wave (2.5× XP/coins on pigeon hits):**
+- During an active Crime Wave, poop hits on any parade pigeon give 2.5× XP and 2.5× coins
+- One-time city-wide `parade_crime_wave_bonus` event announces the synergy to all players
+- Creates a beautiful chaos moment: cops flood the streets during a Crime Wave AND there's a civic parade to disrupt — pure GTA energy. "Can't be a criminal AND crash the parade" is a decision nobody was forced to make before.
+
+**3. Bird Tag × Crime Wave (doubled burn penalty and doubled transfer rewards):**
+- During an active Crime Wave, the IT burn penalty doubles from 25% to 50% of coins (capped at 400c vs 200c) — hesitation in chaos is twice as punishing
+- Transfer reward doubles: tagger earns 200 XP + 80c (vs 100 XP + 40c normally)
+- `bird_tag_burn` event now includes `crimeWave: true` flag so client can announce the elevated stakes
+- "You're IT during a Crime Wave? Good luck." — the whole city is already chaotic, and now your 60-second clock costs double
+
+**4. Golden Goose scatter × Crime Wave (boosted scatter egg value):**
+- When the Golden Goose scatters eggs on a scare during a Crime Wave, each egg's value is 50c instead of 30c
+- Represents panicked chaos making everything more valuable — the goose drops more when truly terrified
+- Natural emergence: someone sees the goose during a Crime Wave and thinks "I can scare it for bigger eggs OR be patient for the grand finale"
+
+**5. Golden Goose lay × Aurora Borealis (Sacred Eggs):**
+- When the Aurora is active AND the Golden Goose lays an egg naturally (not scatter), the egg becomes a `sacred_goose_egg` worth 90c (vs 30c) with a completely different visual
+- Server: egg type switches to `'sacred_goose_egg'`, value 90, and fires `golden_goose_sacred_egg` city-wide event
+- Client: `golden_goose_laid` announces the sacred egg in teal; `golden_goose_sacred_egg` fires a 4-second screen shake announcement
+- Visual (`sprites.js`): entirely new sprite — wide teal/cyan aurora glow (18px), iridescent teal-to-cyan egg body gradient, pulsing aurora outline, bright aqua highlight, 3 orbiting sparkle dots rotating via angle math, `🌊✨` label — completely distinct from the warm golden `goose_egg` sprite
+- Created two independent sin-wave timers (`pulse` at 0.005 and `sparkle` at 0.012) for complex layered animation
+
+**Creative intent**: The newest NPCs all had zero interaction with the city's core chaos systems — they existed in isolation. These five synergies ensure that every time a Crime Wave erupts or the Aurora fires, the city's newest residents respond to it. A player who sees the Golden Goose wandering during the Aurora realizes they have a choice: scare it now for boosted scatter eggs, or be patient and let the aurora bless its natural eggs at 3× value. That's a genuine decision tree the world creates without any scripting. The Grand Parade during a Crime Wave is the most chaotic parade-crashing scenario in Bird City: cops flooding the streets, 2.5× XP on every pigeon hit, while the marshals tries to maintain dignity through the chaos. Pure DISCOVERY + CARNAGE + EMERGENT CHAOS energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)

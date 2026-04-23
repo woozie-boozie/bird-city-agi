@@ -1185,6 +1185,55 @@ window.Sprites = {
       ctx.textAlign = 'center';
       ctx.fillStyle = `rgba(255, 230, 0, ${0.7 + pulse * 0.3})`;
       ctx.fillText('✨', 0, -13);
+    } else if (type === 'sacred_goose_egg') {
+      // Sacred Aurora Goose egg — teal/cyan aurora palette, 3× value
+      const t = Date.now();
+      const pulse = 0.5 + 0.5 * Math.sin(t * 0.005);
+      const sparkle = 0.5 + 0.5 * Math.sin(t * 0.012);
+      // Outer aurora aura — wide teal glow
+      const sacredGlow = ctx.createRadialGradient(0, 0, 2, 0, 0, 18);
+      sacredGlow.addColorStop(0, `rgba(80, 255, 220, ${0.6 + pulse * 0.3})`);
+      sacredGlow.addColorStop(0.5, `rgba(0, 200, 180, ${0.25 + pulse * 0.15})`);
+      sacredGlow.addColorStop(1, 'rgba(0, 150, 200, 0)');
+      ctx.fillStyle = sacredGlow;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 18, 20, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Egg body — teal/cyan iridescent gradient
+      const sacredBody = ctx.createRadialGradient(-2, -3, 1, 0, 0, 8);
+      sacredBody.addColorStop(0, `rgb(${Math.floor(180 + sparkle * 40)}, 255, ${Math.floor(230 + sparkle * 20)})`);
+      sacredBody.addColorStop(0.5, `rgb(0, ${Math.floor(200 + pulse * 30)}, ${Math.floor(190 + pulse * 20)})`);
+      sacredBody.addColorStop(1, 'rgb(0, 130, 160)');
+      ctx.fillStyle = sacredBody;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 7, 9, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Teal/cyan outline with pulse
+      ctx.strokeStyle = `rgba(0, 230, 210, ${0.8 + pulse * 0.2})`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 7, 9, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      // Bright aurora highlight
+      ctx.fillStyle = `rgba(200, 255, 255, ${0.5 + sparkle * 0.4})`;
+      ctx.beginPath();
+      ctx.ellipse(-2, -3, 3, 4, -0.3, 0, Math.PI * 2);
+      ctx.fill();
+      // 3 orbiting sparkle dots (aurora micro-stars)
+      for (let i = 0; i < 3; i++) {
+        const ang = (t * 0.003) + (i * Math.PI * 2 / 3);
+        const sx = Math.cos(ang) * 11;
+        const sy = Math.sin(ang) * 8;
+        ctx.fillStyle = `rgba(180, 255, 240, ${0.5 + sparkle * 0.4})`;
+        ctx.beginPath();
+        ctx.arc(sx, sy, 1.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // "✨🌊" aurora label
+      ctx.font = '9px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = `rgba(100, 255, 230, ${0.8 + pulse * 0.2})`;
+      ctx.fillText('🌊✨', 0, -16);
     } else {
       // Generic food blob
       ctx.beginPath();

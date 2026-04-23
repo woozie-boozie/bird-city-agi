@@ -5800,8 +5800,15 @@
       screenShake(6, 400);
     }
     if (ev.type === 'golden_goose_laid') {
-      // subtle sparkle — no announcement to keep it quiet/discoverable
-      addEventMessage('🥚 The Golden Goose laid an egg!', '#ffe080');
+      if (ev.sacred) {
+        addEventMessage('✨🥚 The Golden Goose laid a SACRED EGG under the aurora! Worth 3× more!', '#aaffee');
+      } else {
+        addEventMessage('🥚 The Golden Goose laid an egg!', '#ffe080');
+      }
+    }
+    if (ev.type === 'golden_goose_sacred_egg') {
+      showAnnouncement('✨🪿 SACRED GOOSE EGG!\nThe Aurora blesses the Golden Goose — this egg is worth 3× normal!', '#aaffee', 4000);
+      screenShake(4, 300);
     }
     if (ev.type === 'golden_goose_scared') {
       showAnnouncement(`🪿💨 THE GOOSE PANICKED!\nScattered ${ev.numEggs} eggs — grab them fast!`, '#ff9900', 4000);

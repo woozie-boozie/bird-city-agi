@@ -4099,6 +4099,15 @@ class GameEngine {
             xpGain = 25;
             coinGain = 8;
           }
+          // Crime Wave × Parade synergy: civic disruption during citywide lawlessness pays more
+          if (this.crimeWave) {
+            xpGain = Math.floor(xpGain * 2.5);
+            coinGain = Math.floor(coinGain * 2.5);
+            if (!we._crimeParadeAnnounced) {
+              we._crimeParadeAnnounced = true;
+              this.events.push({ type: 'parade_crime_wave_bonus', birdId: bird.id, birdName: bird.name, x: hit.npc.x, y: hit.npc.y });
+            }
+          }
         }
       } else if (hit.target === 'marching_band') {
         xpGain = 15;
@@ -4138,7 +4147,7 @@ class GameEngine {
       } else if (hit.target === 'gala_guest') {
         const guest = hit.npc;
         if (guest && this.charityGala) {
-          const crimeActive = this.crimeWave && this.crimeWave.active;
+          const crimeActive = !!this.crimeWave;
           xpGain = crimeActive ? 75 : 45;
           coinGain = 15;
           const birdHits = (this.charityGala.hitsByBird.get(bird.id) || 0) + 1;
@@ -29254,9 +29263,11 @@ class GameEngine {
 
     // IT bird exceeded 60-second tag window — BURN
     if (now >= bt.itTimeoutAt) {
-      const burn = Math.min(Math.floor((itBird.coins || 0) * 0.25), 200);
+      const burnPct = this.crimeWave ? 0.5 : 0.25;
+      const burnCap = this.crimeWave ? 400  : 200;
+      const burn = Math.min(Math.floor((itBird.coins || 0) * burnPct), burnCap);
       itBird.coins = Math.max(0, (itBird.coins || 0) - burn);
-      this.events.push({ type: 'bird_tag_burn', birdId: bt.itId, birdName: bt.itName, burned: burn });
+      this.events.push({ type: 'bird_tag_burn', birdId: bt.itId, birdName: bt.itName, burned: burn, crimeWave: !!this.crimeWave });
       this._endBirdTag(now);
       return;
     }
@@ -29274,9 +29285,9 @@ class GameEngine {
       const prevId   = bt.itId;
       const prevName = bt.itName;
 
-      // Reward the tagger (old IT)
-      itBird.xp    = (itBird.xp    || 0) + 100;
-      itBird.coins = (itBird.coins || 0) + 40;
+      // Reward the tagger (old IT) — doubled during Crime Wave
+      itBird.xp    = (itBird.xp    || 0) + (this.crimeWave ? 200 : 100);
+      itBird.coins = (itBird.coins || 0) + (this.crimeWave ? 80  : 40);
       itBird.tagSessionCount = (itBird.tagSessionCount || 0) + 1;
       this._trackDailyProgress(itBird, 'tag_escape', 1);
       this._trackDailyProgress(itBird, 'tag_master',  1);
@@ -29412,7 +29423,7 @@ class GameEngine {
             id: eid,
             type: 'goose_egg',
             x: ex, y: ey,
-            value: 30,
+            value: this.crimeWave ? 50 : 30,  // Crime Wave: panicked birds drop more valuable eggs
             active: true,
             scatterEgg: true,  // scattered (not patiently laid)
             respawnAt: 0,
@@ -29484,15 +29495,16 @@ class GameEngine {
     if (g.y < 100)           { g.y = 100;            g.vy = Math.abs(g.vy); }
     if (g.y > WORLD_H - 100) { g.y = WORLD_H - 100; g.vy = -Math.abs(g.vy); }
 
-    // Lay an egg
+    // Lay an egg — sacred during Aurora (value 90 vs 30, rare type)
     if (now >= g.layTimer && g.eggsLaid < 8) {
+      const auroraActive = !!this.aurora;
       const eid = 'food_goose_egg_' + uid();
       this.foods.set(eid, {
         id: eid,
-        type: 'goose_egg',
+        type: auroraActive ? 'sacred_goose_egg' : 'goose_egg',
         x: g.x + (Math.random() - 0.5) * 30,
         y: g.y + (Math.random() - 0.5) * 30,
-        value: 30,
+        value: auroraActive ? 90 : 30,
         active: true,
         scatterEgg: false,
         respawnAt: 0,
@@ -29500,7 +29512,10 @@ class GameEngine {
       this.goldenGooseEggIds.add(eid);
       g.eggsLaid++;
       g.layTimer = now + this._randomRange(15000, 25000);
-      this.events.push({ type: 'golden_goose_laid', x: g.x, y: g.y, eggsLaid: g.eggsLaid });
+      this.events.push({ type: 'golden_goose_laid', x: g.x, y: g.y, eggsLaid: g.eggsLaid, sacred: auroraActive });
+      if (auroraActive) {
+        this.events.push({ type: 'golden_goose_sacred_egg', x: g.x, y: g.y });
+      }
     }
 
     // Scare detection — any bird within 55px
