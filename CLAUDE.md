@@ -4638,6 +4638,50 @@ Bird City now has 5 glowing launch ramps scattered at road corners across the ci
 
 **Creative intent**: The Stunt Ramp System rewards the exact behavior Bird City always encouraged — flying fast across the city. Until now, speed was purely tactical (escaping cops, racing, using Jet Wings). The ramps make speed EXPRESSIVE: a bird blazing across town at 220px/s suddenly has 5 physical rewards for their trajectory. The chain mechanic creates an organic city tour — you hit the NW ramp, the minimap shows the nearest uncollected ramp, and the city unfolds as you dash from corner to corner in a 30-second street circuit. No timer bar, no entry fee, no teams — just pure kinetic momentum rewarded. The Wing Surge synergy is the killer payoff: surviving the legendary chain instantly charges your surge for a burst that stacks on top of the legendary XP reward. The 🛹 badge is immediate status — landing in the middle of a crowd with the fresh Stunt King badge after a legendary run is a cinematic arrival. Pure CARNAGE + SPECTACLE + DISCOVERY energy.
 
+**Session 135 — 2026-04-23: Charity Gala — Tuxedo NPCs, Gala Guard Ejection & HIGH ROLLER Badge**
+Bird City's most posh event. Every 55–70 minutes, a Charity Gala opens in the park (cx:1050, cy:1250) — 8 tuxedo-wearing guest NPCs mingle in a ring formation, patrolled by a stern Gala Guard. Crash the party for XP and coins, but rack up too many hits and you'll get EJECTED — flung 400px across the map with a coin fine and a continued 12-second guard chase.
+
+**Gala Guest NPCs (`server/game.js`):**
+- 8 `gala_guest` NPCs placed in a ring around the gala center, state machine: `mingling` (gentle random drift, snaps back if >210px from center) → `panicking` (flee outward for 4 seconds after being hit) → clears back to mingling
+- Each poop hit: +45 XP +15c immediately; +75 XP during an active Crime Wave (5× premium)
+- Hit counter tracked per-bird via `charityGala.hitsByBird` Map — the city remembers your crimes
+- At 5+ hits: EJECTION triggers automatically (see below)
+- At 8+ hits WITHOUT ejection (if you somehow dodge the guard): `highRollerBadge = true` — a session badge for the most brazen crasher
+
+**The Gala Guard (`gala_guard` NPC):**
+- Patrols at 140px orbit radius around the gala center with smooth angular movement
+- If any bird has 4+ hits and enters within 300px: guard switches from `patrolling` to `chasing` at 145px/s
+- **Kingpin cross-system**: if the Kingpin flies within 250px of the gala, the guard immediately prioritizes chasing them (the richest bird gets VIP security attention)
+- Catches target within 40px → EJECT: bird teleported 400px in a random direction, loses 10% of coins (max 80c), combo reset, guard continues pursuit for 12 more seconds
+- **Counter-play**: poop the guard TWICE while it's chasing you → guard stunned for 8 seconds → +60 XP +25c for the shooter. Stun resets chase hit counter.
+- First guard hit (not yet stunned): +20 XP +8c — partial credit for the taunt
+
+**HIGH ROLLER badge (session):**
+- Land 8+ hits on gala guests without ever being ejected — requires dodging the guard while repeatedly hitting guests
+- `highRollerBadge` session flag — renders as a dark gold nametag badge visible to all nearby players
+- City-wide `high_roller_badge` event announces the achievement
+
+**Two new daily challenges (added to `DAILY_CHALLENGE_POOL`):**
+- 🎩 **Party Crasher**: Hit 5 gala guests during a Charity Gala (200 XP, 100c)
+- 🎩 **High Roller**: Earn the HIGH ROLLER badge (8 hits without ejection) (300 XP, 150c)
+
+**Cross-system interactions:**
+- **Crime Wave × Gala**: all gala guest hits give 5× XP (75 instead of 45) during Crime Wave — chaos premium for crashing a posh event during a citywide criminal emergency
+- **Kingpin × Guard**: the Gala Guard treats the Kingpin as the highest-priority target — the guard always chases wealth first, echoing Bird City's general power dynamic
+
+**Events & announcements:**
+- `charity_gala_start`: screen shake + big teal announcement + event feed
+- `gala_guest_hit`: floating reward text + hit counter update
+- `gala_guard_taunted`: personal "+20 XP +8c" callout for first guard hit
+- `gala_guard_stunned`: personal "GUARD STUNNED +60 XP +25c!" + city-wide event feed
+- `gala_ejection`: personal shame announcement with fine amount + city-wide callout with bird name
+- `high_roller_badge`: city-wide gold announcement + screen shake
+- `charity_gala_end`: quiet event feed "🎩 The Charity Gala guests have departed."
+
+**Gazette tracking:** "🎩 CHARITY GALA CRASHED — [Name] EJECTED BY THE GALA GUARD" or "🎩 HIGH ROLLER: [Name] HITS 8 GUESTS WITHOUT GETTING KICKED OUT" depending on the session's most notable moment.
+
+**Creative intent**: The Charity Gala is Bird City's first event that actively PUNISHES aggression after a threshold — not through the wanted system, but through the social consequence of ejection. Until now, hitting NPCs always just rewarded you. The gala flips this: 4 hits is fine, 5 hits gets you bounced by a very insistent guard. The 8-hit HIGH ROLLER badge rewards the players who are skilled enough to keep pooping while dodging the guard's patrol route — it's the game's first "stealth aggression" skill test. The Crime Wave cross-system creates a beautiful moment: a Criminal in the middle of a citywide emergency crashing a fancy garden party for 5× XP premium while a tuxedo guard chases them across the park is pure CARNAGE + COMEDY. The Kingpin guard-priority creates drama: the richest bird online gets immediately singled out by security the moment they fly anywhere near the champagne. Pure CARNAGE + DISCOVERY + SOCIAL energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -4932,4 +4976,9 @@ Built the Territory Control System on top of the existing upstream code:
 - Parade × Gang War: if two gangs are at war when the parade fires, gang war hits can stack on parade pigeon hits (one poop counts for both)
 - Street Performer event: a juggling NPC appears in a plaza, watch them for 10 seconds to earn XP (patience reward like the Golden Goose), poop them for small coins but lose the watch bonus — tension between patience and instinct
 - ~~Lost Chick Event: a baby bird is separated from its parent somewhere in the city — escort it 500px to the nest (fly within 60px for 8s) for a big reward; rivals can intercept by flying between you and the chick~~ (DONE Session 132)
-- The Charity Gala: a fancy party in the park every 60 minutes — tuxedo-wearing NPCs worth 3× XP on poop hits, but a Gala Guard politely (forcefully) escorts disruptive birds away if they score 5+ hits
+- ~~The Charity Gala: a fancy party in the park every 60 minutes — tuxedo-wearing NPCs worth 3× XP on poop hits, but a Gala Guard politely (forcefully) escorts disruptive birds away if they score 5+ hits~~ (DONE Session 135)
+- Charity Gala × Aurora: if the Gala opens during the Aurora Borealis, all guest hits give Cosmic Fish currency on top of XP/coins — the sacred sky blesses the party crashers
+- Charity Gala × Gang War: if two gangs are at war when the Gala opens, gang war hits can stack on gala guest hits (one poop counts for both)
+- Charity Gala × Golden Throne: if the Golden Throne spawns near the gala during the same event window, the Gala Guard immediately leaves the gala to patrol the throne instead — guard priority shift creates an opening for crashers
+- Gala VIP Guest: rare upgrade where one of the 8 guests is a "celebrity bird" — worth 3× XP but guarded extra closely by the guard at all times
+- HIGH ROLLER prestige: earn the HIGH ROLLER badge 5 times total across sessions → permanent "🎩 VETERAN CRASHER" persistent nametag badge

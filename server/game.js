@@ -987,6 +987,14 @@ class GameEngine {
     this._stuntRampCooldowns = new Map(); // birdId -> { lastRampId, chainCount, chainUntil, badgeEarned }
     // Ramps are permanent world objects — no spawn/despawn timer needed.
 
+    // === CHARITY GALA (Session 135) ===
+    // A fancy garden party in the park every 55–70 minutes. 8 tuxedo-wearing gala guests
+    // worth 3× XP (5× during Crime Wave). A Gala Guard NPC ejects troublemakers after 5+
+    // hits. Stun the guard twice mid-chase for a bonus. HIGH ROLLER badge for 8+ hits
+    // without ejection. Kingpin gets priority attention from the guard.
+    this.charityGala = null; // null | { x, y, guests, guard, hitsByBird, ejectedBirds, totalHits, startedAt, endsAt }
+    this._charityGalaTimer = Date.now() + this._randomRange(55 * 60000, 70 * 60000);
+
     // === AURORA BOREALIS ===
     // A rare, breathtaking night spectacle — colored light ribbons flow across the sky.
     // Triggers with 30% chance at the start of each night phase. Lasts 4–7 minutes.
@@ -2436,6 +2444,9 @@ class GameEngine {
 
     // === Stunt Ramps ===
     this._tickStuntRamps(dt, now);
+
+    // === Charity Gala ===
+    this._tickCharityGala(dt, now);
   }
 
   // ============================================================
@@ -4107,6 +4118,43 @@ class GameEngine {
           guard.chaseTarget = null;
           guard.chaseUntil = 0;
           this.events.push({ type: 'guard_stunned', x: guard.x, y: guard.y, birdId: bird.id });
+        }
+      } else if (hit.target === 'gala_guest') {
+        const guest = hit.npc;
+        if (guest && this.charityGala) {
+          const crimeActive = this.crimeWave && this.crimeWave.active;
+          xpGain = crimeActive ? 75 : 45;
+          coinGain = 15;
+          const birdHits = (this.charityGala.hitsByBird.get(bird.id) || 0) + 1;
+          this.charityGala.hitsByBird.set(bird.id, birdHits);
+          this.charityGala.totalHits = (this.charityGala.totalHits || 0) + 1;
+          guest.state = 'panicking';
+          guest.panicUntil = now + 4000;
+          this.events.push({ type: 'gala_guest_hit', x: guest.x, y: guest.y, birdId: bird.id, birdName: bird.name, hits: birdHits });
+          if (birdHits >= 5 && !this.charityGala.ejectedBirds.has(bird.id)) {
+            this._ejectFromGala(bird, now);
+          } else if (birdHits >= 8 && !this.charityGala.ejectedBirds.has(bird.id) && !bird.highRollerBadge) {
+            bird.highRollerBadge = true;
+            this.events.push({ type: 'high_roller_badge', birdId: bird.id, birdName: bird.name, gangTag: bird.gangTag || '' });
+          }
+        }
+      } else if (hit.target === 'gala_guard') {
+        const gGuard = hit.npc;
+        if (gGuard && gGuard.state === 'chasing') {
+          gGuard.chaseHits = (gGuard.chaseHits || 0) + 1;
+          if (gGuard.chaseHits >= 2) {
+            xpGain = 60;
+            coinGain = 25;
+            gGuard.state = 'stunned';
+            gGuard.stunnedUntil = now + 8000;
+            gGuard.chaseTarget = null;
+            gGuard.chaseHits = 0;
+            this.events.push({ type: 'gala_guard_stunned', x: gGuard.x, y: gGuard.y, birdId: bird.id, birdName: bird.name });
+          } else {
+            xpGain = 20;
+            coinGain = 8;
+            this.events.push({ type: 'gala_guard_taunted', x: gGuard.x, y: gGuard.y, birdId: bird.id });
+          }
         }
       } else if (hit.target === 'parade_marshal') {
         const marshal = hit.npc;
@@ -6280,6 +6328,17 @@ class GameEngine {
             allHits.push({ target: 'city_guard', npc });
           }
           // Cannot poop guards who are just marching — they retaliate
+        } else if (npc.type === 'gala_guest') {
+          if (npc.state !== 'fled') {
+            if (!isMegaPoop) return { target: 'gala_guest', npc };
+            allHits.push({ target: 'gala_guest', npc });
+          }
+        } else if (npc.type === 'gala_guard') {
+          if (npc.state === 'chasing') {
+            if (!isMegaPoop) return { target: 'gala_guard', npc };
+            allHits.push({ target: 'gala_guard', npc });
+          }
+          // Guard only hittable while actively chasing a bird
         } else {
           if (!isMegaPoop) return { target: 'event_npc', npc };
           allHits.push({ target: 'event_npc', npc });
@@ -29809,6 +29868,249 @@ class GameEngine {
     }
   }
   // ─── end Stunt Ramps ──────────────────────────────────────────────────────
+
+  // ─── Charity Gala (Session 135) ───────────────────────────────────────────
+
+  _startCharityGala(now) {
+    const cx = 1050, cy = 1250; // park center-ish, away from pond (1050,1100) and statue
+    const guestPositions = [
+      { x: cx - 120, y: cy - 80 }, { x: cx - 60, y: cy - 120 },
+      { x: cx + 60,  y: cy - 100 }, { x: cx + 130, y: cy - 40 },
+      { x: cx + 110, y: cy + 80 }, { x: cx + 20,  y: cy + 120 },
+      { x: cx - 80,  y: cy + 100 }, { x: cx - 140, y: cy + 40 },
+    ];
+
+    const guests = [];
+    for (let i = 0; i < guestPositions.length; i++) {
+      const id = `gala_guest_${now}_${i}`;
+      const npc = {
+        id, type: 'gala_guest', x: guestPositions[i].x, y: guestPositions[i].y,
+        state: 'mingling', panicUntil: 0,
+        wanderAngle: Math.random() * Math.PI * 2,
+        wanderTimer: 0,
+      };
+      this.worldEventNPCs.set(id, npc);
+      guests.push(id);
+    }
+
+    const guardId = `gala_guard_${now}`;
+    const guard = {
+      id: guardId, type: 'gala_guard',
+      x: cx, y: cy + 150,
+      state: 'patrolling',
+      chaseTarget: null, chaseHits: 0, stunnedUntil: 0,
+      patrolAngle: 0, patrolRadius: 140, patrolCx: cx, patrolCy: cy,
+    };
+    this.worldEventNPCs.set(guardId, guard);
+
+    this.charityGala = {
+      x: cx, y: cy,
+      guests, guardId,
+      hitsByBird: new Map(),
+      ejectedBirds: new Set(),
+      totalHits: 0,
+      startedAt: now,
+      endsAt: now + 5 * 60000, // 5-minute event
+    };
+
+    const display = '🎩 CHARITY GALA IN THE PARK!';
+    this.events.push({
+      type: 'charity_gala_start',
+      x: cx, y: cy,
+      message: display,
+    });
+  }
+
+  _ejectFromGala(bird, now) {
+    if (!this.charityGala) return;
+    this.charityGala.ejectedBirds.add(bird.id);
+
+    // Teleport bird ~400px away in a random direction
+    const angle = Math.random() * Math.PI * 2;
+    bird.x = Math.max(50, Math.min(this.worldWidth  - 50, bird.x + Math.cos(angle) * 400));
+    bird.y = Math.max(50, Math.min(this.worldHeight - 50, bird.y + Math.sin(angle) * 400));
+
+    // Take 10% of coins, max 80c
+    const fine = Math.min(Math.floor((bird.coins || 0) * 0.10), 80);
+    bird.coins = Math.max(0, (bird.coins || 0) - fine);
+
+    // Combo break
+    bird.comboCount = 0;
+    bird.comboTimer = 0;
+
+    // Set guard chasing this bird
+    const guard = this.worldEventNPCs.get(this.charityGala.guardId);
+    if (guard) {
+      guard.state = 'chasing';
+      guard.chaseTarget = bird.id;
+      guard.chaseHits = 0;
+      guard.chaseUntil = now + 12000;
+    }
+
+    this.events.push({
+      type: 'gala_ejection',
+      birdId: bird.id,
+      birdName: bird.name || bird.id,
+      gangTag: bird.gangTag || '',
+      fine,
+      x: bird.x,
+      y: bird.y,
+    });
+  }
+
+  _tickCharityGala(dt, now) {
+    // Spawn check
+    if (!this.charityGala && now >= this._charityGalaTimer) {
+      let anyOnline = false;
+      for (const b of this.birds.values()) { if (b.connected) { anyOnline = true; break; } }
+      if (anyOnline) {
+        this._startCharityGala(now);
+        this._charityGalaTimer = now + this._randomRange(55 * 60000, 70 * 60000);
+      } else {
+        // Retry in 30s if nobody online
+        this._charityGalaTimer = now + 30000;
+      }
+    }
+
+    if (!this.charityGala) return;
+
+    // End check
+    if (now >= this.charityGala.endsAt) {
+      // Clean up all NPCs
+      for (const id of this.charityGala.guests) this.worldEventNPCs.delete(id);
+      this.worldEventNPCs.delete(this.charityGala.guardId);
+      this.events.push({ type: 'charity_gala_end', x: this.charityGala.x, y: this.charityGala.y });
+      this.charityGala = null;
+      return;
+    }
+
+    const cx = this.charityGala.x, cy = this.charityGala.y;
+    const dtSec = dt / 1000;
+
+    // === Tick gala guests ===
+    for (const guestId of this.charityGala.guests) {
+      const guest = this.worldEventNPCs.get(guestId);
+      if (!guest) continue;
+
+      if (guest.state === 'panicking') {
+        if (now >= guest.panicUntil) guest.state = 'mingling';
+        else {
+          // Flee outward from gala center
+          const dx = guest.x - cx, dy = guest.y - cy;
+          const len = Math.sqrt(dx * dx + dy * dy) || 1;
+          guest.x += (dx / len) * 60 * dtSec;
+          guest.y += (dy / len) * 60 * dtSec;
+          guest.x = Math.max(50, Math.min(this.worldWidth  - 50, guest.x));
+          guest.y = Math.max(50, Math.min(this.worldHeight - 50, guest.y));
+        }
+        continue;
+      }
+
+      // Mingling: gentle random drift within ~200px of gala center
+      guest.wanderTimer = (guest.wanderTimer || 0) - dt;
+      if (guest.wanderTimer <= 0) {
+        guest.wanderAngle = guest.wanderAngle + (Math.random() - 0.5) * Math.PI;
+        guest.wanderTimer = 1500 + Math.random() * 2000;
+      }
+      const targetX = cx + Math.cos(guest.wanderAngle) * 80;
+      const targetY = cy + Math.sin(guest.wanderAngle) * 80;
+      const dxT = targetX - guest.x, dyT = targetY - guest.y;
+      const dist = Math.sqrt(dxT * dxT + dyT * dyT);
+      if (dist > 5) {
+        const speed = 30 * dtSec;
+        guest.x += (dxT / dist) * Math.min(speed, dist);
+        guest.y += (dyT / dist) * Math.min(speed, dist);
+      }
+      // Snap back if too far
+      const dxC = guest.x - cx, dyC = guest.y - cy;
+      if (dxC * dxC + dyC * dyC > 210 * 210) {
+        guest.x = cx + (dxC / Math.sqrt(dxC * dxC + dyC * dyC)) * 200;
+        guest.y = cy + (dyC / Math.sqrt(dxC * dxC + dyC * dyC)) * 200;
+      }
+    }
+
+    // === Tick gala guard ===
+    const guard = this.worldEventNPCs.get(this.charityGala.guardId);
+    if (!guard) return;
+
+    // Stunned recovery
+    if (guard.state === 'stunned') {
+      if (now >= guard.stunnedUntil) {
+        guard.state = 'patrolling';
+        guard.chaseTarget = null;
+        guard.chaseHits = 0;
+      }
+      return;
+    }
+
+    // Chase timer expired
+    if (guard.state === 'chasing' && now >= (guard.chaseUntil || 0)) {
+      guard.state = 'patrolling';
+      guard.chaseTarget = null;
+      guard.chaseHits = 0;
+    }
+
+    // Kingpin cross-system: if Kingpin is near the gala, the guard prioritizes them
+    const kingpinId = this.kingpin && this.kingpin.birdId;
+    if (guard.state === 'patrolling' && kingpinId) {
+      const kp = this.birds.get(kingpinId);
+      if (kp && kp.connected) {
+        const dxKP = kp.x - cx, dyKP = kp.y - cy;
+        if (dxKP * dxKP + dyKP * dyKP < 250 * 250) {
+          guard.state = 'chasing';
+          guard.chaseTarget = kingpinId;
+          guard.chaseHits = 0;
+          guard.chaseUntil = now + 10000;
+          this.events.push({ type: 'gala_guard_kingpin', birdId: kingpinId, birdName: kp.name || kp.id });
+        }
+      }
+    }
+
+    if (guard.state === 'chasing' && guard.chaseTarget) {
+      const target = this.birds.get(guard.chaseTarget);
+      if (!target || !target.connected) {
+        guard.state = 'patrolling';
+        guard.chaseTarget = null;
+      } else {
+        const dx = target.x - guard.x, dy = target.y - guard.y;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+        const speed = 145 * dtSec;
+        guard.x += (dx / dist) * Math.min(speed, dist);
+        guard.y += (dy / dist) * Math.min(speed, dist);
+
+        // Catch: if close enough, eject them
+        if (dist < 40 && !this.charityGala.ejectedBirds.has(target.id)) {
+          this._ejectFromGala(target, now);
+        }
+      }
+    } else {
+      // Patrol: orbit the gala center
+      guard.patrolAngle = (guard.patrolAngle || 0) + 0.6 * dtSec;
+      guard.x = cx + Math.cos(guard.patrolAngle) * 140;
+      guard.y = cy + Math.sin(guard.patrolAngle) * 140;
+
+      // If any bird gets 4 hits and is near gala, start chasing them
+      if (this.charityGala) {
+        for (const [birdId, hits] of this.charityGala.hitsByBird) {
+          if (hits >= 4 && !this.charityGala.ejectedBirds.has(birdId)) {
+            const b = this.birds.get(birdId);
+            if (!b || !b.connected) continue;
+            const dxB = b.x - cx, dyB = b.y - cy;
+            if (dxB * dxB + dyB * dyB < 300 * 300) {
+              guard.state = 'chasing';
+              guard.chaseTarget = birdId;
+              guard.chaseHits = 0;
+              guard.chaseUntil = now + 12000;
+              this.events.push({ type: 'gala_guard_alert', birdId, birdName: b.name || birdId });
+              break;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // ─── end Charity Gala ─────────────────────────────────────────────────────
 
 }
 
