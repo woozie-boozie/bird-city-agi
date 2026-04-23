@@ -229,6 +229,10 @@ const DAILY_CHALLENGE_POOL = [
   // Session 132: Lost Chick Event
   { id: 'chick_escort',      title: 'Kind Soul',   desc: 'Escort the lost chick safely to its nest',                 target: 1, trackType: 'chick_delivered', reward: { xp: 280, coins: 140 } },
   { id: 'chick_interceptor', title: 'Bird Thief',  desc: 'Steal the lost chick from another bird\'s escort',         target: 1, trackType: 'chick_stolen',   reward: { xp: 200, coins: 100 } },
+  // Session 136: Street Performer
+  { id: 'street_watcher',   title: 'Appreciative Crowd', desc: 'Watch the Street Performer for 10+ seconds to earn their reward', target: 1, trackType: 'performer_watched',  reward: { xp: 150, coins: 75  } },
+  { id: 'performer_ruiner', title: 'Show Stopper',       desc: 'Poop the Street Performer and ruin their act',                    target: 1, trackType: 'performer_pooped',  reward: { xp: 120, coins: 60  } },
+  { id: 'standing_ovation', title: 'Standing Ovation',   desc: 'Be part of a 3+ bird crowd that earns the grand finale bonus',   target: 1, trackType: 'performer_ovation', reward: { xp: 250, coins: 125 } },
 ];
 
 // ============================================================
@@ -994,6 +998,15 @@ class GameEngine {
     // without ejection. Kingpin gets priority attention from the guard.
     this.charityGala = null; // null | { x, y, guests, guard, hitsByBird, ejectedBirds, totalHits, startedAt, endsAt }
     this._charityGalaTimer = Date.now() + this._randomRange(55 * 60000, 70 * 60000);
+
+    // === STREET PERFORMER (Session 136) ===
+    // A juggling street performer spawns in one of 8 city plazas every 20–28 minutes.
+    // Stay within 90px for 10 continuous seconds to earn a tip reward (+100 XP +40c).
+    // 3+ birds watching simultaneously = community bonus (+200 XP +80c each, grand finale).
+    // If the performer completes a 2-minute peaceful show → everyone watching earns HUGE bonus.
+    // Poop them = they FLEE and all watcher XP is lost — patience vs instinct tension.
+    this.streetPerformer = null; // null | { x, y, performerId, watchers: Map<birdId, watchStartMs>, peacefulTime, startedAt, endsAt, finaleTriggered, fled }
+    this._streetPerformerTimer = Date.now() + this._randomRange(20 * 60000, 28 * 60000);
 
     // === AURORA BOREALIS ===
     // A rare, breathtaking night spectacle — colored light ribbons flow across the sky.
@@ -2447,6 +2460,9 @@ class GameEngine {
 
     // === Charity Gala ===
     this._tickCharityGala(dt, now);
+
+    // === Street Performer ===
+    this._tickStreetPerformer(dt, now);
   }
 
   // ============================================================
@@ -4155,6 +4171,20 @@ class GameEngine {
             coinGain = 8;
             this.events.push({ type: 'gala_guard_taunted', x: gGuard.x, y: gGuard.y, birdId: bird.id });
           }
+        }
+      } else if (hit.target === 'street_performer') {
+        const performer = hit.npc;
+        if (performer && this.streetPerformer && !this.streetPerformer.fled) {
+          this.streetPerformer.fled = true;
+          performer.state = 'fled';
+          xpGain = 80;
+          coinGain = 30;
+          this._trackDailyProgress(bird, 'performer_pooped', 1);
+          // Notify all watchers their reward is gone
+          for (const [watcherId] of this.streetPerformer.watchers) {
+            this.events.push({ type: 'performer_fled', birdId: watcherId, pooперName: bird.name, pooперGang: bird.gangTag });
+          }
+          this.events.push({ type: 'performer_fled_global', x: performer.x, y: performer.y, pooперName: bird.name, pooперGang: bird.gangTag });
         }
       } else if (hit.target === 'parade_marshal') {
         const marshal = hit.npc;
@@ -6339,6 +6369,11 @@ class GameEngine {
             allHits.push({ target: 'gala_guard', npc });
           }
           // Guard only hittable while actively chasing a bird
+        } else if (npc.type === 'street_performer') {
+          if (npc.state === 'performing' || npc.state === 'bowing') {
+            if (!isMegaPoop) return { target: 'street_performer', npc };
+            allHits.push({ target: 'street_performer', npc });
+          }
         } else {
           if (!isMegaPoop) return { target: 'event_npc', npc };
           allHits.push({ target: 'event_npc', npc });
@@ -8302,6 +8337,8 @@ class GameEngine {
           isBride: n.isBride || false,
           hp: n.hp,
           batonAngle: n.batonAngle,
+          juggleAngle: n.juggleAngle,
+          phase: n.phase,
         });
       }
     }
@@ -8898,6 +8935,15 @@ class GameEngine {
         windBonus: this.kiteFestival.windBonus,
         caughtCount: this.kiteFestival.caughtCount || 0,
         myKites: (this.kiteFestival.contributors ? (this.kiteFestival.contributors.get(bird.id) || {}).kites || 0 : 0),
+      } : null,
+      streetPerformer: this.streetPerformer ? {
+        x: this.streetPerformer.x,
+        y: this.streetPerformer.y,
+        locationName: this.streetPerformer.locationName,
+        endsAt: this.streetPerformer.endsAt,
+        fled: this.streetPerformer.fled,
+        myWatchMs: (this.streetPerformer.watchers.get(bird.id) || {}).totalMs || 0,
+        myRewarded: (this.streetPerformer.watchers.get(bird.id) || {}).rewarded || false,
       } : null,
       stuntRamps: this._getStuntRampsForClient(bird.id, now),
       raccoons: nearbyRaccoons,
@@ -30111,6 +30157,166 @@ class GameEngine {
   }
 
   // ─── end Charity Gala ─────────────────────────────────────────────────────
+
+  // ─── Street Performer (Session 136) ──────────────────────────────────────
+
+  static get PERFORMER_LOCATIONS() {
+    return [
+      { x: 1200, y: 1150, name: 'Park Center Stage' },
+      { x: 2050, y: 1300, name: 'Downtown Plaza' },
+      { x: 380,  y: 1900, name: 'Cafe Corner' },
+      { x: 2380, y: 380,  name: 'Mall Atrium' },
+      { x: 750,  y: 450,  name: 'Residential Square' },
+      { x: 1800, y: 1050, name: 'City Hall Steps' },
+      { x: 1050, y: 640,  name: 'Hall of Legends' },
+      { x: 1350, y: 2380, name: 'Docks Promenade' },
+    ];
+  }
+
+  _spawnStreetPerformer(now) {
+    const loc = this.PERFORMER_LOCATIONS[Math.floor(Math.random() * this.PERFORMER_LOCATIONS.length)];
+    const pid = 'street_performer_' + uid();
+    const npc = {
+      id: pid, type: 'street_performer',
+      x: loc.x, y: loc.y,
+      state: 'performing', // performing | bowing | fled
+      locationName: loc.name,
+      phase: Math.random() * Math.PI * 2,
+      juggleAngle: 0,
+    };
+    this.worldEventNPCs.set(pid, npc);
+    this.streetPerformer = {
+      performerId: pid,
+      x: loc.x, y: loc.y,
+      locationName: loc.name,
+      startedAt: now,
+      endsAt: now + 120000, // 2-minute show
+      watchers: new Map(), // birdId -> { startMs, totalMs, rewarded }
+      finaleTriggered: false,
+      fled: false,
+    };
+    this.events.push({ type: 'street_performer_start', x: loc.x, y: loc.y, locationName: loc.name });
+    if (this.gazetteStats) this.gazetteStats.streetPerformerShows = (this.gazetteStats.streetPerformerShows || 0) + 1;
+  }
+
+  _tickStreetPerformer(dt, now) {
+    // Spawn check
+    if (!this.streetPerformer && now >= this._streetPerformerTimer) {
+      const anyOnline = Array.from(this.birds.values()).some(b => b.connected);
+      if (anyOnline) {
+        this._spawnStreetPerformer(now);
+      } else {
+        this._streetPerformerTimer = now + this._randomRange(20 * 60000, 28 * 60000);
+      }
+      return;
+    }
+    if (!this.streetPerformer) return;
+
+    const sp = this.streetPerformer;
+    const performer = this.worldEventNPCs.get(sp.performerId);
+
+    // Cleanup if performer fled or show ended
+    if (sp.fled || now >= sp.endsAt) {
+      if (!sp.fled && !sp.finaleTriggered) {
+        // Grand finale — peaceful 2-minute show complete! Big reward for all watchers
+        sp.finaleTriggered = true;
+        const eligibleWatchers = [];
+        for (const [bid, ws] of sp.watchers) {
+          if (ws.totalMs >= 10000) eligibleWatchers.push(bid);
+        }
+        if (eligibleWatchers.length >= 3) {
+          // STANDING OVATION — 3+ birds watched the full show
+          for (const bid of eligibleWatchers) {
+            const b = this.birds.get(bid);
+            if (!b) continue;
+            b.xp += 300;
+            b.coins += 120;
+            this._trackDailyProgress(b, 'performer_ovation', 1);
+            this.events.push({ type: 'performer_ovation', birdId: bid, xp: 300, coins: 120 });
+          }
+          this.events.push({ type: 'performer_finale', ovation: true, watcherCount: eligibleWatchers.length, x: sp.x, y: sp.y });
+        } else if (eligibleWatchers.length > 0) {
+          // Regular finale — all long-term watchers get bonus
+          for (const bid of eligibleWatchers) {
+            const b = this.birds.get(bid);
+            if (!b) continue;
+            b.xp += 200;
+            b.coins += 80;
+            this.events.push({ type: 'performer_finale_reward', birdId: bid, xp: 200, coins: 80 });
+          }
+          this.events.push({ type: 'performer_finale', ovation: false, watcherCount: eligibleWatchers.length, x: sp.x, y: sp.y });
+        } else {
+          this.events.push({ type: 'performer_finale', ovation: false, watcherCount: 0, x: sp.x, y: sp.y });
+        }
+        if (performer) performer.state = 'bowing';
+      }
+      // Schedule cleanup after brief bow or immediate if fled
+      const cleanupDelay = sp.fled ? 0 : 3000;
+      if (!sp._cleanupScheduled) {
+        sp._cleanupScheduled = true;
+        setTimeout(() => {
+          if (performer) this.worldEventNPCs.delete(sp.performerId);
+          this.streetPerformer = null;
+          this._streetPerformerTimer = Date.now() + this._randomRange(20 * 60000, 28 * 60000);
+        }, cleanupDelay);
+      }
+      return;
+    }
+
+    if (!performer || sp.fled) return;
+
+    // Animate the performer (gentle sway in place)
+    performer.phase = (performer.phase || 0) + dt * 0.8;
+    performer.juggleAngle = (performer.juggleAngle || 0) + dt * 2.5;
+    // Slight position sway
+    performer.x = sp.x + Math.sin(performer.phase) * 12;
+    performer.y = sp.y + Math.cos(performer.phase * 0.6) * 6;
+
+    // Watcher detection: scan all birds within 90px
+    let simultaneousWatchers = 0;
+    for (const bird of this.birds.values()) {
+      if (!bird.connected) continue;
+      const dx = bird.x - performer.x, dy = bird.y - performer.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist <= 90) {
+        simultaneousWatchers++;
+        const entry = sp.watchers.get(bird.id);
+        if (!entry) {
+          sp.watchers.set(bird.id, { startMs: now, totalMs: 0, rewarded: false });
+        } else {
+          entry.totalMs += dt;
+          // Individual 10-second watch reward (one per bird per show)
+          if (!entry.rewarded && entry.totalMs >= 10000) {
+            entry.rewarded = true;
+            bird.xp += 100;
+            bird.coins += 40;
+            this._trackDailyProgress(bird, 'performer_watched', 1);
+            this.events.push({ type: 'performer_watched', birdId: bird.id, xp: 100, coins: 40, x: performer.x, y: performer.y });
+          }
+        }
+      }
+    }
+
+    // Community bonus: 3+ simultaneous watchers → trigger group cheer (once per show)
+    if (simultaneousWatchers >= 3 && !sp._groupCheered) {
+      sp._groupCheered = true;
+      // All current watchers with some time invested get a social bonus
+      for (const [bid, ws] of sp.watchers) {
+        const b = this.birds.get(bid);
+        if (!b || !b.connected) continue;
+        const dx = b.x - performer.x, dy = b.y - performer.y;
+        if (Math.sqrt(dx * dx + dy * dy) <= 90) {
+          b.xp += 60;
+          b.coins += 25;
+          this._trackDailyProgress(b, 'performer_ovation', 1);
+          this.events.push({ type: 'performer_group_bonus', birdId: bid, xp: 60, coins: 25 });
+        }
+      }
+      this.events.push({ type: 'performer_crowd_cheer', watcherCount: simultaneousWatchers, x: performer.x, y: performer.y });
+    }
+  }
+
+  // ─── end Street Performer ─────────────────────────────────────────────────
 
 }
 

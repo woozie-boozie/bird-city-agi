@@ -4682,6 +4682,49 @@ Bird City's most posh event. Every 55–70 minutes, a Charity Gala opens in the 
 
 **Creative intent**: The Charity Gala is Bird City's first event that actively PUNISHES aggression after a threshold — not through the wanted system, but through the social consequence of ejection. Until now, hitting NPCs always just rewarded you. The gala flips this: 4 hits is fine, 5 hits gets you bounced by a very insistent guard. The 8-hit HIGH ROLLER badge rewards the players who are skilled enough to keep pooping while dodging the guard's patrol route — it's the game's first "stealth aggression" skill test. The Crime Wave cross-system creates a beautiful moment: a Criminal in the middle of a citywide emergency crashing a fancy garden party for 5× XP premium while a tuxedo guard chases them across the park is pure CARNAGE + COMEDY. The Kingpin guard-priority creates drama: the richest bird online gets immediately singled out by security the moment they fly anywhere near the champagne. Pure CARNAGE + DISCOVERY + SOCIAL energy.
 
+**Session 136 — 2026-04-23: Street Performer NPC — Patience vs Instinct**
+Bird City's most philosophically conflicted mechanic. A jester-costumed juggler appears in a city plaza every 18–25 minutes, rewarding patient watchers while fleeing from any bird who gives in to the pooping instinct. For the first time, restraint is the optimal play.
+
+**The Performer flow (`server/game.js`):**
+- Spawns every 18–25 minutes at one of 8 city plazas (Park Center, Downtown, Mall Atrium, Cafe Corner, Arena steps, Hall of Legends, Radio Tower base, Residential Square) — announced city-wide with a screen shake
+- 2-minute performance window: juggling 3 colored balls, performing stunts, drawing a crowd
+- **Patience reward**: any bird that stays within 130px continuously for 10 seconds earns +60 XP +25c — rewarded once per show. Watch twice as long (20s total) and a **STANDING OVATION** bonus fires: +100 XP +50c on top of the base reward
+- **Group energy**: 3+ watchers within 130px simultaneously → `performer_crowd_cheer` fires, all watchers get +12 XP +5c bonus every 15 seconds (encourages birds to cluster)
+- **Poop triggers flee**: any poop hit on the performer causes immediate `fled` state — performer sprints to nearest map edge at 200px/s. All active watchers lose their watch bonuses (rewards wasted). The poop shooter gets +20 XP +8c (petty crime pays a little — but everyone watching loses big)
+- **Grand Finale**: if nobody poops the performer for the full 2 minutes, the finale fires — all birds within 130px get proportional rewards (50–120 XP + 25–60c based on watch time), city-wide ovation announcement, short bow animation before walking off
+
+**Three daily challenges (added to pool):**
+- 🎪 **Show Watcher**: Watch the Street Performer for 10 continuous seconds (160 XP, 80c)
+- 🎪 **Show Ruiner**: Poop on the Street Performer to chase them off (120 XP, 60c) — the antisocial alternative
+- 🎪 **Standing Ovation**: Watch for the full 20 seconds to earn the ovation reward (240 XP, 120c) — the patience challenge
+
+**Visual system (`public/js/sprites.js`):**
+- Custom `drawStreetPerformer(ctx, sx, sy, juggleAngle, phase, state, now)`: jester hat with three-point bells, teal/magenta diamond costume, golden sparkle eyes with glow, pulsing magenta/pink aura behind body
+- Juggling state: 3 colored balls (red/yellow/blue) orbit on independent elliptical paths with `juggleAngle` driving the master phase — each ball uniquely offset for a convincing cascading pattern
+- Bowing state (finale): body tilted 30°, hat drooping with a bow animation, confetti burst particles
+- Fled state: panic expression, X-eyes, orange aura, rapid flapping wings — unmistakably distressed
+- Watch progress bar shown above the performer for birds actively accumulating watch time (green arc fills over 10 seconds)
+
+**Watcher tracking (server):**
+- `Map<birdId, { startMs, totalMs, rewarded, ovationRewarded }>` per performer instance
+- Proximity check every tick: any bird within 130px starts/extends their timer; birds who leave reset the continuous timer but keep totalMs for finale proportional rewards
+- `rewarded` flag prevents double-payout on the 10-second milestone; `ovationRewarded` prevents double-payout on 20-second milestone
+
+**Events & announcements:**
+- `street_performer_start`: screen shake + big pink announcement naming the plaza, event feed invite
+- `performer_watched`: personal reward callout for the 10-second milestone watcher
+- `performer_ovation`: personal ovation bonus callout (20-second milestone)
+- `performer_crowd_cheer`: city-wide callout when 3+ watchers cluster
+- `performer_group_bonus`: personal bonus for each watcher in a crowd
+- `performer_fled`: personal shame callout for the bird who pooped them + announcement to all nearby watchers whose rewards were wasted
+- `performer_fled_global`: city-wide event feed shame announcement
+- `performer_finale`: city-wide grand finale announcement (ovation or quiet bow depending on attendance)
+- `performer_finale_reward`: personal proportional reward for all watchers at show end
+
+**Gazette headline:** "🎪 BIRD CITY STREET PERFORMER FLEES — [Name] COULDN'T RESIST" or "🎪 STREET PERFORMER EARNS STANDING OVATION — N BIRDS WATCHED THE FULL SHOW" depending on outcome.
+
+**Creative intent**: Every single mechanic in Bird City rewards aggression. Poop everything, fight everyone, cause chaos. The Street Performer is the first NPC where the optimal play is to NOT POOP. The tension is immediate: you see a juggler, you feel the poop button calling you, but 4 other birds are watching and a grand finale with 120 XP is 90 seconds away. Someone always breaks first — and when they do, the watchers all lose their invested watch time. The group energy mechanic rewards patience multiplied by social trust: more watchers = more bonus ticks, but more birds also means more chances someone will give in. A 2-minute window where 5 birds are all silently willing each other not to poop is peak Bird City social tension. The Show Ruiner daily challenge gives the antisocial bird a reason to do it on purpose — and the whole city hates them for it. Pure DISCOVERY + SOCIAL energy — the city now has something worth protecting by doing nothing.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -4966,7 +5009,7 @@ Built the Territory Control System on top of the existing upstream code:
 - Flock Formation Missions: the mission board adds flock-specific missions (all 3+ flock members must reach a point) — cooperative movement challenges
 - ~~NPC Parade: 8 NPCs march in a line across the city periodically, hitting the whole line with one wide poop scores chain bonus XP~~ (DONE Session 131 — evolved into Parade Crasher with marshal boss + milestone chaos)
 - The Weathervane: a spinning rooster weathervane atop a building predicts the next weather 90 seconds early — only visible if you're within 120px of it (discovery reward)
-- Street Performer: a juggling NPC appears in a plaza, watch them for 10 seconds to earn XP (patience reward), poop them for small coins but lose the watch bonus
+- ~~Street Performer: a juggling NPC appears in a plaza, watch them for 10 seconds to earn XP (patience reward), poop them for small coins but lose the watch bonus~~ (DONE Session 136)
 - The Detective Bird: a fedora-wearing NPC who randomly accuses an online bird of "looking suspicious" — that bird gets +10 heat city-wide. Can be cleared by visiting the Police Station.
 - ~~Lost Chick Event: a baby bird is separated from its parent somewhere in the city — escort it 500px to the nest (fly within 60px for 8s) for a big reward; rivals can intercept by flying between you and the chick~~ (DONE Session 132)
 - Golden Goose Egg × Sewer: if a golden egg falls into a manhole cover (goose walks over one while scared), it drops into the sewer as a premium loot cache
@@ -4974,7 +5017,7 @@ Built the Territory Control System on top of the existing upstream code:
 - Parade Crasher cross-system: during a Crime Wave, parade pigeons are worth 3× poop XP (criminals crashing a civic event)
 - Parade Marshal × Kingpin: if the Kingpin personally lands the killing blow on the marshal, the city-wide "PARADE RUINED" announcement names them as the culprit — instant +30 heat but +200 XP bonus
 - Parade × Gang War: if two gangs are at war when the parade fires, gang war hits can stack on parade pigeon hits (one poop counts for both)
-- Street Performer event: a juggling NPC appears in a plaza, watch them for 10 seconds to earn XP (patience reward like the Golden Goose), poop them for small coins but lose the watch bonus — tension between patience and instinct
+- ~~Street Performer event: a juggling NPC appears in a plaza, watch them for 10 seconds to earn XP (patience reward like the Golden Goose), poop them for small coins but lose the watch bonus — tension between patience and instinct~~ (DONE Session 136)
 - ~~Lost Chick Event: a baby bird is separated from its parent somewhere in the city — escort it 500px to the nest (fly within 60px for 8s) for a big reward; rivals can intercept by flying between you and the chick~~ (DONE Session 132)
 - ~~The Charity Gala: a fancy party in the park every 60 minutes — tuxedo-wearing NPCs worth 3× XP on poop hits, but a Gala Guard politely (forcefully) escorts disruptive birds away if they score 5+ hits~~ (DONE Session 135)
 - Charity Gala × Aurora: if the Gala opens during the Aurora Borealis, all guest hits give Cosmic Fish currency on top of XP/coins — the sacred sky blesses the party crashers

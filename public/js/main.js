@@ -5973,6 +5973,60 @@
       addEventMessage(`🎉 ${ev.name} earned the PARADE CRASHER badge!`, '#ff88ff');
     }
     // ── end Parade Crasher ────────────────────────────────────────────────
+
+    // ── Street Performer ──────────────────────────────────────────────────
+    if (ev.type === 'street_performer_start') {
+      screenShake(6, 300);
+      showAnnouncement(`🎪 STREET PERFORMER at ${ev.locationName}!\nWatch for 10s to earn a reward — poop them and they FLEE!`, '#ff88cc', 5000);
+      addEventMessage(`🎪 A Street Performer is juggling at ${ev.locationName}!`, '#ff88cc');
+    }
+    if (ev.type === 'performer_watched') {
+      if (ev.birdId === window._myId) {
+        showAnnouncement(`🎪 PERFORMER REWARD! +${ev.xp} XP +${ev.coins}c\nYou stayed for the full show!`, '#ffcc44', 4000);
+        addEventMessage('🎪 You watched the full show and earned the performer\'s reward!', '#ffcc44');
+      }
+    }
+    if (ev.type === 'performer_fled') {
+      if (ev.birdId === window._myId) {
+        const gang = ev.pooперGang ? `[${ev.pooперGang}] ` : '';
+        showAnnouncement(`😤 ${gang}${ev.pooперName} RUINED THE SHOW!\nThe performer fled — your watch bonus was wasted!`, '#ff4444', 4000);
+      }
+    }
+    if (ev.type === 'performer_fled_global') {
+      const gang = ev.pooперGang ? `[${ev.pooперGang}] ` : '';
+      addEventMessage(`🎪💀 ${gang}${ev.pooперName} chased off the Street Performer!`, '#ff6666');
+    }
+    if (ev.type === 'performer_ovation') {
+      if (ev.birdId === window._myId) {
+        screenShake(12, 600);
+        showAnnouncement(`🎉 STANDING OVATION!\n+${ev.xp} XP +${ev.coins}c — you stayed for the whole grand finale!`, '#ffd700', 6000);
+        addEventMessage('🎪🌟 You earned the STANDING OVATION bonus!', '#ffd700');
+      }
+    }
+    if (ev.type === 'performer_finale') {
+      screenShake(8, 400);
+      if (ev.ovation) {
+        showAnnouncement(`🎪🌟 GRAND FINALE at the performance!\n${ev.watcherCount} bird${ev.watcherCount !== 1 ? 's' : ''} get STANDING OVATION rewards!`, '#ffd700', 5000);
+        addEventMessage(`🎪🌟 GRAND FINALE — ${ev.watcherCount} birds earned the ovation bonus!`, '#ffd700');
+      } else {
+        showAnnouncement('🎪 The Street Performer takes a bow — show\'s over!', '#ff88cc', 3000);
+        addEventMessage('🎪 The Street Performer finished their show and moved on.', '#ff88cc');
+      }
+    }
+    if (ev.type === 'performer_finale_reward') {
+      if (ev.birdId === window._myId) {
+        addEventMessage(`🎪 Finale reward! +${ev.xp} XP +${ev.coins}c`, '#ff88cc');
+      }
+    }
+    if (ev.type === 'performer_group_bonus') {
+      if (ev.birdId === window._myId) {
+        addEventMessage(`👏 Crowd bonus! +${ev.xp} XP +${ev.coins}c`, '#ffaadd');
+      }
+    }
+    if (ev.type === 'performer_crowd_cheer') {
+      addEventMessage(`👏 ${ev.watcherCount} birds are watching the Street Performer together — group energy!`, '#ffaadd');
+    }
+    // ── end Street Performer ──────────────────────────────────────────────
   }
 
   function showAnnouncement(text, color, duration) {
@@ -10072,6 +10126,8 @@
             Sprites.drawCityGuard(ctx, sx, sy, npc.state, now);
           } else if (npc.type === 'revenge_npc') {
             Sprites.drawRevengeNPC(ctx, sx, sy);
+          } else if (npc.type === 'street_performer') {
+            Sprites.drawStreetPerformer(ctx, sx, sy, npc.juggleAngle || 0, npc.phase || 0, npc.state || 'performing', now);
           } else {
             Sprites.drawNPC(ctx, sx, sy, npc.type, npc.state, npc.poopedOn);
           }

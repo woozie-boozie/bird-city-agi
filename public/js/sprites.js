@@ -9812,4 +9812,199 @@ window.Sprites = {
     }
     ctx.restore();
   },
+
+  // Session 136: Street Performer juggler NPC
+  drawStreetPerformer(ctx, x, y, juggleAngle, phase, state, now) {
+    ctx.save();
+    ctx.translate(x, y);
+
+    // Ground shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.18)';
+    ctx.beginPath();
+    ctx.ellipse(0, 16, 14, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Colorful aura / spotlight halo
+    const auraAlpha = state === 'fled' ? 0.08 : 0.22 + Math.sin(now * 0.003) * 0.06;
+    const auraColor = state === 'fled' ? '#888888' : '#ffcc00';
+    const auraGrad = ctx.createRadialGradient(0, 0, 4, 0, 0, 32);
+    auraGrad.addColorStop(0, auraColor.replace(')', `,${auraAlpha})`).replace('rgb', 'rgba').replace('#ffcc00', `rgba(255,204,0,${auraAlpha})`).replace('#888888', `rgba(100,100,100,${auraAlpha})`));
+    auraGrad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = auraGrad;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 32, 32, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    const sway = state === 'bowing' ? 0 : Math.sin(phase * 0.9) * 6;
+    const bowTilt = state === 'bowing' ? 0.6 : 0;
+    const scaredTilt = state === 'fled' ? -0.4 : 0;
+
+    ctx.rotate(bowTilt + scaredTilt);
+
+    // Body — colorful performer costume (teal/magenta stripes)
+    ctx.fillStyle = state === 'fled' ? '#aa6655' : '#1e8a8a';
+    ctx.beginPath();
+    ctx.ellipse(0, 2, 11, 15, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Costume stripe
+    ctx.strokeStyle = state === 'fled' ? '#883344' : '#cc44aa';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(-5, -4);
+    ctx.lineTo(5, 8);
+    ctx.stroke();
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-2, -8);
+    ctx.lineTo(6, 2);
+    ctx.stroke();
+
+    // Wings (arms out wide — performer pose)
+    if (state === 'bowing') {
+      ctx.fillStyle = '#16607a';
+      // Left arm down/forward
+      ctx.beginPath();
+      ctx.ellipse(-10, 6, 4, 8, -0.8, 0, Math.PI * 2);
+      ctx.fill();
+      // Right arm down/forward
+      ctx.beginPath();
+      ctx.ellipse(10, 6, 4, 8, 0.8, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      ctx.fillStyle = state === 'fled' ? '#995544' : '#16607a';
+      const wingSpread = state === 'fled' ? 0.3 : 0.8 + Math.sin((phase || 0) * 1.2) * 0.2;
+      // Left wing out
+      ctx.beginPath();
+      ctx.ellipse(-12, -2, 5, 9, -wingSpread, 0, Math.PI * 2);
+      ctx.fill();
+      // Right wing out
+      ctx.beginPath();
+      ctx.ellipse(12, -2, 5, 9, wingSpread, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Head
+    ctx.fillStyle = state === 'fled' ? '#cc8866' : '#1a9e9e';
+    ctx.beginPath();
+    ctx.arc(0, -11, 8, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Eyes
+    if (state === 'fled') {
+      // Scared eyes — wide open O_O
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath(); ctx.arc(-3, -12, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(3, -12, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#ff2222';
+      ctx.beginPath(); ctx.arc(-3, -12, 1.5, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(3, -12, 1.5, 0, Math.PI * 2); ctx.fill();
+    } else if (state === 'bowing') {
+      // Closed/happy eyes (bow = ^_^)
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(-3, -12, 2, Math.PI, 0);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(3, -12, 2, Math.PI, 0);
+      ctx.stroke();
+    } else {
+      // Performing — bright sparkly eyes
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath(); ctx.arc(-3, -12, 2.5, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(3, -12, 2.5, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#ffaa00';
+      ctx.shadowColor = '#ffdd44';
+      ctx.shadowBlur = 4;
+      ctx.beginPath(); ctx.arc(-3, -12, 1.2, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(3, -12, 1.2, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
+    // Beak
+    ctx.fillStyle = state === 'fled' ? '#dd8833' : '#ffaa00';
+    ctx.beginPath();
+    ctx.moveTo(0, -10);
+    ctx.lineTo(5, -9);
+    ctx.lineTo(0, -7);
+    ctx.closePath();
+    ctx.fill();
+
+    // Hat — colorful jester hat
+    if (state !== 'fled') {
+      ctx.fillStyle = '#cc3388';
+      ctx.beginPath();
+      ctx.moveTo(-9, -16);
+      ctx.quadraticCurveTo(-5, -28, 0, -32);
+      ctx.quadraticCurveTo(5, -28, 9, -16);
+      ctx.closePath();
+      ctx.fill();
+      // Hat brim
+      ctx.fillStyle = '#ffcc00';
+      ctx.beginPath();
+      ctx.ellipse(0, -16, 10, 3, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Bell at hat tip
+      ctx.fillStyle = '#ffdd00';
+      ctx.shadowColor = '#ffee44';
+      ctx.shadowBlur = 5;
+      ctx.beginPath();
+      ctx.arc(0, -33, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    } else {
+      // Scared — hat flying off
+      ctx.save();
+      ctx.translate(14, -26);
+      ctx.rotate(-0.7);
+      ctx.fillStyle = '#cc3388';
+      ctx.beginPath();
+      ctx.moveTo(-5, 4);
+      ctx.quadraticCurveTo(-2, -6, 0, -10);
+      ctx.quadraticCurveTo(2, -6, 5, 4);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#ffcc00';
+      ctx.beginPath();
+      ctx.ellipse(0, 4, 6, 2, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Juggling balls — 3 balls in arcing orbits
+    if (state === 'performing') {
+      const ballColors = ['#ff4444', '#44ff88', '#4488ff'];
+      const angle = juggleAngle || 0;
+      for (let i = 0; i < 3; i++) {
+        const a = angle + (i * Math.PI * 2) / 3;
+        // Balls trace an arc pattern — higher at top, wider at bottom
+        const bx = Math.sin(a) * 18;
+        const by = -18 - Math.abs(Math.cos(a)) * 16;
+        ctx.fillStyle = ballColors[i];
+        ctx.shadowColor = ballColors[i];
+        ctx.shadowBlur = 6;
+        ctx.beginPath();
+        ctx.arc(bx, by, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        // Ball highlight
+        ctx.fillStyle = 'rgba(255,255,255,0.55)';
+        ctx.beginPath();
+        ctx.arc(bx - 1, by - 1, 1.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else if (state === 'bowing') {
+      // Balls resting at sides
+      const ballColors = ['#ff4444', '#44ff88', '#4488ff'];
+      for (let i = 0; i < 3; i++) {
+        const bx = (i - 1) * 10;
+        ctx.fillStyle = ballColors[i];
+        ctx.beginPath();
+        ctx.arc(bx, 14, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    ctx.restore();
+  },
 };
