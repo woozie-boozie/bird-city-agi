@@ -6034,6 +6034,34 @@
       addEventMessage(`👏 ${ev.watcherCount} birds are watching the Street Performer together — group energy!`, '#ffaadd');
     }
     // ── end Street Performer ──────────────────────────────────────────────
+
+    // ── Detective Bird ────────────────────────────────────────────────────
+    if (ev.type === 'detective_bird_spawned') {
+      screenShake(5, 300);
+      showAnnouncement('🔍 DETECTIVE BIRD is on the case! Someone looks suspicious...', '#bb9966', 5000);
+      addEventMessage('🔍 A Detective Bird has arrived in Bird City — investigating criminal activity!', '#bb9966');
+    }
+    if (ev.type === 'detective_accusation') {
+      if (ev.suspectId === window._myId) {
+        screenShake(8, 400);
+        showAnnouncement(`🔍 YOU'VE BEEN ACCUSED! The Detective suspects YOU — +15 heat!`, '#ff8800', 6000);
+        addEventMessage('🔍 The Detective pointed their magnifying glass at YOU! +15 heat!', '#ff8800');
+      } else {
+        addEventMessage(`🔍 Detective accuses ${ev.suspectName} of suspicious behavior! (+15 heat)`, '#bb9966');
+      }
+    }
+    if (ev.type === 'detective_distracted') {
+      if (ev.shooterId === window._myId) {
+        showAnnouncement(`🔍💫 YOU DISTRACTED THE DETECTIVE! +${ev.xp} XP +${ev.coins}c — they're confused for 20s!`, '#ffcc44', 5000);
+        addEventMessage(`🔍 You hit the Detective Bird! +${ev.xp} XP +${ev.coins}c — now confused!`, '#ffcc44');
+      } else {
+        addEventMessage(`🔍 ${ev.shooterName} distracted the Detective Bird with a well-aimed poop!`, '#bb9966');
+      }
+    }
+    if (ev.type === 'detective_bird_left') {
+      addEventMessage('🔍 The Detective Bird packed up their magnifying glass and left the city.', '#bb9966');
+    }
+    // ── end Detective Bird ────────────────────────────────────────────────
   }
 
   function showAnnouncement(text, color, duration) {
@@ -10182,6 +10210,16 @@
       const sy = hawk.y - camera.y + camera.screenH / 2;
       if (sx > -margin - 30 && sx < camera.screenW + margin + 30 && sy > -margin - 30 && sy < camera.screenH + margin + 30) {
         Sprites.drawHawk(ctx, sx, sy, hawk.rotation);
+      }
+    }
+
+    // Detective Bird
+    if (gameState.detectiveBird) {
+      const det = gameState.detectiveBird;
+      const sx = det.x - camera.x + camera.screenW / 2;
+      const sy = det.y - camera.y + camera.screenH / 2;
+      if (sx > -margin - 30 && sx < camera.screenW + margin + 30 && sy > -margin - 30 && sy < camera.screenH + margin + 30) {
+        Sprites.drawDetectiveBird(ctx, sx, sy, det.state, det.rotation, performance.now());
       }
     }
 

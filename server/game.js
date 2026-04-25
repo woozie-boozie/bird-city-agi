@@ -1010,6 +1010,14 @@ class GameEngine {
     this.streetPerformer = null; // null | { x, y, performerId, watchers: Map<birdId, watchStartMs>, peacefulTime, startedAt, endsAt, finaleTriggered, fled }
     this._streetPerformerTimer = Date.now() + this._randomRange(20 * 60000, 28 * 60000);
 
+    // === DETECTIVE BIRD ===
+    // A fedora-wearing investigator who roams the city, randomly accusing birds of suspicious activity.
+    // Accused birds get +15 wanted heat — even innocent ones. Poop on the detective while they're
+    // investigating to distract them (20s confused state) and cancel the next accusation.
+    // Counter-play rewards: +25 XP +10c for the distractor. City-wide callout names the hero.
+    this.detectiveBird = null; // null | { x, y, vx, vy, state, stateAt, spawnedAt, expiresAt, dirChangeAt, accuseAt, confusedUntil, suspectId, suspectName }
+    this._detectiveBirdTimer = Date.now() + this._randomRange(20 * 60000, 28 * 60000);
+
     // === AURORA BOREALIS ===
     // A rare, breathtaking night spectacle — colored light ribbons flow across the sky.
     // Triggers with 30% chance at the start of each night phase. Lasts 4–7 minutes.
@@ -2465,6 +2473,9 @@ class GameEngine {
 
     // === Street Performer ===
     this._tickStreetPerformer(dt, now);
+
+    // === Detective Bird ===
+    this._tickDetectiveBird(dt, now);
   }
 
   // ============================================================
@@ -8981,6 +8992,17 @@ class GameEngine {
         fled: this.streetPerformer.fled,
         myWatchMs: (this.streetPerformer.watchers.get(bird.id) || {}).totalMs || 0,
         myRewarded: (this.streetPerformer.watchers.get(bird.id) || {}).rewarded || false,
+      } : null,
+      detectiveBird: this.detectiveBird ? {
+        x: this.detectiveBird.x,
+        y: this.detectiveBird.y,
+        state: this.detectiveBird.state,
+        rotation: this.detectiveBird.rotation || 0,
+        confusedUntil: this.detectiveBird.confusedUntil,
+        suspectId: this.detectiveBird.suspectId,
+        suspectName: this.detectiveBird.suspectName,
+        expiresAt: this.detectiveBird.expiresAt,
+        iAmSuspect: this.detectiveBird.suspectId === birdId,
       } : null,
       stuntRamps: this._getStuntRampsForClient(bird.id, now),
       raccoons: nearbyRaccoons,
@@ -30360,6 +30382,152 @@ class GameEngine {
   }
 
   // ─── end Street Performer ─────────────────────────────────────────────────
+
+  _tickDetectiveBird(dt, now) {
+    const WORLD_W = 3000, WORLD_H = 3000;
+    const SPEED = 45;
+
+    // --- Spawn ---
+    if (!this.detectiveBird) {
+      if (now < this._detectiveBirdTimer) return;
+      const anyOnline = this.birds.size > 0;
+      if (!anyOnline) { this._detectiveBirdTimer = now + 30000; return; }
+
+      const sx = 400 + Math.random() * 2200;
+      const sy = 400 + Math.random() * 2200;
+      const angle = Math.random() * Math.PI * 2;
+      this.detectiveBird = {
+        x: sx, y: sy,
+        vx: Math.cos(angle) * SPEED,
+        vy: Math.sin(angle) * SPEED,
+        rotation: angle,
+        state: 'wandering',
+        stateAt: now,
+        spawnedAt: now,
+        expiresAt: now + 3 * 60000,
+        dirChangeAt: now + this._randomRange(3000, 6000),
+        accuseAt: now + this._randomRange(30000, 45000),
+        confusedUntil: 0,
+        suspectId: null,
+        suspectName: null,
+      };
+      this.events.push({ type: 'detective_bird_spawned', x: sx, y: sy });
+      return;
+    }
+
+    const d = this.detectiveBird;
+
+    // --- Off-map cleanup ---
+    const offMap = d.x < -120 || d.x > WORLD_W + 120 || d.y < -120 || d.y > WORLD_H + 120;
+    if (offMap) {
+      this.detectiveBird = null;
+      this._detectiveBirdTimer = now + this._randomRange(20 * 60000, 28 * 60000);
+      return;
+    }
+
+    // --- Expire by time ---
+    if (now >= d.expiresAt) {
+      this.events.push({ type: 'detective_bird_left' });
+      this.detectiveBird = null;
+      this._detectiveBirdTimer = now + this._randomRange(20 * 60000, 28 * 60000);
+      return;
+    }
+
+    // --- Poop hit check ---
+    for (const poop of this.activePoops) {
+      if (!poop.active) continue;
+      const pdx = poop.x - d.x, pdy = poop.y - d.y;
+      if (Math.sqrt(pdx * pdx + pdy * pdy) < 42) {
+        poop.active = false;
+        const shooter = this.birds.get(poop.ownerId);
+        if (shooter) {
+          shooter.xp += 25;
+          shooter.coins += 10;
+          this._trackDailyProgress(shooter, 'detective_distracted', 1);
+          this.events.push({
+            type: 'detective_distracted',
+            shooterId: shooter.id,
+            shooterName: shooter.name,
+            xp: 25, coins: 10,
+            x: d.x, y: d.y,
+          });
+        }
+        // Confused state — wander erratically for 20s, cancel current accusation
+        d.state = 'confused';
+        d.confusedUntil = now + 20000;
+        d.accuseAt = now + this._randomRange(30000, 45000);
+        d.suspectId = null;
+        d.suspectName = null;
+        // Make them stagger in a new random direction
+        const fAngle = Math.random() * Math.PI * 2;
+        d.vx = Math.cos(fAngle) * SPEED * 0.6;
+        d.vy = Math.sin(fAngle) * SPEED * 0.6;
+        break;
+      }
+    }
+
+    // --- State: confused (distracted) ---
+    if (d.state === 'confused') {
+      if (now >= d.confusedUntil) {
+        d.state = 'wandering';
+        d.stateAt = now;
+        // Resume normal movement speed
+        const ra = Math.random() * Math.PI * 2;
+        d.vx = Math.cos(ra) * SPEED;
+        d.vy = Math.sin(ra) * SPEED;
+        d.dirChangeAt = now + this._randomRange(3000, 6000);
+      }
+    }
+
+    // --- Accusation logic (only when not confused) ---
+    if (d.state !== 'confused' && now >= d.accuseAt) {
+      // Prefer wanted birds; fall back to any connected bird
+      const connected = [...this.birds.values()].filter(b => b.connected);
+      let candidates = connected.filter(b => {
+        const heat = [...(this.heatScores || new Map()).entries()]
+          .filter(([k]) => k.startsWith(b.id + ':'))
+          .reduce((s, [, v]) => s + v, 0);
+        return heat > 0;
+      });
+      if (candidates.length === 0) candidates = connected;
+
+      if (candidates.length > 0) {
+        const suspect = candidates[Math.floor(Math.random() * candidates.length)];
+        d.suspectId = suspect.id;
+        d.suspectName = suspect.name;
+        // Add heat to the accused bird
+        this._addHeat(suspect.id, 15);
+        this.events.push({
+          type: 'detective_accusation',
+          suspectId: suspect.id,
+          suspectName: suspect.name,
+          x: d.x, y: d.y,
+        });
+        this._trackDailyProgress(suspect, 'detective_accused', 1);
+      }
+      d.accuseAt = now + this._randomRange(30000, 45000);
+    }
+
+    // --- Movement ---
+    if (d.state !== 'confused' && now >= d.dirChangeAt) {
+      const ra = Math.random() * Math.PI * 2;
+      d.vx = Math.cos(ra) * SPEED;
+      d.vy = Math.sin(ra) * SPEED;
+      d.dirChangeAt = now + this._randomRange(3000, 6000);
+    }
+
+    // Bounce off world edges
+    if (d.x < 80 || d.x > WORLD_W - 80) d.vx = -d.vx;
+    if (d.y < 80 || d.y > WORLD_H - 80) d.vy = -d.vy;
+
+    d.x += d.vx * (dt / 1000);
+    d.y += d.vy * (dt / 1000);
+    if (d.vx !== 0 || d.vy !== 0) {
+      d.rotation = Math.atan2(d.vy, d.vx);
+    }
+  }
+
+  // ─── end Detective Bird ───────────────────────────────────────────────────
 
 }
 

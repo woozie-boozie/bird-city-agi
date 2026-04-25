@@ -4783,6 +4783,38 @@ Bird City's first pure DISCOVERY mechanic: a spinning rooster weathervane atop a
 
 **Creative intent**: The city had weather betting, weather events, weather synergies — but no way to gain an information edge through exploration. The Weathervane is the reward for curious birds who explore the north road. First-timers who stumble on it during a blizzard suddenly understand the minimap dot's meaning. The information asymmetry is real: a bird near the Weathervane can sprint to the casino, bet everything on blizzard, then collect massive pari-mutuel payouts while everyone else guessed rain. Count's City Intel (Session 84) gave this to one noble — now any bird who explores the city can discover it independently. Pure DISCOVERY energy.
 
+**Session 139 — 2026-04-25: Detective Bird — The City's Amateur Sleuth**
+A fedora-wearing detective pigeon prowls Bird City every 20–28 minutes, randomly accusing birds of suspicious behavior and adding heat. Poop on them to distract them — they stumble away confused for 20 seconds while you collect XP and coins.
+
+**Detective Bird mechanics (`server/game.js`):**
+- Spawns every 20–28 minutes at a random city position (300–2700px), wanders at 55px/s with direction changes every 2–5 seconds — a bird on the case, methodically patrolling
+- State machine: `wandering` → `confused` (20 seconds after being distracted by poop) → back to `wandering`
+- **Random accusation**: every 18–30 seconds, the detective selects the nearest online bird within 400px as a "suspect" — fires `detective_accusation` event, adds +15 heat to the suspect
+- Accusation is city-wide: all birds see who got accused in the event feed; the suspect gets a personal screen shake + orange announcement
+- `suspectId` / `suspectName` tracked on the detective so clients can display who's currently under investigation
+- **Distraction mechanic**: any poop that lands within 42px of the detective while in `wandering` state triggers the confused state
+  - Shooter earns: +25 XP +10 coins immediately
+  - Detective enters `confused` state for 20 seconds — stumbles in random directions, can't make accusations
+  - City-wide `detective_distracted` event fires naming the distractor
+- 5-minute maximum visit window; detective quietly departs when `expiresAt` passes
+- `this.detectiveBird = null` reset on expiry; respawn timer set 20–28 minutes out
+
+**Visual system (`public/js/sprites.js`):**
+- Custom `drawDetectiveBird(ctx, x, y, state, angle, now)`: grey-brown pigeon body with darker wing tips, tan trench coat with lapels and collar, alert black eye (X marks when confused), brown fedora hat with cream band
+- Magnifying glass held out front in `wandering` state (dropped/offset when confused)
+- Wonky/rotated fedora hat during `confused` state + floating `?` question mark
+- "🔍 DETECTIVE" label above when wandering; "🔍 💫 CONFUSED!" when distracted
+
+**HUD & events (`public/js/main.js`):**
+- `detective_bird_spawned`: screen shake + amber "🔍 DETECTIVE BIRD is on the case!" announcement
+- `detective_accusation`: personal orange "YOU'VE BEEN ACCUSED! +15 heat!" with screen shake; city-wide event feed entry naming the suspect
+- `detective_distracted`: personal yellow "YOU DISTRACTED THE DETECTIVE! +25 XP +10c" for the shooter; city-wide callout
+- `detective_bird_left`: quiet event feed note when detective departs
+- Render block: detective drawn in world-space with camera transform, culled when off-screen
+- `iAmSuspect` flag in self-snapshot allows potential future HUD indicator for the current suspect
+
+**Creative intent**: The Detective Bird is Bird City's most comedic NPC — a self-important bird with a magnifying glass randomly declaring "YOU look suspicious" and slapping heat on unsuspecting birds. The 15-heat accusation is enough to bump a clean bird to Watched (⭐) instantly, creating genuine paranoia. The counter-play (poop the detective) is instantly satisfying: you see the fedora go wonky, the magnifying glass drop, and the detective stumble away confused for 20 seconds while you pocket the distraction reward. A 5-star Most Wanted bird hiding from cops who then gets accused by the detective AND decides to poop them (adding combo progress while disrupting the accusation cycle) is peak CARNAGE CITY comedy. Pure DISCOVERY + CARNAGE energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
@@ -5068,7 +5100,7 @@ Built the Territory Control System on top of the existing upstream code:
 - ~~NPC Parade: 8 NPCs march in a line across the city periodically, hitting the whole line with one wide poop scores chain bonus XP~~ (DONE Session 131 — evolved into Parade Crasher with marshal boss + milestone chaos)
 - ~~The Weathervane: a spinning rooster weathervane atop a building predicts the next weather 90 seconds early — only visible if you're within 120px of it (discovery reward)~~ (DONE Session 138)
 - ~~Street Performer: a juggling NPC appears in a plaza, watch them for 10 seconds to earn XP (patience reward), poop them for small coins but lose the watch bonus~~ (DONE Session 136)
-- The Detective Bird: a fedora-wearing NPC who randomly accuses an online bird of "looking suspicious" — that bird gets +10 heat city-wide. Can be cleared by visiting the Police Station.
+- ~~The Detective Bird: a fedora-wearing NPC who randomly accuses an online bird of "looking suspicious" — that bird gets +10 heat city-wide. Can be cleared by visiting the Police Station.~~ (DONE Session 139)
 - ~~Lost Chick Event: a baby bird is separated from its parent somewhere in the city — escort it 500px to the nest (fly within 60px for 8s) for a big reward; rivals can intercept by flying between you and the chick~~ (DONE Session 132)
 - Golden Goose Egg × Sewer: if a golden egg falls into a manhole cover (goose walks over one while scared), it drops into the sewer as a premium loot cache
 - Golden Goose daily gazette tracking: if the goose was scared vs walked away peacefully — different headline tone each morning

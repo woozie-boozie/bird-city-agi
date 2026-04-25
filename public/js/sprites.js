@@ -10056,4 +10056,148 @@ window.Sprites = {
 
     ctx.restore();
   },
+
+  drawDetectiveBird(ctx, x, y, state, angle, now) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+
+    const confused = state === 'confused';
+
+    // Body — grey-brown pigeon
+    const bodyColor = confused ? '#aa8866' : '#887766';
+    ctx.fillStyle = bodyColor;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 11, 9, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Trench coat — brown layered collar
+    ctx.fillStyle = confused ? '#9a6040' : '#7a4a28';
+    ctx.beginPath();
+    ctx.moveTo(-4, -4);
+    ctx.lineTo(12, -5);
+    ctx.lineTo(14, 2);
+    ctx.lineTo(12, 7);
+    ctx.lineTo(-4, 8);
+    ctx.closePath();
+    ctx.fill();
+    // Coat lapels
+    ctx.fillStyle = confused ? '#b07040' : '#8a5530';
+    ctx.beginPath();
+    ctx.moveTo(2, -4);
+    ctx.lineTo(8, -5);
+    ctx.lineTo(9, 1);
+    ctx.lineTo(6, 5);
+    ctx.lineTo(2, 5);
+    ctx.closePath();
+    ctx.fill();
+
+    // Head
+    ctx.fillStyle = bodyColor;
+    ctx.beginPath();
+    ctx.arc(-7, -4, 7, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Beak
+    ctx.fillStyle = '#ccaa44';
+    ctx.beginPath();
+    ctx.moveTo(-12, -5);
+    ctx.lineTo(-16, -3);
+    ctx.lineTo(-12, -1);
+    ctx.closePath();
+    ctx.fill();
+
+    // Fedora — dark grey/brown
+    if (!confused) {
+      // Brim
+      ctx.fillStyle = '#443322';
+      ctx.beginPath();
+      ctx.ellipse(-7, -10, 9, 3, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Crown
+      ctx.fillStyle = '#332211';
+      ctx.beginPath();
+      ctx.roundRect(-13, -17, 12, 8, 2);
+      ctx.fill();
+      // Hat band
+      ctx.strokeStyle = '#886644';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(-13, -12);
+      ctx.lineTo(-1, -12);
+      ctx.stroke();
+    } else {
+      // Confused — wonky hat
+      ctx.save();
+      ctx.rotate(0.4);
+      ctx.fillStyle = '#443322';
+      ctx.beginPath();
+      ctx.ellipse(-7, -10, 9, 3, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#332211';
+      ctx.beginPath();
+      ctx.roundRect(-13, -17, 12, 8, 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Eye
+    if (confused) {
+      // Swirl / X eyes
+      ctx.strokeStyle = '#ff4444';
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.moveTo(-10, -7); ctx.lineTo(-8, -5);
+      ctx.moveTo(-8, -7); ctx.lineTo(-10, -5);
+      ctx.stroke();
+      // Question mark floating
+      const qOff = Math.sin(now * 0.005) * 3;
+      ctx.fillStyle = '#ffaa22';
+      ctx.font = 'bold 8px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('?', -5, -18 + qOff);
+    } else {
+      ctx.fillStyle = '#ffffcc';
+      ctx.beginPath();
+      ctx.arc(-10, -5, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#222244';
+      ctx.beginPath();
+      ctx.arc(-10, -5, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Magnifying glass (held forward when wandering)
+    if (!confused) {
+      ctx.strokeStyle = '#ccaa44';
+      ctx.lineWidth = 2;
+      // Handle
+      ctx.beginPath();
+      ctx.moveTo(10, 5);
+      ctx.lineTo(16, 11);
+      ctx.stroke();
+      // Glass rim
+      ctx.beginPath();
+      ctx.arc(8, 3, 5, 0, Math.PI * 2);
+      ctx.stroke();
+      // Glass lens
+      ctx.fillStyle = 'rgba(180,220,255,0.3)';
+      ctx.beginPath();
+      ctx.arc(8, 3, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      // Drop the magnifying glass when confused
+      ctx.strokeStyle = '#ccaa44';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(5, 10);
+      ctx.lineTo(10, 15);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(3, 9, 5, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  },
 };
