@@ -6062,6 +6062,59 @@
       addEventMessage('🔍 The Detective Bird packed up their magnifying glass and left the city.', '#bb9966');
     }
     // ── end Detective Bird ────────────────────────────────────────────────
+
+    // ── Bird Photographer ─────────────────────────────────────────────────
+    if (ev.type === 'bird_photographer_spawned') {
+      addEventMessage('📸 A Bird Photographer has arrived in the city! Gather near them for a group shot!', '#44dddd');
+    }
+    if (ev.type === 'bird_photographer_shot') {
+      if (ev.isSelf) {
+        showAnnouncement(`📸 YOU WERE PHOTOGRAPHED! +${ev.xp} XP +${ev.coins}c — say cheese!`, '#ffffaa', 4000);
+        addEventMessage(`📸 You were photographed! +${ev.xp} XP +${ev.coins}c`, '#44dddd');
+        // Personal photo flash (soft yellow-white)
+        window._photographerFlash = { startTime: performance.now(), duration: 400, opacity: 0.3 };
+      }
+    }
+    if (ev.type === 'bird_photographer_group_shot') {
+      const nameList = (ev.names || []).join(', ');
+      showAnnouncement(`📸 GROUP PHOTO! ${ev.count} birds in frame! Everyone +${ev.xp} XP +${ev.coins}c — SMILE!`, '#ffffaa', 5000);
+      addEventMessage(`📸 GROUP SHOT: ${nameList} — +${ev.xp} XP +${ev.coins}c each!`, '#44dddd');
+      // City-wide flash
+      window._photographerFlash = { startTime: performance.now(), duration: 500, opacity: 0.35 };
+      screenShake(6, 400);
+    }
+    if (ev.type === 'bird_photographer_left') {
+      addEventMessage('📸 The Bird Photographer packed up and left the city.', '#88bbbb');
+    }
+    if (ev.type === 'photographer_royale_bonus') {
+      if (ev.isSelf) {
+        showAnnouncement(`📸 ROYALE SURVIVOR PHOTO! +${ev.bonus * 100}% speed bonus for 30 seconds!`, '#ffffaa', 4000);
+        addEventMessage(`📸 The Photographer captured your royale glory! Speed boost active!`, '#44dddd');
+      }
+    }
+    // Detective escalation enhancement
+    if (ev.type === 'detective_accusation' && ev.escalated) {
+      if (ev.suspectId === window._myId) {
+        showAnnouncement(`🔍🚨 DETECTIVE SPOTS YOU — ALREADY WANTED! +${ev.heatAdded} HEAT! Run!`, '#ff6600', 5000);
+      } else {
+        addEventMessage(`🔍🚨 Detective escalates case against already-wanted ${ev.suspectName}! +${ev.heatAdded} heat!`, '#ff8800');
+      }
+    }
+    // Goose × Gala distraction
+    if (ev.type === 'goose_gala_distraction') {
+      showAnnouncement('🪿🎩 THE GOLDEN GOOSE WANDERED INTO THE GALA — Guard is distracted for 20s! CRASH THE PARTY!', '#ffdd66', 6000);
+      addEventMessage('🪿 Golden Goose distracted the Gala Guard! 20 seconds of free crashing!', '#ffcc44');
+      screenShake(8, 500);
+    }
+    // Bird Tag × Kite Festival synergy
+    if (ev.type === 'bird_tag_kite_synergy') {
+      const itName = ev.itName || 'IT Bird';
+      addEventMessage(`🏷️🪁 ${itName} touched a kite! Tag radius EXPANDED to 65px for 10 seconds!`, '#ffaa44');
+      if (ev.itId === window._myId) {
+        showAnnouncement('🏷️🪁 YOU TOUCHED A KITE — TAG RADIUS EXPANDED! 65px for 10 seconds!', '#ffaa44', 4000);
+      }
+    }
+    // ── end Bird Photographer ─────────────────────────────────────────────
   }
 
   function showAnnouncement(text, color, duration) {
@@ -10223,6 +10276,16 @@
       }
     }
 
+    // Bird Photographer
+    if (gameState.birdPhotographer) {
+      const bp = gameState.birdPhotographer;
+      const sx = bp.x - camera.x + camera.screenW / 2;
+      const sy = bp.y - camera.y + camera.screenH / 2;
+      if (sx > -margin - 30 && sx < camera.screenW + margin + 30 && sy > -margin - 30 && sy < camera.screenH + margin + 30) {
+        Sprites.drawBirdPhotographer(ctx, sx, sy, bp.state, performance.now());
+      }
+    }
+
     // Boss
     if (gameState.boss) {
       const boss = gameState.boss;
@@ -13260,6 +13323,19 @@
       }
     }
 
+    // Bird Photographer flash — white/yellow screen flash when a photo is taken
+    if (window._photographerFlash) {
+      const pf = window._photographerFlash;
+      const pf_age = now - pf.startTime;
+      if (pf_age < pf.duration) {
+        const pf_alpha = Math.max(0, pf.opacity * (1 - pf_age / pf.duration));
+        ctx.fillStyle = `rgba(255, 255, 200, ${pf_alpha})`;
+        ctx.fillRect(0, 0, camera.screenW, camera.screenH);
+      } else {
+        window._photographerFlash = null;
+      }
+    }
+
     // Mystery Crate — direction arrow (compass pointing toward crate when off-screen or far away)
     if (gameState.self && gameState.self.mysteryCrate) {
       const crate = gameState.self.mysteryCrate;
@@ -14197,6 +14273,45 @@
       }
     }
 
+    // === BIRD PHOTOGRAPHER — off-screen direction arrow (Session 140) ===
+    if (gameState.birdPhotographer) {
+      const bpx = gameState.birdPhotographer.x - camera.x + camera.screenW / 2;
+      const bpy = gameState.birdPhotographer.y - camera.y + camera.screenH / 2;
+      const bpOnScreen = bpx > 55 && bpx < camera.screenW - 55 && bpy > 55 && bpy < camera.screenH - 55;
+      if (!bpOnScreen) {
+        const bpAngle = Math.atan2(bpy - camera.screenH / 2, bpx - camera.screenW / 2);
+        const bpArrowDist = Math.min(camera.screenW, camera.screenH) / 2 - 60;
+        const bpAx = camera.screenW / 2 + Math.cos(bpAngle) * bpArrowDist;
+        const bpAy = camera.screenH / 2 + Math.sin(bpAngle) * bpArrowDist;
+        const bpPulse = 0.7 + 0.3 * Math.sin(now * 0.007);
+        const bpFocused = gameState.birdPhotographer.state === 'focusing' || gameState.birdPhotographer.state === 'shooting';
+        ctx.save();
+        ctx.translate(bpAx, bpAy);
+        ctx.rotate(bpAngle);
+        ctx.globalAlpha = 0.9 * bpPulse;
+        ctx.fillStyle = bpFocused ? '#00ffcc' : '#00ddbb';
+        ctx.shadowColor = '#00ccaa';
+        ctx.shadowBlur = 12;
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(22, 0);
+        ctx.lineTo(-10, -10);
+        ctx.lineTo(-5, 0);
+        ctx.lineTo(-10, 10);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 10px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('📸', 4, 0);
+        ctx.restore();
+      }
+    }
+
     // === GOLDEN GOOSE — off-screen direction arrow (Session 130) ===
     if (gameState.goldenGoose) {
       const ggsx = gameState.goldenGoose.x - camera.x + camera.screenW / 2;
@@ -14964,6 +15079,33 @@
     // Kite Festival on minimap — Session 128
     if (gameState.kiteFestival && worldData) {
       Renderer.drawKiteFestivalOnMinimap(minimapCtx, worldData, gameState.kiteFestival, now);
+    }
+
+    // Bird Photographer on minimap — pulsing teal 📸 dot — Session 140
+    if (gameState.birdPhotographer && worldData) {
+      const bp = gameState.birdPhotographer;
+      const mw = minimapCtx.canvas.width;
+      const mh = minimapCtx.canvas.height;
+      const bpMx = bp.x * mw / worldData.width;
+      const bpMy = bp.y * mh / worldData.height;
+      const bpFocused = bp.state === 'focusing' || bp.state === 'shooting';
+      const bpPulse = bpFocused ? (0.5 + 0.5 * Math.sin(now * 0.015)) : (0.6 + 0.4 * Math.sin(now * 0.006));
+      const bpColor = bpFocused ? '#00ffcc' : '#00ddbb';
+      minimapCtx.save();
+      minimapCtx.shadowColor = bpColor;
+      minimapCtx.shadowBlur = bpFocused ? 10 : 6;
+      minimapCtx.fillStyle = bpColor;
+      minimapCtx.globalAlpha = bpPulse;
+      minimapCtx.beginPath();
+      minimapCtx.arc(bpMx, bpMy, bpFocused ? 4 : 3, 0, Math.PI * 2);
+      minimapCtx.fill();
+      minimapCtx.shadowBlur = 0;
+      minimapCtx.globalAlpha = bpPulse * 0.9;
+      minimapCtx.font = '8px sans-serif';
+      minimapCtx.textAlign = 'center';
+      minimapCtx.textBaseline = 'middle';
+      minimapCtx.fillText('📸', bpMx, bpMy - 1);
+      minimapCtx.restore();
     }
 
     // Stunt Ramps on minimap — Session 133
@@ -17943,6 +18085,32 @@
       } else if (lc.state === 'escorted' && !lc.iAmEscort) {
         const stealPct = lc.stealHits > 0 ? ` · steal ${lc.stealHits}/3 — poop 3× to steal!` : ' · poop 3× in 12s to steal!';
         html += `<div class="bm-buff-pill" style="background:rgba(60,30,0,0.9);border-color:#ffaa55;color:#ffddaa;">🐣 ${lc.escortName || 'A bird'} is escorting the chick${stealPct}</div>`;
+      }
+    }
+
+    // Bird Photographer proximity pill
+    if (gameState.birdPhotographer) {
+      const bp = gameState.birdPhotographer;
+      const gs = gameState.self;
+      if (bp && gs) {
+        const pdx = bp.x - gs.x;
+        const pdy = bp.y - gs.y;
+        const pdist = Math.sqrt(pdx * pdx + pdy * pdy);
+        if (pdist < 200) {
+          const framesNeeded = bp.state === 'focusing' ? (bp.lastFrameCount || 0) : 0;
+          if (bp.state === 'focusing' || bp.state === 'shooting') {
+            const countInFrame = bp.birdsInFrame || 0;
+            const groupLabel = countInFrame >= 3 ? '📸 GROUP SHOT! ' + countInFrame + '/3+ birds!' : '📸 ' + countInFrame + '/3 birds in frame';
+            html += `<div class="bm-buff-pill" style="background:rgba(0,80,80,0.9);border-color:#44ffff;color:#aaffff;animation:slowPulse 1.5s infinite;">${groupLabel} — hold still for photo!</div>`;
+          } else {
+            html += `<div class="bm-buff-pill" style="background:rgba(0,60,70,0.85);border-color:#33cccc;color:#88ffff;">📸 PHOTOGRAPHER NEARBY — ${Math.round(pdist)}px · gather 3 birds for group shot!</div>`;
+          }
+        }
+        if (s.photographerSpeedBonus && s.photographerSpeedBonusUntil && s.photographerSpeedBonusUntil > now) {
+          const secs = Math.ceil((s.photographerSpeedBonusUntil - now) / 1000);
+          const pct = Math.round(s.photographerSpeedBonus * 100);
+          html += `<div class="bm-buff-pill" style="background:rgba(0,70,70,0.9);border-color:#44ffff;color:#ccffff;animation:slowPulse 2s infinite;">📸 PHOTO BOOST +${pct}% SPD — ${secs}s</div>`;
+        }
       }
     }
 

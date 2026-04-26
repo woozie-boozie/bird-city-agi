@@ -233,6 +233,9 @@ const DAILY_CHALLENGE_POOL = [
   { id: 'street_watcher',   title: 'Appreciative Crowd', desc: 'Watch the Street Performer for 10+ seconds to earn their reward', target: 1, trackType: 'performer_watched',  reward: { xp: 150, coins: 75  } },
   { id: 'performer_ruiner', title: 'Show Stopper',       desc: 'Poop the Street Performer and ruin their act',                    target: 1, trackType: 'performer_pooped',  reward: { xp: 120, coins: 60  } },
   { id: 'standing_ovation', title: 'Standing Ovation',   desc: 'Be part of a 3+ bird crowd that earns the grand finale bonus',   target: 1, trackType: 'performer_ovation', reward: { xp: 250, coins: 125 } },
+  // Session 140: Bird Photographer
+  { id: 'say_cheese',   title: 'Say Cheese!',  desc: 'Be in a group photo taken by the Bird Photographer (3+ birds in frame)', target: 1, trackType: 'group_photo', reward: { xp: 160, coins: 80  } },
+  { id: 'photogenic',   title: 'Photogenic',   desc: 'Be photographed in 2 group shots by the Bird Photographer',              target: 2, trackType: 'group_photo', reward: { xp: 250, coins: 125 } },
 ];
 
 // ============================================================
@@ -1017,6 +1020,13 @@ class GameEngine {
     // Counter-play rewards: +25 XP +10c for the distractor. City-wide callout names the hero.
     this.detectiveBird = null; // null | { x, y, vx, vy, state, stateAt, spawnedAt, expiresAt, dirChangeAt, accuseAt, confusedUntil, suspectId, suspectName }
     this._detectiveBirdTimer = Date.now() + this._randomRange(20 * 60000, 28 * 60000);
+
+    // === BIRD PHOTOGRAPHER ===
+    // A roaming pigeon NPC with a big camera. Stops to photograph nearby birds.
+    // Group shots (3+ birds) give +100 XP +50c each. Solo portraits give +40 XP +20c.
+    // Exits after 3 photos or 3 minutes. Royale survivors get a speed buff when photographed.
+    this.birdPhotographer = null; // null | { x, y, vx, vy, state, stateAt, spawnedAt, expiresAt, dirChangeAt, photoCount, photoCooldownUntil, birdsInFrame, lastFrameCount, frameCounterStart }
+    this._birdPhotographerTimer = Date.now() + this._randomRange(18 * 60000, 25 * 60000);
 
     // === AURORA BOREALIS ===
     // A rare, breathtaking night spectacle — colored light ribbons flow across the sky.
@@ -2476,6 +2486,9 @@ class GameEngine {
 
     // === Detective Bird ===
     this._tickDetectiveBird(dt, now);
+
+    // === Bird Photographer ===
+    this._tickBirdPhotographer(dt, now);
   }
 
   // ============================================================
@@ -3695,6 +3708,11 @@ class GameEngine {
     // Chaos Oracle: speed blessing (+40%) or slowness curse (-30%)
     if (bird.oracleSpeedUntil > now) maxSpeed *= 1.40;
     if (bird.oracleSlowUntil > now)  maxSpeed *= 0.70;
+
+    // Bird Photographer: royale survivors get a speed bonus when photographed
+    if (bird.photographerSpeedBonus && bird.photographerSpeedBonusUntil > now) {
+      maxSpeed *= (1 + bird.photographerSpeedBonus);
+    }
 
     // Pigeon Coupe: the driver rides in style at a flat 220px/s minimum (sports car speed!)
     if (bird.drivingCoupeId && this.pigeonCoupe && this.pigeonCoupe.driverId === bird.id) {
@@ -5441,6 +5459,10 @@ class GameEngine {
       }
       // Bird Tag (Session 129): IT bird earns +30% XP on every poop hit — incentive to play aggressively while being hunted
       if (this.birdTag && this.birdTag.itId === bird.id) {
+        xpGain = Math.floor(xpGain * 1.3);
+      }
+      // Synergy 4: Street Performer × Flash Mob — +30% XP on all poop hits while flash mob is active and a street performer is present nearby
+      if (this.flashMob && this.flashMob.state === 'active' && this.streetPerformer && this.streetPerformer.state !== 'fled') {
         xpGain = Math.floor(xpGain * 1.3);
       }
       // Golden Perch zone: all birds within 80px of the active perch earn 3× XP (fight for it!)
@@ -9003,6 +9025,19 @@ class GameEngine {
         suspectName: this.detectiveBird.suspectName,
         expiresAt: this.detectiveBird.expiresAt,
         iAmSuspect: this.detectiveBird.suspectId === birdId,
+      } : null,
+      birdPhotographer: this.birdPhotographer ? {
+        x: this.birdPhotographer.x,
+        y: this.birdPhotographer.y,
+        state: this.birdPhotographer.state,
+        photoCount: this.birdPhotographer.photoCount,
+        lastFrameCount: this.birdPhotographer.lastFrameCount || 0,
+        expiresAt: this.birdPhotographer.expiresAt,
+        nearMe: (function() {
+          const dx = (this.birdPhotographer.x || 0) - (bird.x || 0);
+          const dy = (this.birdPhotographer.y || 0) - (bird.y || 0);
+          return Math.sqrt(dx*dx + dy*dy) <= 200;
+        }).call(this),
       } : null,
       stuntRamps: this._getStuntRampsForClient(bird.id, now),
       raccoons: nearbyRaccoons,
@@ -26492,7 +26527,10 @@ class GameEngine {
     if (!mob) return;
 
     const count = mob.participants.size;
-    const isMega = count >= 6;
+    // Synergy 4: Street Performer × Flash Mob — MEGA threshold drops to 3 when performer is active nearby
+    const performerNearby = !!(this.streetPerformer && this.streetPerformer.state !== 'fled');
+    const megaThreshold = performerNearby ? 3 : 6;
+    const isMega = count >= megaThreshold;
 
     // Reward tiers
     let xpReward = 0, coinReward = 0;
@@ -29322,14 +29360,40 @@ class GameEngine {
       return;
     }
 
-    // Check proximity for tag transfer: IT flies within 45px of another bird
+    // Synergy 5: Bird Tag × Kite Festival — IT bird flying into a kite expands tag radius to 65px for 10s
+    if (this.kiteFestival && (!bt.tagRadiusBonusUntil || now >= bt.tagRadiusBonusUntil)) {
+      const TAG_KITE_RADIUS = 45;
+      const elapsed = (now - this.kiteFestival.spawnedAt) / 1000;
+      for (const kite of this.kiteFestival.kites) {
+        if (kite.caught) continue;
+        const kitePhase = elapsed * kite.freq + kite.phase;
+        const kiteX = kite.spawnX + Math.sin(kitePhase) * kite.amplitude;
+        const kiteY = kite.spawnY + Math.cos(kitePhase * 1.2) * kite.amplitude * 0.45;
+        const dkx = itBird.x - kiteX;
+        const dky = itBird.y - kiteY;
+        if (dkx * dkx + dky * dky < TAG_KITE_RADIUS * TAG_KITE_RADIUS) {
+          bt.tagRadiusBonusUntil = now + 10000;
+          this.events.push({
+            type: 'bird_tag_kite_synergy',
+            itId: bt.itId, itName: bt.itName,
+            x: kiteX, y: kiteY,
+          });
+          break;
+        }
+      }
+    }
+
+    // Dynamic tag radius: 65px if kite synergy bonus is active, else 45px
+    const tagRadius = (bt.tagRadiusBonusUntil && now < bt.tagRadiusBonusUntil) ? 65 : 45;
+
+    // Check proximity for tag transfer: IT flies within tagRadius of another bird
     for (const b of this.birds.values()) {
       if (!b.connected || b.id === bt.itId) continue;
       const cooldown = bt.tagCooldowns.get(b.id) || 0;
       if (now < cooldown) continue;
       const dx = b.x - itBird.x;
       const dy = b.y - itBird.y;
-      if (Math.sqrt(dx * dx + dy * dy) > 45) continue;
+      if (Math.sqrt(dx * dx + dy * dy) > tagRadius) continue;
 
       // TAG! Transfer IT status
       const prevId   = bt.itId;
@@ -29567,6 +29631,30 @@ class GameEngine {
         this.events.push({ type: 'golden_goose_sacred_egg', x: g.x, y: g.y });
       }
     }
+
+    // Synergy 3: Golden Goose × Charity Gala — if goose wanders within 300px of the Gala Guard,
+    // the guard is distracted for 20 seconds (ignores all bird hits / chasing)
+    if (this.charityGala && !g._galaSynergyFired) {
+      const guard = this.worldEventNPCs.get(this.charityGala.guardId);
+      if (guard && guard.state !== 'stunned') {
+        const dgx = g.x - guard.x;
+        const dgy = g.y - guard.y;
+        if (dgx * dgx + dgy * dgy < 300 * 300) {
+          guard.distractedUntil = now + 20000;
+          guard.state = 'patrolling'; // reset chase so guard stops chasing
+          guard.chaseTarget = null;
+          g._galaSynergyFired = true; // fire once per goose visit
+          this.events.push({
+            type: 'goose_gala_distraction',
+            gooseX: g.x, gooseY: g.y,
+            guardX: guard.x, guardY: guard.y,
+          });
+        }
+      }
+    }
+
+    // Guard distraction: skip chase logic in _tickCharityGala when distractedUntil is active
+    // (handled by checking guard.distractedUntil in _tickCharityGala guard update section)
 
     // Scare detection — any bird within 55px
     for (const bird of this.birds.values()) {
@@ -30154,6 +30242,19 @@ class GameEngine {
       return;
     }
 
+    // Synergy 3: Golden Goose × Charity Gala — guard is distracted by the goose for 20s
+    if (guard.distractedUntil && now < guard.distractedUntil) {
+      // Guard is distracted — just orbit harmlessly, don't chase anyone
+      guard.patrolAngle = (guard.patrolAngle || 0) + 0.3 * dtSec; // slower confused orbit
+      guard.x = cx + Math.cos(guard.patrolAngle) * 140;
+      guard.y = cy + Math.sin(guard.patrolAngle) * 140;
+      guard.chaseTarget = null;
+      guard.state = 'patrolling';
+      return;
+    } else if (guard.distractedUntil && now >= guard.distractedUntil) {
+      guard.distractedUntil = null; // clear once expired
+    }
+
     // Chase timer expired
     if (guard.state === 'chasing' && now >= (guard.chaseUntil || 0)) {
       guard.state = 'patrolling';
@@ -30496,12 +30597,20 @@ class GameEngine {
         d.suspectId = suspect.id;
         d.suspectName = suspect.name;
         // Add heat to the accused bird
-        this._addHeat(suspect.id, 15);
+        // Synergy 1: Detective × Most Wanted Board — if bird is already WL3+, accusation escalates to +40 heat
+        const suspectHeat = [...(this.heatScores || new Map()).entries()]
+          .filter(([k]) => k.startsWith(suspect.id + ':'))
+          .reduce((s, [, v]) => s + v, 0);
+        const wantedLevel = suspectHeat >= 200 ? 5 : suspectHeat >= 100 ? 4 : suspectHeat >= 50 ? 3 : suspectHeat >= 25 ? 2 : suspectHeat >= 10 ? 1 : 0;
+        const heatAmount = wantedLevel >= 3 ? 40 : 15;
+        this._addHeat(suspect.id, heatAmount);
         this.events.push({
           type: 'detective_accusation',
           suspectId: suspect.id,
           suspectName: suspect.name,
           x: d.x, y: d.y,
+          escalated: wantedLevel >= 3,
+          heatAdded: heatAmount,
         });
         this._trackDailyProgress(suspect, 'detective_accused', 1);
       }
@@ -30528,6 +30637,213 @@ class GameEngine {
   }
 
   // ─── end Detective Bird ───────────────────────────────────────────────────
+
+  // ─── Bird Photographer ────────────────────────────────────────────────────
+  _tickBirdPhotographer(dt, now) {
+    const PHOTOGRAPHER_LOCATIONS = [
+      { x: 1200, y: 1200 }, // Park center
+      { x: 2100, y: 1200 }, // Downtown
+      { x: 2350, y: 500  }, // Mall area
+      { x: 640,  y: 1840 }, // Cafe district
+      { x: 375,  y: 415  }, // Residential
+      { x: 1300, y: 2380 }, // Docks
+      { x: 1780, y: 1050 }, // City Hall area
+      { x: 1050, y: 640  }, // Hall of Legends area
+      { x: 1380, y: 970  }, // Arena area
+      { x: 1620, y: 750  }, // Donut Shop area
+    ];
+
+    const onlineBirds = [...this.birds.values()].filter(b => b.connected);
+
+    // Spawn logic
+    if (!this.birdPhotographer && now >= this._birdPhotographerTimer) {
+      if (onlineBirds.length >= 1) {
+        const loc = PHOTOGRAPHER_LOCATIONS[Math.floor(Math.random() * PHOTOGRAPHER_LOCATIONS.length)];
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 28;
+        this.birdPhotographer = {
+          x: loc.x,
+          y: loc.y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          state: 'wandering',
+          stateAt: now,
+          spawnedAt: now,
+          expiresAt: now + 3 * 60000,
+          dirChangeAt: now + this._randomRange(3000, 6000),
+          photoCount: 0,
+          photoCooldownUntil: 0,
+          birdsInFrame: [],
+          frameCounterStart: 0,
+          lastFrameCount: 0,
+        };
+        this.events.push({ type: 'bird_photographer_spawned', x: loc.x, y: loc.y });
+      } else {
+        this._birdPhotographerTimer = now + this._randomRange(18 * 60000, 25 * 60000);
+      }
+      return;
+    }
+
+    const p = this.birdPhotographer;
+    if (!p) return;
+
+    // Expiry check
+    if (now >= p.expiresAt || p.photoCount >= 3) {
+      this.birdPhotographer = null;
+      this._birdPhotographerTimer = now + this._randomRange(18 * 60000, 25 * 60000);
+      this.events.push({ type: 'bird_photographer_left' });
+      return;
+    }
+
+    // Find birds in frame (within 140px)
+    const birdsInFrame = onlineBirds.filter(b => {
+      const dx = b.x - p.x, dy = b.y - p.y;
+      return Math.sqrt(dx * dx + dy * dy) <= 140;
+    });
+
+    // State machine
+    if (p.state === 'wandering') {
+      // Move
+      p.x += p.vx * dt / 1000;
+      p.y += p.vy * dt / 1000;
+
+      // Bounce off edges
+      const margin = 100;
+      if (p.x < margin) { p.x = margin; p.vx = Math.abs(p.vx); }
+      if (p.x > 3000 - margin) { p.x = 3000 - margin; p.vx = -Math.abs(p.vx); }
+      if (p.y < margin) { p.y = margin; p.vy = Math.abs(p.vy); }
+      if (p.y > 3000 - margin) { p.y = 3000 - margin; p.vy = -Math.abs(p.vy); }
+
+      // Direction change
+      if (now >= p.dirChangeAt) {
+        const angle = Math.atan2(p.vy, p.vx) + (Math.random() - 0.5) * Math.PI * 0.8;
+        const speed = 28;
+        p.vx = Math.cos(angle) * speed;
+        p.vy = Math.sin(angle) * speed;
+        p.dirChangeAt = now + this._randomRange(3000, 6000);
+      }
+
+      // Transition to focusing if birds nearby and cooldown elapsed
+      if (birdsInFrame.length >= 1 && now >= p.photoCooldownUntil) {
+        p.state = 'focusing';
+        p.stateAt = now;
+        p.vx = 0;
+        p.vy = 0;
+        p.birdsInFrame = birdsInFrame.map(b => b.id);
+        p.frameCounterStart = now;
+        p.lastFrameCount = birdsInFrame.length;
+        this.events.push({ type: 'bird_photographer_focusing', x: p.x, y: p.y, count: birdsInFrame.length });
+      }
+
+    } else if (p.state === 'focusing') {
+      // Stand still, track birds
+      p.birdsInFrame = birdsInFrame.map(b => b.id);
+      p.lastFrameCount = birdsInFrame.length;
+
+      // Update frame state for clients
+      if ((now - p.stateAt) % 500 < 50) {
+        this.events.push({ type: 'bird_photographer_frame_update', x: p.x, y: p.y, count: birdsInFrame.length });
+      }
+
+      // If no birds in frame anymore, go back to wandering
+      if (birdsInFrame.length === 0) {
+        p.state = 'wandering';
+        p.stateAt = now;
+        const angle = Math.random() * Math.PI * 2;
+        p.vx = Math.cos(angle) * 28;
+        p.vy = Math.sin(angle) * 28;
+        p.dirChangeAt = now + this._randomRange(3000, 6000);
+        return;
+      }
+
+      const isGroup = birdsInFrame.length >= 3;
+      const holdTime = isGroup ? 2000 : 3000;
+
+      // Check if held long enough — take the photo
+      if (now - p.frameCounterStart >= holdTime) {
+        p.state = 'shooting';
+        p.stateAt = now;
+      }
+
+    } else if (p.state === 'shooting') {
+      // Distribute rewards once
+      if (now - p.stateAt < 100) { // only fire once on entry
+        const snapshot = onlineBirds.filter(b => {
+          const dx = b.x - p.x, dy = b.y - p.y;
+          return Math.sqrt(dx * dx + dy * dy) <= 140;
+        });
+
+        const isGroup = snapshot.length >= 3;
+
+        if (snapshot.length >= 1) {
+          const xpReward = isGroup ? 100 : 40;
+          const coinReward = isGroup ? 50 : 20;
+
+          for (const bird of snapshot) {
+            bird.xp = (bird.xp || 0) + xpReward;
+            bird.coins = (bird.coins || 0) + coinReward;
+
+            // Synergy 2: Royale survivors get a speed buff when photographed
+            if (bird.royaleChampBadge) {
+              const speedBonus = isGroup ? 0.03 : 0.02;
+              bird.photographerSpeedBonus = (bird.photographerSpeedBonus || 0) + speedBonus;
+              bird.photographerSpeedBonusUntil = now + 60000; // 60 seconds
+              this.events.push({ type: 'photographer_royale_bonus', targetId: bird.id, bonus: speedBonus });
+            }
+
+            // Daily challenge tracking
+            if (isGroup) {
+              this._trackDailyProgress(bird, 'group_photo', 1);
+            }
+
+            this.events.push({
+              type: 'bird_photographer_shot',
+              targetId: bird.id,
+              isGroup,
+              xp: xpReward,
+              coins: coinReward,
+              x: p.x,
+              y: p.y,
+              names: snapshot.map(b => b.name),
+            });
+          }
+
+          if (isGroup) {
+            const names = snapshot.map(b => b.name).join(', ');
+            this.events.push({
+              type: 'bird_photographer_group_shot',
+              names,
+              count: snapshot.length,
+              x: p.x,
+              y: p.y,
+            });
+          }
+
+          p.photoCount++;
+          p.photoCooldownUntil = now + 15000;
+        }
+      }
+
+      // After a short pause return to wandering
+      if (now - p.stateAt >= 1500) {
+        p.state = 'wandering';
+        p.stateAt = now;
+        const angle = Math.random() * Math.PI * 2;
+        p.vx = Math.cos(angle) * 28;
+        p.vy = Math.sin(angle) * 28;
+        p.dirChangeAt = now + this._randomRange(3000, 6000);
+      }
+    }
+
+    // Update photographer speed bonus expiry on all birds
+    for (const bird of onlineBirds) {
+      if (bird.photographerSpeedBonusUntil && now >= bird.photographerSpeedBonusUntil) {
+        bird.photographerSpeedBonus = 0;
+        bird.photographerSpeedBonusUntil = 0;
+      }
+    }
+  }
+  // ─── end Bird Photographer ────────────────────────────────────────────────
 
 }
 

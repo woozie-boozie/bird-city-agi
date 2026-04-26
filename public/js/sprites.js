@@ -10200,4 +10200,137 @@ window.Sprites = {
 
     ctx.restore();
   },
+
+  // ── Bird Photographer ──────────────────────────────────────────────────────
+  drawBirdPhotographer(ctx, x, y, state, now) {
+    ctx.save();
+    ctx.translate(x, y);
+
+    const focused = state === 'focusing' || state === 'shooting';
+
+    // Soft teal aura glow behind body
+    const auraAlpha = focused ? 0.45 + 0.15 * Math.sin(now * 0.008) : 0.25;
+    const auraGrad = ctx.createRadialGradient(0, 0, 4, 0, 0, 22);
+    auraGrad.addColorStop(0, `rgba(0,220,200,${auraAlpha})`);
+    auraGrad.addColorStop(1, 'rgba(0,200,180,0)');
+    ctx.fillStyle = auraGrad;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 22, 18, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Body — round grey pigeon
+    ctx.fillStyle = '#999988';
+    ctx.beginPath();
+    ctx.ellipse(0, 2, 9, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Chest lighter
+    ctx.fillStyle = '#ccbbaa';
+    ctx.beginPath();
+    ctx.ellipse(0, 4, 5, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Head
+    ctx.fillStyle = '#888877';
+    ctx.beginPath();
+    ctx.arc(0, -7, 6, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Eye — squinting through viewfinder when focused
+    if (focused) {
+      ctx.strokeStyle = '#222222';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(-4, -8);
+      ctx.lineTo(-2, -7);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(-4, -7);
+      ctx.lineTo(-2, -8);
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = '#222222';
+      ctx.beginPath();
+      ctx.arc(-3, -8, 1.8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(-2.5, -8.5, 0.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Beak
+    ctx.fillStyle = '#ddbb44';
+    ctx.beginPath();
+    ctx.moveTo(5, -7);
+    ctx.lineTo(11, -6);
+    ctx.lineTo(5, -5);
+    ctx.closePath();
+    ctx.fill();
+
+    // Camera body (held at right side of body)
+    const camBob = Math.sin(now * 0.004) * 1.5;
+    ctx.save();
+    ctx.translate(8, -2 + camBob);
+
+    // Camera body rect
+    ctx.fillStyle = '#222222';
+    ctx.beginPath();
+    ctx.roundRect(-7, -5, 14, 10, 2);
+    ctx.fill();
+
+    // Camera top ridge
+    ctx.fillStyle = '#333333';
+    ctx.fillRect(-3, -8, 6, 4);
+
+    // Lens barrel
+    const lensGlow = focused ? `rgba(0,255,220,${0.6 + 0.3 * Math.sin(now * 0.012)})` : 'rgba(80,200,200,0.4)';
+    const lensGrad = ctx.createRadialGradient(0, 0, 1, 0, 0, 5);
+    lensGrad.addColorStop(0, '#aaffee');
+    lensGrad.addColorStop(0.5, '#44aaaa');
+    lensGrad.addColorStop(1, '#005566');
+    ctx.fillStyle = lensGrad;
+    ctx.beginPath();
+    ctx.arc(0, 0, 5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Lens rim
+    ctx.strokeStyle = '#555555';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(0, 0, 5, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Lens glow when focusing
+    if (focused) {
+      ctx.shadowBlur = 8;
+      ctx.shadowColor = '#00ffcc';
+      ctx.strokeStyle = lensGlow;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(0, 0, 5.5, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+
+    // Flash unit on top
+    const flashOn = state === 'shooting' && (Math.floor(now / 150) % 2 === 0);
+    ctx.fillStyle = flashOn ? '#ffffaa' : '#444433';
+    ctx.fillRect(-2, -10, 4, 3);
+
+    ctx.restore(); // end camera transform
+
+    // 📸 label — flashes when shooting, steady when focusing
+    const labelAlpha = state === 'shooting'
+      ? 0.7 + 0.3 * Math.sin(now * 0.03)
+      : focused ? 0.9 : 0.7;
+    ctx.globalAlpha = labelAlpha;
+    ctx.font = 'bold 9px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = focused ? '#00ffcc' : '#aaffdd';
+    ctx.fillText('📸', 0, -20);
+    ctx.globalAlpha = 1;
+
+    ctx.restore();
+  },
 };

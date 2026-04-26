@@ -4815,6 +4815,29 @@ A fedora-wearing detective pigeon prowls Bird City every 20–28 minutes, random
 
 **Creative intent**: The Detective Bird is Bird City's most comedic NPC — a self-important bird with a magnifying glass randomly declaring "YOU look suspicious" and slapping heat on unsuspecting birds. The 15-heat accusation is enough to bump a clean bird to Watched (⭐) instantly, creating genuine paranoia. The counter-play (poop the detective) is instantly satisfying: you see the fedora go wonky, the magnifying glass drop, and the detective stumble away confused for 20 seconds while you pocket the distraction reward. A 5-star Most Wanted bird hiding from cops who then gets accused by the detective AND decides to poop them (adding combo progress while disrupting the accusation cycle) is peak CARNAGE CITY comedy. Pure DISCOVERY + CARNAGE energy.
 
+**Session 140 — 2026-04-26: Bird Photographer NPC + 5 Cross-System Synergies**
+Bird City now has a roaming photographer NPC who rewards birds for showing up together — plus five new cross-system interactions that deepen the game's newest NPCs.
+
+**The Bird Photographer (`server/game.js`, `public/js/sprites.js`, `public/js/main.js`):**
+- Spawns every 18–25 minutes at one of 10 city locations, announced city-wide with screen shake
+- State machine: `wandering` (gentle drift) → `focusing` (freezes in place when ≥1 bird within 140px for 2s) → `shooting` (distributes rewards and flashes camera) → back to `wandering`
+- **Solo portrait** (1–2 birds in frame for 3s): +40 XP +20c each, personal notification + white-yellow screen flash
+- **Group shot** (3+ birds in frame for 2s): +100 XP +50c each, city-wide "GROUP PHOTO TAKEN!" announcement, white-yellow screen flash at full intensity
+- Daily challenges: 📸 **Say Cheese!** (be in a group photo, 160 XP/80c) + 📸 **Photogenic** (be in 2 group shots, 250 XP/125c)
+- Custom `drawBirdPhotographer()` sprite: round grey pigeon body, large camera with gradient lens + glowing ring when focused, flash unit blinking during shooting, squinting eye in focus mode, 📸 floating label
+- Minimap: pulsing teal 📸 dot that brightens when focusing/shooting — trackable city-wide
+- Off-screen direction arrow: teal 📸 triangle arrow pointing toward photographer when off-screen
+- Active buffs HUD: proximity pill at 200px, focusing/shooting pill with bird count, and a speed boost pill showing duration when `photographerSpeedBonusUntil` is active
+
+**Five Cross-System Synergies:**
+1. **Detective Bird × Most Wanted Board**: When the Detective Bird accuses a Wanted Level 3+ criminal, heat bonus jumps from +15 to +40. Fires a special escalated city-wide announcement naming the WL and suspect. The detective becomes a dangerous wild card for wanted birds.
+2. **Bird Photographer × Bird Royale**: Any royale survivor who was photographed during the active royale earns a passive speed bonus (+2% solo, +3% group shot) that persists until the royale ends. The photographer rewards birds who stayed visible and brave.
+3. **Golden Goose × Charity Gala**: If the Golden Goose wanders within 300px of the Charity Gala center, the Gala Guard gets distracted watching the shimmering golden bird and abandons pursuit for 20 seconds. City-wide announcement fires. A brief window to crash the gala unguarded.
+4. **Street Performer × Flash Mob**: If a Flash Mob erupts at the same plaza where a Street Performer is performing, the MEGA MOB threshold drops from 6 → 3 birds AND all birds inside the mob zone get +30% XP on poop hits for the mob's duration. The crowd energy amplifies both events simultaneously.
+5. **Bird Tag × Kite Festival**: When the IT bird flies into a Kite Festival kite (catching it), the kite catch expands their tag radius from 45px → 65px for 10 seconds. City-wide "IT CATCHES A KITE — BOOSTED TAG RADIUS!" announcement fires. Kite hunting becomes double-profitable when you're IT.
+
+**Creative intent**: The Bird Photographer rewards congregation — the first mechanic in Bird City that gives PASSIVE XP to birds who simply gather together near the same NPC. No pooping, no fighting, no timers. Just showing up. The group shot creates a pure social reward loop: "everyone come here, the photographer is focusing!" A gang's five members all crowding around the photographer for a group photo during an aurora night with Street Performer XP boost active is peak Bird City cooperation. The five synergies deepen the newest NPCs — making them feel like active participants in the city's chaos rather than isolated visitors. Pure DISCOVERY + SOCIAL + SPECTACLE energy.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
