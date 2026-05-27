@@ -5455,6 +5455,41 @@
       showAnnouncement(ev.msg || `🔮 You must be closer to the Oracle!`, '#663388', 2500);
     }
 
+    // === WISHING WELL (Session 141) ===
+    if (ev.type === 'wishing_well_result') {
+      const isWisher = ev.wisherId === myId;
+      const effectType = ev.effectType;
+      const isBlessed = ev.isBlessed;
+      const isDivine = ev.isDivine;
+      const effectLabel = ev.effectLabel || effectType;
+      const effectDesc = ev.effectDesc || '';
+
+      if (isDivine) {
+        showAnnouncement(`🌟 DIVINE BLESSING!\n${ev.wisherName} wished upon the well!\nALL birds receive TRIPLE BLESSING:\nGolden Rush + XP Surge + Mega Poop!`, '#ffdd00', 7000);
+        addEventMessage(`🌟 DIVINE BLESSING from the Wishing Well! ${ev.wisherName} wished for the city!`, '#ffdd00');
+        effects.push({ type: 'screen_flash', color: 'rgba(255,215,0,0.35)', duration: 600, time: now });
+        screenShake(12, 700);
+      } else if (isBlessed) {
+        const color = '#44ddff';
+        showAnnouncement(`💙 WISHING WELL BLESSED!\n${ev.wisherName} wished upon the well!\n${effectLabel}: ${effectDesc}`, color, 5000);
+        addEventMessage(`💙 Well Blessing: ${effectLabel}! ${ev.wisherName} brought fortune to the city!`, color);
+        effects.push({ type: 'screen_flash', color: 'rgba(0,150,255,0.20)', duration: 400, time: now });
+        screenShake(6, 400);
+      } else {
+        const color = '#ff6644';
+        showAnnouncement(`💀 WISHING WELL CURSED!\n${ev.wisherName} wished upon the well!\n${effectLabel}: ${effectDesc}`, color, 5000);
+        addEventMessage(`💀 Well Curse: ${effectLabel}! ${ev.wisherName} brought chaos upon the city!`, color);
+        effects.push({ type: 'screen_flash', color: 'rgba(200,0,0,0.20)', duration: 400, time: now });
+        screenShake(6, 400);
+      }
+      if (isWisher) {
+        showAnnouncement(`🌀 YOUR WISH WAS GRANTED!\nThe well granted your wish — effects hit all birds!\n${effectLabel}: ${effectDesc}`, isDivine ? '#ffdd00' : isBlessed ? '#44ddff' : '#ff6644', 6000);
+      }
+    }
+    if (ev.type === 'wishing_well_fail' && ev.birdId === myId) {
+      showAnnouncement(ev.msg || `🌀 The well is resting... wait for it to awaken!`, '#6688aa', 2500);
+    }
+
     // === DELIVERY RUSH (Session 124) ===
     if (ev.type === 'delivery_package_spawned') {
       showAnnouncement(`📦 DELIVERY RUSH!\nPackage at ${ev.originName} → Deliver to ${ev.destName}!\nFly over to pick it up — rivals can steal it!`, '#44aaff', 5000);
@@ -6286,6 +6321,12 @@
         socket.emit('action', { type: 'oracle_consult' });
       } else {
         socket.emit('action', { type: 'caw' });
+      }
+    }
+    if (e.key.toLowerCase() === 'w') {
+      // Wishing Well — Session 141
+      if (gameState && gameState.wishingWell && gameState.wishingWell.nearMe && gameState.wishingWell.cooldownUntil <= Date.now()) {
+        socket.emit('action', { type: 'wishing_well_wish' });
       }
     }
     if (e.key.toLowerCase() === 'r') {
@@ -10907,6 +10948,11 @@
       Renderer.drawChaosOracle(ctx, camera, gameState.chaosOracle, now);
     }
 
+    // Wishing Well — Session 141 (permanent world object)
+    if (gameState.wishingWell) {
+      Renderer.drawWishingWell(ctx, camera, gameState.wishingWell, now);
+    }
+
     // Delivery Rush — package and destination marker
     if (gameState.deliveryRush) {
       Renderer.drawDeliveryRush(ctx, camera, gameState.deliveryRush, now);
@@ -15061,6 +15107,11 @@
       Renderer.drawChaosOracleOnMinimap(minimapCtx, worldData, gameState.chaosOracle, now);
     }
 
+    // Wishing Well on minimap — Session 141
+    if (gameState.wishingWell && worldData) {
+      Renderer.drawWishingWellOnMinimap(minimapCtx, worldData, gameState.wishingWell, now);
+    }
+
     // Delivery Rush on minimap — Session 124
     if (gameState.deliveryRush && worldData) {
       Renderer.drawDeliveryRushOnMinimap(minimapCtx, worldData, gameState.deliveryRush, now);
@@ -18037,6 +18088,59 @@
     if (s.oracleSlowUntil && s.oracleSlowUntil > now) {
       const secs = Math.ceil((s.oracleSlowUntil - now) / 1000);
       html += `<div class="bm-buff-pill" style="background:rgba(0,0,80,0.9);border-color:#4444cc;color:#8888ff;animation:pulseRed 0.8s infinite alternate;">☠️ ORACLE CURSE — −30% speed · ${secs}s</div>`;
+    }
+    // === WISHING WELL (Session 141) ===
+    if (s.wellGoldenRushUntil && s.wellGoldenRushUntil > now) {
+      const secs = Math.ceil((s.wellGoldenRushUntil - now) / 1000);
+      html += `<div class="bm-buff-pill" style="background:rgba(60,50,0,0.95);border-color:#ddaa00;color:#ffdd44;animation:kingpinGlow 0.7s ease-in-out infinite alternate;font-weight:bold;">🌀 WELL BLESSING: GOLDEN RUSH — 2× coins · ${secs}s</div>`;
+    }
+    if (s.wellSpeedUntil && s.wellSpeedUntil > now) {
+      const secs = Math.ceil((s.wellSpeedUntil - now) / 1000);
+      html += `<div class="bm-buff-pill" style="background:rgba(0,50,70,0.95);border-color:#00ccee;color:#44eeff;animation:pulseGreen 0.8s infinite alternate;">🌀 WELL BLESSING: SPEED BLESSING — +25% speed · ${secs}s</div>`;
+    }
+    if (s.wellXpSurgeUntil && s.wellXpSurgeUntil > now) {
+      const secs = Math.ceil((s.wellXpSurgeUntil - now) / 1000);
+      html += `<div class="bm-buff-pill" style="background:rgba(50,0,80,0.95);border-color:#aa44ff;color:#cc88ff;animation:kingpinGlow 0.8s ease-in-out infinite alternate;font-weight:bold;">🌀 WELL BLESSING: XP SURGE — 2× XP · ${secs}s</div>`;
+    }
+    if (s.wellMegaPoopUntil && s.wellMegaPoopUntil > now) {
+      const secs = Math.ceil((s.wellMegaPoopUntil - now) / 1000);
+      html += `<div class="bm-buff-pill" style="background:rgba(50,25,0,0.95);border-color:#884400;color:#cc8844;animation:kingpinGlow 0.7s ease-in-out infinite alternate;font-weight:bold;">🌀 WELL BLESSING: MEGA POOP — All poops are mega · ${secs}s</div>`;
+    }
+    if (s.wellComboExtUntil && s.wellComboExtUntil > now) {
+      const secs = Math.ceil((s.wellComboExtUntil - now) / 1000);
+      html += `<div class="bm-buff-pill" style="background:rgba(70,35,0,0.95);border-color:#ff8800;color:#ffbb44;animation:pulseGreen 1.0s infinite alternate;">🌀 WELL BLESSING: COMBO EXTENSION — 15s combo window · ${secs}s</div>`;
+    }
+    if (gameState.wishingWell && gameState.wishingWell.activeEffect && gameState.wishingWell.activeEffect.type === 'COP_HOLIDAY') {
+      html += `<div class="bm-buff-pill" style="background:rgba(0,60,0,0.95);border-color:#00cc44;color:#44ff88;animation:pulseGreen 0.8s infinite alternate;font-weight:bold;">🌀 WELL BLESSING: COP HOLIDAY — No cops! Enjoy the lawlessness!</div>`;
+    }
+    if (s.wellCoinDroughtUntil && s.wellCoinDroughtUntil > now) {
+      const secs = Math.ceil((s.wellCoinDroughtUntil - now) / 1000);
+      html += `<div class="bm-buff-pill" style="background:rgba(80,10,0,0.95);border-color:#cc2200;color:#ff6644;animation:pulseRed 0.7s infinite alternate;font-weight:bold;">💀 WELL CURSE: COIN DROUGHT — −15% coins · ${secs}s</div>`;
+    }
+    if (s.wellFeatherLossUntil && s.wellFeatherLossUntil > now) {
+      const secs = Math.ceil((s.wellFeatherLossUntil - now) / 1000);
+      html += `<div class="bm-buff-pill" style="background:rgba(80,10,0,0.95);border-color:#cc2200;color:#ff6644;animation:pulseRed 0.8s infinite alternate;font-weight:bold;">💀 WELL CURSE: FEATHER LOSS — −30% speed · ${secs}s</div>`;
+    }
+    if (s.wellPoopDroughtUntil && s.wellPoopDroughtUntil > now) {
+      const secs = Math.ceil((s.wellPoopDroughtUntil - now) / 1000);
+      html += `<div class="bm-buff-pill" style="background:rgba(80,10,0,0.95);border-color:#cc2200;color:#ff6644;animation:pulseRed 0.6s infinite alternate;font-weight:bold;">💀 WELL CURSE: POOP DROUGHT — Cannot poop! · ${secs}s</div>`;
+    }
+    if (s.wellReversedUntil && s.wellReversedUntil > now) {
+      const secs = Math.ceil((s.wellReversedUntil - now) / 1000);
+      html += `<div class="bm-buff-pill" style="background:rgba(60,0,20,0.95);border-color:#990022;color:#ff4466;animation:pulseRed 0.5s infinite alternate;font-weight:bold;">💀 WELL CURSE: REVERSE CHAOS — Controls reversed! · ${secs}s</div>`;
+    }
+    if (s.wellHeatWaveUntil && s.wellHeatWaveUntil > now) {
+      const secs = Math.ceil((s.wellHeatWaveUntil - now) / 1000);
+      html += `<div class="bm-buff-pill" style="background:rgba(80,30,0,0.95);border-color:#cc5500;color:#ff8833;animation:pulseRed 0.7s infinite alternate;font-weight:bold;">💀 WELL CURSE: HEAT WAVE — Heat builds fast · ${secs}s</div>`;
+    }
+    // Wishing Well proximity prompts
+    if (gameState.wishingWell && gameState.wishingWell.nearMe) {
+      if (gameState.wishingWell.cooldownUntil <= now) {
+        html += `<div class="bm-buff-pill" style="background:rgba(20,0,60,0.95);border-color:#6644cc;color:#aa88ff;animation:kingpinGlow 1.0s ease-in-out infinite alternate;cursor:pointer;" onclick="socket && socket.emit('action',{type:'wishing_well_wish'})">🌀 [W] to WISH (50c) — affect the ENTIRE city!</div>`;
+      } else {
+        const restSecs = Math.ceil((gameState.wishingWell.cooldownUntil - now) / 1000);
+        html += `<div class="bm-buff-pill" style="background:rgba(20,0,60,0.75);border-color:#443388;color:#776699;">🌀 Well is resting... ${restSecs}s</div>`;
+      }
     }
     // === KITE FESTIVAL (Session 128) ===
     if (gameState.kiteFestival) {

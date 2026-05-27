@@ -236,6 +236,9 @@ const DAILY_CHALLENGE_POOL = [
   // Session 140: Bird Photographer
   { id: 'say_cheese',   title: 'Say Cheese!',  desc: 'Be in a group photo taken by the Bird Photographer (3+ birds in frame)', target: 1, trackType: 'group_photo', reward: { xp: 160, coins: 80  } },
   { id: 'photogenic',   title: 'Photogenic',   desc: 'Be photographed in 2 group shots by the Bird Photographer',              target: 2, trackType: 'group_photo', reward: { xp: 250, coins: 125 } },
+  // Session 141: Wishing Well
+  { id: 'make_a_wish',  title: 'Make a Wish',   desc: 'Use the Wishing Well to bless (or curse) the entire city',  target: 1, trackType: 'wishing_well_used', reward: { xp: 150, coins: 75  } },
+  { id: 'chaos_wisher', title: 'Chaos Wisher',  desc: 'Use the Wishing Well 3 times in one session',               target: 3, trackType: 'wishing_well_used', reward: { xp: 200, coins: 100 } },
 ];
 
 // ============================================================
@@ -1259,6 +1262,15 @@ class GameEngine {
       stunUntil: 0,
     };
 
+    // === WISHING WELL ===
+    // Permanent stone well at x:950, y:1200 (south of Sacred Pond in the park).
+    // Costs 50c to use. City-wide 3-minute cooldown between wishes.
+    // Random effect applied to ALL online birds simultaneously.
+    this.wishingWell = {
+      cooldownUntil: 0,         // timestamp when city-wide cooldown expires
+      activeEffect: null,       // null | { type, endsAt, wisherName, wisherGang }
+    };
+
     // === BIRD ROYALE ===
     // Every 35-50 minutes, a shrinking zone forces all birds toward the city center.
     // Safe zone shrinks from 1400px radius to 150px over 3 minutes.
@@ -1934,6 +1946,11 @@ class GameEngine {
       this._handleNightMarketBuy(bird, action.itemId, now);
     }
 
+    // === Wishing Well ===
+    if (action.type === 'wishing_well_wish') {
+      this._handleWishingWell(bird, now);
+    }
+
     // === Pigeonhole Slots Casino ===
     if (action.type === 'slots_spin') {
       this._handleSlotsSpin(bird, now);
@@ -2471,6 +2488,9 @@ class GameEngine {
     // === Bird Tag ===
     this._tickBirdTag(now);
     this._tickLostChick(dt, now);
+
+    // === Wishing Well ===
+    this._tickWishingWell(now);
 
     // === Golden Goose ===
     this._tickGoldenGoose(dt, now);
@@ -3709,6 +3729,10 @@ class GameEngine {
     if (bird.oracleSpeedUntil > now) maxSpeed *= 1.40;
     if (bird.oracleSlowUntil > now)  maxSpeed *= 0.70;
 
+    // Wishing Well: speed blessing (+25%) or feather-loss curse (-30%)
+    if ((bird.wellSpeedUntil || 0) > now) maxSpeed *= 1.25;
+    if ((bird.wellFeatherLossUntil || 0) > now) maxSpeed *= 0.70;
+
     // Bird Photographer: royale survivors get a speed bonus when photographed
     if (bird.photographerSpeedBonus && bird.photographerSpeedBonusUntil > now) {
       maxSpeed *= (1 + bird.photographerSpeedBonus);
@@ -3875,6 +3899,9 @@ class GameEngine {
     // Oracle: confused flight — controls reversed for 8 seconds
     if (bird.oracleConfusedUntil > now) { ax = -ax; ay = -ay; }
 
+    // Wishing Well: reverse chaos — controls reversed for the effect duration
+    if ((bird.wellReversedUntil || 0) > now) { ax = -ax; ay = -ay; }
+
     bird.vx = (bird.vx + ax * dt) * drag;
     bird.vy = (bird.vy + ay * dt) * drag;
 
@@ -4000,8 +4027,8 @@ class GameEngine {
 
     // === POOP ===
     // Block poop while driving the Pigeon Coupe (both hands on the wheel!)
-    // Also block poop during Oracle drought curse
-    if (!bird.carryingEggId && !bird.drivingCoupeId && !bird.deliveryPackageId && bird.piperEnchantedUntil <= now && (bird.oraclePoopDroughtUntil || 0) <= now && bird.input.space && now - bird.lastPoop > poopCooldown) {
+    // Also block poop during Oracle drought curse or Wishing Well poop drought curse
+    if (!bird.carryingEggId && !bird.drivingCoupeId && !bird.deliveryPackageId && bird.piperEnchantedUntil <= now && (bird.oraclePoopDroughtUntil || 0) <= now && (bird.wellPoopDroughtUntil || 0) <= now && bird.input.space && now - bird.lastPoop > poopCooldown) {
       bird.lastPoop = now;
       const poopId = 'p_' + uid();
       const poop = {
@@ -4019,7 +4046,8 @@ class GameEngine {
       const isNukePoop = bird.mcNukePoop;
       const isPoopParty = !!(this.chaosEvent && this.chaosEvent.type === 'poop_party');
       const isGoldenBerserker = !!(this.goldenRampage && this.goldenRampage.birdId === bird.id);
-      const isMegaPoop = bird.megaPoopReady || bird.bmMegaPoops > 0 || isNukePoop || isPoopParty || isGoldenBerserker;
+      const isWellMega = (bird.wellMegaPoopUntil || 0) > now;
+      const isMegaPoop = bird.megaPoopReady || bird.bmMegaPoops > 0 || isNukePoop || isPoopParty || isGoldenBerserker || isWellMega;
       if (bird.megaPoopReady) {
         bird.megaPoopReady = false;
         bird.powerUp = null; // Consumed
@@ -5387,14 +5415,17 @@ class GameEngine {
       }
       // Chaos Oracle: Coin Rain blessing — 3× coins per poop hit for 20s
       if ((bird.oracleCoinRainUntil || 0) > now && coinGain > 0) coinGain = Math.floor(coinGain * 3);
+      // Wishing Well: golden rush blessing — 2× coins; coin drought curse — 15% fewer coins
+      if ((bird.wellGoldenRushUntil || 0) > now && coinGain > 0) coinGain = Math.floor(coinGain * 2);
+      if ((bird.wellCoinDroughtUntil || 0) > now && coinGain > 0) coinGain = Math.floor(coinGain * 0.85);
       bird.coins += coinGain;
 
       // === COMBO STREAK — chain hits within 8s for escalating XP ===
       if (hit.target && hit.target !== 'none') {
         const comboActive = now < bird.comboExpiresAt;
         bird.comboCount = comboActive ? bird.comboCount + 1 : 1;
-        // Aurora extends combo to 12s; blizzard to 11s; Oracle combo extension to 16s
-        const comboWindow = (bird.oracleComboExtUntil || 0) > now ? 16000 : this.aurora ? 12000 : (this.weather && this.weather.type === 'blizzard' ? 11000 : 8000);
+        // Aurora extends combo to 12s; blizzard to 11s; Oracle combo extension to 16s; Well combo extension to 15s
+        const comboWindow = (bird.oracleComboExtUntil || 0) > now ? 16000 : (bird.wellComboExtUntil || 0) > now ? 15000 : this.aurora ? 12000 : (this.weather && this.weather.type === 'blizzard' ? 11000 : 8000);
         bird.comboExpiresAt = now + comboWindow;
         const combo = bird.comboCount;
         // XP bonus: flat multiplier applied to base xpGain
@@ -5488,6 +5519,8 @@ class GameEngine {
       }
       // Chaos Oracle: XP Surge blessing — 2× XP for 20s
       if ((bird.oracleXpSurgeUntil || 0) > now) xpGain = Math.floor(xpGain * 2);
+      // Wishing Well: XP surge blessing — 2× XP for 30s
+      if ((bird.wellXpSurgeUntil || 0) > now) xpGain = Math.floor(xpGain * 2);
       // Chaos Oracle: Poop Blessing — next 4 poops earn 2× XP
       if ((bird.oraclePoopBlessingHits || 0) > 0 && hit.target !== 'miss') {
         xpGain = Math.floor(xpGain * 2);
@@ -9040,6 +9073,11 @@ class GameEngine {
         }).call(this),
       } : null,
       stuntRamps: this._getStuntRampsForClient(bird.id, now),
+      wishingWell: {
+        cooldownUntil: this.wishingWell.cooldownUntil,
+        activeEffect: this.wishingWell.activeEffect,
+        nearMe: Math.hypot(bird.x - 950, bird.y - 1200) < 90,
+      },
       raccoons: nearbyRaccoons,
       drunkPigeons: nearbyDrunkPigeons,
       cops: nearbyCops,
@@ -13291,6 +13329,12 @@ class GameEngine {
     if (this._electionPolicyActive('anarchy')) {
       if (this.copBirds.size > 0) this.copBirds.clear();
       return;
+    }
+
+    // Wishing Well: Cop Holiday — all cops stand down for the effect duration
+    if (this.wishingWell.activeEffect && this.wishingWell.activeEffect.type === 'COP_HOLIDAY') {
+      if (this.copBirds.size > 0) this.copBirds.clear();
+      return; // No new cops spawn during Wishing Well cop holiday
     }
 
     // King's Pardon: pardoned bird is legally immune — no new cop spawns targeting them
@@ -28535,6 +28579,14 @@ class GameEngine {
   }
 
   // ============================================================
+  // WISHING WELL — Session 141
+  // Permanent stone well at the park (x:950, y:1200).
+  // Costs 50c to use. City-wide 3-minute cooldown.
+  // ============================================================
+
+  static get WISHING_WELL_POS() { return { x: 950, y: 1200, radius: 90 }; }
+
+  // ============================================================
   // CHAOS ORACLE — Session 121
   // A mysterious fortune-teller who appears every 20-28 minutes
   // at a random city landmark. Press [Q] within 80px to receive
@@ -29132,6 +29184,192 @@ class GameEngine {
 
     this.pinata = null;
     this._pinataTimer = now + this._randomRange(30 * 60000, 40 * 60000);
+  }
+
+  // ============================================================
+  // WISHING WELL — Session 141
+  // ============================================================
+
+  _handleWishingWell(bird, now) {
+    const pos = BirdGame.WISHING_WELL_POS;
+    const dist = Math.hypot(bird.x - pos.x, bird.y - pos.y);
+    if (dist > pos.radius) {
+      this.events.push({ type: 'wishing_well_fail', targetId: bird.id, reason: 'too_far' });
+      return;
+    }
+    if (now < this.wishingWell.cooldownUntil) {
+      const secs = Math.ceil((this.wishingWell.cooldownUntil - now) / 1000);
+      this.events.push({ type: 'wishing_well_fail', targetId: bird.id, reason: 'cooldown', secs });
+      return;
+    }
+    if (bird.coins < 50) {
+      this.events.push({ type: 'wishing_well_fail', targetId: bird.id, reason: 'no_coins' });
+      return;
+    }
+
+    // Take the coin
+    bird.coins -= 50;
+
+    // Roll the wish effect
+    const roll = Math.random();
+    let effectId;
+    if (roll < 0.05) {
+      effectId = 'DIVINE_BLESSING';
+    } else if (roll < 0.60) {
+      const blessed = ['GOLDEN_RUSH','FOOD_FEAST','SPEED_BLESSING','XP_SURGE','COP_HOLIDAY','CITY_PARTY','COMBO_EXTENDED'];
+      effectId = blessed[Math.floor(Math.random() * blessed.length)];
+    } else {
+      const cursed = ['REVERSE_CHAOS','FOOD_BLIGHT','HEAT_WAVE','COIN_DROUGHT','FEATHER_LOSS','POOP_DROUGHT'];
+      effectId = cursed[Math.floor(Math.random() * cursed.length)];
+    }
+
+    const wisherName = bird.name || 'Unknown';
+    const wisherGang = bird.gangTag || null;
+
+    // Duration for timed effects (ms)
+    const DURATIONS = {
+      GOLDEN_RUSH:     60000,
+      FOOD_FEAST:      90000,
+      SPEED_BLESSING:  45000,
+      XP_SURGE:        45000,
+      COP_HOLIDAY:     45000,
+      CITY_PARTY:      20000,
+      COMBO_EXTENDED:  90000,
+      COIN_DROUGHT:    60000,
+      FEATHER_LOSS:    30000,
+      POOP_DROUGHT:     8000,
+    };
+    const INSTANT = new Set(['REVERSE_CHAOS','FOOD_BLIGHT','HEAT_WAVE','DIVINE_BLESSING']);
+
+    // Set active effect for timed wishes
+    if (!INSTANT.has(effectId)) {
+      this.wishingWell.activeEffect = {
+        type: effectId,
+        endsAt: now + (DURATIONS[effectId] || 45000),
+        wisherName,
+        wisherGang,
+      };
+    }
+
+    // Apply effect to all birds
+    const onlineBirds = Object.values(this.birds).filter(b => b.online);
+
+    if (effectId === 'DIVINE_BLESSING') {
+      // All timed blessings at once for 30s
+      const dur = 30000;
+      for (const b of onlineBirds) {
+        b.wellGoldenRushUntil   = now + dur;
+        b.wellSpeedUntil        = now + dur;
+        b.wellXpSurgeUntil      = now + dur;
+        b.wellMegaPoopUntil     = now + dur;
+        b.wellComboExtUntil     = now + dur;
+      }
+    } else if (effectId === 'GOLDEN_RUSH') {
+      for (const b of onlineBirds) b.wellGoldenRushUntil = now + DURATIONS.GOLDEN_RUSH;
+    } else if (effectId === 'SPEED_BLESSING') {
+      for (const b of onlineBirds) b.wellSpeedUntil = now + DURATIONS.SPEED_BLESSING;
+    } else if (effectId === 'XP_SURGE') {
+      for (const b of onlineBirds) b.wellXpSurgeUntil = now + DURATIONS.XP_SURGE;
+    } else if (effectId === 'COP_HOLIDAY') {
+      // Despawn all cops and block new ones temporarily
+      this.cops = (this.cops || []).filter(() => false);
+      for (const b of onlineBirds) b.wellCopHolidayUntil = now + DURATIONS.COP_HOLIDAY;
+    } else if (effectId === 'CITY_PARTY') {
+      // Give everyone temporary mega poop (uses existing bmMegaPoops flag)
+      for (const b of onlineBirds) b.wellMegaPoopUntil = now + DURATIONS.CITY_PARTY;
+    } else if (effectId === 'COMBO_EXTENDED') {
+      for (const b of onlineBirds) b.wellComboExtUntil = now + DURATIONS.COMBO_EXTENDED;
+    } else if (effectId === 'FOOD_FEAST') {
+      // Spawn 20 bonus food items spread across the city
+      const zones = [
+        {x:1200,y:1200},{x:2100,y:1200},{x:2300,y:500},{x:500,y:1800},
+        {x:400,y:500},{x:1300,y:2380},{x:1780,y:1050},{x:2750,y:1200},
+        {x:850,y:1580},{x:1620,y:750},{x:1200,y:450},{x:1050,y:640},
+      ];
+      const foodTypes = ['seed','bread','pizza','cake','sandwich'];
+      for (let i = 0; i < 20; i++) {
+        const z = zones[Math.floor(Math.random() * zones.length)];
+        const fid = `well_feast_${now}_${i}`;
+        const type = foodTypes[Math.floor(Math.random() * foodTypes.length)];
+        this.foods.set(fid, {
+          id: fid, type, active: true,
+          x: z.x + (Math.random() - 0.5) * 200,
+          y: z.y + (Math.random() - 0.5) * 200,
+          respawnAt: null,
+          isWellFeast: true,
+        });
+      }
+    } else if (effectId === 'REVERSE_CHAOS') {
+      // Instant: flip every bird's velocity for 10s
+      for (const b of onlineBirds) {
+        b.vx = -(b.vx || 0);
+        b.vy = -(b.vy || 0);
+        b.wellReversedUntil = now + 10000;
+      }
+    } else if (effectId === 'FOOD_BLIGHT') {
+      // Instant: deactivate 30% of current food
+      const allFood = Array.from(this.foods.values()).filter(f => f.active);
+      const count = Math.floor(allFood.length * 0.3);
+      for (let i = 0; i < count; i++) {
+        const f = allFood[Math.floor(Math.random() * allFood.length)];
+        if (f && f.active) {
+          f.active = false;
+          f.respawnAt = now + 60000;
+        }
+      }
+    } else if (effectId === 'HEAT_WAVE') {
+      // Instant: +10 heat to every bird
+      for (const b of onlineBirds) {
+        this._addHeat(b.id, 10);
+      }
+    } else if (effectId === 'COIN_DROUGHT') {
+      for (const b of onlineBirds) b.wellCoinDroughtUntil = now + DURATIONS.COIN_DROUGHT;
+    } else if (effectId === 'FEATHER_LOSS') {
+      for (const b of onlineBirds) b.wellFeatherLossUntil = now + DURATIONS.FEATHER_LOSS;
+    } else if (effectId === 'POOP_DROUGHT') {
+      for (const b of onlineBirds) b.wellPoopDroughtUntil = now + DURATIONS.POOP_DROUGHT;
+    }
+
+    // City-wide 3-minute cooldown
+    this.wishingWell.cooldownUntil = now + 3 * 60000;
+
+    // Daily challenge tracking for the wisher
+    this._trackDailyProgress(bird, 'wishing_well_used', 1);
+
+    // Push city-wide event
+    const blessed = new Set(['GOLDEN_RUSH','FOOD_FEAST','SPEED_BLESSING','XP_SURGE','COP_HOLIDAY','CITY_PARTY','COMBO_EXTENDED','DIVINE_BLESSING']);
+    const isBlessed = blessed.has(effectId);
+    this.events.push({
+      type: 'wishing_well_result',
+      effectId,
+      isBlessed,
+      wisherName,
+      wisherGang,
+      cooldownUntil: this.wishingWell.cooldownUntil,
+    });
+  }
+
+  _tickWishingWell(now) {
+    const w = this.wishingWell;
+    if (!w.activeEffect) return;
+    if (now >= w.activeEffect.endsAt) {
+      const expiredType = w.activeEffect.type;
+      w.activeEffect = null;
+      // Clear timed flags on all birds
+      for (const b of Object.values(this.birds)) {
+        if (!b.online) continue;
+        if (expiredType === 'GOLDEN_RUSH')    b.wellGoldenRushUntil = 0;
+        if (expiredType === 'SPEED_BLESSING') b.wellSpeedUntil = 0;
+        if (expiredType === 'XP_SURGE')       b.wellXpSurgeUntil = 0;
+        if (expiredType === 'COP_HOLIDAY')    b.wellCopHolidayUntil = 0;
+        if (expiredType === 'CITY_PARTY')     b.wellMegaPoopUntil = 0;
+        if (expiredType === 'COMBO_EXTENDED') b.wellComboExtUntil = 0;
+        if (expiredType === 'COIN_DROUGHT')   b.wellCoinDroughtUntil = 0;
+        if (expiredType === 'FEATHER_LOSS')   b.wellFeatherLossUntil = 0;
+        if (expiredType === 'POOP_DROUGHT')   b.wellPoopDroughtUntil = 0;
+      }
+      this.events.push({ type: 'wishing_well_effect_ended', effectType: expiredType });
+    }
   }
 
   // ============================================================

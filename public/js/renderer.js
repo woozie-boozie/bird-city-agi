@@ -6257,6 +6257,191 @@ window.Renderer = {
   },
 
   // ============================================================
+  // Session 141: The Wishing Well
+  // ============================================================
+  drawWishingWell(ctx, camera, pos, wishingWell, isNear, now) {
+    const sx = pos.x - camera.x + camera.screenW / 2;
+    const sy = pos.y - camera.y + camera.screenH / 2;
+
+    // Cull if off-screen
+    if (sx < -80 || sx > camera.screenW + 80 || sy < -80 || sy > camera.screenH + 80) return;
+
+    ctx.save();
+
+    const pulse = 0.5 + 0.5 * Math.sin(now * 0.0025);
+    const hasEffect = wishingWell && wishingWell.activeEffect;
+    const onCooldown = wishingWell && wishingWell.cooldownUntil > now;
+
+    // Magical aura behind the well
+    const auraColor = hasEffect ? 'rgba(140,60,255,0.35)' : 'rgba(80,160,255,0.22)';
+    const auraRadius = 36 + 8 * pulse;
+    const aura = ctx.createRadialGradient(sx, sy + 4, 0, sx, sy + 4, auraRadius);
+    aura.addColorStop(0, hasEffect ? 'rgba(180,80,255,0.5)' : 'rgba(100,180,255,0.45)');
+    aura.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.beginPath();
+    ctx.arc(sx, sy + 4, auraRadius, 0, Math.PI * 2);
+    ctx.fillStyle = aura;
+    ctx.fill();
+
+    // Stone well base — wide squat cylinder
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath();
+    ctx.ellipse(sx, sy + 20, 22, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Base stone cylinder
+    const wallGrad = ctx.createLinearGradient(sx - 18, 0, sx + 18, 0);
+    wallGrad.addColorStop(0, '#7a7a8c');
+    wallGrad.addColorStop(0.4, '#9898ac');
+    wallGrad.addColorStop(1, '#606070');
+    ctx.fillStyle = wallGrad;
+    // Well wall (rounded rect-ish)
+    ctx.beginPath();
+    ctx.roundRect(sx - 18, sy - 2, 36, 22, 4);
+    ctx.fill();
+
+    // Stone block seam lines
+    ctx.strokeStyle = 'rgba(50,50,60,0.4)';
+    ctx.lineWidth = 0.8;
+    for (let i = 0; i < 3; i++) {
+      const ly = sy + 4 + i * 6;
+      ctx.beginPath();
+      ctx.moveTo(sx - 16, ly);
+      ctx.lineTo(sx + 16, ly);
+      ctx.stroke();
+    }
+
+    // Well rim (top ellipse)
+    const rimGrad = ctx.createLinearGradient(sx - 22, 0, sx + 22, 0);
+    rimGrad.addColorStop(0, '#a0a0b8');
+    rimGrad.addColorStop(0.5, '#c8c8dc');
+    rimGrad.addColorStop(1, '#808090');
+    ctx.fillStyle = rimGrad;
+    ctx.beginPath();
+    ctx.ellipse(sx, sy - 2, 22, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#666676';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+
+    // Dark water in well center
+    ctx.fillStyle = hasEffect ? `rgba(120,50,200,${0.7 + 0.3 * pulse})` : `rgba(20,80,160,${0.6 + 0.25 * pulse})`;
+    ctx.beginPath();
+    ctx.ellipse(sx, sy - 2, 14, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Water shimmer
+    if (hasEffect) {
+      ctx.strokeStyle = `rgba(200,140,255,${0.6 + 0.4 * pulse})`;
+    } else {
+      ctx.strokeStyle = `rgba(100,180,255,${0.5 + 0.5 * pulse})`;
+    }
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.ellipse(sx - 3, sy - 3, 5, 2, -0.3, 0, Math.PI);
+    ctx.stroke();
+
+    // Wooden crossbeam roof
+    const roofPulse = 0.5 + 0.5 * Math.sin(now * 0.002 + 1);
+    ctx.strokeStyle = '#7a4a1a';
+    ctx.lineWidth = 3.5;
+    // Vertical posts
+    ctx.beginPath();
+    ctx.moveTo(sx - 16, sy - 2);
+    ctx.lineTo(sx - 16, sy - 22);
+    ctx.moveTo(sx + 16, sy - 2);
+    ctx.lineTo(sx + 16, sy - 22);
+    ctx.stroke();
+    // Horizontal beam
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(sx - 19, sy - 22);
+    ctx.lineTo(sx + 19, sy - 22);
+    ctx.stroke();
+
+    // Bucket hanging from center
+    const bucketSwing = Math.sin(now * 0.0015) * 2;
+    ctx.strokeStyle = '#4a3010';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(sx, sy - 22);
+    ctx.lineTo(sx + bucketSwing, sy - 8);
+    ctx.stroke();
+    // Bucket body
+    ctx.fillStyle = '#6b4010';
+    ctx.beginPath();
+    ctx.roundRect(sx + bucketSwing - 5, sy - 10, 10, 8, 2);
+    ctx.fill();
+    ctx.strokeStyle = '#4a3010';
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+
+    // Floating magic particles when effect active
+    if (hasEffect) {
+      for (let i = 0; i < 5; i++) {
+        const pAngle = (now * 0.001 * (0.6 + i * 0.15) + i * 1.26);
+        const pR = 18 + 6 * Math.sin(now * 0.002 + i * 1.4);
+        const px = sx + Math.cos(pAngle) * pR;
+        const py = sy + Math.sin(pAngle) * pR * 0.5 - 5;
+        const pAlpha = 0.5 + 0.5 * Math.sin(now * 0.003 + i);
+        ctx.fillStyle = `rgba(200,120,255,${pAlpha})`;
+        ctx.beginPath();
+        ctx.arc(px, py, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // Label
+    if (isNear) {
+      ctx.font = 'bold 11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.shadowColor = 'rgba(0,0,0,0.7)';
+      ctx.shadowBlur = 4;
+      const cooldownSecs = wishingWell && onCooldown ? Math.ceil((wishingWell.cooldownUntil - now) / 1000) : 0;
+      if (onCooldown) {
+        ctx.fillStyle = '#aaa';
+        ctx.fillText(`🌀 WISHING WELL — cooldown ${cooldownSecs}s`, sx, sy - 28);
+      } else {
+        ctx.fillStyle = '#d0a8ff';
+        ctx.fillText('🌀 WISHING WELL — [W] to wish (50c)', sx, sy - 28);
+      }
+      ctx.shadowBlur = 0;
+    } else {
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.fillStyle = 'rgba(200,160,255,0.7)';
+      ctx.fillText('🌀 Wishing Well', sx, sy - 28);
+    }
+
+    ctx.restore();
+  },
+
+  drawWishingWellOnMinimap(minimapCtx, pos, worldData, wishingWell, now) {
+    const scale = minimapCtx.canvas.width / worldData.width;
+    const cx = pos.x * scale;
+    const cy = pos.y * scale;
+    const pulse = 0.5 + 0.5 * Math.sin(now * 0.003);
+    const hasEffect = wishingWell && wishingWell.activeEffect;
+
+    minimapCtx.save();
+    minimapCtx.shadowColor = hasEffect ? '#cc88ff' : '#6699ff';
+    minimapCtx.shadowBlur = 6 * pulse;
+    minimapCtx.fillStyle = hasEffect ? `rgba(170,80,255,${0.7 + 0.3 * pulse})` : `rgba(80,140,255,${0.6 + 0.3 * pulse})`;
+    minimapCtx.beginPath();
+    minimapCtx.arc(cx, cy, 3 + pulse, 0, Math.PI * 2);
+    minimapCtx.fill();
+    minimapCtx.shadowBlur = 0;
+    minimapCtx.font = '7px sans-serif';
+    minimapCtx.textAlign = 'center';
+    minimapCtx.textBaseline = 'middle';
+    minimapCtx.fillText('🌀', cx, cy);
+    minimapCtx.restore();
+  },
+
+  // ============================================================
   // Session 130: The Golden Goose
   // ============================================================
   drawGoldenGoose(ctx, camera, goose, now) {

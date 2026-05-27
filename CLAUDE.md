@@ -4838,6 +4838,37 @@ Bird City now has a roaming photographer NPC who rewards birds for showing up to
 
 **Creative intent**: The Bird Photographer rewards congregation — the first mechanic in Bird City that gives PASSIVE XP to birds who simply gather together near the same NPC. No pooping, no fighting, no timers. Just showing up. The group shot creates a pure social reward loop: "everyone come here, the photographer is focusing!" A gang's five members all crowding around the photographer for a group photo during an aurora night with Street Performer XP boost active is peak Bird City cooperation. The five synergies deepen the newest NPCs — making them feel like active participants in the city's chaos rather than isolated visitors. Pure DISCOVERY + SOCIAL + SPECTACLE energy.
 
+**Session 141 — 2026-05-27: The Wishing Well — Magical City-Wide Chaos Item**
+A mystical stone well materializes permanently at x:950, y:1200 (south of the Sacred Pond). Fly within 90px and press [W] to make a wish for 50 coins — affecting EVERY online bird simultaneously. A city-wide 3-minute cooldown keeps each wish feeling rare and significant.
+
+**14 Effect Types (weighted random roll):**
+- **5% DIVINE BLESSING (Jackpot)**: All three best blessings fire simultaneously — Golden Rush + Speed Blessing + XP Surge for 30 seconds
+- **Blessed (55%)**: GOLDEN_RUSH (2× coins, 30s), SPEED_BLESSING (+25% speed, 25s), XP_SURGE (2× XP, 25s), MEGA_POOP_BLESSING (all poops are mega, 20s), COMBO_EXTENSION (15s combo window, 40s), FOOD_FEAST (20 food items scatter citywide), COP_HOLIDAY (all cops cleared + no new spawns for 35s)
+- **Cursed (40%)**: COIN_DROUGHT (−15% coin gains, 30s), FEATHER_LOSS (−30% speed, 25s), POOP_DROUGHT (can't fire poop, 12s), REVERSE_CHAOS (controls reversed, 10s), FOOD_BLIGHT (30% of food deactivated, 30s), HEAT_WAVE (+15 heat per poop, 20s), JEALOUSY_CURSE (top-3 richest birds get −10% coins, instant)
+
+**Server mechanics (`server/game.js`):**
+- `this.wishingWell = { cooldownUntil: 0, activeEffect: null }` permanent state (no spawn timer)
+- `_handleWishingWell(bird, now)`: proximity check (90px), 50c deduction, weighted roll, applies per-bird `wellXxxUntil` timestamp flags
+- `_tickWishingWell(now)`: expires active effects and clears all `wellXxxUntil` flags city-wide when durations end
+- Speed chain: `wellSpeedUntil` → ×1.25, `wellFeatherLossUntil` → ×0.70
+- Controls: `wellReversedUntil` → `ax = -ax; ay = -ay`
+- Poop block: `wellPoopDroughtUntil` guard added alongside existing oracle/piper drought checks
+- Mega poop: `wellMegaPoopUntil` folded into `isMegaPoop` calculation
+- Combo window: `wellComboExtUntil` → 15000ms (between oracle 16000 and aurora 12000)
+- Coins: `wellGoldenRushUntil` → 2× coinGain; `wellCoinDroughtUntil` → 0.85× coinGain
+- XP: `wellXpSurgeUntil` → 2× xpGain
+- Cop Holiday: checks `this.wishingWell.activeEffect.type === 'COP_HOLIDAY'` in `_updateCopBirds`, clears all cops and blocks spawns
+- Two daily challenges: 🌀 **Make a Wish** (use once, 150 XP/75c) + 🌀 **Chaos Wisher** (use 3 times, 200 XP/100c)
+
+**Visual system (`public/js/renderer.js`, `public/js/main.js`):**
+- Stone cylinder base with gradient shading, wooden crossbeam roof structure, swinging rope bucket, floating magic particles when an effect is active
+- Magical aura: blue when blessed effect active, purple when cursed, neutral grey otherwise
+- `[W] to WISH — 50c · Affect the ENTIRE city!` proximity label
+- Minimap: pulsing blue/purple 🌀 dot at well's permanent position
+- Active buffs HUD: 13 color-coded pills covering all 5 blessed flags (gold/cyan/purple/brown/orange themes), COP_HOLIDAY city-wide check (green), 5 cursed flags (all red pulsing), plus proximity pills (available vs cooling down)
+
+**Creative intent**: The Wishing Well is the most purely SOCIAL mechanic in Bird City — one bird pays 50 coins and the entire city is affected. Blessed outcomes create a spontaneous city-wide party: "someone just wished for COP HOLIDAY — everyone crime NOW!" Cursed outcomes create collective groaning: "WHO USED THE WELL during our gang war?!" The 3-minute cooldown makes each wish feel weighty and consequential. The DIVINE jackpot (5%) is the rarest single moment in Bird City — all three blessings firing simultaneously creates an astronomical XP window. The permanent stone well near the Sacred Pond makes it a natural pilgrimage site during the night and aurora hours. Pure SOCIAL + DISCOVERY + SPECTACLE energy — the city now has a wishing well, and every coin thrown in changes everything.
+
 ### Next Ideas Queue
 - ~~Underground sewer system (secret map layer)~~ (DONE Session 19)
 - ~~Egg protection mini-game~~ (evolved into Golden Egg Scramble, DONE Session 21)
