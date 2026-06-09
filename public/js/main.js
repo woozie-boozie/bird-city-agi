@@ -11710,45 +11710,64 @@
       }
     }
 
-    // ===== YOU-ARE-HERE marker (fallback — uses gameState.self position
-    // directly so the player can find themselves even if the bird sprite
-    // is hidden behind another sprite or never matched by id).
-    if (gameState.self && typeof gameState.self.x === 'number') {
-      const sx = gameState.self.x - camera.x + camera.screenW / 2;
-      const sy = gameState.self.y - camera.y + camera.screenH / 2;
+    // ===== YOU-ARE-HERE marker (fallback) — uses gameState.self position
+    // directly. Snaps camera to player and edge-clamps the marker so it
+    // ALWAYS shows somewhere on screen even if camera follow is broken.
+    if (gameState.self && typeof gameState.self.x === 'number' && typeof gameState.self.y === 'number') {
+      // Hard-snap the camera if it has drifted far from the actual player
+      // position (the smoothed follow can stall if myId never matches a
+      // bird in the snapshot). This guarantees the player is on-screen.
+      const dxCam = gameState.self.x - camera.x;
+      const dyCam = gameState.self.y - camera.y;
+      if (Math.abs(dxCam) > 400 || Math.abs(dyCam) > 400) {
+        camera.x = gameState.self.x;
+        camera.y = gameState.self.y;
+      }
+      const rawSx = gameState.self.x - camera.x + camera.screenW / 2;
+      const rawSy = gameState.self.y - camera.y + camera.screenH / 2;
+      const pad = 50;
+      const sx = Math.max(pad, Math.min(camera.screenW - pad, rawSx));
+      const sy = Math.max(pad, Math.min(camera.screenH - pad, rawSy));
+      const offscreen = sx !== rawSx || sy !== rawSy;
       const pulse = 0.5 + 0.5 * Math.sin(now * 0.005);
       ctx.save();
       // Outer pulsing yellow halo
-      ctx.strokeStyle = `rgba(255, 220, 0, ${0.55 + 0.35 * pulse})`;
-      ctx.lineWidth = 3;
+      ctx.strokeStyle = `rgba(255, 220, 0, ${0.6 + 0.35 * pulse})`;
+      ctx.lineWidth = 4;
       ctx.beginPath();
-      ctx.arc(sx, sy, 28 + pulse * 10, 0, Math.PI * 2);
+      ctx.arc(sx, sy, 30 + pulse * 10, 0, Math.PI * 2);
       ctx.stroke();
-      // Inner solid ring
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+      // Inner solid white ring
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.98)';
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(sx, sy, 22, 0, Math.PI * 2);
       ctx.stroke();
-      // Bouncing downward arrow above the bird
-      const ay = sy - 50 - pulse * 8;
+      // Bouncing downward arrow above
+      const ay = sy - 52 - pulse * 8;
       ctx.fillStyle = '#ffeb00';
       ctx.strokeStyle = '#000';
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(sx, ay + 16);
-      ctx.lineTo(sx - 10, ay);
-      ctx.lineTo(sx + 10, ay);
+      ctx.moveTo(sx, ay + 18);
+      ctx.lineTo(sx - 12, ay);
+      ctx.lineTo(sx + 12, ay);
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
-      // "YOU" label above the arrow
-      ctx.font = 'bold 12px Courier New';
+      // "YOU" label
+      ctx.font = 'bold 14px Courier New';
       ctx.textAlign = 'center';
-      ctx.fillStyle = '#000';
-      ctx.fillText('YOU', sx + 1, ay - 5);
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = '#000';
+      ctx.strokeText('YOU', sx, ay - 6);
       ctx.fillStyle = '#ffeb00';
       ctx.fillText('YOU', sx, ay - 6);
+      if (offscreen) {
+        ctx.font = 'bold 10px Courier New';
+        ctx.fillStyle = '#fff';
+        ctx.fillText('(off-screen)', sx, sy + 42);
+      }
       ctx.restore();
     }
 
