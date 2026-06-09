@@ -11710,6 +11710,48 @@
       }
     }
 
+    // ===== YOU-ARE-HERE marker (fallback — uses gameState.self position
+    // directly so the player can find themselves even if the bird sprite
+    // is hidden behind another sprite or never matched by id).
+    if (gameState.self && typeof gameState.self.x === 'number') {
+      const sx = gameState.self.x - camera.x + camera.screenW / 2;
+      const sy = gameState.self.y - camera.y + camera.screenH / 2;
+      const pulse = 0.5 + 0.5 * Math.sin(now * 0.005);
+      ctx.save();
+      // Outer pulsing yellow halo
+      ctx.strokeStyle = `rgba(255, 220, 0, ${0.55 + 0.35 * pulse})`;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(sx, sy, 28 + pulse * 10, 0, Math.PI * 2);
+      ctx.stroke();
+      // Inner solid ring
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(sx, sy, 22, 0, Math.PI * 2);
+      ctx.stroke();
+      // Bouncing downward arrow above the bird
+      const ay = sy - 50 - pulse * 8;
+      ctx.fillStyle = '#ffeb00';
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(sx, ay + 16);
+      ctx.lineTo(sx - 10, ay);
+      ctx.lineTo(sx + 10, ay);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      // "YOU" label above the arrow
+      ctx.font = 'bold 12px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#000';
+      ctx.fillText('YOU', sx + 1, ay - 5);
+      ctx.fillStyle = '#ffeb00';
+      ctx.fillText('YOU', sx, ay - 6);
+      ctx.restore();
+    }
+
     // ===== SKY PIRATE AIRSHIP (Session 110) =====
     if (gameState.skyPirateShip) {
       const sp = gameState.skyPirateShip;
