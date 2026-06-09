@@ -11155,10 +11155,14 @@
       }
     }
 
-    // Birds
+    // Birds — each iteration wrapped in try/catch so one broken bird (NaN
+    // pos, missing field, sprite call error) can't kill the whole frame.
     if (gameState.birds) {
       for (const bird of gameState.birds) {
+        try {
         const b = lerpBird(bird.id, gameState.birds, prevState?.birds) || bird;
+        // Force-reset state in case a previous iteration leaked it
+        ctx.globalAlpha = 1;
         const sx = b.x - camera.x + camera.screenW / 2;
         const sy = b.y - camera.y + camera.screenH / 2;
         if (sx > -margin && sx < camera.screenW + margin && sy > -margin && sy < camera.screenH + margin) {
@@ -11666,6 +11670,15 @@
             }
           }
         }
+        } catch (e) {
+          // One bird's render blew up — log once and skip it so the rest
+          // of the frame (including the YOU marker) still draws.
+          if (!window._birdRenderErrLogged) {
+            console.error('[bird-render]', e);
+            window._birdRenderErrLogged = true;
+          }
+          ctx.globalAlpha = 1;
+        }
       }
     }
 
@@ -11710,66 +11723,7 @@
       }
     }
 
-    // ===== YOU-ARE-HERE marker (fallback) — uses gameState.self position
-    // directly. Snaps camera to player and edge-clamps the marker so it
-    // ALWAYS shows somewhere on screen even if camera follow is broken.
-    if (gameState.self && typeof gameState.self.x === 'number' && typeof gameState.self.y === 'number') {
-      // Hard-snap the camera if it has drifted far from the actual player
-      // position (the smoothed follow can stall if myId never matches a
-      // bird in the snapshot). This guarantees the player is on-screen.
-      const dxCam = gameState.self.x - camera.x;
-      const dyCam = gameState.self.y - camera.y;
-      if (Math.abs(dxCam) > 400 || Math.abs(dyCam) > 400) {
-        camera.x = gameState.self.x;
-        camera.y = gameState.self.y;
-      }
-      const rawSx = gameState.self.x - camera.x + camera.screenW / 2;
-      const rawSy = gameState.self.y - camera.y + camera.screenH / 2;
-      const pad = 50;
-      const sx = Math.max(pad, Math.min(camera.screenW - pad, rawSx));
-      const sy = Math.max(pad, Math.min(camera.screenH - pad, rawSy));
-      const offscreen = sx !== rawSx || sy !== rawSy;
-      const pulse = 0.5 + 0.5 * Math.sin(now * 0.005);
-      ctx.save();
-      // Outer pulsing yellow halo
-      ctx.strokeStyle = `rgba(255, 220, 0, ${0.6 + 0.35 * pulse})`;
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.arc(sx, sy, 30 + pulse * 10, 0, Math.PI * 2);
-      ctx.stroke();
-      // Inner solid white ring
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.98)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(sx, sy, 22, 0, Math.PI * 2);
-      ctx.stroke();
-      // Bouncing downward arrow above
-      const ay = sy - 52 - pulse * 8;
-      ctx.fillStyle = '#ffeb00';
-      ctx.strokeStyle = '#000';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(sx, ay + 18);
-      ctx.lineTo(sx - 12, ay);
-      ctx.lineTo(sx + 12, ay);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-      // "YOU" label
-      ctx.font = 'bold 14px Courier New';
-      ctx.textAlign = 'center';
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = '#000';
-      ctx.strokeText('YOU', sx, ay - 6);
-      ctx.fillStyle = '#ffeb00';
-      ctx.fillText('YOU', sx, ay - 6);
-      if (offscreen) {
-        ctx.font = 'bold 10px Courier New';
-        ctx.fillStyle = '#fff';
-        ctx.fillText('(off-screen)', sx, sy + 42);
-      }
-      ctx.restore();
-    }
+    // (YOU marker moved post-zoom-restore so it draws in pure screen space)
 
     // ===== SKY PIRATE AIRSHIP (Session 110) =====
     if (gameState.skyPirateShip) {
@@ -16241,6 +16195,72 @@
           ctx.fillRect(0, 0, camera.screenW, camera.screenH);
         }
       }
+    }
+
+    // ============================================================
+    // YOU-ARE-HERE marker — absolute LAST thing drawn each frame so
+    // nothing in the pipeline can cover it. Uses gameState.self.x/y
+    // directly (independent of myId / bird-loop / zoom transforms)
+    // and snaps the camera if smooth-follow has stalled.
+    // ============================================================
+    if (gameState && gameState.self && typeof gameState.self.x === 'number' && typeof gameState.self.y === 'number') {
+      const z = camera.zoom || 1;
+      const dxCam = gameState.self.x - camera.x;
+      const dyCam = gameState.self.y - camera.y;
+      if (Math.abs(dxCam) > 400 || Math.abs(dyCam) > 400) {
+        camera.x = gameState.self.x;
+        camera.y = gameState.self.y;
+      }
+      const wsx = gameState.self.x - camera.x + camera.screenW / 2;
+      const wsy = gameState.self.y - camera.y + camera.screenH / 2;
+      const rawSx = (wsx - camera.screenW / 2) * z + camera.screenW / 2;
+      const rawSy = (wsy - camera.screenH / 2) * z + camera.screenH / 2;
+      const pad = 60;
+      const sx = Math.max(pad, Math.min(camera.screenW - pad, rawSx));
+      const sy = Math.max(pad, Math.min(camera.screenH - pad, rawSy));
+      const offscreen = sx !== rawSx || sy !== rawSy;
+      const pulse = 0.5 + 0.5 * Math.sin(now * 0.005);
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0); // reset any lingering transform
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.strokeStyle = `rgba(255, 220, 0, ${0.6 + 0.35 * pulse})`;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(sx, sy, 32 + pulse * 12, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(sx, sy, 24, 0, Math.PI * 2);
+      ctx.stroke();
+      const ay = sy - 58 - pulse * 8;
+      ctx.fillStyle = '#ffeb00';
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(sx, ay + 20);
+      ctx.lineTo(sx - 14, ay);
+      ctx.lineTo(sx + 14, ay);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.font = 'bold 16px Courier New';
+      ctx.textAlign = 'center';
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = '#000';
+      ctx.strokeText('YOU', sx, ay - 6);
+      ctx.fillStyle = '#ffeb00';
+      ctx.fillText('YOU', sx, ay - 6);
+      if (offscreen) {
+        ctx.font = 'bold 11px Courier New';
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = '#000';
+        ctx.strokeText('(off-screen)', sx, sy + 48);
+        ctx.fillStyle = '#fff';
+        ctx.fillText('(off-screen)', sx, sy + 48);
+      }
+      ctx.restore();
     }
   }
 
