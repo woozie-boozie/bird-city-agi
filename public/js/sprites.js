@@ -93,13 +93,39 @@ window.Sprites = {
     ctx.closePath();
     ctx.fill();
 
-    // Player indicator (glow)
+    // Player indicator — big pulsing bullseye + downward arrow so you can
+    // never lose track of yourself in a crowded scene.
     if (isPlayer) {
-      ctx.strokeStyle = 'rgba(255, 200, 50, 0.5)';
+      const tp = Date.now() * 0.005;
+      const pulse = 0.5 + 0.5 * Math.sin(tp);
+      // Inner solid yellow ring
+      ctx.strokeStyle = 'rgba(255, 230, 80, 0.95)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(0, 0, s + 8, 0, Math.PI * 2);
+      ctx.stroke();
+      // Outer pulsing halo
+      ctx.strokeStyle = `rgba(255, 200, 0, ${0.35 + 0.35 * pulse})`;
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(0, 0, s + 6, 0, Math.PI * 2);
+      ctx.arc(0, 0, s + 14 + pulse * 6, 0, Math.PI * 2);
       ctx.stroke();
+      // Downward-pointing arrow above the bird (in world-up direction — undo
+      // the bird rotation so it always points at the player from above)
+      ctx.save();
+      ctx.rotate(-rotation);
+      const ay = -(s + 22) - pulse * 4;
+      ctx.fillStyle = `rgba(255, 230, 0, ${0.85 + 0.15 * pulse})`;
+      ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(0, ay + 10);
+      ctx.lineTo(-7, ay);
+      ctx.lineTo(7, ay);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
     }
 
     // Hat (drawn on top of the bird, at the head position)
