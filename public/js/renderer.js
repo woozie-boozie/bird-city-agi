@@ -6260,6 +6260,9 @@ window.Renderer = {
   // Session 141: The Wishing Well
   // ============================================================
   drawWishingWell(ctx, camera, pos, wishingWell, isNear, now) {
+    // Guard against bad call sites — bail out instead of throwing
+    // mid-frame and killing the rest of the render pipeline.
+    if (!pos || !Number.isFinite(pos.x) || !Number.isFinite(pos.y) || !Number.isFinite(now)) return;
     const sx = pos.x - camera.x + camera.screenW / 2;
     const sy = pos.y - camera.y + camera.screenH / 2;
 

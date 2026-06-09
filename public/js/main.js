@@ -10950,7 +10950,7 @@
 
     // Wishing Well — Session 141 (permanent world object)
     if (gameState.wishingWell) {
-      Renderer.drawWishingWell(ctx, camera, gameState.wishingWell, now);
+      Renderer.drawWishingWell(ctx, camera, { x: 950, y: 1200 }, gameState.wishingWell, !!gameState.wishingWell.nearMe, now);
     }
 
     // Delivery Rush — package and destination marker
