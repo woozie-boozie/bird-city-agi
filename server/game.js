@@ -6338,6 +6338,7 @@ class GameEngine {
   }
 
   _checkPoopHit(poop, isMegaPoop, isWedgePoop = false, vpEffect = null) {
+    const now = Date.now();
     let hitRadius = isMegaPoop ? 60 : (isWedgePoop ? 33 : 20); // Wedge: +65% wider splash
     // Vending Machine: Spicy effect — wide splash radius (between normal and mega)
     if (!isMegaPoop && vpEffect === 'spicy') hitRadius = 38;
