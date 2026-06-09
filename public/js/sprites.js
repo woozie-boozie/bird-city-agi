@@ -13,18 +13,33 @@ window.Sprites = {
     return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
   },
 
+  // Helper: lighten a hex color toward white
+  _lightenColor(hex, factor) {
+    factor = factor || 0.5;
+    let r = parseInt(hex.slice(1, 3), 16);
+    let g = parseInt(hex.slice(3, 5), 16);
+    let b = parseInt(hex.slice(5, 7), 16);
+    r = Math.min(255, Math.floor(r + (255 - r) * factor));
+    g = Math.min(255, Math.floor(g + (255 - g) * factor));
+    b = Math.min(255, Math.floor(b + (255 - b) * factor));
+    return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+  },
+
   // === BIRD (top-down view) ===
+  // Per-type identity. `size` is the base half-extent; per-type branches
+  // below draw the distinctive silhouette (long neck for seagull, pointed
+  // wings for crow, fingered wings + hooked beak for eagle, chunky body +
+  // long neck for ostrich).
   drawBird(ctx, x, y, rotation, type, wingPhase, isPlayer, colorOverride, hatType) {
     const types = {
-      pigeon:  { body: '#888', wing: '#666', beak: '#e8a020', size: 12, eye: '#000' },
-      seagull: { body: '#eee', wing: '#bbb', beak: '#e87020', size: 14, eye: '#222' },
-      crow:    { body: '#222', wing: '#111', beak: '#444', size: 14, eye: '#c00' },
-      eagle:   { body: '#8B4513', wing: '#654321', beak: '#daa520', size: 18, eye: '#ff0' },
-      ostrich: { body: '#5a4030', wing: '#4a3020', beak: '#cc8833', size: 24, eye: '#000' },
+      pigeon:  { body: '#888',    wing: '#666',    beak: '#e8a020', size: 12, eye: '#000',   outline: '#3a3a3a' },
+      seagull: { body: '#f4f4ef', wing: '#cfcfc8', beak: '#ff7a1a', size: 14, eye: '#222',   outline: '#9a9a8a' },
+      crow:    { body: '#1a1a1a', wing: '#000',    beak: '#1a1a1a', size: 14, eye: '#c00',   outline: '#660000' },
+      eagle:   { body: '#7a4a1f', wing: '#4a2f15', beak: '#ffcc33', size: 20, eye: '#ffea00', outline: '#2a1a08' },
+      ostrich: { body: '#6a4a30', wing: '#523620', beak: '#d4a040', size: 24, eye: '#000',   outline: '#3a2418' },
     };
     const t = types[type] || types.pigeon;
     const s = t.size;
-    // Apply color override
     const bodyColor = colorOverride || t.body;
     const wingColor = colorOverride ? this._darkenColor(colorOverride, 0.7) : t.wing;
 
@@ -32,66 +47,249 @@ window.Sprites = {
     ctx.translate(x, y);
     ctx.rotate(rotation);
 
-    // Shadow
-    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    // Shadow (bigger for bigger birds)
+    ctx.fillStyle = 'rgba(0,0,0,0.22)';
     ctx.beginPath();
-    ctx.ellipse(2, 4, s * 0.8, s * 0.5, 0, 0, Math.PI * 2);
+    ctx.ellipse(2, 4, s * 0.85, s * 0.5, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Wings (flapping)
     const wingFlap = Math.sin(wingPhase) * 0.4;
-    const wingSpread = s * 0.9;
 
-    ctx.fillStyle = wingColor;
-    // Left wing
-    ctx.save();
-    ctx.translate(-s * 0.2, 0);
-    ctx.rotate(-wingFlap);
-    ctx.beginPath();
-    ctx.ellipse(0, -wingSpread * 0.5, s * 0.6, s * 0.25, -0.3, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
+    // ---------- per-type body + wings + head ----------
+    if (type === 'seagull') {
+      // Elegant white seabird — slim body, swept-back wings, sharp orange
+      // beak. Long S-neck reaching forward like a swan but more streamlined.
+      const wingSpread = s * 1.05;
+      ctx.fillStyle = wingColor;
+      ctx.save(); ctx.translate(-s * 0.15, 0); ctx.rotate(-wingFlap);
+      ctx.beginPath(); ctx.ellipse(0, -wingSpread * 0.55, s * 0.85, s * 0.3, -0.25, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      ctx.save(); ctx.translate(-s * 0.15, 0); ctx.rotate(wingFlap);
+      ctx.beginPath(); ctx.ellipse(0, wingSpread * 0.55, s * 0.85, s * 0.3, 0.25, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      // Body
+      ctx.fillStyle = bodyColor;
+      ctx.strokeStyle = t.outline; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.ellipse(-s * 0.05, 0, s * 1.0, s * 0.55, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      // Neck
+      ctx.strokeStyle = bodyColor; ctx.lineWidth = s * 0.4;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(s * 0.5, -s * 0.05);
+      ctx.bezierCurveTo(s * 1.0, -s * 0.25, s * 1.3, -s * 0.15, s * 1.4, 0);
+      ctx.stroke();
+      // Head
+      ctx.fillStyle = bodyColor;
+      ctx.beginPath(); ctx.arc(s * 1.4, 0, s * 0.3, 0, Math.PI * 2); ctx.fill();
+      // Bright orange beak (signature seagull look)
+      ctx.fillStyle = t.beak;
+      ctx.beginPath();
+      ctx.moveTo(s * 1.7, 0);
+      ctx.lineTo(s * 1.4, -s * 0.12);
+      ctx.lineTo(s * 1.4, s * 0.12);
+      ctx.closePath(); ctx.fill();
+      // Eye
+      ctx.fillStyle = t.eye;
+      ctx.beginPath(); ctx.arc(s * 1.52, -s * 0.06, s * 0.08, 0, Math.PI * 2); ctx.fill();
+      // Long fanned tail
+      ctx.fillStyle = wingColor;
+      ctx.beginPath();
+      ctx.moveTo(-s * 1.0, 0);
+      ctx.lineTo(-s * 1.6, -s * 0.45);
+      ctx.lineTo(-s * 1.45, 0);
+      ctx.lineTo(-s * 1.6, s * 0.45);
+      ctx.closePath(); ctx.fill();
 
-    // Right wing
-    ctx.save();
-    ctx.translate(-s * 0.2, 0);
-    ctx.rotate(wingFlap);
-    ctx.beginPath();
-    ctx.ellipse(0, wingSpread * 0.5, s * 0.6, s * 0.25, 0.3, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
+    } else if (type === 'crow') {
+      // Angular jet-black with sharply pointed wings and a forked tail.
+      const wingSpread = s * 1.05;
+      ctx.fillStyle = wingColor;
+      ctx.save(); ctx.translate(-s * 0.15, 0); ctx.rotate(-wingFlap);
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(-s * 0.2, -wingSpread * 1.15);
+      ctx.lineTo(s * 0.55, -wingSpread * 0.45);
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
+      ctx.save(); ctx.translate(-s * 0.15, 0); ctx.rotate(wingFlap);
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(-s * 0.2, wingSpread * 1.15);
+      ctx.lineTo(s * 0.55, wingSpread * 0.45);
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
+      // Slim body
+      ctx.fillStyle = bodyColor;
+      ctx.beginPath(); ctx.ellipse(0, 0, s * 0.95, s * 0.42, 0, 0, Math.PI * 2); ctx.fill();
+      // Small head bump
+      ctx.beginPath(); ctx.arc(s * 0.75, 0, s * 0.45, 0, Math.PI * 2); ctx.fill();
+      // Sharp dagger beak
+      ctx.fillStyle = t.beak;
+      ctx.beginPath();
+      ctx.moveTo(s * 1.55, 0);
+      ctx.lineTo(s * 1.05, -s * 0.13);
+      ctx.lineTo(s * 1.05, s * 0.13);
+      ctx.closePath(); ctx.fill();
+      // Glowing red eyes
+      ctx.fillStyle = t.eye;
+      ctx.beginPath();
+      ctx.arc(s * 0.85, -s * 0.2, s * 0.13, 0, Math.PI * 2);
+      ctx.arc(s * 0.85, s * 0.2, s * 0.13, 0, Math.PI * 2);
+      ctx.fill();
+      // Forked tail
+      ctx.fillStyle = wingColor;
+      ctx.beginPath();
+      ctx.moveTo(-s * 0.95, -s * 0.2);
+      ctx.lineTo(-s * 1.7, -s * 0.45);
+      ctx.lineTo(-s * 1.35, 0);
+      ctx.lineTo(-s * 1.7, s * 0.45);
+      ctx.lineTo(-s * 0.95, s * 0.2);
+      ctx.closePath(); ctx.fill();
 
-    // Body
-    ctx.fillStyle = bodyColor;
-    ctx.beginPath();
-    ctx.ellipse(0, 0, s, s * 0.55, 0, 0, Math.PI * 2);
-    ctx.fill();
+    } else if (type === 'eagle') {
+      // Big and regal — broad fingered wings, prominent head, hooked beak.
+      const wingSpread = s * 1.2;
+      ctx.fillStyle = wingColor;
+      ctx.save(); ctx.translate(-s * 0.1, 0); ctx.rotate(-wingFlap * 0.7);
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(-s * 0.3, -wingSpread * 0.55);
+      ctx.lineTo(s * 0.1, -wingSpread * 1.1);
+      ctx.lineTo(s * 0.55, -wingSpread * 0.95);
+      ctx.lineTo(s * 0.65, -wingSpread * 0.45);
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
+      ctx.save(); ctx.translate(-s * 0.1, 0); ctx.rotate(wingFlap * 0.7);
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(-s * 0.3, wingSpread * 0.55);
+      ctx.lineTo(s * 0.1, wingSpread * 1.1);
+      ctx.lineTo(s * 0.55, wingSpread * 0.95);
+      ctx.lineTo(s * 0.65, wingSpread * 0.45);
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
+      // Body
+      ctx.fillStyle = bodyColor;
+      ctx.strokeStyle = t.outline; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.ellipse(0, 0, s * 1.0, s * 0.6, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      // White head (bald-eagle look)
+      const headColor = colorOverride ? this._lightenColor(bodyColor, 0.5) : '#f0f0e8';
+      ctx.fillStyle = headColor;
+      ctx.beginPath(); ctx.arc(s * 0.7, 0, s * 0.52, 0, Math.PI * 2); ctx.fill();
+      ctx.stroke();
+      // Hooked yellow beak
+      ctx.fillStyle = t.beak;
+      ctx.beginPath();
+      ctx.moveTo(s * 0.95, -s * 0.18);
+      ctx.lineTo(s * 1.55, -s * 0.05);
+      ctx.lineTo(s * 1.5, s * 0.18);
+      ctx.lineTo(s * 1.25, s * 0.22);
+      ctx.lineTo(s * 0.95, s * 0.1);
+      ctx.closePath(); ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(s * 1.55, -s * 0.05);
+      ctx.lineTo(s * 1.62, s * 0.06);
+      ctx.lineTo(s * 1.5, s * 0.08);
+      ctx.closePath(); ctx.fill();
+      // Piercing eye
+      ctx.fillStyle = t.eye;
+      ctx.beginPath(); ctx.arc(s * 0.85, -s * 0.18, s * 0.12, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#000';
+      ctx.beginPath(); ctx.arc(s * 0.88, -s * 0.18, s * 0.06, 0, Math.PI * 2); ctx.fill();
+      // Wide fanned tail
+      ctx.fillStyle = wingColor;
+      ctx.beginPath();
+      ctx.moveTo(-s * 1.0, -s * 0.05);
+      ctx.lineTo(-s * 1.75, -s * 0.55);
+      ctx.lineTo(-s * 1.55, 0);
+      ctx.lineTo(-s * 1.75, s * 0.55);
+      ctx.lineTo(-s * 1.0, s * 0.05);
+      ctx.closePath(); ctx.fill();
 
-    // Beak
-    ctx.fillStyle = t.beak;
-    ctx.beginPath();
-    ctx.moveTo(s, 0);
-    ctx.lineTo(s + s * 0.5, -s * 0.15);
-    ctx.lineTo(s + s * 0.5, s * 0.15);
-    ctx.closePath();
-    ctx.fill();
+    } else if (type === 'ostrich') {
+      // Giant: huge round body, long thin S-neck reaching forward, small head,
+      // tiny wings, fluffy tail tuft, long legs poking out.
+      ctx.fillStyle = wingColor;
+      // Tiny stub wings
+      ctx.save(); ctx.translate(-s * 0.1, 0); ctx.rotate(-wingFlap * 0.5);
+      ctx.beginPath(); ctx.ellipse(0, -s * 0.65, s * 0.35, s * 0.18, -0.3, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      ctx.save(); ctx.translate(-s * 0.1, 0); ctx.rotate(wingFlap * 0.5);
+      ctx.beginPath(); ctx.ellipse(0, s * 0.65, s * 0.35, s * 0.18, 0.3, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      // Massive round body
+      ctx.fillStyle = bodyColor;
+      ctx.strokeStyle = t.outline; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.ellipse(-s * 0.1, 0, s * 1.1, s * 0.9, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      // Long thin neck (Bezier S-curve, more extreme than seagull)
+      ctx.strokeStyle = bodyColor; ctx.lineWidth = s * 0.28;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(s * 0.5, -s * 0.05);
+      ctx.bezierCurveTo(s * 1.2, -s * 0.5, s * 1.7, -s * 0.3, s * 1.95, 0);
+      ctx.stroke();
+      // Small head
+      ctx.fillStyle = bodyColor;
+      ctx.beginPath(); ctx.arc(s * 1.95, 0, s * 0.28, 0, Math.PI * 2); ctx.fill();
+      // Short beak
+      ctx.fillStyle = t.beak;
+      ctx.beginPath();
+      ctx.moveTo(s * 2.25, 0);
+      ctx.lineTo(s * 1.95, -s * 0.1);
+      ctx.lineTo(s * 1.95, s * 0.1);
+      ctx.closePath(); ctx.fill();
+      // Big black eye
+      ctx.fillStyle = t.eye;
+      ctx.beginPath(); ctx.arc(s * 2.05, -s * 0.06, s * 0.1, 0, Math.PI * 2); ctx.fill();
+      // Fluffy tail tuft
+      ctx.fillStyle = wingColor;
+      ctx.beginPath();
+      ctx.arc(-s * 1.15, -s * 0.18, s * 0.2, 0, Math.PI * 2);
+      ctx.arc(-s * 1.28, 0, s * 0.24, 0, Math.PI * 2);
+      ctx.arc(-s * 1.15, s * 0.18, s * 0.2, 0, Math.PI * 2);
+      ctx.fill();
+      // Long legs
+      ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(-s * 0.2, s * 0.8); ctx.lineTo(-s * 0.2, s * 1.25);
+      ctx.moveTo(s * 0.15, s * 0.8); ctx.lineTo(s * 0.15, s * 1.25);
+      ctx.stroke();
 
-    // Eyes
-    ctx.fillStyle = t.eye;
-    ctx.beginPath();
-    ctx.arc(s * 0.4, -s * 0.25, s * 0.12, 0, Math.PI * 2);
-    ctx.arc(s * 0.4, s * 0.25, s * 0.12, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Tail
-    ctx.fillStyle = wingColor;
-    ctx.beginPath();
-    ctx.moveTo(-s, 0);
-    ctx.lineTo(-s * 1.4, -s * 0.3);
-    ctx.lineTo(-s * 1.2, 0);
-    ctx.lineTo(-s * 1.4, s * 0.3);
-    ctx.closePath();
-    ctx.fill();
+    } else {
+      // PIGEON — round wings, modest body, short beak, triangular tail.
+      const wingSpread = s * 0.9;
+      ctx.fillStyle = wingColor;
+      ctx.save(); ctx.translate(-s * 0.2, 0); ctx.rotate(-wingFlap);
+      ctx.beginPath(); ctx.ellipse(0, -wingSpread * 0.5, s * 0.6, s * 0.25, -0.3, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      ctx.save(); ctx.translate(-s * 0.2, 0); ctx.rotate(wingFlap);
+      ctx.beginPath(); ctx.ellipse(0, wingSpread * 0.5, s * 0.6, s * 0.25, 0.3, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      ctx.fillStyle = bodyColor;
+      ctx.beginPath(); ctx.ellipse(0, 0, s, s * 0.55, 0, 0, Math.PI * 2); ctx.fill();
+      // Short beak
+      ctx.fillStyle = t.beak;
+      ctx.beginPath();
+      ctx.moveTo(s, 0);
+      ctx.lineTo(s + s * 0.5, -s * 0.15);
+      ctx.lineTo(s + s * 0.5, s * 0.15);
+      ctx.closePath(); ctx.fill();
+      // Eyes
+      ctx.fillStyle = t.eye;
+      ctx.beginPath();
+      ctx.arc(s * 0.4, -s * 0.25, s * 0.12, 0, Math.PI * 2);
+      ctx.arc(s * 0.4, s * 0.25, s * 0.12, 0, Math.PI * 2);
+      ctx.fill();
+      // Simple tail
+      ctx.fillStyle = wingColor;
+      ctx.beginPath();
+      ctx.moveTo(-s, 0);
+      ctx.lineTo(-s * 1.4, -s * 0.3);
+      ctx.lineTo(-s * 1.2, 0);
+      ctx.lineTo(-s * 1.4, s * 0.3);
+      ctx.closePath();
+      ctx.fill();
+    }
 
     // Player indicator — big pulsing bullseye + downward arrow so you can
     // never lose track of yourself in a crowded scene.
